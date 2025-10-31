@@ -5,11 +5,13 @@ Provides access to external databases configured in Django's DATABASES setting.
 Supports querying any database with syntax: {{ db.schema.table.column }}
 """
 
-from typing import Any, Optional
 import logging
 import re
+from typing import Any
+
 from django.conf import settings
 from django.db import connections
+
 from .base import DataSource
 
 logger = logging.getLogger(__name__)
@@ -18,16 +20,16 @@ logger = logging.getLogger(__name__)
 class DatabaseDataSource(DataSource):
     """
     Data source for external database queries.
-    
+
     Supports syntax:
     - {{ db.schema.table.column }}
     - {{ schema.table.column }}
     - db.schema.table.column
-    
+
     Requires:
     - Database configured in Django's DATABASES setting
     - User profile with external_id field for lookups
-    
+
     Configuration in settings.py:
         FORMS_WORKFLOWS = {
             'DATABASE_SOURCE': {
@@ -37,8 +39,8 @@ class DatabaseDataSource(DataSource):
             }
         }
     """
-    
-    def get_value(self, user, field_name: str, **kwargs) -> Optional[Any]:
+
+    def get_value(self, user, field_name: str, **kwargs) -> Any | None:
         """
         Get a value from an external database.
 
@@ -60,16 +62,24 @@ class DatabaseDataSource(DataSource):
             return None
 
         if not self.is_available():
-            logger.warning("Database data source is not available (no external database configured)")
+            logger.warning(
+                "Database data source is not available (no external database configured)"
+            )
             return None
 
         try:
             # Get configuration
             config = self._get_config()
-            database_alias = kwargs.get('database_alias', config.get('database_alias'))
-            user_id_field = kwargs.get('user_id_field', config.get('user_id_field', 'external_id'))
-            lookup_field = kwargs.get('lookup_field', config.get('lookup_field', 'ID_NUMBER'))
-            default_schema = kwargs.get('default_schema', config.get('default_schema', 'dbo'))
+            database_alias = kwargs.get("database_alias", config.get("database_alias"))
+            user_id_field = kwargs.get(
+                "user_id_field", config.get("user_id_field", "external_id")
+            )
+            lookup_field = kwargs.get(
+                "lookup_field", config.get("lookup_field", "ID_NUMBER")
+            )
+            default_schema = kwargs.get(
+                "default_schema", config.get("default_schema", "dbo")
+            )
 
             # Get user's external ID
             user_id = self._get_user_id(user, user_id_field)
@@ -85,8 +95,13 @@ class DatabaseDataSource(DataSource):
                 return None
 
             # Validate identifiers to prevent SQL injection
-            if not all(self._is_safe_identifier(x) for x in [schema, table, column, lookup_field]):
-                logger.error(f"Invalid identifier in: {field_name} or lookup_field: {lookup_field}")
+            if not all(
+                self._is_safe_identifier(x)
+                for x in [schema, table, column, lookup_field]
+            ):
+                logger.error(
+                    f"Invalid identifier in: {field_name} or lookup_field: {lookup_field}"
+                )
                 return None
 
             # Query the database
@@ -96,7 +111,7 @@ class DatabaseDataSource(DataSource):
                 table=table,
                 column=column,
                 user_id=user_id,
-                lookup_field=lookup_field
+                lookup_field=lookup_field,
             )
 
             return value
@@ -104,15 +119,15 @@ class DatabaseDataSource(DataSource):
         except Exception as e:
             logger.error(f"Error getting database value for {field_name}: {e}")
             return None
-    
+
     def _get_config(self) -> dict:
         """Get configuration from settings."""
-        return getattr(settings, 'FORMS_WORKFLOWS', {}).get('DATABASE_SOURCE', {})
-    
-    def _get_user_id(self, user, user_id_field: str) -> Optional[str]:
+        return getattr(settings, "FORMS_WORKFLOWS", {}).get("DATABASE_SOURCE", {})
+
+    def _get_user_id(self, user, user_id_field: str) -> str | None:
         """Get user's external ID from profile."""
         try:
-            if hasattr(user, 'forms_profile'):
+            if hasattr(user, "forms_profile"):
                 profile = user.forms_profile
                 if hasattr(profile, user_id_field):
                     return getattr(profile, user_id_field)
@@ -120,32 +135,32 @@ class DatabaseDataSource(DataSource):
         except Exception as e:
             logger.error(f"Error getting user ID field {user_id_field}: {e}")
             return None
-    
+
     def _parse_field_name(self, field_name: str, default_schema: str) -> tuple:
         """
         Parse field_name to extract schema, table, column.
-        
+
         Supports:
         - {{ db.schema.table.column }}
         - {{ schema.table.column }}
         - db.schema.table.column
         - schema.table.column
-        
+
         Returns:
             (schema, table, column) tuple
         """
         # Remove {{ }} if present
         field_name = field_name.strip()
-        if field_name.startswith('{{') and field_name.endswith('}}'):
+        if field_name.startswith("{{") and field_name.endswith("}}"):
             field_name = field_name[2:-2].strip()
-        
+
         # Remove 'db.' prefix if present
-        if field_name.startswith('db.'):
+        if field_name.startswith("db."):
             field_name = field_name[3:]
-        
+
         # Split by dots
-        parts = field_name.split('.')
-        
+        parts = field_name.split(".")
+
         if len(parts) == 3:
             return parts[0], parts[1], parts[2]
         elif len(parts) == 2:
@@ -153,11 +168,11 @@ class DatabaseDataSource(DataSource):
             return default_schema, parts[0], parts[1]
         else:
             return None, None, None
-    
+
     def _is_safe_identifier(self, identifier: str) -> bool:
         """
         Validate that an identifier is safe to use in SQL.
-        
+
         Prevents SQL injection by ensuring identifier contains only:
         - Alphanumeric characters
         - Underscores
@@ -165,13 +180,13 @@ class DatabaseDataSource(DataSource):
         """
         if not identifier:
             return False
-        
+
         # Allow alphanumeric and underscore only
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', identifier):
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", identifier):
             return False
-        
+
         return True
-    
+
     def _query_database(
         self,
         database_alias: str,
@@ -179,8 +194,8 @@ class DatabaseDataSource(DataSource):
         table: str,
         column: str,
         user_id: str,
-        lookup_field: str = 'ID_NUMBER'
-    ) -> Optional[Any]:
+        lookup_field: str = "ID_NUMBER",
+    ) -> Any | None:
         """
         Execute database query.
 
@@ -213,30 +228,31 @@ class DatabaseDataSource(DataSource):
                 if row:
                     return row[0]
 
-                logger.debug(f"No data found for user {user_id} in {schema}.{table}.{column} (lookup: {lookup_field})")
+                logger.debug(
+                    f"No data found for user {user_id} in {schema}.{table}.{column} (lookup: {lookup_field})"
+                )
                 return None
 
         except Exception as e:
             logger.error(f"Database query error: {e}")
             return None
-    
+
     def is_available(self) -> bool:
         """
         Check if database source is configured.
-        
+
         Returns:
             True if external database is configured
         """
         config = self._get_config()
-        database_alias = config.get('database_alias')
-        
+        database_alias = config.get("database_alias")
+
         if not database_alias:
             return False
-        
+
         # Check if database alias exists in settings
-        databases = getattr(settings, 'DATABASES', {})
+        databases = getattr(settings, "DATABASES", {})
         return database_alias in databases
-    
+
     def get_display_name(self) -> str:
         return "External Database"
-

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-forms-workflows"
-version = "0.2.0"
+version = "0.2.1"
 description = "Enterprise-grade, database-driven form builder with approval workflows and external data integration"
 license = "LGPL-3.0-only"
 readme = "README.md"
@@ -54,6 +54,7 @@ flake8 = ">=6.0"
 mypy = ">=1.5"
 django-stubs = ">=4.2"
 twine = "^6.2.0"
+ruff = "^0.14.3"
 
 [build-system]
 requires = ["poetry-core>=1.7.0"]

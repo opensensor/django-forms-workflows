@@ -4,18 +4,19 @@ Django admin for Django Forms Workflows
 Provides a friendly admin interface to build forms (with fields),
 configure approval workflows, and review submissions and audit logs.
 """
+
 from django.contrib import admin
-from django.utils.html import format_html
+
 from .models import (
-    FormDefinition,
-    FormField,
-    PrefillSource,
-    PostSubmissionAction,
-    WorkflowDefinition,
-    FormSubmission,
     ApprovalTask,
     AuditLog,
+    FormDefinition,
+    FormField,
+    FormSubmission,
+    PostSubmissionAction,
+    PrefillSource,
     UserProfile,
+    WorkflowDefinition,
 )
 
 
@@ -51,7 +52,12 @@ class FormFieldInline(admin.StackedInline):
             "Choices & Defaults",
             {
                 "classes": ("collapse",),
-                "fields": ("choices", "prefill_source_config", "prefill_source", "default_value"),
+                "fields": (
+                    "choices",
+                    "prefill_source_config",
+                    "prefill_source",
+                    "default_value",
+                ),
             },
         ),
         (
@@ -327,9 +333,7 @@ class PostSubmissionActionAdmin(admin.ModelAdmin):
                     "condition_field",
                     ("condition_operator", "condition_value"),
                 ),
-                "description": (
-                    "Execute this action only when the condition is met."
-                ),
+                "description": ("Execute this action only when the condition is met."),
             },
         ),
         (
@@ -431,4 +435,3 @@ class UserProfileAdmin(admin.ModelAdmin):
     search_fields = ("user__username", "user__email", "department", "title")
     raw_id_fields = ("user", "manager")
     list_filter = ("department",)
-

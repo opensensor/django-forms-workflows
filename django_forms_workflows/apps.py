@@ -7,11 +7,11 @@ from django.apps import AppConfig
 
 class DjangoFormsWorkflowsConfig(AppConfig):
     """App configuration for Django Forms Workflows"""
-    
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'django_forms_workflows'
-    verbose_name = 'Forms Workflows'
-    
+
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "django_forms_workflows"
+    verbose_name = "Forms Workflows"
+
     def ready(self):
         """
         Import signal handlers and perform app initialization.
@@ -19,4 +19,3 @@ class DjangoFormsWorkflowsConfig(AppConfig):
         # Import signals if you have any
         # from . import signals
         pass
-

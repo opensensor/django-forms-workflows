@@ -41,20 +41,20 @@ For database lookups, create custom prefill sources via Django Admin:
 
 **Admin → Prefill Sources → Add Prefill Source**
 
-#### Example: Student First Name from Campus Database
+#### Example: Employee First Name from External Database
 
 ```
-Name: Student - First Name
+Name: Employee - First Name
 Source Type: Database
-Source Key: {{ dbo.STBIOS.FIRST_NAME }}
-Description: Student's first name from Campus Cafe database
+Source Key: {{ dbo.EMPLOYEES.FIRST_NAME }}
+Description: Employee's first name from external HR database
 
 Database Configuration:
-  - DB Alias: campus_cafe
+  - DB Alias: hr_database
   - DB Schema: dbo
-  - DB Table: STBIOS
+  - DB Table: EMPLOYEES
   - DB Column: FIRST_NAME
-  - DB Lookup Field: ID_NUMBER
+  - DB Lookup Field: EMPLOYEE_ID
   - DB User Field: employee_id
 ```
 
@@ -150,9 +150,9 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     },
-    'campus_cafe': {
+    'hr_database': {
         'ENGINE': 'mssql',
-        'NAME': 'CampusCafe',
+        'NAME': 'HRDatabase',
         'USER': 'readonly_user',
         'PASSWORD': 'password',
         'HOST': 'sql.example.com',
@@ -166,10 +166,10 @@ DATABASES = {
 # Optional: Configure default database source settings
 FORMS_WORKFLOWS = {
     'DATABASE_SOURCE': {
-        'database_alias': 'campus_cafe',
+        'database_alias': 'hr_database',
         'default_schema': 'dbo',
         'user_id_field': 'employee_id',
-        'lookup_field': 'ID_NUMBER',
+        'lookup_field': 'EMPLOYEE_ID',
     }
 }
 ```

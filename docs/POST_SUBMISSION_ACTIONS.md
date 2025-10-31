@@ -17,7 +17,7 @@ Update external databases with form data after submission or approval.
 **Use Cases:**
 - Update employee records in HR database
 - Sync contact information to CRM
-- Update student records in campus database
+- Update customer records in external database
 - Log form submissions to data warehouse
 
 ### 2. LDAP Updates

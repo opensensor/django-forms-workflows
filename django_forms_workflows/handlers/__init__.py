@@ -8,13 +8,12 @@ Handlers execute actions after form submission or approval, such as:
 - Running custom Python code
 """
 
+from .api_handler import APICallHandler
 from .database_handler import DatabaseUpdateHandler
 from .ldap_handler import LDAPUpdateHandler
-from .api_handler import APICallHandler
 
 __all__ = [
-    'DatabaseUpdateHandler',
-    'LDAPUpdateHandler',
-    'APICallHandler',
+    "DatabaseUpdateHandler",
+    "LDAPUpdateHandler",
+    "APICallHandler",
 ]
-

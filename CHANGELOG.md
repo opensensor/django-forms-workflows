@@ -15,7 +15,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced reporting and analytics
 - Multi-tenancy support
 
-## [0.2.0] - TBD
+## [0.2.2] - 2025-10-31
+
+### Changed
+- **Code Quality Improvements**
+  - Migrated from Black to Ruff for code formatting and linting
+  - Fixed all import ordering and type annotation issues
+  - Added comprehensive ruff.toml configuration
+  - Updated CI workflow to use Ruff instead of Black/isort/flake8
+  - Improved LDAP availability checks using importlib.util.find_spec
+
+### Fixed
+- Removed all references to "Campus Cafe" from codebase and documentation
+- Updated example database references to use generic "hr_database" naming
+- Cleaned up unused imports in LDAP handlers
+
+## [0.2.1] - 2025-10-31
+
+### Fixed
+- Corrected author email in package metadata from `opensource@opensensor.ai` to `matt@opensensor.io`
+
+## [0.2.0] - 2025-10-31
 
 ### Added - Configurable Prefill Sources
 - **PrefillSource Model** - Database-driven prefill source configuration
@@ -164,7 +184,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - psycopg2-binary >= 2.9 (for PostgreSQL)
 - mysqlclient >= 2.2 (for MySQL)
 
-[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/opensensor/django-forms-workflows/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/opensensor/django-forms-workflows/releases/tag/v0.1.0
 

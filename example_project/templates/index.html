@@ -1,0 +1,25 @@
+{% extends 'django_forms_workflows/base.html' %}
+{% block title %}Farm Landing{% endblock %}
+{% block content %}
+<div class="row align-items-center">
+  <div class="col-md-7">
+    <h2 class="mb-3">Welcome to Farm Forms 🚜</h2>
+    <p class="lead">A playful demo app showing approvals, reminders, and escalations — all on a friendly farm.</p>
+    <ul>
+      <li>Equipment Repair Request — any approver can approve; escalates over $1,000</li>
+      <li>Barn Maintenance Request — requires all assigned teams to approve</li>
+      <li>Harvest Report — no approval required</li>
+    </ul>
+    <div class="mt-3 d-flex gap-2">
+      <a href="{% url 'forms_workflows:form_list' %}" class="btn btn-success">Go to Forms</a>
+      {% if not user.is_authenticated %}
+        <a href="{% url 'login' %}" class="btn btn-outline-secondary">Sign in</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-md-5 text-center">
+    <div class="display-1">🌾🐄🐓</div>
+  </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,38 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Available Forms - Django Forms Workflows{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-list-ul"></i> Available Forms
+        </h1>
+        {% if forms %}
+            <div class="row">
+                {% for form in forms %}
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ form.name }}</h5>
+                                <p class="card-text">{{ form.description|truncatewords:20 }}</p>
+                            </div>
+                            <div class="card-footer bg-transparent">
+                                <a href="{% url 'forms_workflows:form_submit' form.slug %}" class="btn btn-primary btn-sm">
+                                    <i class="bi bi-pencil-square"></i> Fill Out Form
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                No forms are currently available. Please check back later or contact your administrator.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

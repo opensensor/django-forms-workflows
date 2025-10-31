@@ -1,0 +1,148 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Submission #{{ submission.id }} - Django Forms Workflows{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Submission #{{ submission.id }}</h1>
+            {% if submission.status == 'draft' %}
+                <span class="badge bg-secondary">Draft</span>
+            {% elif submission.status == 'submitted' %}
+                <span class="badge bg-info">Submitted</span>
+            {% elif submission.status == 'pending_approval' %}
+                <span class="badge bg-warning text-dark">Pending Approval</span>
+            {% elif submission.status == 'approved' %}
+                <span class="badge bg-success">Approved</span>
+            {% elif submission.status == 'rejected' %}
+                <span class="badge bg-danger">Rejected</span>
+            {% elif submission.status == 'withdrawn' %}
+                <span class="badge bg-secondary">Withdrawn</span>
+            {% endif %}
+        </div>
+
+        <!-- Submission Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Submission Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Form:</strong> {{ submission.form_definition.name }}</p>
+                        <p><strong>Submitter:</strong> {{ submission.submitter.get_full_name|default:submission.submitter.username }}</p>
+                        <p><strong>Created:</strong> {{ submission.created_at|date:"Y-m-d H:i" }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Status:</strong> {{ submission.get_status_display }}</p>
+                        {% if submission.submitted_at %}
+                            <p><strong>Submitted:</strong> {{ submission.submitted_at|date:"Y-m-d H:i" }}</p>
+                        {% endif %}
+                        {% if submission.completed_at %}
+                            <p><strong>Completed:</strong> {{ submission.completed_at|date:"Y-m-d H:i" }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Form Data -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Form Data</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-bordered">
+                    {% for key, value in submission.form_data.items %}
+                        <tr>
+                            <th style="width: 30%;">{{ key|title }}</th>
+                            <td>{{ value }}</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+
+        <!-- Approval Tasks -->
+        {% if approval_tasks %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Approval History</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Step</th>
+                                    <th>Assigned To</th>
+                                    <th>Status</th>
+                                    <th>Completed By</th>
+                                    <th>Completed At</th>
+                                    <th>Comments</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in approval_tasks %}
+                                    <tr>
+                                        <td>{{ task.step_name }}</td>
+                                        <td>
+                                            {% if task.assigned_to %}
+                                                {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
+                                            {% elif task.assigned_group %}
+                                                {{ task.assigned_group.name }} (Group)
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if task.status == 'pending' %}
+                                                <span class="badge bg-warning text-dark">Pending</span>
+                                            {% elif task.status == 'approved' %}
+                                                <span class="badge bg-success">Approved</span>
+                                            {% elif task.status == 'rejected' %}
+                                                <span class="badge bg-danger">Rejected</span>
+                                            {% elif task.status == 'expired' %}
+                                                <span class="badge bg-secondary">Expired</span>
+                                            {% elif task.status == 'skipped' %}
+                                                <span class="badge bg-secondary">Skipped</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if task.completed_by %}
+                                                {{ task.completed_by.get_full_name|default:task.completed_by.username }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if task.completed_at %}
+                                                {{ task.completed_at|date:"Y-m-d H:i" }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ task.comments|default:"-" }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="mt-3">
+            <a href="{% url 'forms_workflows:my_submissions' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to My Submissions
+            </a>
+            {% if (submission.status == 'submitted' or submission.status == 'pending_approval') and submission.form_definition.allow_withdrawal and submission.submitter == user %}
+                <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-outline-danger">
+                    <i class="bi bi-x-circle"></i> Withdraw Submission
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+

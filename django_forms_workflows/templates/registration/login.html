@@ -1,0 +1,63 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Login - Django Forms Workflows{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-6 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4 p-md-5">
+        <div class="text-center mb-4">
+          <h2 class="fw-bold">Welcome</h2>
+          <p class="text-muted mb-0">Sign in to continue</p>
+        </div>
+
+        {% if form.errors %}
+          <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Login failed</strong>
+            <p class="mb-0 mt-2">Please check your username and password and try again.</p>
+          </div>
+        {% endif %}
+
+        {% if next and user.is_authenticated %}
+          <div class="alert alert-warning" role="alert">
+            Your account doesn't have access to this page. Please login with an account that has access.
+          </div>
+        {% endif %}
+
+        <form method="post" action="{% url 'login' %}">
+          {% csrf_token %}
+
+          <div class="mb-3">
+            {{ form.username.label_tag }}
+            {{ form.username }}
+          </div>
+
+          <div class="mb-4">
+            {{ form.password.label_tag }}
+            {{ form.password }}
+          </div>
+
+          <input type="hidden" name="next" value="{{ next }}">
+
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+            </button>
+          </div>
+        </form>
+
+        <hr class="my-4">
+        <div class="text-center">
+          <p class="text-muted small mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            Trouble logging in? Contact your administrator.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

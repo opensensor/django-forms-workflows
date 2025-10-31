@@ -1,0 +1,80 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}My Submissions - Django Forms Workflows{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-file-earmark-check"></i> My Submissions
+        </h1>
+        {% if submissions %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Form</th>
+                            <th>Status</th>
+                            <th>Submitted</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for submission in submissions %}
+                            <tr>
+                                <td>{{ submission.id }}</td>
+                                <td>{{ submission.form_definition.name }}</td>
+                                <td>
+                                    {% if submission.status == 'draft' %}
+                                        <span class="badge bg-secondary">Draft</span>
+                                    {% elif submission.status == 'submitted' %}
+                                        <span class="badge bg-info">Submitted</span>
+                                    {% elif submission.status == 'pending_approval' %}
+                                        <span class="badge bg-warning text-dark">Pending Approval</span>
+                                    {% elif submission.status == 'approved' %}
+                                        <span class="badge bg-success">Approved</span>
+                                    {% elif submission.status == 'rejected' %}
+                                        <span class="badge bg-danger">Rejected</span>
+                                    {% elif submission.status == 'withdrawn' %}
+                                        <span class="badge bg-secondary">Withdrawn</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if submission.submitted_at %}
+                                        {{ submission.submitted_at|date:"Y-m-d H:i" }}
+                                    {% else %}
+                                        <em class="text-muted">Not submitted</em>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                    {% if submission.status == 'draft' %}
+                                        <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}" class="btn btn-sm btn-outline-secondary">
+                                            <i class="bi bi-pencil"></i> Continue
+                                        </a>
+                                    {% endif %}
+                                    {% if (submission.status == 'submitted' or submission.status == 'pending_approval') and submission.form_definition.allow_withdrawal %}
+                                        <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-x-circle"></i> Withdraw
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                You haven't submitted any forms yet.
+                <a href="{% url 'forms_workflows:form_list' %}" class="alert-link">Browse available forms</a>.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

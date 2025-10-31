@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #1a3a52; background:#f8f9fa; margin:0; padding:20px; }
+    .container { max-width:620px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .header { background:#0d6efd; color:#fff; padding:20px; text-align:center; }
+    .content { padding:24px; }
+    .button { display:inline-block; padding:12px 20px; background:#0d6efd; color:#fff; text-decoration:none; border-radius:6px; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; }
+    th, td { padding:10px; border-bottom:1px solid #e9ecef; text-align:left; }
+    th { background:#f1f5ff; }
+    .footer { font-size:12px; color:#6c757d; text-align:center; padding:16px; background:#f8f9fa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0;">Approval Request</h2>
+      <p style="margin:6px 0 0 0; opacity:.85;">Django Forms Workflows</p>
+    </div>
+    <div class="content">
+      <p>Hello {{ approver.get_full_name|default:approver.username }},</p>
+      <p>A new form submission requires your review:</p>
+      <table>
+        <tr><th>Form</th><td>{{ submission.form_definition.name }}</td></tr>
+        <tr><th>Submitted By</th><td>{{ submission.submitter.get_full_name|default:submission.submitter.username }}</td></tr>
+        <tr><th>Submitted On</th><td>{{ submission.submitted_at|date:"F d, Y g:i A" }}</td></tr>
+        <tr><th>Approval Step</th><td>{{ task.step_name }}</td></tr>
+        {% if task.due_date %}<tr><th>Due Date</th><td>{{ task.due_date|date:"F d, Y" }}</td></tr>{% endif %}
+      </table>
+      <p style="text-align:center; margin:24px 0;">
+        <a class="button" href="{{ approval_url }}">Review and Approve</a>
+      </p>
+      <p style="color:#6c757d; font-size:14px;">Thank you.</p>
+    </div>
+    <div class="footer">This is an automated message from Django Forms Workflows.</div>
+  </div>
+</body>
+</html>
+

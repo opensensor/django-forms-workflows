@@ -1,0 +1,38 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Withdraw Submission - Django Forms Workflows{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6 mx-auto">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">
+                    <i class="bi bi-exclamation-triangle"></i> Confirm Withdrawal
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Are you sure you want to withdraw this submission?</p>
+                <div class="alert alert-warning">
+                    <strong>Form:</strong> {{ submission.form_definition.name }}<br>
+                    <strong>Submitted:</strong> {{ submission.submitted_at|date:"Y-m-d H:i" }}<br>
+                    <strong>Status:</strong> {{ submission.get_status_display }}
+                </div>
+                <p class="text-muted"><small><i class="bi bi-info-circle"></i> This action will cancel any pending approvals and mark the submission as withdrawn.</small></p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2 d-md-block">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-x-circle"></i> Yes, Withdraw Submission
+                        </button>
+                        <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,52 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Approval Inbox - Django Forms Workflows{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-inbox"></i> Approval Inbox
+        </h1>
+        {% if tasks %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Form</th>
+                            <th>Submitter</th>
+                            <th>Step</th>
+                            <th>Submitted</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                            <tr>
+                                <td>{{ task.submission.form_definition.name }}</td>
+                                <td>{{ task.submission.submitter.get_full_name|default:task.submission.submitter.username }}</td>
+                                <td>{{ task.step_name }}</td>
+                                <td>{{ task.submission.submitted_at|date:"Y-m-d H:i" }}</td>
+                                <td>
+                                    <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-check-circle"></i> Review
+                                    </a>
+                                    <a href="{% url 'forms_workflows:submission_detail' task.submission.id %}" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                You have no pending approvals at this time.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

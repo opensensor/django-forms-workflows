@@ -1,0 +1,21 @@
+# Include documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+recursive-include docs *.md
+
+# Include templates
+recursive-include django_forms_workflows/templates *
+
+# Include static files
+recursive-include django_forms_workflows/static *
+
+# Include migrations
+recursive-include django_forms_workflows/migrations *.py
+
+# Exclude compiled Python files
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.pyo
+global-exclude .DS_Store
+

@@ -1,0 +1,74 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Approve Submission #{{ submission.id }} - Django Forms Workflows{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <h1 class="mb-4">Review Submission</h1>
+        <!-- Submission Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Submission Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Form:</strong> {{ submission.form_definition.name }}</p>
+                        <p><strong>Submitter:</strong> {{ submission.submitter.get_full_name|default:submission.submitter.username }}</p>
+                        <p><strong>Email:</strong> {{ submission.submitter.email }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Submitted:</strong> {{ submission.submitted_at|date:"Y-m-d H:i" }}</p>
+                        <p><strong>Status:</strong> {{ submission.get_status_display }}</p>
+                        <p><strong>Approval Step:</strong> {{ task.step_name }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Form Data -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Submitted Data</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-bordered">
+                    {% for key, value in submission.form_data.items %}
+                        <tr>
+                            <th style="width: 30%;">{{ key|title }}</th>
+                            <td>{{ value }}</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+        <!-- Approval Form -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Your Decision</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="comments" class="form-label">Comments (Optional)</label>
+                        <textarea class="form-control" id="comments" name="comments" rows="3" placeholder="Add any comments about your decision..."></textarea>
+                    </div>
+                    <div class="d-grid gap-2 d-md-block">
+                        <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
+                            <i class="bi bi-check-circle"></i> Approve
+                        </button>
+                        <button type="submit" name="decision" value="reject" class="btn btn-danger btn-lg">
+                            <i class="bi bi-x-circle"></i> Reject
+                        </button>
+                        <a href="{% url 'forms_workflows:approval_inbox' %}" class="btn btn-outline-secondary btn-lg">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

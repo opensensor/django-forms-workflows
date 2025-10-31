@@ -1,0 +1,29 @@
+/* Farm Forms theme */
+
+:root {
+  --farm-green: #3a7d44;
+  --farm-dark: #2f5f36;
+  --farm-sky: #e8f6ff;
+  --farm-wheat: #f8f1da;
+}
+
+.farm-navbar {
+  background: linear-gradient(90deg, var(--farm-dark), var(--farm-green));
+}
+
+.farm-bg {
+  background:
+    radial-gradient(ellipse at top left, rgba(248,241,218,0.6), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(232,246,255,0.5), transparent 60%);
+}
+
+.farm-hero {
+  background: linear-gradient(135deg, var(--farm-wheat), var(--farm-sky));
+  border: 1px solid rgba(0,0,0,0.05);
+}
+
+.card, .table {
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+

@@ -1,0 +1,61 @@
+[tool.poetry]
+name = "django-forms-workflows"
+version = "0.2.0"
+description = "Enterprise-grade, database-driven form builder with approval workflows and external data integration"
+license = "LGPL-3.0-only"
+readme = "README.md"
+homepage = "https://github.com/opensensor/django-forms-workflows"
+repository = "https://github.com/opensensor/django-forms-workflows"
+documentation = "https://django-forms-workflows.readthedocs.io/"
+authors = ["Matt Davis <matt@opensensor.io>"]
+keywords = [
+  "django", "forms", "workflows", "approval", "form-builder", "dynamic-forms",
+  "ldap", "enterprise", "audit", "database-driven"
+]
+packages = [
+  { include = "django_forms_workflows" }
+]
+# Make sure non-Python assets ship with the wheel/sdist
+include = [
+  "django_forms_workflows/templates/**",
+  "django_forms_workflows/static/**",
+  "LICENSE",
+  "CHANGELOG.md"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+Django = ">=5.1,<6.0"
+django-crispy-forms = ">=2.0"
+crispy-bootstrap5 = ">=2.0"
+celery = ">=5.3"
+python-decouple = ">=3.8"
+requests = ">=2.31"
+
+[tool.poetry.extras]
+ldap = ["django-auth-ldap", "python-ldap"]
+mssql = ["mssql-django", "pyodbc"]
+postgresql = ["psycopg2-binary"]
+mysql = ["mysqlclient"]
+docs = ["sphinx", "sphinx-rtd-theme", "sphinx-autodoc-typehints"]
+all = [
+  "django-auth-ldap", "python-ldap",
+  "mssql-django", "pyodbc",
+  "psycopg2-binary", "mysqlclient"
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.4"
+pytest-django = ">=4.5"
+pytest-cov = ">=4.1"
+black = ">=23.0"
+isort = ">=5.12"
+flake8 = ">=6.0"
+mypy = ">=1.5"
+django-stubs = ">=4.2"
+twine = "^6.2.0"
+
+[build-system]
+requires = ["poetry-core>=1.7.0"]
+build-backend = "poetry.core.masonry.api"
+

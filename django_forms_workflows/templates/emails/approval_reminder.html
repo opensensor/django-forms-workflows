@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #1a3a52; background:#f8f9fa; margin:0; padding:20px; }
+    .container { max-width:620px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .header { background:#ffc107; color:#212529; padding:20px; text-align:center; }
+    .content { padding:24px; }
+    .button { display:inline-block; padding:12px 20px; background:#0d6efd; color:#fff; text-decoration:none; border-radius:6px; }
+    .footer { font-size:12px; color:#6c757d; text-align:center; padding:16px; background:#f8f9fa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0;">Approval Reminder</h2>
+      <p style="margin:6px 0 0 0; opacity:.85;">Django Forms Workflows</p>
+    </div>
+    <div class="content">
+      <p>Hello {{ approver.get_full_name|default:approver.username }},</p>
+      <p>This is a friendly reminder to review the submission <strong>{{ submission.form_definition.name }}</strong> (ID {{ submission.id }}).</p>
+      <p style="text-align:center; margin:24px 0;"><a class="button" href="{{ approval_url }}">Review Now</a></p>
+    </div>
+    <div class="footer">This is an automated message from Django Forms Workflows.</div>
+  </div>
+</body>
+</html>
+

@@ -1,0 +1,81 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v0.2.0, v1.0.0, etc.
+
+jobs:
+  build-and-publish:
+    name: Build and publish Python distribution to PyPI
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for proper versioning
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine wheel setuptools
+    
+    - name: Verify version matches tag
+      run: |
+        TAG_VERSION=${GITHUB_REF#refs/tags/v}
+        PACKAGE_VERSION=$(python -c "import django_forms_workflows; print(django_forms_workflows.__version__)")
+        echo "Tag version: $TAG_VERSION"
+        echo "Package version: $PACKAGE_VERSION"
+        if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+          echo "Error: Tag version ($TAG_VERSION) does not match package version ($PACKAGE_VERSION)"
+          exit 1
+        fi
+    
+    - name: Build distribution packages
+      run: |
+        python -m build
+        ls -lh dist/
+    
+    - name: Check distribution packages
+      run: |
+        twine check dist/*
+    
+    - name: Publish to Test PyPI
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      run: |
+        twine upload --repository testpypi dist/*
+    
+    - name: Publish to PyPI
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        twine upload dist/*
+    
+    - name: Create GitHub Release
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*
+        generate_release_notes: true
+        body: |
+          ## Installation
+          
+          ```bash
+          pip install django-forms-workflows==${{ github.ref_name }}
+          ```
+          
+          See [CHANGELOG.md](https://github.com/opensensor/django-forms-workflows/blob/main/CHANGELOG.md) for details.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

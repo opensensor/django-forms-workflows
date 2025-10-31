@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         (
             "django_forms_workflows",
@@ -74,7 +73,7 @@ class Migration(migrations.Migration):
                     "db_alias",
                     models.CharField(
                         blank=True,
-                        help_text="Django database alias (e.g., 'campus_cafe')",
+                        help_text="Django database alias (e.g., 'external_db')",
                         max_length=100,
                     ),
                 ),

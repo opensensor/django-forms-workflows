@@ -4,95 +4,78 @@ Django Forms Workflows - Core Models
 Database-driven form definitions with approval workflows and external data integration.
 """
 
+from django.contrib.auth.models import Group, User
 from django.db import models
-from django.contrib.auth.models import User, Group
-from django.core.validators import RegexValidator
-from django.conf import settings
 
 
 class FormDefinition(models.Model):
     """
     Master form configuration - created via Django Admin.
-    
+
     Forms are stored in the database, not code, allowing non-developers
     to create and modify forms without deployments.
     """
-    
+
     # Basic Info
-    name = models.CharField(
-        max_length=200,
-        help_text="Display name for the form"
-    )
+    name = models.CharField(max_length=200, help_text="Display name for the form")
     slug = models.SlugField(
-        unique=True,
-        help_text="URL identifier (e.g., 'travel-request')"
+        unique=True, help_text="URL identifier (e.g., 'travel-request')"
     )
-    description = models.TextField(
-        help_text="Shown to users on form selection page"
-    )
+    description = models.TextField(help_text="Shown to users on form selection page")
     instructions = models.TextField(
-        blank=True,
-        help_text="Detailed instructions shown at top of form"
+        blank=True, help_text="Detailed instructions shown at top of form"
     )
 
     # Status
     is_active = models.BooleanField(
-        default=True,
-        help_text="Inactive forms are hidden from users"
+        default=True, help_text="Inactive forms are hidden from users"
     )
     version = models.IntegerField(
-        default=1,
-        help_text="Incremented when form structure changes"
+        default=1, help_text="Incremented when form structure changes"
     )
 
     # Permissions
     submit_groups = models.ManyToManyField(
         Group,
-        related_name='can_submit_forms',
+        related_name="can_submit_forms",
         blank=True,
-        help_text="Groups that can submit this form"
+        help_text="Groups that can submit this form",
     )
     view_groups = models.ManyToManyField(
         Group,
-        related_name='can_view_forms',
+        related_name="can_view_forms",
         blank=True,
-        help_text="Groups that can view this form"
+        help_text="Groups that can view this form",
     )
     admin_groups = models.ManyToManyField(
         Group,
-        related_name='can_admin_forms',
+        related_name="can_admin_forms",
         blank=True,
-        help_text="Groups that can view all submissions"
+        help_text="Groups that can view all submissions",
     )
 
     # Behavior
     allow_save_draft = models.BooleanField(
-        default=True,
-        help_text="Users can save incomplete forms"
+        default=True, help_text="Users can save incomplete forms"
     )
     allow_withdrawal = models.BooleanField(
-        default=True,
-        help_text="Users can withdraw submitted forms before approval"
+        default=True, help_text="Users can withdraw submitted forms before approval"
     )
     requires_login = models.BooleanField(
-        default=True,
-        help_text="Form requires authentication"
+        default=True, help_text="Form requires authentication"
     )
 
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
+        User, on_delete=models.SET_NULL, null=True, blank=True
     )
 
     class Meta:
-        ordering = ['name']
-        verbose_name = 'Form Definition'
-        verbose_name_plural = 'Form Definitions'
+        ordering = ["name"]
+        verbose_name = "Form Definition"
+        verbose_name_plural = "Form Definitions"
 
     def __str__(self):
         return self.name
@@ -108,112 +91,95 @@ class PrefillSource(models.Model):
     """
 
     SOURCE_TYPES = [
-        ('user', 'User Model Field'),
-        ('ldap', 'LDAP Attribute'),
-        ('database', 'Database Query'),
-        ('api', 'API Call'),
-        ('system', 'System Value'),
-        ('custom', 'Custom Source'),
+        ("user", "User Model Field"),
+        ("ldap", "LDAP Attribute"),
+        ("database", "Database Query"),
+        ("api", "API Call"),
+        ("system", "System Value"),
+        ("custom", "Custom Source"),
     ]
 
     # Basic Info
     name = models.CharField(
         max_length=200,
         unique=True,
-        help_text="Display name (e.g., 'Current User - Email')"
+        help_text="Display name (e.g., 'Current User - Email')",
     )
     source_type = models.CharField(
-        max_length=20,
-        choices=SOURCE_TYPES,
-        help_text="Type of data source"
+        max_length=20, choices=SOURCE_TYPES, help_text="Type of data source"
     )
     source_key = models.CharField(
         max_length=200,
-        help_text="Source identifier (e.g., 'user.email', 'ldap.department', 'dbo.STBIOS.FIRST_NAME')"
+        help_text="Source identifier (e.g., 'user.email', 'ldap.department', 'dbo.STBIOS.FIRST_NAME')",
     )
 
     # Display
     description = models.TextField(
-        blank=True,
-        help_text="Description shown to form builders"
+        blank=True, help_text="Description shown to form builders"
     )
     is_active = models.BooleanField(
-        default=True,
-        help_text="Inactive sources are hidden from form builders"
+        default=True, help_text="Inactive sources are hidden from form builders"
     )
 
     # Database-specific configuration
     db_alias = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Django database alias (for database sources)"
+        help_text="Django database alias (for database sources)",
     )
     db_schema = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Database schema name (e.g., 'dbo')"
+        max_length=100, blank=True, help_text="Database schema name (e.g., 'dbo')"
     )
     db_table = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Database table name (e.g., 'STBIOS')"
+        max_length=100, blank=True, help_text="Database table name (e.g., 'STBIOS')"
     )
     db_column = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Database column name (e.g., 'FIRST_NAME')"
+        help_text="Database column name (e.g., 'FIRST_NAME')",
     )
     db_lookup_field = models.CharField(
         max_length=100,
         blank=True,
-        default='ID_NUMBER',
-        help_text="Field to match against user (e.g., 'ID_NUMBER', 'EMAIL')"
+        default="ID_NUMBER",
+        help_text="Field to match against user (e.g., 'ID_NUMBER', 'EMAIL')",
     )
     db_user_field = models.CharField(
         max_length=100,
         blank=True,
-        default='employee_id',
-        help_text="UserProfile field to use for lookup (e.g., 'employee_id', 'email')"
+        default="employee_id",
+        help_text="UserProfile field to use for lookup (e.g., 'employee_id', 'email')",
     )
 
     # LDAP-specific configuration
     ldap_attribute = models.CharField(
         max_length=100,
         blank=True,
-        help_text="LDAP attribute name (e.g., 'department', 'title')"
+        help_text="LDAP attribute name (e.g., 'department', 'title')",
     )
 
     # API-specific configuration
     api_endpoint = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text="API endpoint URL"
+        max_length=500, blank=True, help_text="API endpoint URL"
     )
     api_field = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Field to extract from API response"
+        max_length=100, blank=True, help_text="Field to extract from API response"
     )
 
     # Custom configuration (JSON)
     custom_config = models.JSONField(
-        blank=True,
-        null=True,
-        help_text="Additional configuration as JSON"
+        blank=True, null=True, help_text="Additional configuration as JSON"
     )
 
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    order = models.IntegerField(
-        default=0,
-        help_text="Display order in dropdown"
-    )
+    order = models.IntegerField(default=0, help_text="Display order in dropdown")
 
     class Meta:
-        ordering = ['order', 'name']
-        verbose_name = 'Prefill Source'
-        verbose_name_plural = 'Prefill Sources'
+        ordering = ["order", "name"]
+        verbose_name = "Prefill Source"
+        verbose_name_plural = "Prefill Sources"
 
     def __str__(self):
         return self.name
@@ -223,11 +189,16 @@ class PrefillSource(models.Model):
         Get the source identifier string for backward compatibility.
         Returns the source_key or constructs it from components.
         """
-        if self.source_type == 'database' and self.db_schema and self.db_table and self.db_column:
+        if (
+            self.source_type == "database"
+            and self.db_schema
+            and self.db_table
+            and self.db_column
+        ):
             return f"{{{{ {self.db_schema}.{self.db_table}.{self.db_column} }}}}"
-        elif self.source_type == 'ldap' and self.ldap_attribute:
+        elif self.source_type == "ldap" and self.ldap_attribute:
             return f"ldap.{self.ldap_attribute}"
-        elif self.source_type == 'user':
+        elif self.source_type == "user":
             return self.source_key
         else:
             return self.source_key
@@ -236,96 +207,77 @@ class PrefillSource(models.Model):
 class FormField(models.Model):
     """
     Individual field configuration - inline edited in Django Admin.
-    
+
     Supports 15+ field types, validation rules, conditional logic,
     and external data prefill from LDAP, databases, or APIs.
     """
 
     FIELD_TYPES = [
-        ('text', 'Single Line Text'),
-        ('textarea', 'Multi-line Text'),
-        ('number', 'Whole Number'),
-        ('decimal', 'Decimal/Currency'),
-        ('date', 'Date'),
-        ('datetime', 'Date and Time'),
-        ('time', 'Time'),
-        ('email', 'Email Address'),
-        ('url', 'Website URL'),
-        ('select', 'Dropdown Select'),
-        ('multiselect', 'Multiple Select'),
-        ('radio', 'Radio Buttons'),
-        ('checkbox', 'Single Checkbox'),
-        ('checkboxes', 'Multiple Checkboxes'),
-        ('file', 'File Upload'),
-        ('hidden', 'Hidden Field'),
-        ('section', 'Section Header (not a field)'),
+        ("text", "Single Line Text"),
+        ("textarea", "Multi-line Text"),
+        ("number", "Whole Number"),
+        ("decimal", "Decimal/Currency"),
+        ("date", "Date"),
+        ("datetime", "Date and Time"),
+        ("time", "Time"),
+        ("email", "Email Address"),
+        ("url", "Website URL"),
+        ("select", "Dropdown Select"),
+        ("multiselect", "Multiple Select"),
+        ("radio", "Radio Buttons"),
+        ("checkbox", "Single Checkbox"),
+        ("checkboxes", "Multiple Checkboxes"),
+        ("file", "File Upload"),
+        ("hidden", "Hidden Field"),
+        ("section", "Section Header (not a field)"),
     ]
 
     # Common prefill sources - can be extended via settings
     PREFILL_SOURCES = [
-        ('', 'No auto-fill'),
-        ('user.email', 'Current User - Email'),
-        ('user.first_name', 'Current User - First Name'),
-        ('user.last_name', 'Current User - Last Name'),
-        ('user.full_name', 'Current User - Full Name'),
-        ('user.username', 'Current User - Username'),
-        ('ldap.department', 'LDAP - Department'),
-        ('ldap.title', 'LDAP - Job Title'),
-        ('ldap.manager', 'LDAP - Manager Name'),
-        ('ldap.manager_email', 'LDAP - Manager Email'),
-        ('ldap.phone', 'LDAP - Phone Number'),
-        ('ldap.employee_id', 'LDAP - Employee ID'),
-        ('last_submission', 'Copy from Last Submission'),
-        ('current_date', 'Today\'s Date'),
-        ('current_datetime', 'Current Date & Time'),
+        ("", "No auto-fill"),
+        ("user.email", "Current User - Email"),
+        ("user.first_name", "Current User - First Name"),
+        ("user.last_name", "Current User - Last Name"),
+        ("user.full_name", "Current User - Full Name"),
+        ("user.username", "Current User - Username"),
+        ("ldap.department", "LDAP - Department"),
+        ("ldap.title", "LDAP - Job Title"),
+        ("ldap.manager", "LDAP - Manager Name"),
+        ("ldap.manager_email", "LDAP - Manager Email"),
+        ("ldap.phone", "LDAP - Phone Number"),
+        ("ldap.employee_id", "LDAP - Employee ID"),
+        ("last_submission", "Copy from Last Submission"),
+        ("current_date", "Today's Date"),
+        ("current_datetime", "Current Date & Time"),
     ]
 
     # Relationship
     form_definition = models.ForeignKey(
-        FormDefinition,
-        related_name='fields',
-        on_delete=models.CASCADE
+        FormDefinition, related_name="fields", on_delete=models.CASCADE
     )
 
     # Field Definition
     field_name = models.SlugField(
         help_text="Internal name (letters, numbers, underscores)"
     )
-    field_label = models.CharField(
-        max_length=200,
-        help_text="Label shown to users"
-    )
-    field_type = models.CharField(
-        max_length=20,
-        choices=FIELD_TYPES
-    )
+    field_label = models.CharField(max_length=200, help_text="Label shown to users")
+    field_type = models.CharField(max_length=20, choices=FIELD_TYPES)
 
     # Display
-    order = models.IntegerField(
-        default=0,
-        help_text="Fields are sorted by this number"
-    )
-    help_text = models.TextField(
-        blank=True,
-        help_text="Instructions shown below field"
-    )
-    placeholder = models.CharField(
-        max_length=200,
-        blank=True
-    )
+    order = models.IntegerField(default=0, help_text="Fields are sorted by this number")
+    help_text = models.TextField(blank=True, help_text="Instructions shown below field")
+    placeholder = models.CharField(max_length=200, blank=True)
     css_class = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="CSS classes for styling"
+        max_length=100, blank=True, help_text="CSS classes for styling"
     )
     width = models.CharField(
         max_length=10,
-        default='full',
+        default="full",
         choices=[
-            ('full', 'Full Width'),
-            ('half', 'Half Width'),
-            ('third', 'One Third')
-        ]
+            ("full", "Full Width"),
+            ("half", "Half Width"),
+            ("third", "One Third"),
+        ],
     )
 
     # Validation
@@ -335,56 +287,48 @@ class FormField(models.Model):
         blank=True,
         max_digits=15,
         decimal_places=2,
-        help_text="For number/decimal fields"
+        help_text="For number/decimal fields",
     )
     max_value = models.DecimalField(
         null=True,
         blank=True,
         max_digits=15,
         decimal_places=2,
-        help_text="For number/decimal fields"
+        help_text="For number/decimal fields",
     )
     min_length = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Minimum characters for text fields"
+        null=True, blank=True, help_text="Minimum characters for text fields"
     )
     max_length = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Maximum characters for text fields"
+        null=True, blank=True, help_text="Maximum characters for text fields"
     )
     regex_validation = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text="Regular expression for validation"
+        max_length=500, blank=True, help_text="Regular expression for validation"
     )
     regex_error_message = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Error shown if regex validation fails"
+        max_length=200, blank=True, help_text="Error shown if regex validation fails"
     )
 
     # Choices (for select, radio, checkboxes)
     choices = models.JSONField(
         blank=True,
         null=True,
-        help_text='JSON: [{"value": "opt1", "label": "Option 1"}, ...] or comma-separated string'
+        help_text='JSON: [{"value": "opt1", "label": "Option 1"}, ...] or comma-separated string',
     )
 
     # Dynamic Behavior - Prefill from external sources
     prefill_source = models.CharField(
         max_length=200,
         blank=True,
-        help_text='DEPRECATED: Use prefill_source_config instead. Legacy format: user.email, ldap.department, {{ db.schema.table.column }}, etc.'
+        help_text="DEPRECATED: Use prefill_source_config instead. Legacy format: user.email, ldap.department, {{ db.schema.table.column }}, etc.",
     )
     prefill_source_config = models.ForeignKey(
         PrefillSource,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='form_fields',
-        help_text='Select a pre-configured prefill source'
+        related_name="form_fields",
+        help_text="Select a pre-configured prefill source",
     )
     default_value = models.TextField(blank=True)
 
@@ -395,36 +339,29 @@ class FormField(models.Model):
         """
         if self.prefill_source_config:
             return self.prefill_source_config.get_source_identifier()
-        return self.prefill_source or ''
+        return self.prefill_source or ""
 
     # Conditional Display
     show_if_field = models.SlugField(
-        blank=True,
-        help_text="Only show if another field has specific value"
+        blank=True, help_text="Only show if another field has specific value"
     )
     show_if_value = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Value that triggers showing this field"
+        max_length=200, blank=True, help_text="Value that triggers showing this field"
     )
 
     # File Upload Settings
     allowed_extensions = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Comma-separated: pdf,doc,docx,xls,xlsx"
+        max_length=200, blank=True, help_text="Comma-separated: pdf,doc,docx,xls,xlsx"
     )
     max_file_size_mb = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Maximum file size in MB"
+        null=True, blank=True, help_text="Maximum file size in MB"
     )
 
     class Meta:
-        ordering = ['order', 'field_name']
-        unique_together = [['form_definition', 'field_name']]
-        verbose_name = 'Form Field'
-        verbose_name_plural = 'Form Fields'
+        ordering = ["order", "field_name"]
+        unique_together = [["form_definition", "field_name"]]
+        verbose_name = "Form Field"
+        verbose_name_plural = "Form Fields"
 
     def __str__(self):
         return f"{self.field_label} ({self.field_name})"
@@ -443,75 +380,62 @@ class WorkflowDefinition(models.Model):
     """
 
     APPROVAL_LOGIC = [
-        ('all', 'All must approve (AND)'),
-        ('any', 'Any can approve (OR)'),
-        ('sequence', 'Sequential approval chain'),
+        ("all", "All must approve (AND)"),
+        ("any", "Any can approve (OR)"),
+        ("sequence", "Sequential approval chain"),
     ]
 
     form_definition = models.OneToOneField(
-        FormDefinition,
-        related_name='workflow',
-        on_delete=models.CASCADE
+        FormDefinition, related_name="workflow", on_delete=models.CASCADE
     )
 
     # Basic Approval
     requires_approval = models.BooleanField(default=True)
     approval_groups = models.ManyToManyField(
         Group,
-        related_name='can_approve_workflows',
+        related_name="can_approve_workflows",
         blank=True,
-        help_text="Groups that can approve"
+        help_text="Groups that can approve",
     )
     approval_logic = models.CharField(
-        max_length=20,
-        choices=APPROVAL_LOGIC,
-        default='any'
+        max_length=20, choices=APPROVAL_LOGIC, default="any"
     )
 
     # Manager Approval (requires LDAP integration)
     requires_manager_approval = models.BooleanField(
-        default=False,
-        help_text="Route to submitter's manager from LDAP"
+        default=False, help_text="Route to submitter's manager from LDAP"
     )
     manager_can_override_group = models.BooleanField(
-        default=True,
-        help_text="Manager can approve even if not in approval group"
+        default=True, help_text="Manager can approve even if not in approval group"
     )
 
     # Conditional Escalation
     escalation_field = models.SlugField(
-        blank=True,
-        help_text="Field name to check for escalation (e.g., 'amount')"
+        blank=True, help_text="Field name to check for escalation (e.g., 'amount')"
     )
     escalation_threshold = models.DecimalField(
         null=True,
         blank=True,
         max_digits=15,
         decimal_places=2,
-        help_text="If field value exceeds this, escalate"
+        help_text="If field value exceeds this, escalate",
     )
     escalation_groups = models.ManyToManyField(
         Group,
-        related_name='escalation_workflows',
+        related_name="escalation_workflows",
         blank=True,
-        help_text="Additional approval needed if escalated"
+        help_text="Additional approval needed if escalated",
     )
 
     # Timeouts
     approval_deadline_days = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Days before approval request expires"
+        null=True, blank=True, help_text="Days before approval request expires"
     )
     send_reminder_after_days = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Send reminder email after this many days"
+        null=True, blank=True, help_text="Send reminder email after this many days"
     )
     auto_approve_after_days = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Auto-approve if no response (use carefully)"
+        null=True, blank=True, help_text="Auto-approve if no response (use carefully)"
     )
 
     # Notifications
@@ -521,24 +445,22 @@ class WorkflowDefinition(models.Model):
     notify_on_withdrawal = models.BooleanField(default=True)
 
     additional_notify_emails = models.TextField(
-        blank=True,
-        help_text="Comma-separated emails for all notifications"
+        blank=True, help_text="Comma-separated emails for all notifications"
     )
 
     # Post-Approval Database Updates (optional feature)
     enable_db_updates = models.BooleanField(
-        default=False,
-        help_text="Enable database updates after approval"
+        default=False, help_text="Enable database updates after approval"
     )
     db_update_mappings = models.JSONField(
         blank=True,
         null=True,
-        help_text='JSON: [{"form_field": "field_name", "db_target": "{{ db.schema.table.column }}", "update_condition": "always"}]'
+        help_text='JSON: [{"form_field": "field_name", "db_target": "{{ db.schema.table.column }}", "update_condition": "always"}]',
     )
 
     class Meta:
-        verbose_name = 'Workflow Definition'
-        verbose_name_plural = 'Workflow Definitions'
+        verbose_name = "Workflow Definition"
+        verbose_name_plural = "Workflow Definitions"
 
     def __str__(self):
         return f"Workflow for {self.form_definition.name}"
@@ -553,180 +475,154 @@ class PostSubmissionAction(models.Model):
     """
 
     ACTION_TYPES = [
-        ('database', 'Database Update'),
-        ('ldap', 'LDAP Update'),
-        ('api', 'API Call'),
-        ('custom', 'Custom Handler'),
+        ("database", "Database Update"),
+        ("ldap", "LDAP Update"),
+        ("api", "API Call"),
+        ("custom", "Custom Handler"),
     ]
 
     TRIGGER_TYPES = [
-        ('on_submit', 'On Submission'),
-        ('on_approve', 'On Approval'),
-        ('on_reject', 'On Rejection'),
-        ('on_complete', 'On Workflow Complete'),
+        ("on_submit", "On Submission"),
+        ("on_approve", "On Approval"),
+        ("on_reject", "On Rejection"),
+        ("on_complete", "On Workflow Complete"),
     ]
 
     # Core Configuration
     form_definition = models.ForeignKey(
-        FormDefinition,
-        on_delete=models.CASCADE,
-        related_name='post_actions'
+        FormDefinition, on_delete=models.CASCADE, related_name="post_actions"
     )
     name = models.CharField(
-        max_length=200,
-        help_text="Descriptive name for this action"
+        max_length=200, help_text="Descriptive name for this action"
     )
-    action_type = models.CharField(
-        max_length=20,
-        choices=ACTION_TYPES
-    )
+    action_type = models.CharField(max_length=20, choices=ACTION_TYPES)
     trigger = models.CharField(
         max_length=20,
         choices=TRIGGER_TYPES,
-        default='on_approve',
-        help_text="When to execute this action"
+        default="on_approve",
+        help_text="When to execute this action",
     )
     is_active = models.BooleanField(
-        default=True,
-        help_text="Whether this action is enabled"
+        default=True, help_text="Whether this action is enabled"
     )
     order = models.IntegerField(
-        default=0,
-        help_text="Execution order (lower numbers run first)"
+        default=0, help_text="Execution order (lower numbers run first)"
     )
 
     # Database Update Configuration
     db_alias = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Django database alias (e.g., 'campus_cafe')"
+        help_text="Django database alias (e.g., 'external_db')",
     )
     db_schema = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Database schema name"
+        max_length=100, blank=True, help_text="Database schema name"
     )
-    db_table = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Table to update"
-    )
+    db_table = models.CharField(max_length=100, blank=True, help_text="Table to update")
     db_lookup_field = models.CharField(
         max_length=100,
         blank=True,
-        default='ID_NUMBER',
-        help_text="Database column to match against (WHERE clause)"
+        default="ID_NUMBER",
+        help_text="Database column to match against (WHERE clause)",
     )
     db_user_field = models.CharField(
         max_length=100,
         blank=True,
-        default='employee_id',
-        help_text="UserProfile field to use for lookup"
+        default="employee_id",
+        help_text="UserProfile field to use for lookup",
     )
     db_field_mappings = models.JSONField(
         blank=True,
         null=True,
-        help_text='JSON: [{"form_field": "email", "db_column": "EMAIL_ADDRESS"}, ...]'
+        help_text='JSON: [{"form_field": "email", "db_column": "EMAIL_ADDRESS"}, ...]',
     )
 
     # LDAP Update Configuration
     ldap_dn_template = models.CharField(
         max_length=500,
         blank=True,
-        help_text="LDAP DN template (e.g., 'CN={username},OU=Users,DC=example,DC=com')"
+        help_text="LDAP DN template (e.g., 'CN={username},OU=Users,DC=example,DC=com')",
     )
     ldap_field_mappings = models.JSONField(
         blank=True,
         null=True,
-        help_text='JSON: [{"form_field": "phone", "ldap_attribute": "telephoneNumber"}, ...]'
+        help_text='JSON: [{"form_field": "phone", "ldap_attribute": "telephoneNumber"}, ...]',
     )
 
     # API Call Configuration
     api_endpoint = models.URLField(
-        blank=True,
-        max_length=500,
-        help_text="API endpoint URL"
+        blank=True, max_length=500, help_text="API endpoint URL"
     )
     api_method = models.CharField(
         max_length=10,
         blank=True,
-        default='POST',
-        help_text="HTTP method (GET, POST, PUT, PATCH)"
+        default="POST",
+        help_text="HTTP method (GET, POST, PUT, PATCH)",
     )
     api_headers = models.JSONField(
         blank=True,
         null=True,
-        help_text='JSON: {"Authorization": "Bearer {token}", "Content-Type": "application/json"}'
+        help_text='JSON: {"Authorization": "Bearer {token}", "Content-Type": "application/json"}',
     )
     api_body_template = models.TextField(
         blank=True,
-        help_text="JSON template for request body. Use {field_name} for form fields."
+        help_text="JSON template for request body. Use {field_name} for form fields.",
     )
 
     # Custom Handler Configuration
     custom_handler_path = models.CharField(
         max_length=500,
         blank=True,
-        help_text="Python path to custom handler function (e.g., 'myapp.handlers.custom_update')"
+        help_text="Python path to custom handler function (e.g., 'myapp.handlers.custom_update')",
     )
     custom_handler_config = models.JSONField(
-        blank=True,
-        null=True,
-        help_text="Configuration passed to custom handler"
+        blank=True, null=True, help_text="Configuration passed to custom handler"
     )
 
     # Conditional Execution
     condition_field = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Form field to check for conditional execution"
+        help_text="Form field to check for conditional execution",
     )
     condition_operator = models.CharField(
         max_length=20,
         blank=True,
         choices=[
-            ('equals', 'Equals'),
-            ('not_equals', 'Not Equals'),
-            ('contains', 'Contains'),
-            ('greater_than', 'Greater Than'),
-            ('less_than', 'Less Than'),
-            ('is_true', 'Is True'),
-            ('is_false', 'Is False'),
+            ("equals", "Equals"),
+            ("not_equals", "Not Equals"),
+            ("contains", "Contains"),
+            ("greater_than", "Greater Than"),
+            ("less_than", "Less Than"),
+            ("is_true", "Is True"),
+            ("is_false", "Is False"),
         ],
-        help_text="Comparison operator for condition"
+        help_text="Comparison operator for condition",
     )
     condition_value = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text="Value to compare against"
+        max_length=500, blank=True, help_text="Value to compare against"
     )
 
     # Error Handling
     fail_silently = models.BooleanField(
-        default=False,
-        help_text="If True, errors won't block submission/approval"
+        default=False, help_text="If True, errors won't block submission/approval"
     )
     retry_on_failure = models.BooleanField(
-        default=False,
-        help_text="Retry failed actions"
+        default=False, help_text="Retry failed actions"
     )
-    max_retries = models.IntegerField(
-        default=3,
-        help_text="Maximum retry attempts"
-    )
+    max_retries = models.IntegerField(default=3, help_text="Maximum retry attempts")
 
     # Metadata
     description = models.TextField(
-        blank=True,
-        help_text="Description of what this action does"
+        blank=True, help_text="Description of what this action does"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['form_definition', 'order', 'name']
-        verbose_name = 'Post-Submission Action'
-        verbose_name_plural = 'Post-Submission Actions'
+        ordering = ["form_definition", "order", "name"]
+        verbose_name = "Post-Submission Action"
+        verbose_name_plural = "Post-Submission Actions"
 
     def __str__(self):
         return f"{self.name} ({self.get_action_type_display()}) - {self.form_definition.name}"
@@ -742,25 +638,25 @@ class PostSubmissionAction(models.Model):
         if self.condition_field and self.condition_operator:
             field_value = submission.form_data.get(self.condition_field)
 
-            if self.condition_operator == 'equals':
+            if self.condition_operator == "equals":
                 return str(field_value) == self.condition_value
-            elif self.condition_operator == 'not_equals':
+            elif self.condition_operator == "not_equals":
                 return str(field_value) != self.condition_value
-            elif self.condition_operator == 'contains':
+            elif self.condition_operator == "contains":
                 return self.condition_value in str(field_value)
-            elif self.condition_operator == 'greater_than':
+            elif self.condition_operator == "greater_than":
                 try:
                     return float(field_value) > float(self.condition_value)
                 except (ValueError, TypeError):
                     return False
-            elif self.condition_operator == 'less_than':
+            elif self.condition_operator == "less_than":
                 try:
                     return float(field_value) < float(self.condition_value)
                 except (ValueError, TypeError):
                     return False
-            elif self.condition_operator == 'is_true':
+            elif self.condition_operator == "is_true":
                 return bool(field_value)
-            elif self.condition_operator == 'is_false':
+            elif self.condition_operator == "is_false":
                 return not bool(field_value)
 
         return True
@@ -775,46 +671,32 @@ class FormSubmission(models.Model):
     """
 
     STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('submitted', 'Submitted'),
-        ('pending_approval', 'Pending Approval'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('withdrawn', 'Withdrawn'),
+        ("draft", "Draft"),
+        ("submitted", "Submitted"),
+        ("pending_approval", "Pending Approval"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("withdrawn", "Withdrawn"),
     ]
 
     # Core Fields
     form_definition = models.ForeignKey(
-        FormDefinition,
-        on_delete=models.PROTECT,
-        related_name='submissions'
+        FormDefinition, on_delete=models.PROTECT, related_name="submissions"
     )
     submitter = models.ForeignKey(
-        User,
-        on_delete=models.PROTECT,
-        related_name='form_submissions'
+        User, on_delete=models.PROTECT, related_name="form_submissions"
     )
 
     # Submission Data
-    form_data = models.JSONField(
-        help_text="The actual form responses"
-    )
+    form_data = models.JSONField(help_text="The actual form responses")
     attachments = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="List of uploaded file paths"
+        default=list, blank=True, help_text="List of uploaded file paths"
     )
 
     # Status Tracking
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='draft'
-    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
     current_step = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Current position in workflow"
+        max_length=100, blank=True, help_text="Current position in workflow"
     )
 
     # Timestamps
@@ -827,13 +709,13 @@ class FormSubmission(models.Model):
     user_agent = models.TextField(blank=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['status', 'submitter']),
-            models.Index(fields=['form_definition', 'status']),
+            models.Index(fields=["status", "submitter"]),
+            models.Index(fields=["form_definition", "status"]),
         ]
-        verbose_name = 'Form Submission'
-        verbose_name_plural = 'Form Submissions'
+        verbose_name = "Form Submission"
+        verbose_name_plural = "Form Submissions"
 
     def __str__(self):
         return f"{self.form_definition.name} - {self.submitter.username} - {self.get_status_display()}"
@@ -848,17 +730,15 @@ class ApprovalTask(models.Model):
     """
 
     TASK_STATUS = [
-        ('pending', 'Pending'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('expired', 'Expired'),
-        ('skipped', 'Skipped'),
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("expired", "Expired"),
+        ("skipped", "Skipped"),
     ]
 
     submission = models.ForeignKey(
-        FormSubmission,
-        on_delete=models.CASCADE,
-        related_name='approval_tasks'
+        FormSubmission, on_delete=models.CASCADE, related_name="approval_tasks"
     )
 
     # Assignment
@@ -867,22 +747,18 @@ class ApprovalTask(models.Model):
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name='assigned_approvals'
+        related_name="assigned_approvals",
     )
     assigned_group = models.ForeignKey(
         Group,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name='group_approvals'
+        related_name="group_approvals",
     )
 
     # Status
-    status = models.CharField(
-        max_length=20,
-        choices=TASK_STATUS,
-        default='pending'
-    )
+    status = models.CharField(max_length=20, choices=TASK_STATUS, default="pending")
     step_name = models.CharField(max_length=100)
 
     # Response
@@ -891,7 +767,7 @@ class ApprovalTask(models.Model):
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name='completed_approvals'
+        related_name="completed_approvals",
     )
     decision = models.CharField(max_length=20, blank=True)
     comments = models.TextField(blank=True)
@@ -903,9 +779,9 @@ class ApprovalTask(models.Model):
     reminder_sent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ['-created_at']
-        verbose_name = 'Approval Task'
-        verbose_name_plural = 'Approval Tasks'
+        ordering = ["-created_at"]
+        verbose_name = "Approval Task"
+        verbose_name_plural = "Approval Tasks"
 
     def __str__(self):
         return f"{self.step_name} for {self.submission}"
@@ -920,15 +796,15 @@ class AuditLog(models.Model):
     """
 
     ACTION_TYPES = [
-        ('create', 'Created'),
-        ('update', 'Updated'),
-        ('delete', 'Deleted'),
-        ('submit', 'Submitted'),
-        ('approve', 'Approved'),
-        ('reject', 'Rejected'),
-        ('withdraw', 'Withdrawn'),
-        ('assign', 'Assigned'),
-        ('comment', 'Commented'),
+        ("create", "Created"),
+        ("update", "Updated"),
+        ("delete", "Deleted"),
+        ("submit", "Submitted"),
+        ("approve", "Approved"),
+        ("reject", "Rejected"),
+        ("withdraw", "Withdrawn"),
+        ("assign", "Assigned"),
+        ("comment", "Commented"),
     ]
 
     # What happened
@@ -942,9 +818,7 @@ class AuditLog(models.Model):
 
     # Details
     changes = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="What changed in this action"
+        default=dict, blank=True, help_text="What changed in this action"
     )
     comments = models.TextField(blank=True)
 
@@ -952,13 +826,13 @@ class AuditLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['object_type', 'object_id']),
-            models.Index(fields=['user', 'created_at']),
+            models.Index(fields=["object_type", "object_id"]),
+            models.Index(fields=["user", "created_at"]),
         ]
-        verbose_name = 'Audit Log'
-        verbose_name_plural = 'Audit Logs'
+        verbose_name = "Audit Log"
+        verbose_name_plural = "Audit Logs"
 
     def __str__(self):
         return f"{self.user.username} - {self.get_action_display()} - {self.object_type} #{self.object_id}"
@@ -975,21 +849,17 @@ class UserProfile(models.Model):
     """
 
     user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name='forms_profile'
+        User, on_delete=models.CASCADE, related_name="forms_profile"
     )
 
     # External System IDs
     employee_id = models.CharField(
-        max_length=50,
-        blank=True,
-        help_text="Employee ID from LDAP or HR system"
+        max_length=50, blank=True, help_text="Employee ID from LDAP or HR system"
     )
     external_id = models.CharField(
         max_length=100,
         blank=True,
-        help_text="ID from external system (for database lookups)"
+        help_text="ID from external system (for database lookups)",
     )
 
     # Organizational Info (from LDAP or manual entry)
@@ -1000,16 +870,14 @@ class UserProfile(models.Model):
 
     # Manager Hierarchy (from LDAP)
     manager_dn = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text="Manager's Distinguished Name from LDAP"
+        max_length=500, blank=True, help_text="Manager's Distinguished Name from LDAP"
     )
     manager = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='direct_reports'
+        related_name="direct_reports",
     )
 
     # Metadata
@@ -1017,9 +885,8 @@ class UserProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = 'User Profile'
-        verbose_name_plural = 'User Profiles'
+        verbose_name = "User Profile"
+        verbose_name_plural = "User Profiles"
 
     def __str__(self):
         return f"Profile for {self.user.username}"
-

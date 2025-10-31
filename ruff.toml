@@ -1,0 +1,65 @@
+# Ruff configuration for django-forms-workflows
+# https://docs.astral.sh/ruff/
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    "build",
+    "dist",
+    "migrations",
+]
+
+# Set line length to match Black's default
+line-length = 88
+
+# Target Python 3.10+
+target-version = "py310"
+
+[lint]
+# Enable recommended rules
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "DJ",  # flake8-django
+]
+
+# Ignore specific rules
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "DJ001", # Django model without __str__ (not always needed)
+    "DJ012", # Django model field/method ordering (too strict for existing code)
+]
+
+[lint.per-file-ignores]
+# Allow unused imports in __init__.py files
+"__init__.py" = ["F401"]
+# Allow star imports in settings
+"settings.py" = ["F403", "F405"]
+# Allow User variable name in LDAP backend (Django convention)
+"ldap_backend.py" = ["N806"]
+
+[lint.isort]
+# Django-specific isort settings
+known-first-party = ["django_forms_workflows"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Respect magic trailing comma
+skip-magic-trailing-comma = false
+

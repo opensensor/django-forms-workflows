@@ -1,5 +1,5 @@
-from django.db import models
 from django.contrib.auth.models import User
+from django.db import models
 
 from .models import FormDefinition, FormSubmission
 
@@ -43,4 +43,3 @@ def user_can_approve(user: User, submission: FormSubmission) -> bool:
     return submission.approval_tasks.filter(
         models.Q(assigned_to=user) | models.Q(assigned_group__in=user_groups)
     ).exists()
-

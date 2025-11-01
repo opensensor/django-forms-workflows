@@ -6,6 +6,8 @@ configure approval workflows, and review submissions and audit logs.
 """
 
 from django.contrib import admin
+from django.urls import path, reverse
+from django.utils.html import format_html
 
 from .models import (
     ApprovalTask,
@@ -145,12 +147,61 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         "requires_login",
         "version",
         "created_at",
+        "form_builder_link",
     )
     list_filter = ("is_active", "requires_login")
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
     inlines = [FormFieldInline]
     filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
+    change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
+
+    def form_builder_link(self, obj):
+        """Display a link to the visual form builder"""
+        if obj.pk:
+            url = reverse('admin:form_builder_edit', args=[obj.pk])
+            return format_html(
+                '<a href="{}" class="button" target="_blank">'
+                '<i class="bi bi-pencil-square"></i> Visual Builder'
+                '</a>',
+                url
+            )
+        return "-"
+    form_builder_link.short_description = "Visual Builder"
+
+    def get_urls(self):
+        """Add custom URLs for the form builder"""
+        urls = super().get_urls()
+        from . import form_builder_views
+
+        custom_urls = [
+            path(
+                'builder/new/',
+                self.admin_site.admin_view(form_builder_views.form_builder_view),
+                name='form_builder_new'
+            ),
+            path(
+                'builder/<int:form_id>/',
+                self.admin_site.admin_view(form_builder_views.form_builder_view),
+                name='form_builder_edit'
+            ),
+            path(
+                'builder/api/load/<int:form_id>/',
+                self.admin_site.admin_view(form_builder_views.form_builder_load),
+                name='form_builder_api_load'
+            ),
+            path(
+                'builder/api/save/',
+                self.admin_site.admin_view(form_builder_views.form_builder_save),
+                name='form_builder_api_save'
+            ),
+            path(
+                'builder/api/preview/',
+                self.admin_site.admin_view(form_builder_views.form_builder_preview),
+                name='form_builder_api_preview'
+            ),
+        ]
+        return custom_urls + urls
 
 
 @admin.register(WorkflowDefinition)

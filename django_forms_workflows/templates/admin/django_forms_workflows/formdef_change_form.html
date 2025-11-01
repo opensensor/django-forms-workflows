@@ -1,0 +1,31 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    {% if original.pk %}
+    <li>
+        <a href="{% url 'admin:form_builder_edit' original.pk %}" class="btn btn-high btn-success" target="_blank" style="background-color: #28a745; color: white; padding: 10px 15px; border-radius: 4px; text-decoration: none; display: inline-block;">
+            <i class="bi bi-pencil-square"></i> Open Visual Form Builder
+        </a>
+    </li>
+    {% else %}
+    <li>
+        <span class="text-muted" style="padding: 10px 15px; display: inline-block;">
+            Save form first to use Visual Builder
+        </span>
+    </li>
+    {% endif %}
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <!-- Bootstrap Icons for the builder link -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .btn-success:hover {
+            background-color: #218838 !important;
+        }
+    </style>
+{% endblock %}
+

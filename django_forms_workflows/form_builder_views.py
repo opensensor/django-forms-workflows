@@ -237,9 +237,13 @@ def form_builder_load(request, form_id):
         'requires_login': form_definition.requires_login,
         'allow_save_draft': form_definition.allow_save_draft,
         'allow_withdrawal': form_definition.allow_withdrawal,
+        'enable_multi_step': form_definition.enable_multi_step,
+        'form_steps': form_definition.form_steps or [],
+        'enable_auto_save': form_definition.enable_auto_save,
+        'auto_save_interval': form_definition.auto_save_interval,
         'fields': fields_data,
     }
-    
+
     return JsonResponse(form_data)
 
 
@@ -265,6 +269,10 @@ def form_builder_save(request):
         requires_login = data.get('requires_login', True)
         allow_save_draft = data.get('allow_save_draft', True)
         allow_withdrawal = data.get('allow_withdrawal', True)
+        enable_multi_step = data.get('enable_multi_step', False)
+        form_steps = data.get('form_steps', [])
+        enable_auto_save = data.get('enable_auto_save', True)
+        auto_save_interval = data.get('auto_save_interval', 30)
         fields_data = data.get('fields', [])
         
         # Validate required fields
@@ -286,6 +294,10 @@ def form_builder_save(request):
                 form_definition.requires_login = requires_login
                 form_definition.allow_save_draft = allow_save_draft
                 form_definition.allow_withdrawal = allow_withdrawal
+                form_definition.enable_multi_step = enable_multi_step
+                form_definition.form_steps = form_steps
+                form_definition.enable_auto_save = enable_auto_save
+                form_definition.auto_save_interval = auto_save_interval
                 form_definition.version += 1  # Increment version on edit
                 form_definition.save()
             else:
@@ -298,6 +310,10 @@ def form_builder_save(request):
                     requires_login=requires_login,
                     allow_save_draft=allow_save_draft,
                     allow_withdrawal=allow_withdrawal,
+                    enable_multi_step=enable_multi_step,
+                    form_steps=form_steps,
+                    enable_auto_save=enable_auto_save,
+                    auto_save_interval=auto_save_interval,
                     created_by=request.user,
                 )
             

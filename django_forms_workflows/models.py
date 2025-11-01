@@ -65,6 +65,25 @@ class FormDefinition(models.Model):
         default=True, help_text="Form requires authentication"
     )
 
+    # Client-Side Enhancements
+    enable_multi_step = models.BooleanField(
+        default=False,
+        help_text='Enable multi-step form with progress indicators',
+    )
+    form_steps = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='Multi-step configuration. Format: [{"title": "Step 1", "fields": ["field1", "field2"]}]',
+    )
+    enable_auto_save = models.BooleanField(
+        default=True,
+        help_text='Enable automatic draft saving',
+    )
+    auto_save_interval = models.IntegerField(
+        default=30,
+        help_text='Auto-save interval in seconds',
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -347,6 +366,34 @@ class FormField(models.Model):
     )
     show_if_value = models.CharField(
         max_length=200, blank=True, help_text="Value that triggers showing this field"
+    )
+
+    # Advanced Conditional Logic (Client-Side Enhancements)
+    conditional_rules = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='Advanced conditional rules with AND/OR logic. Format: {"operator": "AND|OR", "conditions": [{"field": "field_name", "operator": "equals", "value": "value"}], "action": "show|hide|require|enable"}',
+    )
+
+    # Dynamic Field Validation (Client-Side)
+    validation_rules = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='Client-side validation rules. Format: [{"type": "required|email|min|max|pattern|custom", "value": "...", "message": "Error message"}]',
+    )
+
+    # Field Dependencies (Cascade Updates)
+    field_dependencies = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='Field dependencies for cascade updates. Format: [{"sourceField": "field_name", "targetField": "dependent_field", "apiEndpoint": "/api/endpoint/"}]',
+    )
+
+    # Multi-Step Forms
+    step_number = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text='Step number for multi-step forms (1, 2, 3, etc.)',
     )
 
     # File Upload Settings

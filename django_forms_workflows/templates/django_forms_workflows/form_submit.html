@@ -1,5 +1,6 @@
 {% extends 'django_forms_workflows/base.html' %}
 {% load crispy_forms_tags %}
+{% load static %}
 
 {% block title %}{{ form_def.name }} - Django Forms Workflows{% endblock %}
 
@@ -30,5 +31,24 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'django_forms_workflows/js/form-enhancements.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const formElement = document.querySelector('[data-form-enhancements="true"]');
+        if (formElement) {
+            // Configuration from Django
+            const config = {{ form_enhancements_config|safe }};
+
+            // Initialize form enhancements
+            const formEnhancements = new FormEnhancements(formElement, config);
+
+            // Store instance for debugging
+            window.formEnhancements = formEnhancements;
+        }
+    });
+</script>
 {% endblock %}
 

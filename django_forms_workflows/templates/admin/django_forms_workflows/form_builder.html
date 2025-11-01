@@ -246,6 +246,159 @@
             line-height: 1;
         }
         
+        /* Step Canvas */
+        .step-canvas {
+            min-height: 400px;
+            padding: 1rem;
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .step-canvas.drag-over {
+            background: linear-gradient(135deg, #e9ecff 0%, #f0f2ff 100%);
+            border-color: #667eea;
+            border-style: solid;
+            box-shadow: inset 0 0 20px rgba(102, 126, 234, 0.1);
+        }
+
+        .step-canvas .field-item {
+            margin-bottom: 0.75rem;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-left: 3px solid #667eea;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .step-canvas .field-item:hover {
+            border-left-color: #764ba2;
+            box-shadow: 0 2px 6px rgba(102, 126, 234, 0.15);
+        }
+
+        .step-canvas .field-item.sortable-ghost {
+            opacity: 0.4;
+            background: linear-gradient(135deg, #e9ecff 0%, #f0f2ff 100%);
+            border: 2px dashed #667eea;
+        }
+
+        .step-canvas .field-item.sortable-drag {
+            opacity: 0.9;
+            transform: rotate(2deg);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+            cursor: grabbing;
+        }
+
+        .step-canvas .empty-canvas {
+            padding: 3rem 1rem;
+        }
+
+        .field-drag-handle {
+            cursor: move !important;
+        }
+
+        .field-drag-handle:hover {
+            background: #f8f9fa;
+        }
+
+        .field-drag-handle .bi-grip-vertical {
+            opacity: 0.3;
+            transition: opacity 0.2s;
+        }
+
+        .field-drag-handle:hover .bi-grip-vertical {
+            opacity: 0.7;
+        }
+
+        /* Multi-step cards */
+        .step-card {
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .step-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+        }
+
+        .step-card-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 1rem;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .step-title-input {
+            border: 1px solid #dee2e6;
+            font-size: 1.1rem;
+            font-weight: 500;
+            max-width: 400px;
+        }
+
+        .step-title-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+
+        /* Context Menu */
+        .field-context-menu {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 200px;
+            overflow: hidden;
+        }
+
+        .context-menu-header {
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .context-menu-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+        }
+
+        .context-menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .context-menu-item:hover {
+            background: linear-gradient(135deg, #f0f2ff 0%, #e9ecff 100%);
+            color: #667eea;
+            padding-left: 1.25rem;
+        }
+
+        .context-menu-item i {
+            color: #667eea;
+        }
+
         .empty-canvas {
             text-align: center;
             padding: 3rem 1rem;
@@ -493,6 +646,33 @@
                             <label class="form-check-label" for="formAllowWithdrawal">Allow Withdrawal</label>
                         </div>
                     </div>
+
+                    <!-- Client-Side Enhancements -->
+                    <div class="col-12 mt-3">
+                        <h6 class="text-muted border-bottom pb-2">
+                            <i class="bi bi-lightning-charge"></i> Client-Side Enhancements
+                        </h6>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="formEnableAutoSave" checked>
+                            <label class="form-check-label" for="formEnableAutoSave">Enable Auto-Save</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Auto-Save Interval (seconds)</label>
+                        <input type="number" class="form-control form-control-sm" id="formAutoSaveInterval" value="30" min="10" max="300">
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="formEnableMultiStep">
+                            <label class="form-check-label" for="formEnableMultiStep">
+                                Enable Multi-Step
+                                <small class="text-muted d-block">Use tabs in canvas to organize fields into steps</small>
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -512,16 +692,33 @@
         
         <!-- Canvas -->
         <div class="canvas-panel">
-            <div class="panel-header">
-                <i class="bi bi-layout-text-window-reverse"></i> Form Canvas
-                <span class="badge bg-secondary ms-2" id="fieldCount">0 fields</span>
+            <div class="panel-header d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi bi-layout-text-window-reverse"></i> Form Canvas
+                    <span class="badge bg-secondary ms-2" id="fieldCount">0 fields</span>
+                </div>
+                <div id="stepTabsControls" style="display: none;">
+                    <button type="button" class="btn btn-sm btn-success" id="btnAddStepTab">
+                        <i class="bi bi-plus-circle"></i> Add Step
+                    </button>
+                </div>
             </div>
-            <div class="panel-content">
+
+            <!-- Single-step canvas (default) -->
+            <div id="singleStepCanvas" class="panel-content">
                 <div id="formCanvas">
                     <div class="empty-canvas">
                         <i class="bi bi-inbox"></i>
                         <p>Drag fields from the left palette to start building your form</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- Multi-step canvas (shown when multi-step enabled) -->
+            <div id="multiStepCanvas" class="panel-content" style="display: none; overflow-y: auto; max-height: calc(100vh - 200px);">
+                <!-- Step cards will be added here by JavaScript -->
+                <div id="stepTabContent">
+                    <!-- Step canvases will be added here by JavaScript -->
                 </div>
             </div>
         </div>
@@ -561,13 +758,13 @@
     
     <!-- Field Property Modal -->
     <div class="modal fade" id="fieldPropertyModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Field Properties</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <!-- Field properties form will be populated by JavaScript -->
                     <div id="fieldPropertyForm"></div>
                 </div>

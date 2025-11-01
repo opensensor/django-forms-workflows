@@ -8,6 +8,7 @@ urlpatterns = [
     # Form list and submission
     path("", views.form_list, name="form_list"),
     path("<slug:slug>/submit/", views.form_submit, name="form_submit"),
+    path("<slug:slug>/auto-save/", views.form_auto_save, name="form_auto_save"),
     # User submissions
     path("my-submissions/", views.my_submissions, name="my_submissions"),
     path(

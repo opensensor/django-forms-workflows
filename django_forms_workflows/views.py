@@ -12,9 +12,11 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import models
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods
+import json
 
 from .forms import DynamicForm
 from .models import ApprovalTask, AuditLog, FormDefinition, FormSubmission
@@ -119,11 +121,71 @@ def form_submit(request, slug):
             form_definition=form_def, user=request.user, initial_data=initial_data
         )
 
+    # Get form enhancements configuration
+    import json
+    form_enhancements_config = json.dumps(form.get_enhancements_config())
+
     return render(
         request,
         "django_forms_workflows/form_submit.html",
-        {"form_def": form_def, "form": form, "is_draft": draft is not None},
+        {
+            "form_def": form_def,
+            "form": form,
+            "is_draft": draft is not None,
+            "form_enhancements_config": form_enhancements_config,
+        },
     )
+
+
+@login_required
+@require_http_methods(["POST"])
+def form_auto_save(request, slug):
+    """Auto-save form draft via AJAX"""
+    form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
+
+    # Check permissions
+    if not user_can_submit_form(request.user, form_def):
+        return JsonResponse({"success": False, "error": "Permission denied"}, status=403)
+
+    try:
+        # Parse JSON data
+        data = json.loads(request.body)
+
+        # Get or create draft
+        draft, created = FormSubmission.objects.get_or_create(
+            form_definition=form_def,
+            submitter=request.user,
+            status="draft",
+            defaults={
+                "submission_ip": get_client_ip(request),
+                "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+            }
+        )
+
+        # Update form data
+        draft.form_data = data
+        draft.save()
+
+        # Log audit
+        AuditLog.objects.create(
+            action="auto_save",
+            object_type="FormSubmission",
+            object_id=draft.id,
+            user=request.user,
+            user_ip=get_client_ip(request),
+            comments="Auto-saved draft",
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": "Draft saved",
+            "draft_id": draft.id,
+            "saved_at": draft.created_at.isoformat(),
+        })
+
+    except Exception as e:
+        logger.error(f"Auto-save error for form {slug}: {e}")
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 
 @login_required

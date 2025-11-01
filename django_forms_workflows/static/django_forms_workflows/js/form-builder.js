@@ -11,7 +11,10 @@ class FormBuilder {
         this.fields = [];
         this.currentFieldIndex = null;
         this.fieldIdCounter = 1;
-        
+        this.previewTimeout = null;
+        this.draggingFieldType = null; // Track field type being dragged from palette
+        this.dragPlaceholder = null; // Track the placeholder element
+
         this.init();
     }
     
@@ -23,12 +26,18 @@ class FormBuilder {
         // Load existing form if editing
         if (!this.config.isNew && this.config.formId && this.config.apiUrls.load) {
             this.loadForm();
+        } else if (this.config.isNew) {
+            // Show template selection modal for new forms
+            this.showTemplateSelection();
+        } else {
+            // Generate initial preview for forms without fields
+            this.updatePreview();
         }
     }
     
     setupFieldPalette() {
         const palette = document.getElementById('fieldPalette');
-        
+
         const fieldTypes = [
             { type: 'text', label: 'Text Input', icon: 'bi-input-cursor-text' },
             { type: 'email', label: 'Email', icon: 'bi-envelope' },
@@ -47,7 +56,7 @@ class FormBuilder {
             { type: 'decimal', label: 'Decimal/Currency', icon: 'bi-currency-dollar' },
             { type: 'section', label: 'Section Header', icon: 'bi-layout-text-sidebar' },
         ];
-        
+
         fieldTypes.forEach(fieldType => {
             const item = document.createElement('div');
             item.className = 'field-palette-item';
@@ -57,26 +66,44 @@ class FormBuilder {
                 <i class="bi ${fieldType.icon}"></i>
                 <span>${fieldType.label}</span>
             `;
-            
+
             item.addEventListener('dragstart', (e) => {
                 e.dataTransfer.setData('fieldType', fieldType.type);
                 e.dataTransfer.effectAllowed = 'copy';
+                // Store the field type globally so we can access it in dragover
+                this.draggingFieldType = fieldType.type;
             });
-            
+
+            item.addEventListener('dragend', (e) => {
+                // Clear the dragging field type and clean up any placeholder
+                this.draggingFieldType = null;
+                this.cleanupDragPlaceholder();
+            });
+
             palette.appendChild(item);
         });
     }
     
     setupCanvas() {
         const canvas = document.getElementById('formCanvas');
-        
+
         // Setup Sortable for drag-and-drop reordering
         this.sortable = Sortable.create(canvas, {
-            animation: 150,
+            animation: 300,
+            easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
             ghostClass: 'sortable-ghost',
             dragClass: 'sortable-drag',
             handle: '.canvas-field',
+            draggable: '.canvas-field', // Only canvas-field elements are draggable/sortable
+            filter: '.canvas-drop-zone', // Exclude drop zone from sorting
+            onStart: (evt) => {
+                // Add dragging class for enhanced visual feedback
+                canvas.classList.add('dragging');
+            },
             onEnd: (evt) => {
+                // Remove dragging class
+                canvas.classList.remove('dragging');
+
                 // Update field order
                 const movedField = this.fields.splice(evt.oldIndex, 1)[0];
                 this.fields.splice(evt.newIndex, 0, movedField);
@@ -85,19 +112,156 @@ class FormBuilder {
             }
         });
         
-        // Allow dropping from palette
+        // Allow dropping from palette with visual feedback
         canvas.addEventListener('dragover', (e) => {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
-        });
-        
-        canvas.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const fieldType = e.dataTransfer.getData('fieldType');
-            if (fieldType) {
-                this.addField(fieldType);
+
+            // Check if we're dragging a new field from palette
+            if (this.draggingFieldType) {
+                e.dataTransfer.dropEffect = 'copy';
+
+                // Add dragging class to canvas
+                canvas.classList.add('dragging');
+
+                // Find the element we're hovering over
+                const afterElement = this.getDragAfterElement(canvas, e.clientY);
+
+                // Create or update placeholder
+                if (!this.dragPlaceholder) {
+                    this.dragPlaceholder = document.createElement('div');
+                    this.dragPlaceholder.className = 'canvas-field drag-placeholder';
+                    this.dragPlaceholder.innerHTML = `
+                        <div class="field-header">
+                            <div class="field-label">
+                                <i class="bi bi-plus-circle-fill me-2" style="color: #667eea;"></i>
+                                New field will be inserted here
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Insert placeholder at the correct position
+                if (afterElement == null) {
+                    // Append at the end (before drop zone)
+                    const dropZone = canvas.querySelector('.canvas-drop-zone');
+                    if (dropZone) {
+                        canvas.insertBefore(this.dragPlaceholder, dropZone);
+                    } else {
+                        canvas.appendChild(this.dragPlaceholder);
+                    }
+                } else {
+                    canvas.insertBefore(this.dragPlaceholder, afterElement);
+                }
+            } else {
+                // Allow sortable to handle reordering
+                e.dataTransfer.dropEffect = 'move';
             }
         });
+
+        canvas.addEventListener('dragleave', (e) => {
+            // Check if we're actually leaving the canvas (not just entering a child element)
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX;
+            const y = e.clientY;
+
+            // If mouse is outside canvas bounds, remove placeholder
+            if (this.draggingFieldType &&
+                (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom)) {
+                this.cleanupDragPlaceholder();
+            }
+        });
+
+        canvas.addEventListener('drop', (e) => {
+            e.preventDefault();
+
+            // Check if we're dropping a new field from palette
+            if (this.draggingFieldType) {
+                const fieldType = this.draggingFieldType;
+
+                // Remove placeholder
+                this.cleanupDragPlaceholder();
+
+                // Calculate the position where to insert
+                const afterElement = this.getDragAfterElement(canvas, e.clientY);
+                let insertIndex = this.fields.length;
+
+                if (afterElement) {
+                    const afterIndex = parseInt(afterElement.dataset.index);
+                    if (!isNaN(afterIndex)) {
+                        insertIndex = afterIndex;
+                    }
+                }
+
+                this.addFieldAtPosition(fieldType, insertIndex);
+            }
+        });
+    }
+
+    getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.canvas-field:not(.drag-placeholder):not(.sortable-drag)')];
+
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    cleanupDragPlaceholder() {
+        // Remove the drag placeholder and clean up canvas state
+        if (this.dragPlaceholder && this.dragPlaceholder.parentNode) {
+            this.dragPlaceholder.parentNode.removeChild(this.dragPlaceholder);
+            this.dragPlaceholder = null;
+        }
+        const canvas = document.getElementById('formCanvas');
+        if (canvas) {
+            canvas.classList.remove('dragging');
+        }
+    }
+
+    addFieldAtPosition(fieldType, position) {
+        const field = {
+            id: `new_${this.fieldIdCounter++}`,
+            order: position + 1,
+            field_label: this.getDefaultLabel(fieldType),
+            field_name: this.getDefaultName(fieldType),
+            field_type: fieldType,
+            required: false,
+            help_text: '',
+            placeholder: '',
+            width: 'full',
+            css_class: '',
+            choices: '',
+            default_value: '',
+            prefill_source_id: null,
+            prefill_source_config: {},
+            validation: {
+                min_value: null,
+                max_value: null,
+                min_length: null,
+                max_length: null,
+                regex_validation: '',
+                regex_error_message: ''
+            },
+            conditional: {
+                show_if_field: null,
+                show_if_value: ''
+            }
+        };
+
+        // Insert at the specified position
+        this.fields.splice(position, 0, field);
+        this.updateFieldOrders();
+        this.renderCanvas();
+        this.updatePreview();
+
+        // Automatically open property editor for new field
+        this.editField(position);
     }
     
     setupEventListeners() {
@@ -129,41 +293,8 @@ class FormBuilder {
     }
     
     addField(fieldType) {
-        const field = {
-            id: `new_${this.fieldIdCounter++}`,
-            order: this.fields.length + 1,
-            field_label: this.getDefaultLabel(fieldType),
-            field_name: this.getDefaultName(fieldType),
-            field_type: fieldType,
-            required: false,
-            help_text: '',
-            placeholder: '',
-            width: 'full',
-            css_class: '',
-            choices: '',
-            default_value: '',
-            prefill_source_id: null,
-            prefill_source_config: {},
-            validation: {
-                min_value: null,
-                max_value: null,
-                min_length: null,
-                max_length: null,
-                regex_validation: '',
-                regex_error_message: ''
-            },
-            conditional: {
-                show_if_field: null,
-                show_if_value: ''
-            }
-        };
-        
-        this.fields.push(field);
-        this.renderCanvas();
-        this.updatePreview();
-        
-        // Automatically open property editor for new field
-        this.editField(this.fields.length - 1);
+        // Add field at the end
+        this.addFieldAtPosition(fieldType, this.fields.length);
     }
     
     getDefaultLabel(fieldType) {
@@ -194,7 +325,7 @@ class FormBuilder {
     
     renderCanvas() {
         const canvas = document.getElementById('formCanvas');
-        
+
         if (this.fields.length === 0) {
             canvas.innerHTML = `
                 <div class="empty-canvas">
@@ -205,13 +336,24 @@ class FormBuilder {
             document.getElementById('fieldCount').textContent = '0 fields';
             return;
         }
-        
+
         canvas.innerHTML = '';
         this.fields.forEach((field, index) => {
             const fieldEl = this.createFieldElement(field, index);
             canvas.appendChild(fieldEl);
         });
-        
+
+        // Add a drop zone at the bottom for easier dragging
+        const dropZone = document.createElement('div');
+        dropZone.className = 'canvas-drop-zone';
+        dropZone.innerHTML = `
+            <div class="drop-zone-content">
+                <i class="bi bi-arrow-down-circle"></i>
+                <span>Drag fields from the left palette to add them here</span>
+            </div>
+        `;
+        canvas.appendChild(dropZone);
+
         document.getElementById('fieldCount').textContent = `${this.fields.length} field${this.fields.length !== 1 ? 's' : ''}`;
     }
     
@@ -219,30 +361,29 @@ class FormBuilder {
         const div = document.createElement('div');
         div.className = 'canvas-field';
         div.dataset.index = index;
-        
-        const requiredBadge = field.required ? '<span class="badge bg-danger ms-2">Required</span>' : '';
-        const helpText = field.help_text ? `<div class="text-muted small mt-1">${this.escapeHtml(field.help_text)}</div>` : '';
-        
+
+        const requiredBadge = field.required ? '<span class="badge bg-danger ms-1" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;">REQ</span>' : '';
+        const fieldInfo = `<span class="text-muted" style="font-size: 0.75rem;">${field.field_name}</span>`;
+
         div.innerHTML = `
             <div class="field-header">
                 <div>
                     <span class="field-label">${this.escapeHtml(field.field_label)}</span>
                     ${requiredBadge}
+                    <span class="ms-2">${fieldInfo}</span>
                 </div>
                 <div class="field-actions">
                     <span class="field-type-badge">${field.field_type}</span>
-                    <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})">
+                    <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})" title="Edit field">
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-danger btn-field-action" onclick="formBuilder.deleteField(${index})">
+                    <button class="btn btn-sm btn-outline-danger btn-field-action" onclick="formBuilder.deleteField(${index})" title="Delete field">
                         <i class="bi bi-trash"></i>
                     </button>
                 </div>
             </div>
-            ${helpText}
-            <div class="text-muted small">Field name: ${field.field_name}</div>
         `;
-        
+
         return div;
     }
     
@@ -377,15 +518,91 @@ class FormBuilder {
     }
     
     updatePreview() {
-        // For now, just show field count
-        // TODO: Implement actual form preview using API
+        // Debounce preview updates to avoid too many API calls
+        if (this.previewTimeout) {
+            clearTimeout(this.previewTimeout);
+        }
+
+        this.previewTimeout = setTimeout(() => {
+            this.generatePreview();
+        }, 500); // Wait 500ms after last change
+    }
+
+    async generatePreview() {
         const preview = document.getElementById('formPreview');
+
+        // Show loading state
         preview.innerHTML = `
-            <div class="alert alert-info">
-                <strong>Preview</strong><br>
-                ${this.fields.length} field(s) configured
+            <div class="text-center text-muted py-4">
+                <div class="spinner-border spinner-border-sm" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="small mt-2">Generating preview...</p>
             </div>
         `;
+
+        try {
+            // Gather form data
+            const formData = {
+                name: document.getElementById('formName').value || 'Untitled Form',
+                slug: document.getElementById('formSlug').value || 'untitled-form',
+                description: document.getElementById('formDescription').value || '',
+                instructions: document.getElementById('formInstructions').value || '',
+                is_active: document.getElementById('formIsActive').checked,
+                requires_login: document.getElementById('formRequiresLogin').checked,
+                allow_save_draft: document.getElementById('formAllowDraft').checked,
+                allow_withdrawal: document.getElementById('formAllowWithdrawal').checked,
+                fields: this.fields
+            };
+
+            // Call preview API
+            const response = await fetch(this.config.apiUrls.preview, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.config.csrfToken
+                },
+                body: JSON.stringify(formData)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Preview API error:', response.status, errorText);
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                preview.innerHTML = data.html;
+            } else {
+                console.error('Preview generation failed:', data.error);
+                throw new Error(data.error || 'Unknown error');
+            }
+
+        } catch (error) {
+            console.error('Preview error:', error);
+
+            // If there are no fields, show a helpful message
+            if (this.fields.length === 0) {
+                preview.innerHTML = `
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>No fields yet</strong><br>
+                        Drag fields from the palette to get started
+                    </div>
+                `;
+            } else {
+                preview.innerHTML = `
+                    <div class="alert alert-warning small">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Preview unavailable</strong><br>
+                        ${this.fields.length} field(s) configured<br>
+                        <small class="text-muted">${error.message}</small>
+                    </div>
+                `;
+            }
+        }
     }
     
     async loadForm() {
@@ -497,6 +714,117 @@ class FormBuilder {
         } finally {
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
+        }
+    }
+
+    async showTemplateSelection() {
+        const modal = new bootstrap.Modal(document.getElementById('templateSelectionModal'));
+        const templateList = document.getElementById('templateList');
+
+        // Load templates
+        try {
+            const response = await fetch(this.config.apiUrls.templates);
+            const data = await response.json();
+
+            if (data.success && data.templates.length > 0) {
+                // Group templates by category
+                const grouped = {};
+                data.templates.forEach(template => {
+                    if (!grouped[template.category_display]) {
+                        grouped[template.category_display] = [];
+                    }
+                    grouped[template.category_display].push(template);
+                });
+
+                // Render templates
+                let html = '';
+                for (const [category, templates] of Object.entries(grouped)) {
+                    html += `<div class="col-12"><h6 class="text-muted">${category}</h6></div>`;
+                    templates.forEach(template => {
+                        html += `
+                            <div class="col-md-4">
+                                <div class="card template-card h-100" style="cursor: pointer;" data-template-id="${template.id}">
+                                    <div class="card-body">
+                                        <h6 class="card-title">${this.escapeHtml(template.name)}</h6>
+                                        <p class="card-text small text-muted">${this.escapeHtml(template.description)}</p>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">
+                                                <i class="bi bi-people"></i> Used ${template.usage_count} times
+                                            </small>
+                                            <button class="btn btn-sm btn-primary">Use Template</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                templateList.innerHTML = html;
+
+                // Add click handlers
+                document.querySelectorAll('.template-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        const templateId = card.dataset.templateId;
+                        this.loadTemplate(templateId);
+                        modal.hide();
+                    });
+                });
+            } else {
+                templateList.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <p class="text-muted">No templates available</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading templates:', error);
+            templateList.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <p class="text-danger">Failed to load templates</p>
+                </div>
+            `;
+        }
+
+        // Handle "Start with Blank Form" button
+        document.getElementById('btnStartBlank').onclick = () => {
+            modal.hide();
+        };
+
+        modal.show();
+    }
+
+    async loadTemplate(templateId) {
+        try {
+            const url = this.config.apiUrls.loadTemplate.replace('{id}', templateId);
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.success && data.template_data) {
+                const templateData = data.template_data;
+
+                // Populate form settings
+                document.getElementById('formName').value = templateData.name || '';
+                document.getElementById('formSlug').value = templateData.slug || '';
+                document.getElementById('formDescription').value = templateData.description || '';
+                document.getElementById('formInstructions').value = templateData.instructions || '';
+                document.getElementById('formIsActive').checked = templateData.is_active !== false;
+                document.getElementById('formRequiresLogin').checked = templateData.requires_login !== false;
+                document.getElementById('formAllowDraft').checked = templateData.allow_save_draft !== false;
+                document.getElementById('formAllowWithdrawal').checked = templateData.allow_withdrawal !== false;
+
+                // Load fields
+                this.fields = templateData.fields || [];
+                this.renderCanvas();
+                this.updatePreview();
+
+                // Show success message
+                alert('Template loaded successfully! You can now customize the form.');
+            } else {
+                throw new Error('Invalid template data');
+            }
+        } catch (error) {
+            console.error('Error loading template:', error);
+            alert('Failed to load template: ' + error.message);
         }
     }
 }

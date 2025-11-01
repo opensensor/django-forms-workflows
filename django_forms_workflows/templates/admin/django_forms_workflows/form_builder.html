@@ -33,7 +33,7 @@
         
         .builder-container {
             display: grid;
-            grid-template-columns: 250px 1fr 350px;
+            grid-template-columns: 220px 1fr 1fr;
             gap: 1rem;
             padding: 1rem;
             height: calc(100vh - 120px);
@@ -68,16 +68,24 @@
             background: #f8f9fa;
             border: 2px dashed #dee2e6;
             border-radius: 6px;
-            cursor: move;
+            cursor: grab;
             transition: all 0.2s;
+            user-select: none;
         }
-        
+
         .field-palette-item:hover {
             background: #e9ecef;
             border-color: #667eea;
             transform: translateX(4px);
+            box-shadow: 0 2px 6px rgba(102, 126, 234, 0.15);
         }
-        
+
+        .field-palette-item:active {
+            cursor: grabbing;
+            transform: translateX(2px) scale(0.98);
+            box-shadow: 0 1px 3px rgba(102, 126, 234, 0.2);
+        }
+
         .field-palette-item i {
             margin-right: 0.5rem;
             color: #667eea;
@@ -85,57 +93,157 @@
         
         /* Canvas */
         .canvas-field {
-            padding: 1rem;
-            margin-bottom: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.5rem;
             background: white;
-            border: 2px solid #e9ecef;
-            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            border-left: 3px solid #667eea;
+            border-radius: 4px;
             cursor: move;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
         }
-        
+
         .canvas-field:hover {
-            border-color: #667eea;
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
-        }
-        
-        .canvas-field.sortable-ghost {
-            opacity: 0.4;
+            border-left-color: #764ba2;
+            box-shadow: 0 2px 6px rgba(102, 126, 234, 0.15);
             background: #f8f9fa;
         }
-        
-        .canvas-field.sortable-drag {
-            opacity: 0.8;
+
+        /* The ghost placeholder where item will be dropped */
+        .canvas-field.sortable-ghost {
+            opacity: 1;
+            background: linear-gradient(135deg, #e9ecff 0%, #f0f2ff 100%);
+            border: 2px dashed #667eea;
+            border-left: 4px solid #667eea;
+            box-shadow: inset 0 0 20px rgba(102, 126, 234, 0.1);
+            animation: pulse-drop-zone 1.5s ease-in-out infinite;
         }
-        
+
+        .canvas-field.sortable-ghost * {
+            opacity: 0.3;
+        }
+
+        /* The item being dragged */
+        .canvas-field.sortable-drag {
+            opacity: 0.9;
+            transform: rotate(2deg) scale(1.05);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+            border-left-color: #764ba2;
+            background: white;
+            z-index: 1000;
+            cursor: grabbing;
+        }
+
+        /* Pulse animation for drop zone */
+        @keyframes pulse-drop-zone {
+            0%, 100% {
+                box-shadow: inset 0 0 20px rgba(102, 126, 234, 0.1);
+            }
+            50% {
+                box-shadow: inset 0 0 30px rgba(102, 126, 234, 0.2);
+            }
+        }
+
+        /* Add visual separator when dragging to show drop position */
+        .canvas-field.sortable-ghost::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+            animation: slide-in 0.3s ease-out;
+        }
+
+        @keyframes slide-in {
+            from {
+                transform: scaleX(0);
+                opacity: 0;
+            }
+            to {
+                transform: scaleX(1);
+                opacity: 1;
+            }
+        }
+
+        /* Smooth transitions for all canvas fields when reordering */
+        #formCanvas {
+            position: relative;
+        }
+
+        #formCanvas.dragging .canvas-field:not(.sortable-drag):not(.sortable-ghost):not(.drag-placeholder) {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Placeholder for new fields being dragged in from palette */
+        .canvas-field.drag-placeholder {
+            opacity: 1;
+            background: linear-gradient(135deg, #e9ecff 0%, #f0f2ff 100%);
+            border: 2px dashed #667eea;
+            border-left: 4px solid #667eea;
+            box-shadow: inset 0 0 20px rgba(102, 126, 234, 0.1);
+            animation: pulse-drop-zone 1.5s ease-in-out infinite;
+            cursor: default;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+        }
+
+        .canvas-field.drag-placeholder .field-label {
+            color: #667eea;
+            font-weight: 500;
+            font-style: italic;
+        }
+
+        .canvas-field.drag-placeholder::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+            animation: slide-in 0.3s ease-out;
+        }
+
         .field-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
         }
-        
+
         .field-label {
             font-weight: 600;
             color: #212529;
+            font-size: 0.9rem;
         }
-        
+
         .field-type-badge {
-            font-size: 0.75rem;
-            padding: 0.25rem 0.5rem;
+            font-size: 0.7rem;
+            padding: 0.15rem 0.4rem;
             background: #e9ecef;
-            border-radius: 4px;
+            border-radius: 3px;
             color: #6c757d;
+            text-transform: uppercase;
+            font-weight: 500;
         }
-        
+
         .field-actions {
             display: flex;
-            gap: 0.5rem;
+            gap: 0.25rem;
         }
-        
+
         .btn-field-action {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.875rem;
+            padding: 0.2rem 0.4rem;
+            font-size: 0.8rem;
+            line-height: 1;
         }
         
         .empty-canvas {
@@ -143,16 +251,118 @@
             padding: 3rem 1rem;
             color: #6c757d;
         }
-        
+
         .empty-canvas i {
             font-size: 3rem;
             margin-bottom: 1rem;
             opacity: 0.3;
         }
+
+        /* Drop Zone at bottom of canvas */
+        .canvas-drop-zone {
+            min-height: 200px;
+            margin-top: 1rem;
+            padding: 2rem 1rem;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            transition: all 0.3s ease;
+            cursor: default;
+        }
+
+        .canvas-drop-zone:hover {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #f0f2ff 0%, #ffffff 100%);
+        }
+
+        .drop-zone-content {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+            user-select: none;
+        }
+
+        .drop-zone-content i {
+            display: block;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            opacity: 0.4;
+            color: #667eea;
+            transition: opacity 0.2s;
+        }
+
+        .canvas-drop-zone:hover .drop-zone-content i {
+            opacity: 0.6;
+        }
+
+        /* When dragging over the drop zone */
+        .canvas-drop-zone.sortable-ghost {
+            border-color: #667eea;
+            border-width: 3px;
+            background: linear-gradient(135deg, #e9ecff 0%, #f0f2ff 100%);
+            border-style: solid;
+            box-shadow: inset 0 0 30px rgba(102, 126, 234, 0.15),
+                        0 4px 12px rgba(102, 126, 234, 0.2);
+            animation: pulse-drop-zone 1.5s ease-in-out infinite;
+        }
+
+        .canvas-drop-zone.sortable-ghost .drop-zone-content {
+            opacity: 0.7;
+        }
+
+        .canvas-drop-zone.sortable-ghost .drop-zone-content i {
+            opacity: 0.8;
+            transform: scale(1.1);
+        }
         
-        /* Preview Panel */
+        /* Preview Panel - Farm Theme */
+        .preview-panel {
+            background: radial-gradient(ellipse at top left, rgba(248,241,218,0.6), transparent 60%),
+                        radial-gradient(ellipse at bottom right, rgba(232,246,255,0.5), transparent 60%),
+                        white;
+        }
+
         .preview-content {
             padding: 1rem;
+        }
+
+        .preview-content .preview-container {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .preview-content .preview-header h5 {
+            color: #2f5f36;
+            font-weight: 600;
+        }
+
+        .preview-content .alert-info {
+            background: linear-gradient(135deg, #f8f1da, #e8f6ff);
+            border: 1px solid rgba(0,0,0,0.05);
+            color: #2f5f36;
+        }
+
+        .preview-content .form-control,
+        .preview-content .form-select {
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .preview-content .form-control:focus,
+        .preview-content .form-select:focus {
+            border-color: #3a7d44;
+            box-shadow: 0 0 0 0.2rem rgba(58, 125, 68, 0.15);
+        }
+
+        .preview-content .btn-primary {
+            background: linear-gradient(90deg, #2f5f36, #3a7d44);
+            border: none;
+        }
+
+        .preview-content .btn-primary:hover {
+            background: linear-gradient(90deg, #3a7d44, #2f5f36);
         }
         
         /* Form Settings Panel */
@@ -336,6 +546,11 @@
                 </div>
                 <div>
                     <button class="btn btn-outline-secondary me-2" id="btnCancel">Cancel</button>
+                    {% if not is_new %}
+                    <button class="btn btn-outline-primary me-2" id="btnClone">
+                        <i class="bi bi-files"></i> Clone Form
+                    </button>
+                    {% endif %}
                     <button class="btn btn-primary" id="btnSave">
                         <i class="bi bi-save"></i> Save Form
                     </button>
@@ -363,7 +578,36 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- Template Selection Modal -->
+    <div class="modal fade" id="templateSelectionModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-file-earmark-text"></i> Choose a Template</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">Start with a pre-built template or create a blank form</p>
+                    <div id="templateList" class="row g-3">
+                        <!-- Templates will be loaded by JavaScript -->
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading templates...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-outline-primary" id="btnStartBlank">
+                        <i class="bi bi-file-earmark-plus"></i> Start with Blank Form
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
@@ -389,11 +633,15 @@
             apiUrls: {
                 {% if form_definition %}
                 load: "{% url 'admin:form_builder_api_load' form_definition.id %}",
+                clone: "{% url 'admin:form_builder_api_clone' form_definition.id %}",
                 {% else %}
                 load: null,
+                clone: null,
                 {% endif %}
                 save: "{% url 'admin:form_builder_api_save' %}",
-                preview: "{% url 'admin:form_builder_api_preview' %}"
+                preview: "{% url 'admin:form_builder_api_preview' %}",
+                templates: "{% url 'admin:form_builder_api_templates' %}",
+                loadTemplate: "{% url 'admin:form_builder_api_load_template' 0 %}".replace('/0/', '/{id}/')
             },
             csrfToken: "{{ csrf_token }}"
         };
@@ -401,6 +649,45 @@
         // Initialize the form builder when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
             window.formBuilder = new FormBuilder(formBuilderData);
+
+            // Handle clone button
+            const btnClone = document.getElementById('btnClone');
+            if (btnClone && formBuilderData.apiUrls.clone) {
+                btnClone.addEventListener('click', async function() {
+                    if (!confirm('Clone this form?\n\nThis will create a copy with all fields and settings.')) {
+                        return;
+                    }
+
+                    const originalText = this.innerHTML;
+                    this.disabled = true;
+                    this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Cloning...';
+
+                    try {
+                        const response = await fetch(formBuilderData.apiUrls.clone, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRFToken': formBuilderData.csrfToken,
+                            }
+                        });
+
+                        const data = await response.json();
+
+                        if (data.success) {
+                            alert(data.message);
+                            // Redirect to edit the cloned form
+                            window.location.href = `/admin/django_forms_workflows/formdefinition/${data.form_id}/builder/`;
+                        } else {
+                            alert('Error cloning form: ' + (data.error || 'Unknown error'));
+                        }
+                    } catch (error) {
+                        console.error('Error cloning form:', error);
+                        alert('Failed to clone form: ' + error.message);
+                    } finally {
+                        this.disabled = false;
+                        this.innerHTML = originalText;
+                    }
+                });
+            }
         });
     </script>
 </body>

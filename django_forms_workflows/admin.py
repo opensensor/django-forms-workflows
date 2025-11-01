@@ -15,6 +15,7 @@ from .models import (
     FormDefinition,
     FormField,
     FormSubmission,
+    FormTemplate,
     PostSubmissionAction,
     PrefillSource,
     UserProfile,
@@ -148,6 +149,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         "version",
         "created_at",
         "form_builder_link",
+        "clone_link",
     )
     list_filter = ("is_active", "requires_login")
     search_fields = ("name", "slug", "description")
@@ -155,6 +157,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     inlines = [FormFieldInline]
     filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
+    actions = ['clone_forms']
 
     def form_builder_link(self, obj):
         """Display a link to the visual form builder"""
@@ -168,6 +171,99 @@ class FormDefinitionAdmin(admin.ModelAdmin):
             )
         return "-"
     form_builder_link.short_description = "Visual Builder"
+
+    def clone_link(self, obj):
+        """Display a link to clone the form"""
+        if obj.pk:
+            return format_html(
+                '<a href="#" class="button clone-form-btn" data-form-id="{}" data-form-name="{}">'
+                '<i class="bi bi-files"></i> Clone'
+                '</a>',
+                obj.pk,
+                obj.name
+            )
+        return "-"
+    clone_link.short_description = "Clone"
+
+    def clone_forms(self, request, queryset):
+        """Admin action to clone selected forms"""
+        from . import form_builder_views
+
+        cloned_count = 0
+        for form in queryset:
+            try:
+                # Use the clone view logic
+                with transaction.atomic():
+                    # Generate unique slug
+                    base_slug = f"{form.slug}-copy"
+                    slug = base_slug
+                    counter = 1
+                    while FormDefinition.objects.filter(slug=slug).exists():
+                        slug = f"{base_slug}-{counter}"
+                        counter += 1
+
+                    # Clone the form definition
+                    cloned_form = FormDefinition.objects.create(
+                        name=f"{form.name} (Copy)",
+                        slug=slug,
+                        description=form.description,
+                        instructions=form.instructions,
+                        is_active=False,
+                        version=1,
+                        requires_login=form.requires_login,
+                        allow_save_draft=form.allow_save_draft,
+                        allow_withdrawal=form.allow_withdrawal,
+                        created_by=request.user,
+                    )
+
+                    # Clone all fields
+                    for field in form.fields.all().order_by('order'):
+                        FormField.objects.create(
+                            form_definition=cloned_form,
+                            order=field.order,
+                            field_name=field.field_name,
+                            field_label=field.field_label,
+                            field_type=field.field_type,
+                            required=field.required,
+                            help_text=field.help_text,
+                            placeholder=field.placeholder,
+                            width=field.width,
+                            css_class=field.css_class,
+                            choices=field.choices,
+                            default_value=field.default_value,
+                            prefill_source_config=field.prefill_source_config,
+                            min_value=field.min_value,
+                            max_value=field.max_value,
+                            min_length=field.min_length,
+                            max_length=field.max_length,
+                            regex_validation=field.regex_validation,
+                            regex_error_message=field.regex_error_message,
+                            show_if_field=field.show_if_field,
+                            show_if_value=field.show_if_value,
+                            allowed_extensions=field.allowed_extensions,
+                            max_file_size_mb=field.max_file_size_mb,
+                        )
+
+                    # Copy group permissions
+                    cloned_form.submit_groups.set(form.submit_groups.all())
+                    cloned_form.view_groups.set(form.view_groups.all())
+                    cloned_form.admin_groups.set(form.admin_groups.all())
+
+                    cloned_count += 1
+            except Exception as e:
+                self.message_user(
+                    request,
+                    f'Error cloning form "{form.name}": {str(e)}',
+                    level='ERROR'
+                )
+
+        if cloned_count > 0:
+            self.message_user(
+                request,
+                f'Successfully cloned {cloned_count} form(s)',
+                level='SUCCESS'
+            )
+    clone_forms.short_description = "Clone selected forms"
 
     def get_urls(self):
         """Add custom URLs for the form builder"""
@@ -199,6 +295,21 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 'builder/api/preview/',
                 self.admin_site.admin_view(form_builder_views.form_builder_preview),
                 name='form_builder_api_preview'
+            ),
+            path(
+                'builder/api/templates/',
+                self.admin_site.admin_view(form_builder_views.form_builder_templates),
+                name='form_builder_api_templates'
+            ),
+            path(
+                'builder/api/templates/<int:template_id>/',
+                self.admin_site.admin_view(form_builder_views.form_builder_load_template),
+                name='form_builder_api_load_template'
+            ),
+            path(
+                'builder/api/clone/<int:form_id>/',
+                self.admin_site.admin_view(form_builder_views.form_builder_clone),
+                name='form_builder_api_clone'
             ),
         ]
         return custom_urls + urls
@@ -486,3 +597,61 @@ class UserProfileAdmin(admin.ModelAdmin):
     search_fields = ("user__username", "user__email", "department", "title")
     raw_id_fields = ("user", "manager")
     list_filter = ("department",)
+
+
+@admin.register(FormTemplate)
+class FormTemplateAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "category",
+        "usage_count",
+        "is_active",
+        "is_system",
+        "created_at",
+    )
+    list_filter = ("category", "is_active", "is_system")
+    search_fields = ("name", "description", "slug")
+    prepopulated_fields = {"slug": ("name",)}
+    readonly_fields = ("usage_count", "created_at", "updated_at", "created_by")
+
+    fieldsets = (
+        (
+            "Basic Information",
+            {
+                "fields": ("name", "slug", "description", "category")
+            },
+        ),
+        (
+            "Template Data",
+            {
+                "fields": ("template_data",),
+                "description": "JSON structure containing form definition and fields"
+            },
+        ),
+        (
+            "Preview",
+            {
+                "fields": ("preview_url",),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Status",
+            {
+                "fields": ("is_active", "is_system"),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("usage_count", "created_at", "updated_at", "created_by"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    def save_model(self, request, obj, form, change):
+        """Set created_by on new templates"""
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)

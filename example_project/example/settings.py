@@ -155,7 +155,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 FORMS_WORKFLOWS_BASE_URL = 'http://localhost:8000'
 
 
-# Login URL
+# Login/Logout URLs
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/forms/'
+LOGOUT_REDIRECT_URL = '/'
 

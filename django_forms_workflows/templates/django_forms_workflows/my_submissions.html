@@ -56,10 +56,12 @@
                                             <i class="bi bi-pencil"></i> Continue
                                         </a>
                                     {% endif %}
-                                    {% if (submission.status == 'submitted' or submission.status == 'pending_approval') and submission.form_definition.allow_withdrawal %}
-                                        <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
-                                            <i class="bi bi-x-circle"></i> Withdraw
-                                        </a>
+                                    {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
+                                        {% if submission.form_definition.allow_withdrawal %}
+                                            <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-x-circle"></i> Withdraw
+                                            </a>
+                                        {% endif %}
                                     {% endif %}
                                 </td>
                             </tr>

@@ -448,27 +448,27 @@ class Command(BaseCommand):
                 self.style.SUCCESS("Created demo post-submission action (API call)")
             )
 
-        # Add another example for database update (commented out since it requires external DB)
+        # Add database update action to update User model
         db_action, created = PostSubmissionAction.objects.get_or_create(
             form_definition=fd4,
-            name="Update Contact Database",
+            name="Update User Profile",
             defaults={
                 "action_type": "database",
-                "trigger": "on_approve",
-                "description": "Update external contact database after approval (demo - disabled)",
-                "is_active": False,  # Disabled by default
+                "trigger": "on_submit",
+                "description": "Update user profile in database when contact info is submitted",
+                "is_active": True,  # Enabled for demo
                 "order": 2,
-                "db_alias": "default",  # Would be external DB in production
-                "db_schema": "public",
-                "db_table": "contacts",
-                "db_lookup_field": "user_id",
+                "db_alias": "default",
+                "db_schema": "",  # SQLite doesn't use schemas
+                "db_table": "auth_user",
+                "db_lookup_field": "id",
                 "db_user_field": "id",
                 "db_field_mappings": [
+                    {"form_field": "first_name", "db_column": "first_name"},
+                    {"form_field": "last_name", "db_column": "last_name"},
                     {"form_field": "email", "db_column": "email"},
-                    {"form_field": "phone", "db_column": "phone"},
-                    {"form_field": "address", "db_column": "address"},
                 ],
-                "fail_silently": True,
+                "fail_silently": False,
                 "retry_on_failure": True,
                 "max_retries": 3,
             },
@@ -497,7 +497,7 @@ class Command(BaseCommand):
         self.stdout.write("  • farmer_jane")
         self.stdout.write("  • mechanic_mike")
         self.stdout.write("  • owner_olive")
-        self.stdout.write("\nPost-submission actions (disabled by default):")
-        self.stdout.write("  • API Call - Log contact updates to external API")
-        self.stdout.write("  • Database Update - Update external contact database")
-        self.stdout.write("  Enable in Admin → Post-Submission Actions to test")
+        self.stdout.write("\nPost-submission actions:")
+        self.stdout.write("  • Update User Profile - Updates auth_user table (ENABLED)")
+        self.stdout.write("  • API Call - Log contact updates to external API (disabled)")
+        self.stdout.write("  View in Admin → Post-Submission Actions")

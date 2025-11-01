@@ -136,10 +136,12 @@
             <a href="{% url 'forms_workflows:my_submissions' %}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to My Submissions
             </a>
-            {% if (submission.status == 'submitted' or submission.status == 'pending_approval') and submission.form_definition.allow_withdrawal and submission.submitter == user %}
-                <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-outline-danger">
-                    <i class="bi bi-x-circle"></i> Withdraw Submission
-                </a>
+            {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
+                {% if submission.form_definition.allow_withdrawal and submission.submitter == user %}
+                    <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-outline-danger">
+                        <i class="bi bi-x-circle"></i> Withdraw Submission
+                    </a>
+                {% endif %}
             {% endif %}
         </div>
     </div>

@@ -129,8 +129,14 @@ class DatabaseUpdateHandler(BaseActionHandler):
         params.append(user_id)
 
         # Build UPDATE query
+        # Handle schema - SQLite doesn't use schemas
+        if schema and schema.lower() not in ("", "public", "dbo"):
+            table_ref = f"[{schema}].[{table}]"
+        else:
+            table_ref = f"[{table}]"
+
         query = f"""
-            UPDATE [{schema}].[{table}]
+            UPDATE {table_ref}
             SET {", ".join(set_clauses)}
             WHERE [{lookup_field}] = %s
         """

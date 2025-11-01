@@ -1,1 +1,4 @@
 dist
+*.pyc$
+db.sqlite3
+__pycache__/

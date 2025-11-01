@@ -171,35 +171,35 @@ urlpatterns = [
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         User Interface                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Form Builder │  │ Form Viewer  │  │ Approval UI  │          │
-│  │  (Admin)     │  │  (End User)  │  │  (Approvers) │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Django Application                         │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              Data Source Abstraction Layer               │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐          │  │
-│  │  │    LDAP    │  │  Database  │  │    API     │          │  │
-│  │  │   Source   │  │   Source   │  │   Source   │          │  │
-│  │  └────────────┘  └────────────┘  └────────────┘          │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      External Systems                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │ Active       │  │ Legacy       │  │ External     │          │
-│  │ Directory    │  │ Databases    │  │ APIs         │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph UI["User Interface"]
+        FB["Form Builder<br/>(Admin)"]
+        FV["Form Viewer<br/>(End User)"]
+        AU["Approval UI<br/>(Approvers)"]
+    end
+
+    subgraph Django["Django Application"]
+        subgraph DSL["Data Source Abstraction Layer"]
+            LDAP["LDAP<br/>Source"]
+            DB["Database<br/>Source"]
+            API["API<br/>Source"]
+        end
+    end
+
+    subgraph External["External Systems"]
+        AD["Active<br/>Directory"]
+        Legacy["Legacy<br/>Databases"]
+        ExtAPI["External<br/>APIs"]
+    end
+
+    UI --> Django
+    DSL --> External
+
+    style UI fill:#e1f5ff
+    style Django fill:#fff4e1
+    style DSL fill:#ffe1f5
+    style External fill:#e1ffe1
 ```
 
 ## Use Cases

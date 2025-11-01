@@ -50,17 +50,25 @@ class BaseActionHandler(ABC):
 
     def get_user_profile_value(self, field_name):
         """
-        Get a value from the user's profile.
+        Get a value from the user's profile or user model.
 
         Args:
-            field_name: Name of the UserProfile field
+            field_name: Name of the UserProfile field or User model field
 
         Returns:
             The field value or None if not found
         """
         try:
-            profile = self.user.profile
-            return getattr(profile, field_name, None)
+            # First try to get from user model directly (e.g., id, username, email)
+            if hasattr(self.user, field_name):
+                return getattr(self.user, field_name, None)
+
+            # Then try to get from user profile if it exists
+            if hasattr(self.user, 'profile'):
+                profile = self.user.profile
+                return getattr(profile, field_name, None)
+
+            return None
         except Exception as e:
             logger.warning(f"Could not get user profile field {field_name}: {e}")
             return None

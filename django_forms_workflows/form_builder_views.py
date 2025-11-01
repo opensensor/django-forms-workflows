@@ -7,6 +7,7 @@ and editing forms without code.
 
 import json
 import logging
+import uuid
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
@@ -16,9 +17,138 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import DynamicForm
-from .models import FormDefinition, FormField, PrefillSource
+from .models import FormDefinition, FormField, FormTemplate, PrefillSource
 
 logger = logging.getLogger(__name__)
+
+
+@staff_member_required
+@require_GET
+def form_builder_templates(request):
+    """
+    API endpoint to list available form templates.
+
+    Returns a list of templates organized by category.
+    """
+    templates = FormTemplate.objects.filter(is_active=True).order_by('category', 'name')
+
+    templates_data = []
+    for template in templates:
+        templates_data.append({
+            'id': template.id,
+            'name': template.name,
+            'slug': template.slug,
+            'description': template.description,
+            'category': template.category,
+            'category_display': template.get_category_display(),
+            'preview_url': template.preview_url,
+            'usage_count': template.usage_count,
+        })
+
+    return JsonResponse({
+        'success': True,
+        'templates': templates_data,
+    })
+
+
+@staff_member_required
+@require_GET
+def form_builder_load_template(request, template_id):
+    """
+    API endpoint to load a form template.
+
+    Returns the template data that can be used to populate the form builder.
+    """
+    template = get_object_or_404(FormTemplate, id=template_id, is_active=True)
+
+    # Increment usage counter
+    template.increment_usage()
+
+    return JsonResponse({
+        'success': True,
+        'template_data': template.template_data,
+    })
+
+
+@staff_member_required
+@require_POST
+def form_builder_clone(request, form_id):
+    """
+    API endpoint to clone an existing form.
+
+    Creates a copy of the form with all fields and settings,
+    appending "(Copy)" to the name and generating a new slug.
+    """
+    try:
+        # Get the original form
+        original_form = get_object_or_404(FormDefinition, id=form_id)
+
+        # Create a new form with copied data
+        with transaction.atomic():
+            # Generate unique slug
+            base_slug = f"{original_form.slug}-copy"
+            slug = base_slug
+            counter = 1
+            while FormDefinition.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            # Clone the form definition
+            cloned_form = FormDefinition.objects.create(
+                name=f"{original_form.name} (Copy)",
+                slug=slug,
+                description=original_form.description,
+                instructions=original_form.instructions,
+                is_active=False,  # Start as inactive
+                version=1,
+                requires_login=original_form.requires_login,
+                allow_save_draft=original_form.allow_save_draft,
+                allow_withdrawal=original_form.allow_withdrawal,
+                created_by=request.user,
+            )
+
+            # Clone all fields
+            for field in original_form.fields.all().order_by('order'):
+                FormField.objects.create(
+                    form_definition=cloned_form,
+                    order=field.order,
+                    field_name=field.field_name,
+                    field_label=field.field_label,
+                    field_type=field.field_type,
+                    required=field.required,
+                    help_text=field.help_text,
+                    placeholder=field.placeholder,
+                    width=field.width,
+                    css_class=field.css_class,
+                    choices=field.choices,
+                    default_value=field.default_value,
+                    prefill_source_config=field.prefill_source_config,
+                    min_value=field.min_value,
+                    max_value=field.max_value,
+                    min_length=field.min_length,
+                    max_length=field.max_length,
+                    regex_validation=field.regex_validation,
+                    regex_error_message=field.regex_error_message,
+                    show_if_field=field.show_if_field,
+                    show_if_value=field.show_if_value,
+                    allowed_extensions=field.allowed_extensions,
+                    max_file_size_mb=field.max_file_size_mb,
+                )
+
+            # Copy group permissions
+            cloned_form.submit_groups.set(original_form.submit_groups.all())
+            cloned_form.view_groups.set(original_form.view_groups.all())
+            cloned_form.admin_groups.set(original_form.admin_groups.all())
+
+            return JsonResponse({
+                'success': True,
+                'form_id': cloned_form.id,
+                'message': f'Form cloned successfully as "{cloned_form.name}"',
+            })
+
+    except Exception as e:
+        logger.exception('Error cloning form')
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @staff_member_required
@@ -253,49 +383,124 @@ def form_builder_preview(request):
     """
     try:
         data = json.loads(request.body)
-        
+
+        # If no fields, return a simple message
+        if not data.get('fields'):
+            return JsonResponse({
+                'success': True,
+                'html': '''
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>No fields yet</strong><br>
+                        Add fields from the palette to see the preview
+                    </div>
+                '''
+            })
+
+        # Generate a unique temporary slug for preview
+        temp_slug = f"preview-{uuid.uuid4().hex[:8]}"
+
         # Create a temporary form definition (not saved to DB)
         form_definition = FormDefinition(
             name=data.get('name', 'Preview'),
-            slug=data.get('slug', 'preview'),
+            slug=temp_slug,
             description=data.get('description', ''),
             instructions=data.get('instructions', ''),
         )
-        
-        # We can't easily preview without saving to DB due to how DynamicForm works
-        # For now, return a simple HTML representation
-        # TODO: Enhance this to use actual DynamicForm rendering
-        
-        fields_html = []
-        for field_data in data.get('fields', []):
-            field_label = field_data.get('field_label', 'Untitled Field')
-            field_type = field_data.get('field_type', 'text')
-            required = field_data.get('required', False)
-            help_text = field_data.get('help_text', '')
-            
-            required_badge = '<span class="text-danger">*</span>' if required else ''
-            help_html = f'<small class="form-text text-muted">{help_text}</small>' if help_text else ''
-            
-            fields_html.append(f'''
-                <div class="mb-3">
-                    <label class="form-label">{field_label} {required_badge}</label>
-                    <input type="text" class="form-control" placeholder="{field_type} field">
-                    {help_html}
+
+        # Use actual DynamicForm rendering with crispy forms
+        # We'll create temporary objects in a rolled-back transaction
+        from django.db import transaction
+        from .forms import DynamicForm
+
+        with transaction.atomic():
+            # Save the form definition temporarily
+            form_definition.is_active = data.get('is_active', True)
+            form_definition.requires_login = data.get('requires_login', True)
+            form_definition.allow_save_draft = data.get('allow_save_draft', True)
+            form_definition.allow_withdrawal = data.get('allow_withdrawal', True)
+            form_definition.save()
+
+            # Create temporary fields
+            for field_data in data.get('fields', []):
+                validation = field_data.get('validation', {})
+                conditional = field_data.get('conditional', {})
+
+                # Build field kwargs
+                field_kwargs = {
+                    'form_definition': form_definition,
+                    'order': field_data.get('order', 0),
+                    'field_name': field_data.get('field_name', 'field'),
+                    'field_label': field_data.get('field_label', 'Field'),
+                    'field_type': field_data.get('field_type', 'text'),
+                    'required': field_data.get('required', False),
+                    'help_text': field_data.get('help_text', ''),
+                    'placeholder': field_data.get('placeholder', ''),
+                    'width': field_data.get('width', 'full'),
+                    'css_class': field_data.get('css_class', ''),
+                    'choices': field_data.get('choices', ''),
+                    'default_value': field_data.get('default_value', ''),
+                    'regex_validation': validation.get('regex_validation', ''),
+                    'regex_error_message': validation.get('regex_error_message', ''),
+                }
+
+                # Add optional fields only if they have values
+                if field_data.get('prefill_source_id'):
+                    field_kwargs['prefill_source_config_id'] = field_data.get('prefill_source_id')
+
+                if validation.get('min_value') is not None:
+                    field_kwargs['min_value'] = validation.get('min_value')
+                if validation.get('max_value') is not None:
+                    field_kwargs['max_value'] = validation.get('max_value')
+                if validation.get('min_length') is not None:
+                    field_kwargs['min_length'] = validation.get('min_length')
+                if validation.get('max_length') is not None:
+                    field_kwargs['max_length'] = validation.get('max_length')
+
+                # Only set show_if_field if it has a value (SlugField doesn't accept empty string)
+                if conditional.get('show_if_field'):
+                    field_kwargs['show_if_field'] = conditional.get('show_if_field')
+                    field_kwargs['show_if_value'] = conditional.get('show_if_value', '')
+
+                FormField.objects.create(**field_kwargs)
+
+            # Generate the form using DynamicForm
+            dynamic_form = DynamicForm(form_definition)
+
+            # Render the form using crispy forms template rendering
+            from django.template import Template, Context
+
+            # Use crispy forms to render the form properly
+            template_string = '''
+                {% load crispy_forms_tags %}
+                {% crispy form %}
+            '''
+            template = Template(template_string)
+            context = Context({'form': dynamic_form})
+            form_html = template.render(context)
+
+            # Wrap in a nice preview container matching the actual form_submit.html layout
+            preview_html = f'''
+                <div class="preview-container">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="mb-1">{form_definition.name}</h5>
+                    </div>
+                    {f'<div class="alert alert-info"><i class="bi bi-info-circle"></i> {form_definition.instructions}</div>' if form_definition.instructions else ''}
+                    <div class="card">
+                        <div class="card-body">
+                            {form_html}
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2 border-top">
+                        <small class="text-muted">
+                            <i class="bi bi-eye"></i> Live preview - changes are not saved until you click "Save Form"
+                        </small>
+                    </div>
                 </div>
-            ''')
-        
-        preview_html = f'''
-            <div class="card">
-                <div class="card-body">
-                    <h3>{data.get('name', 'Form Preview')}</h3>
-                    {f'<p class="text-muted">{data.get("instructions", "")}</p>' if data.get('instructions') else ''}
-                    <form>
-                        {''.join(fields_html)}
-                        <button type="submit" class="btn btn-primary">Submit</button>
-                    </form>
-                </div>
-            </div>
-        '''
+            '''
+
+            # Rollback the transaction to avoid saving to DB
+            transaction.set_rollback(True)
         
         return JsonResponse({
             'success': True,

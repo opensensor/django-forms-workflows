@@ -890,3 +890,95 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"Profile for {self.user.username}"
+
+
+class FormTemplate(models.Model):
+    """
+    Pre-built form templates for common use cases.
+
+    Templates allow users to quickly create forms from common patterns
+    like contact forms, request forms, surveys, etc.
+    """
+
+    CATEGORY_CHOICES = [
+        ('general', 'General'),
+        ('hr', 'Human Resources'),
+        ('it', 'IT & Technology'),
+        ('finance', 'Finance'),
+        ('facilities', 'Facilities'),
+        ('survey', 'Survey'),
+        ('request', 'Request'),
+        ('feedback', 'Feedback'),
+        ('other', 'Other'),
+    ]
+
+    # Basic Info
+    name = models.CharField(
+        max_length=200,
+        help_text="Template name (e.g., 'Contact Form', 'Travel Request')"
+    )
+    slug = models.SlugField(
+        unique=True,
+        help_text="URL-friendly identifier"
+    )
+    description = models.TextField(
+        help_text="Description of what this template is for"
+    )
+    category = models.CharField(
+        max_length=50,
+        choices=CATEGORY_CHOICES,
+        default='general',
+        help_text="Template category for organization"
+    )
+
+    # Template Data
+    template_data = models.JSONField(
+        help_text="JSON structure containing form definition and fields"
+    )
+
+    # Preview
+    preview_url = models.URLField(
+        blank=True,
+        max_length=500,
+        help_text="Optional URL to preview image or screenshot"
+    )
+
+    # Status
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive templates are hidden from users"
+    )
+    is_system = models.BooleanField(
+        default=False,
+        help_text="System templates cannot be deleted"
+    )
+
+    # Usage Stats
+    usage_count = models.IntegerField(
+        default=0,
+        help_text="Number of times this template has been used"
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="User who created this template"
+    )
+
+    class Meta:
+        ordering = ['category', 'name']
+        verbose_name = "Form Template"
+        verbose_name_plural = "Form Templates"
+
+    def __str__(self):
+        return f"{self.name} ({self.get_category_display()})"
+
+    def increment_usage(self):
+        """Increment the usage counter when template is used"""
+        self.usage_count += 1
+        self.save(update_fields=['usage_count'])

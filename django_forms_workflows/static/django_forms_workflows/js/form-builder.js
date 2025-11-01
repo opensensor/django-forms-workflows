@@ -1742,6 +1742,24 @@ class FormBuilder {
                 throw new Error(result.error || 'Failed to save form');
             }
 
+            // Update field IDs with the mapping from backend
+            if (result.field_id_mapping) {
+                this.fields.forEach(field => {
+                    const oldId = String(field.id);
+                    if (result.field_id_mapping[oldId]) {
+                        field.id = result.field_id_mapping[oldId];
+                    }
+                });
+
+                // Re-render to update the UI with new IDs
+                const isMultiStep = document.getElementById('formEnableMultiStep')?.checked;
+                if (isMultiStep) {
+                    this.renderStepTabs();
+                } else {
+                    this.renderCanvas();
+                }
+            }
+
             document.getElementById('saveStatus').textContent = 'Saved successfully';
 
             // If this was a new form, redirect to edit mode

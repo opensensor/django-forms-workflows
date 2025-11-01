@@ -320,11 +320,13 @@ def form_builder_save(request):
             # Track existing field IDs to determine which to delete
             existing_field_ids = set(form_definition.fields.values_list('id', flat=True))
             updated_field_ids = set()
-            
+            field_id_mapping = {}  # Map old IDs to new IDs for frontend update
+
             # Create or update fields
             for field_data in fields_data:
                 field_id = field_data.get('id')
-                
+                old_id = field_id  # Store original ID for mapping
+
                 # Extract field properties
                 field_props = {
                     'form_definition': form_definition,
@@ -341,7 +343,7 @@ def form_builder_save(request):
                     'default_value': field_data.get('default_value', ''),
                     'prefill_source_config_id': field_data.get('prefill_source_id'),
                 }
-                
+
                 # Add validation properties
                 validation = field_data.get('validation', {})
                 field_props.update({
@@ -352,33 +354,44 @@ def form_builder_save(request):
                     'regex_validation': validation.get('regex_validation', ''),
                     'regex_error_message': validation.get('regex_error_message', ''),
                 })
-                
+
                 # Add conditional properties
                 conditional = field_data.get('conditional', {})
                 field_props.update({
                     'show_if_field': conditional.get('show_if_field', ''),
                     'show_if_value': conditional.get('show_if_value', ''),
                 })
-                
+
+                # Add client-side enhancement properties
+                field_props.update({
+                    'conditional_rules': field_data.get('conditional_rules'),
+                    'validation_rules': field_data.get('validation_rules'),
+                    'field_dependencies': field_data.get('field_dependencies'),
+                    'step_number': field_data.get('step_number'),
+                })
+
                 # Create or update field
                 if field_id and isinstance(field_id, int):
                     # Update existing field
                     FormField.objects.filter(id=field_id).update(**field_props)
                     updated_field_ids.add(field_id)
+                    field_id_mapping[str(old_id)] = field_id
                 else:
                     # Create new field
                     new_field = FormField.objects.create(**field_props)
                     updated_field_ids.add(new_field.id)
-            
+                    field_id_mapping[str(old_id)] = new_field.id
+
             # Delete fields that were removed
             fields_to_delete = existing_field_ids - updated_field_ids
             if fields_to_delete:
                 FormField.objects.filter(id__in=fields_to_delete).delete()
-        
+
         return JsonResponse({
             'success': True,
             'form_id': form_definition.id,
             'message': 'Form saved successfully',
+            'field_id_mapping': field_id_mapping,
         })
         
     except json.JSONDecodeError:

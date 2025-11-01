@@ -116,9 +116,12 @@ class FormEnhancements {
             const checked = this.form.querySelector(`input[name="${field.name}"]:checked`);
             return checked ? checked.value : null;
         } else if (field.multiple) {
-            return Array.from(field.selectedOptions).map(opt => opt.value);
+            const values = Array.from(field.selectedOptions).map(opt => opt.value);
+            return values.length > 0 ? values : null;
         }
-        return field.value;
+        // Trim whitespace and return null if empty
+        const value = field.value ? field.value.trim() : '';
+        return value || null;
     }
     
     /**
@@ -629,8 +632,8 @@ class FormEnhancements {
                 color: #28a745;
             }
             .step-number {
-                width: 40px;
-                height: 40px;
+                width: 30px;
+                height: 30px;
                 border-radius: 50%;
                 background: #e9ecef;
                 display: inline-flex;
@@ -638,6 +641,7 @@ class FormEnhancements {
                 justify-content: center;
                 margin-bottom: 5px;
                 font-weight: bold;
+                font-size: 0.875rem;
             }
             .step-indicator.active .step-number {
                 background: #0d6efd;
@@ -648,7 +652,15 @@ class FormEnhancements {
                 color: white;
             }
             .step-title {
-                font-size: 0.875rem;
+                font-size: 0.75rem;
+            }
+            .step-navigation {
+                margin-top: 1.5rem;
+                padding-top: 1.5rem;
+                border-top: 1px solid #dee2e6;
+            }
+            .step-navigation .btn {
+                min-width: 120px;
             }
         `;
         document.head.appendChild(style);
@@ -659,11 +671,12 @@ class FormEnhancements {
      */
     createStepNavigation() {
         const navContainer = document.createElement('div');
-        navContainer.className = 'step-navigation mt-4 d-flex justify-content-between';
+        navContainer.className = 'step-navigation d-flex justify-content-between align-items-center gap-2';
         navContainer.innerHTML = `
             <button type="button" class="btn btn-secondary" id="btnPrevStep" style="display: none;">
                 <i class="bi bi-arrow-left"></i> Previous
             </button>
+            <div class="flex-grow-1"></div>
             <button type="button" class="btn btn-primary" id="btnNextStep">
                 Next <i class="bi bi-arrow-right"></i>
             </button>
@@ -674,6 +687,17 @@ class FormEnhancements {
         if (submitButton) {
             submitButton.style.display = 'none'; // Hide until last step
             submitButton.parentElement.insertBefore(navContainer, submitButton);
+
+            // Also add Save Draft button if enabled
+            if (this.options.enableAutoSave) {
+                const saveDraftBtn = document.createElement('button');
+                saveDraftBtn.type = 'button';
+                saveDraftBtn.className = 'btn btn-outline-secondary';
+                saveDraftBtn.id = 'btnSaveDraft';
+                saveDraftBtn.innerHTML = '<i class="bi bi-save"></i> Save Draft';
+                saveDraftBtn.addEventListener('click', () => this.saveDraft());
+                navContainer.appendChild(saveDraftBtn);
+            }
         } else {
             this.form.appendChild(navContainer);
         }
@@ -789,6 +813,7 @@ class FormEnhancements {
     validateCurrentStep() {
         const step = this.steps[this.currentStep];
         let isValid = true;
+        let firstInvalidField = null;
 
         // Get fields in current step
         let fields = [];
@@ -805,16 +830,31 @@ class FormEnhancements {
 
         // Validate each field
         fields.forEach(field => {
+            // Clear previous errors first
+            this.clearFieldError(field);
+
             if (field.required && !this.getFieldValue(field)) {
                 this.showFieldError(field, 'This field is required');
                 isValid = false;
-            } else {
+                if (!firstInvalidField) firstInvalidField = field;
+            } else if (field.value) {
+                // Only validate non-empty optional fields
                 this.performFieldValidation(field);
                 if (field.classList.contains('is-invalid')) {
                     isValid = false;
+                    if (!firstInvalidField) firstInvalidField = field;
                 }
             }
         });
+
+        // If validation failed, scroll to first invalid field and show alert
+        if (!isValid && firstInvalidField) {
+            firstInvalidField.focus();
+            firstInvalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Show alert message
+            this.showValidationAlert('Please fill in all required fields before continuing.');
+        }
 
         return isValid;
     }
@@ -965,6 +1005,36 @@ class FormEnhancements {
 
         // Reset timer for next auto-save
         this.resetAutoSaveTimer();
+    }
+
+    /**
+     * Show validation alert message
+     */
+    showValidationAlert(message) {
+        // Remove any existing alert
+        const existingAlert = this.form.querySelector('.validation-alert');
+        if (existingAlert) {
+            existingAlert.remove();
+        }
+
+        // Create alert element
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-danger validation-alert d-flex align-items-center';
+        alert.setAttribute('role', 'alert');
+        alert.innerHTML = `
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <div>${message}</div>
+        `;
+
+        // Insert at the top of the form
+        this.form.insertBefore(alert, this.form.firstChild);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            alert.style.transition = 'opacity 0.3s';
+            alert.style.opacity = '0';
+            setTimeout(() => alert.remove(), 300);
+        }, 5000);
     }
 
     /**

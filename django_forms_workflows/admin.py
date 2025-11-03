@@ -149,6 +149,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         "version",
         "created_at",
         "form_builder_link",
+        "workflow_builder_link",
         "clone_link",
     )
     list_filter = ("is_active", "requires_login")
@@ -165,12 +166,25 @@ class FormDefinitionAdmin(admin.ModelAdmin):
             url = reverse('admin:form_builder_edit', args=[obj.pk])
             return format_html(
                 '<a href="{}" class="button" target="_blank">'
-                '<i class="bi bi-pencil-square"></i> Visual Builder'
+                '<i class="bi bi-pencil-square"></i> Form Builder'
                 '</a>',
                 url
             )
         return "-"
-    form_builder_link.short_description = "Visual Builder"
+    form_builder_link.short_description = "Form Builder"
+
+    def workflow_builder_link(self, obj):
+        """Display a link to the visual workflow builder"""
+        if obj.pk:
+            url = reverse('admin:workflow_builder', args=[obj.pk])
+            return format_html(
+                '<a href="{}" class="button" target="_blank">'
+                '<i class="bi bi-diagram-3"></i> Workflow'
+                '</a>',
+                url
+            )
+        return "-"
+    workflow_builder_link.short_description = "Workflow Builder"
 
     def clone_link(self, obj):
         """Display a link to clone the form"""
@@ -266,11 +280,12 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     clone_forms.short_description = "Clone selected forms"
 
     def get_urls(self):
-        """Add custom URLs for the form builder"""
+        """Add custom URLs for the form builder and workflow builder"""
         urls = super().get_urls()
-        from . import form_builder_views
+        from . import form_builder_views, workflow_builder_views
 
         custom_urls = [
+            # Form Builder URLs
             path(
                 'builder/new/',
                 self.admin_site.admin_view(form_builder_views.form_builder_view),
@@ -310,6 +325,22 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 'builder/api/clone/<int:form_id>/',
                 self.admin_site.admin_view(form_builder_views.form_builder_clone),
                 name='form_builder_api_clone'
+            ),
+            # Workflow Builder URLs
+            path(
+                '<int:form_id>/workflow/',
+                self.admin_site.admin_view(workflow_builder_views.workflow_builder_view),
+                name='workflow_builder'
+            ),
+            path(
+                'workflow/api/load/<int:form_id>/',
+                self.admin_site.admin_view(workflow_builder_views.workflow_builder_load),
+                name='workflow_builder_load'
+            ),
+            path(
+                'workflow/api/save/',
+                self.admin_site.admin_view(workflow_builder_views.workflow_builder_save),
+                name='workflow_builder_save'
             ),
         ]
         return custom_urls + urls

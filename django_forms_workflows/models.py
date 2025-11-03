@@ -505,6 +505,13 @@ class WorkflowDefinition(models.Model):
         help_text='JSON: [{"form_field": "field_name", "db_target": "{{ db.schema.table.column }}", "update_condition": "always"}]',
     )
 
+    # Visual Workflow Builder Data
+    visual_workflow_data = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Visual workflow builder layout (nodes and connections)"
+    )
+
     class Meta:
         verbose_name = "Workflow Definition"
         verbose_name_plural = "Workflow Definitions"
@@ -525,6 +532,7 @@ class PostSubmissionAction(models.Model):
         ("database", "Database Update"),
         ("ldap", "LDAP Update"),
         ("api", "API Call"),
+        ("email", "Email Notification"),
         ("custom", "Custom Handler"),
     ]
 

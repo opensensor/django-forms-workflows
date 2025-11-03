@@ -18,7 +18,8 @@ class WorkflowBuilder {
         this.tempLine = null;
         this.fields = [];
         this.groups = [];
-        
+        this.forms = [];
+
         this.init();
     }
     
@@ -99,9 +100,11 @@ class WorkflowBuilder {
                 this.connections = data.workflow.connections || [];
                 this.fields = data.fields || [];
                 this.groups = data.groups || [];
+                this.forms = data.forms || [];
 
                 console.log('Loaded nodes:', this.nodes);
                 console.log('Loaded connections:', this.connections);
+                console.log('Available forms:', this.forms);
 
                 // Update node ID counter
                 if (this.nodes.length > 0) {
@@ -199,6 +202,16 @@ class WorkflowBuilder {
     
     getDefaultNodeData(type) {
         switch (type) {
+            case 'form':
+                return {
+                    form_id: null,
+                    form_name: 'Select Form',
+                    form_builder_url: '#',
+                    field_count: 0,
+                    fields: [],
+                    has_more_fields: false,
+                    is_initial: false,  // Mark as additional form node
+                };
             case 'approval':
                 return {
                     approval_type: 'group',
@@ -298,6 +311,10 @@ class WorkflowBuilder {
                 html += this.buildFormProperties(node);
                 break;
 
+            case 'approval_config':
+                html += this.buildApprovalConfigProperties(node);
+                break;
+
             case 'approval':
                 html += this.buildApprovalProperties(node);
                 break;
@@ -322,24 +339,175 @@ class WorkflowBuilder {
         return html;
     }
     
+    buildApprovalConfigProperties(node) {
+        const data = node.data || {};
+        const approvalGroups = data.approval_groups || [];
+        const selectedGroupIds = approvalGroups.map(g => g.id);
+
+        let html = `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Configure approval requirements for this workflow.
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="requires_manager_approval"
+                           name="requires_manager_approval" ${data.requires_manager_approval ? 'checked' : ''}
+                           onchange="workflowBuilder.updateApprovalConfig('${node.id}')">
+                    <label class="form-check-label" for="requires_manager_approval">
+                        <i class="bi bi-person-badge"></i> <strong>Require Manager Approval</strong>
+                    </label>
+                </div>
+                <small class="text-muted d-block mt-1">
+                    When enabled, the submitter's manager must approve the request.
+                </small>
+            </div>
+
+            <hr />
+
+            <div class="mb-3">
+                <label class="form-label">
+                    <i class="bi bi-people"></i> <strong>Approval Groups</strong>
+                </label>
+                <small class="text-muted d-block mb-2">
+                    Select groups that can approve this workflow.
+                </small>
+                <select class="form-select" id="approval_groups" name="approval_groups" multiple size="6"
+                        style="width: 100%; min-height: 140px;"
+                        onchange="workflowBuilder.updateApprovalConfig('${node.id}')">
+        `;
+
+        this.groups.forEach(group => {
+            const selected = selectedGroupIds.includes(group.id) ? 'selected' : '';
+            html += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
+        });
+
+        html += `
+                </select>
+                <small class="text-muted d-block mt-1">
+                    Hold Ctrl/Cmd to select multiple groups.
+                </small>
+            </div>
+
+            <div class="mb-3" id="approval_logic_container" style="${approvalGroups.length > 0 ? '' : 'display:none;'}">
+                <label class="form-label">Approval Logic</label>
+                <select class="form-select" name="approval_logic"
+                        onchange="workflowBuilder.updateApprovalConfig('${node.id}')">
+                    <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>
+                        Any (OR)
+                    </option>
+                    <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>
+                        All (AND)
+                    </option>
+                    <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>
+                        Sequential
+                    </option>
+                </select>
+                <small class="text-muted d-block mt-1">
+                    <strong>Any:</strong> First approver completes the step (OR logic)<br>
+                    <strong>All:</strong> All approvers must approve (AND logic)<br>
+                    <strong>Sequential:</strong> Approvers must approve in order
+                </small>
+            </div>
+
+            <hr />
+
+            <div class="alert ${data.is_implicit ? 'alert-success' : 'alert-warning'} mb-0">
+                <i class="bi bi-${data.is_implicit ? 'check-circle' : 'hourglass-split'}"></i>
+                <strong>Current Status:</strong>
+                ${data.is_implicit ? 'Implicit Approval (auto-approved on submission)' : 'Explicit Approval Required'}
+            </div>
+        `;
+
+        return html;
+    }
+
     buildFormProperties(node) {
         const data = node.data || {};
         const fields = data.fields || [];
         const hasMoreFields = data.has_more_fields || false;
+        const isInitial = data.is_initial !== false;  // Initial form node (default true for backward compatibility)
 
         let html = `
             <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> This node represents the form that users fill out and submit.
+                <i class="bi bi-info-circle"></i> This node represents ${isInitial ? 'the initial form' : 'an additional form'} that users fill out and submit.
             </div>
-            <div class="mb-3">
-                <label class="form-label">Form Name</label>
-                <input type="text" class="form-control" value="${this.escapeHtml(data.form_name || '')}" disabled />
-            </div>
+        `;
+
+        // For additional form nodes, show form selector
+        if (!isInitial) {
+            html += `
+                <div class="mb-3">
+                    <label class="form-label"><i class="bi bi-file-earmark-text"></i> <strong>Select Form</strong></label>
+                    <select class="form-select" name="form_id" onchange="workflowBuilder.updateFormSelection('${node.id}', this.value)">
+                        <option value="">-- Select a form --</option>
+            `;
+
+            this.forms.forEach(form => {
+                const selected = data.form_id == form.id ? 'selected' : '';
+                html += `<option value="${form.id}" ${selected}>${this.escapeHtml(form.name)} (${form.field_count} fields)</option>`;
+            });
+
+            html += `
+                    </select>
+                    <small class="form-text text-muted">Choose which form to display at this step</small>
+                </div>
+            `;
+        } else {
+            // For initial form node, just show the name (read-only)
+            html += `
+                <div class="mb-3">
+                    <label class="form-label">Form Name</label>
+                    <input type="text" class="form-control" value="${this.escapeHtml(data.form_name || '')}" disabled />
+                </div>
+            `;
+        }
+
+        html += `
             <div class="mb-3">
                 <label class="form-label">Total Fields</label>
                 <input type="text" class="form-control" value="${data.field_count || 0}" disabled />
             </div>
         `;
+
+        // Show multi-step information if enabled
+        if (data.enable_multi_step && data.step_count > 0) {
+            html += `
+                <div class="alert alert-success">
+                    <i class="bi bi-list-ol"></i> <strong>Multi-Step Form</strong>
+                    <br><small class="text-muted">${data.step_count} step${data.step_count > 1 ? 's' : ''} configured</small>
+                </div>
+            `;
+
+            // Show step details
+            if (data.form_steps && data.form_steps.length > 0) {
+                html += `
+                    <div class="mb-3">
+                        <label class="form-label">Form Steps</label>
+                        <div class="list-group">
+                `;
+
+                data.form_steps.forEach((step, index) => {
+                    const stepFields = step.fields || [];
+                    html += `
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong><i class="bi bi-${index + 1}-circle"></i> ${this.escapeHtml(step.title || `Step ${index + 1}`)}</strong>
+                                    <small class="text-muted d-block">${stepFields.length} field${stepFields.length !== 1 ? 's' : ''}</small>
+                                </div>
+                                <span class="badge bg-primary">${index + 1}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+        }
 
         if (fields.length > 0) {
             html += `
@@ -385,8 +553,8 @@ class WorkflowBuilder {
         }
 
         html += `
-            <div class="d-grid">
-                <a href="${data.form_builder_url || '#'}" target="_blank" class="btn btn-primary">
+            <div class="mt-3">
+                <a href="${data.form_builder_url || '#'}" target="_blank" class="btn btn-outline-primary btn-sm w-100">
                     <i class="bi bi-pencil-square"></i> Edit Form in Form Builder
                 </a>
             </div>
@@ -564,11 +732,73 @@ class WorkflowBuilder {
             this.render();
         }
     }
+
+    updateFormSelection(nodeId, formId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        // Find the selected form
+        const selectedForm = this.forms.find(f => f.id == formId);
+        if (!selectedForm) {
+            // Clear form data if no form selected
+            node.data.form_id = null;
+            node.data.form_name = 'Select Form';
+            node.data.form_builder_url = '#';
+            node.data.field_count = 0;
+            node.data.fields = [];
+            node.data.has_more_fields = false;
+        } else {
+            // Update node with selected form data
+            node.data.form_id = selectedForm.id;
+            node.data.form_name = selectedForm.name;
+            node.data.form_builder_url = `/admin/django_forms_workflows/formdefinition/${selectedForm.id}/builder/`;
+            node.data.field_count = selectedForm.field_count;
+            // Note: We don't load full field details here for performance
+            // The backend will load them when needed
+            node.data.fields = [];
+            node.data.has_more_fields = selectedForm.field_count > 0;
+        }
+
+        // Re-render to update the node display and properties panel
+        this.render();
+        this.selectNode(nodeId); // Re-select to refresh properties panel
+    }
+
+    updateApprovalConfig(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        // Get form values
+        const requiresManager = document.getElementById('requires_manager_approval').checked;
+        const groupSelect = document.getElementById('approval_groups');
+        const selectedGroups = Array.from(groupSelect.selectedOptions).map(opt => ({
+            id: parseInt(opt.value),
+            name: opt.text
+        }));
+        const approvalLogic = document.querySelector('select[name="approval_logic"]').value;
+
+        // Update node data
+        node.data.requires_manager_approval = requiresManager;
+        node.data.approval_groups = selectedGroups;
+        node.data.approval_logic = approvalLogic;
+        node.data.is_implicit = !requiresManager && selectedGroups.length === 0;
+
+        // Show/hide approval logic based on group selection
+        const logicContainer = document.getElementById('approval_logic_container');
+        if (logicContainer) {
+            logicContainer.style.display = selectedGroups.length > 0 ? '' : 'none';
+        }
+
+        // Re-render to update the node display and properties panel
+        this.render();
+        this.selectNode(nodeId); // Re-select to refresh properties panel
+    }
     
     getNodeTypeLabel(type) {
         const labels = {
             start: 'Start',
             form: 'Form Submission',
+            approval_config: 'Approval Configuration',
             approval: 'Approval Step',
             condition: 'Condition',
             action: 'Action',
@@ -617,6 +847,15 @@ class WorkflowBuilder {
         const icon = this.getNodeIcon(node.type);
         const label = node.data.step_name || node.data.name || this.getNodeTypeLabel(node.type);
 
+        // Determine if node can be deleted
+        // - start: never deletable
+        // - approval_config: never deletable
+        // - form: only deletable if it's an additional form (is_initial === false)
+        // - all others: deletable
+        const canDelete = node.type !== 'start' &&
+                         node.type !== 'approval_config' &&
+                         !(node.type === 'form' && node.data.is_initial !== false);
+
         div.innerHTML = `
             <div class="node-header">
                 <div class="node-icon ${node.type}">
@@ -627,7 +866,7 @@ class WorkflowBuilder {
             <div class="node-content">
                 ${this.getNodeDescription(node)}
             </div>
-            ${node.type !== 'start' && node.type !== 'form' ? `
+            ${canDelete ? `
                 <div class="node-actions">
                     <button class="btn btn-sm btn-outline-danger" onclick="workflowBuilder.deleteNode('${node.id}')">
                         <i class="bi bi-trash"></i>
@@ -679,6 +918,7 @@ class WorkflowBuilder {
         const icons = {
             start: 'play-circle',
             form: 'file-earmark-text',
+            approval_config: 'shield-check',
             approval: 'person-check',
             condition: 'diagram-3',
             action: 'lightning',
@@ -695,7 +935,39 @@ class WorkflowBuilder {
             case 'form':
                 const fieldCount = node.data.field_count || 0;
                 const formName = node.data.form_name || 'Form';
-                return `${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${node.data.form_builder_url || '#'}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
+                const isInitial = node.data.is_initial !== false;
+                const isMultiStep = node.data.enable_multi_step && node.data.step_count > 0;
+
+                // Show different description for initial vs additional forms
+                if (!isInitial && !node.data.form_id) {
+                    return '<span class="badge bg-secondary"><i class="bi bi-exclamation-circle"></i> No Form Selected</span><br><small class="text-muted">Select a form in properties</small>';
+                }
+
+                let badges = '';
+                if (!isInitial) {
+                    badges += '<span class="badge bg-info">Additional Step</span> ';
+                }
+                if (isMultiStep) {
+                    badges += `<span class="badge bg-success"><i class="bi bi-list-ol"></i> ${node.data.step_count} Steps</span> `;
+                }
+
+                const badgeHtml = badges ? `${badges}<br>` : '';
+                return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${node.data.form_builder_url || '#'}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
+            case 'approval_config':
+                if (node.data.is_implicit) {
+                    return '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Implicit Approval</span><br><small class="text-muted">Auto-approved on submission</small>';
+                } else {
+                    const parts = [];
+                    if (node.data.requires_manager_approval) {
+                        parts.push('Manager');
+                    }
+                    if (node.data.approval_groups && node.data.approval_groups.length > 0) {
+                        const groupCount = node.data.approval_groups.length;
+                        const logic = node.data.approval_logic || 'any';
+                        parts.push(`${groupCount} group${groupCount > 1 ? 's' : ''} (${logic})`);
+                    }
+                    return `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> Requires Approval</span><br><small class="text-muted">${parts.join(' + ')}</small>`;
+                }
             case 'approval':
                 if (node.data.approval_type === 'manager') {
                     return 'Manager approval required';

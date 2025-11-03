@@ -70,22 +70,33 @@ def workflow_builder_load(request, form_id):
             'id': group.id,
             'name': group.name,
         })
-    
+
+    # Get all available forms for multi-step workflows
+    forms = []
+    for form in FormDefinition.objects.filter(is_active=True).order_by('name'):
+        forms.append({
+            'id': form.id,
+            'name': form.name,
+            'slug': form.slug,
+            'field_count': form.fields.count(),
+        })
+
     # Build workflow data
     workflow_data = {
         'nodes': [],
         'connections': [],
     }
-    
+
     if workflow:
         # Convert existing workflow to visual format
         workflow_data = convert_workflow_to_visual(workflow, form_definition)
-    
+
     return JsonResponse({
         'success': True,
         'workflow': workflow_data,
         'fields': fields,
         'groups': groups,
+        'forms': forms,
     })
 
 
@@ -180,6 +191,10 @@ def convert_workflow_to_visual(workflow, form_definition):
             'form_id': form_definition.id,
             'form_builder_url': form_builder_url,
             'field_count': len(form_fields),
+            'is_initial': True,  # Mark as the initial form node (not deletable)
+            'enable_multi_step': form_definition.enable_multi_step,
+            'form_steps': form_definition.form_steps or [],
+            'step_count': len(form_definition.form_steps) if form_definition.form_steps else 0,
             'fields': [
                 {
                     'name': field.field_name,
@@ -199,6 +214,39 @@ def convert_workflow_to_visual(workflow, form_definition):
         'to': form_node['id'],
     })
     last_node_id = form_node['id']
+    node_id_counter += 1
+    current_x += HORIZONTAL_SPACING
+
+    # Approval configuration node (always present - shows approval requirements)
+    approval_groups = list(workflow.approval_groups.all())
+    has_manager_approval = workflow.requires_manager_approval
+    has_group_approvals = len(approval_groups) > 0
+    is_implicit_approval = not has_manager_approval and not has_group_approvals
+
+    approval_config_node = {
+        'id': f'node_{node_id_counter}',
+        'type': 'approval_config',
+        'x': current_x,
+        'y': current_y,
+        'data': {
+            'is_implicit': is_implicit_approval,
+            'requires_manager_approval': has_manager_approval,
+            'approval_groups': [
+                {
+                    'id': group.id,
+                    'name': group.name,
+                }
+                for group in approval_groups
+            ],
+            'approval_logic': workflow.approval_logic if has_group_approvals else None,
+        },
+    }
+    nodes.append(approval_config_node)
+    connections.append({
+        'from': last_node_id,
+        'to': approval_config_node['id'],
+    })
+    last_node_id = approval_config_node['id']
     node_id_counter += 1
     current_x += HORIZONTAL_SPACING
 
@@ -223,8 +271,7 @@ def convert_workflow_to_visual(workflow, form_definition):
         node_id_counter += 1
         current_x += HORIZONTAL_SPACING
 
-    # Group approval nodes
-    approval_groups = list(workflow.approval_groups.all())
+    # Group approval nodes (already fetched above)
     if approval_groups:
         if workflow.approval_logic == 'sequence':
             # Sequential nodes - horizontal flow
@@ -381,7 +428,21 @@ def convert_visual_to_workflow(workflow_data, form_definition):
     email_nodes = []
 
     for node in nodes:
-        if node['type'] == 'approval':
+        if node['type'] == 'approval_config':
+            # Extract approval configuration from the approval_config node
+            data = node.get('data', {})
+            requires_manager_approval = data.get('requires_manager_approval', False)
+            approval_groups_data = data.get('approval_groups', [])
+            approval_logic = data.get('approval_logic', 'any')
+
+            # Extract group IDs
+            for group_data in approval_groups_data:
+                approval_groups.append(group_data['id'])
+
+            # Set requires_approval if any approval is configured
+            requires_approval = requires_manager_approval or len(approval_groups) > 0
+
+        elif node['type'] == 'approval':
             requires_approval = True
             data = node.get('data', {})
 

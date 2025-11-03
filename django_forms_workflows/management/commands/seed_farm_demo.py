@@ -499,5 +499,7 @@ class Command(BaseCommand):
         self.stdout.write("  • owner_olive")
         self.stdout.write("\nPost-submission actions:")
         self.stdout.write("  • Update User Profile - Updates auth_user table (ENABLED)")
-        self.stdout.write("  • API Call - Log contact updates to external API (disabled)")
+        self.stdout.write(
+            "  • API Call - Log contact updates to external API (disabled)"
+        )
         self.stdout.write("  View in Admin → Post-Submission Actions")

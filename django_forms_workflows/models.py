@@ -68,7 +68,7 @@ class FormDefinition(models.Model):
     # Client-Side Enhancements
     enable_multi_step = models.BooleanField(
         default=False,
-        help_text='Enable multi-step form with progress indicators',
+        help_text="Enable multi-step form with progress indicators",
     )
     form_steps = models.JSONField(
         blank=True,
@@ -77,11 +77,11 @@ class FormDefinition(models.Model):
     )
     enable_auto_save = models.BooleanField(
         default=True,
-        help_text='Enable automatic draft saving',
+        help_text="Enable automatic draft saving",
     )
     auto_save_interval = models.IntegerField(
         default=30,
-        help_text='Auto-save interval in seconds',
+        help_text="Auto-save interval in seconds",
     )
 
     # Metadata
@@ -393,7 +393,7 @@ class FormField(models.Model):
     step_number = models.IntegerField(
         null=True,
         blank=True,
-        help_text='Step number for multi-step forms (1, 2, 3, etc.)',
+        help_text="Step number for multi-step forms (1, 2, 3, etc.)",
     )
 
     # File Upload Settings
@@ -509,7 +509,7 @@ class WorkflowDefinition(models.Model):
     visual_workflow_data = models.JSONField(
         blank=True,
         null=True,
-        help_text="Visual workflow builder layout (nodes and connections)"
+        help_text="Visual workflow builder layout (nodes and connections)",
     )
 
     class Meta:
@@ -956,34 +956,29 @@ class FormTemplate(models.Model):
     """
 
     CATEGORY_CHOICES = [
-        ('general', 'General'),
-        ('hr', 'Human Resources'),
-        ('it', 'IT & Technology'),
-        ('finance', 'Finance'),
-        ('facilities', 'Facilities'),
-        ('survey', 'Survey'),
-        ('request', 'Request'),
-        ('feedback', 'Feedback'),
-        ('other', 'Other'),
+        ("general", "General"),
+        ("hr", "Human Resources"),
+        ("it", "IT & Technology"),
+        ("finance", "Finance"),
+        ("facilities", "Facilities"),
+        ("survey", "Survey"),
+        ("request", "Request"),
+        ("feedback", "Feedback"),
+        ("other", "Other"),
     ]
 
     # Basic Info
     name = models.CharField(
         max_length=200,
-        help_text="Template name (e.g., 'Contact Form', 'Travel Request')"
+        help_text="Template name (e.g., 'Contact Form', 'Travel Request')",
     )
-    slug = models.SlugField(
-        unique=True,
-        help_text="URL-friendly identifier"
-    )
-    description = models.TextField(
-        help_text="Description of what this template is for"
-    )
+    slug = models.SlugField(unique=True, help_text="URL-friendly identifier")
+    description = models.TextField(help_text="Description of what this template is for")
     category = models.CharField(
         max_length=50,
         choices=CATEGORY_CHOICES,
-        default='general',
-        help_text="Template category for organization"
+        default="general",
+        help_text="Template category for organization",
     )
 
     # Template Data
@@ -995,23 +990,20 @@ class FormTemplate(models.Model):
     preview_url = models.URLField(
         blank=True,
         max_length=500,
-        help_text="Optional URL to preview image or screenshot"
+        help_text="Optional URL to preview image or screenshot",
     )
 
     # Status
     is_active = models.BooleanField(
-        default=True,
-        help_text="Inactive templates are hidden from users"
+        default=True, help_text="Inactive templates are hidden from users"
     )
     is_system = models.BooleanField(
-        default=False,
-        help_text="System templates cannot be deleted"
+        default=False, help_text="System templates cannot be deleted"
     )
 
     # Usage Stats
     usage_count = models.IntegerField(
-        default=0,
-        help_text="Number of times this template has been used"
+        default=0, help_text="Number of times this template has been used"
     )
 
     # Metadata
@@ -1022,11 +1014,11 @@ class FormTemplate(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        help_text="User who created this template"
+        help_text="User who created this template",
     )
 
     class Meta:
-        ordering = ['category', 'name']
+        ordering = ["category", "name"]
         verbose_name = "Form Template"
         verbose_name_plural = "Form Templates"
 
@@ -1036,4 +1028,4 @@ class FormTemplate(models.Model):
     def increment_usage(self):
         """Increment the usage counter when template is used"""
         self.usage_count += 1
-        self.save(update_fields=['usage_count'])
+        self.save(update_fields=["usage_count"])

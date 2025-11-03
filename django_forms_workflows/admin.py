@@ -158,32 +158,34 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     inlines = [FormFieldInline]
     filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
-    actions = ['clone_forms']
+    actions = ["clone_forms"]
 
     def form_builder_link(self, obj):
         """Display a link to the visual form builder"""
         if obj.pk:
-            url = reverse('admin:form_builder_edit', args=[obj.pk])
+            url = reverse("admin:form_builder_edit", args=[obj.pk])
             return format_html(
                 '<a href="{}" class="button" target="_blank">'
                 '<i class="bi bi-pencil-square"></i> Form Builder'
-                '</a>',
-                url
+                "</a>",
+                url,
             )
         return "-"
+
     form_builder_link.short_description = "Form Builder"
 
     def workflow_builder_link(self, obj):
         """Display a link to the visual workflow builder"""
         if obj.pk:
-            url = reverse('admin:workflow_builder', args=[obj.pk])
+            url = reverse("admin:workflow_builder", args=[obj.pk])
             return format_html(
                 '<a href="{}" class="button" target="_blank">'
                 '<i class="bi bi-diagram-3"></i> Workflow'
-                '</a>',
-                url
+                "</a>",
+                url,
             )
         return "-"
+
     workflow_builder_link.short_description = "Workflow Builder"
 
     def clone_link(self, obj):
@@ -192,11 +194,12 @@ class FormDefinitionAdmin(admin.ModelAdmin):
             return format_html(
                 '<a href="#" class="button clone-form-btn" data-form-id="{}" data-form-name="{}">'
                 '<i class="bi bi-files"></i> Clone'
-                '</a>',
+                "</a>",
                 obj.pk,
-                obj.name
+                obj.name,
             )
         return "-"
+
     clone_link.short_description = "Clone"
 
     def clone_forms(self, request, queryset):
@@ -231,7 +234,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                     )
 
                     # Clone all fields
-                    for field in form.fields.all().order_by('order'):
+                    for field in form.fields.all().order_by("order"):
                         FormField.objects.create(
                             form_definition=cloned_form,
                             order=field.order,
@@ -268,15 +271,14 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 self.message_user(
                     request,
                     f'Error cloning form "{form.name}": {str(e)}',
-                    level='ERROR'
+                    level="ERROR",
                 )
 
         if cloned_count > 0:
             self.message_user(
-                request,
-                f'Successfully cloned {cloned_count} form(s)',
-                level='SUCCESS'
+                request, f"Successfully cloned {cloned_count} form(s)", level="SUCCESS"
             )
+
     clone_forms.short_description = "Clone selected forms"
 
     def get_urls(self):
@@ -287,60 +289,68 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         custom_urls = [
             # Form Builder URLs
             path(
-                'builder/new/',
+                "builder/new/",
                 self.admin_site.admin_view(form_builder_views.form_builder_view),
-                name='form_builder_new'
+                name="form_builder_new",
             ),
             path(
-                'builder/<int:form_id>/',
+                "builder/<int:form_id>/",
                 self.admin_site.admin_view(form_builder_views.form_builder_view),
-                name='form_builder_edit'
+                name="form_builder_edit",
             ),
             path(
-                'builder/api/load/<int:form_id>/',
+                "builder/api/load/<int:form_id>/",
                 self.admin_site.admin_view(form_builder_views.form_builder_load),
-                name='form_builder_api_load'
+                name="form_builder_api_load",
             ),
             path(
-                'builder/api/save/',
+                "builder/api/save/",
                 self.admin_site.admin_view(form_builder_views.form_builder_save),
-                name='form_builder_api_save'
+                name="form_builder_api_save",
             ),
             path(
-                'builder/api/preview/',
+                "builder/api/preview/",
                 self.admin_site.admin_view(form_builder_views.form_builder_preview),
-                name='form_builder_api_preview'
+                name="form_builder_api_preview",
             ),
             path(
-                'builder/api/templates/',
+                "builder/api/templates/",
                 self.admin_site.admin_view(form_builder_views.form_builder_templates),
-                name='form_builder_api_templates'
+                name="form_builder_api_templates",
             ),
             path(
-                'builder/api/templates/<int:template_id>/',
-                self.admin_site.admin_view(form_builder_views.form_builder_load_template),
-                name='form_builder_api_load_template'
+                "builder/api/templates/<int:template_id>/",
+                self.admin_site.admin_view(
+                    form_builder_views.form_builder_load_template
+                ),
+                name="form_builder_api_load_template",
             ),
             path(
-                'builder/api/clone/<int:form_id>/',
+                "builder/api/clone/<int:form_id>/",
                 self.admin_site.admin_view(form_builder_views.form_builder_clone),
-                name='form_builder_api_clone'
+                name="form_builder_api_clone",
             ),
             # Workflow Builder URLs
             path(
-                '<int:form_id>/workflow/',
-                self.admin_site.admin_view(workflow_builder_views.workflow_builder_view),
-                name='workflow_builder'
+                "<int:form_id>/workflow/",
+                self.admin_site.admin_view(
+                    workflow_builder_views.workflow_builder_view
+                ),
+                name="workflow_builder",
             ),
             path(
-                'workflow/api/load/<int:form_id>/',
-                self.admin_site.admin_view(workflow_builder_views.workflow_builder_load),
-                name='workflow_builder_load'
+                "workflow/api/load/<int:form_id>/",
+                self.admin_site.admin_view(
+                    workflow_builder_views.workflow_builder_load
+                ),
+                name="workflow_builder_load",
             ),
             path(
-                'workflow/api/save/',
-                self.admin_site.admin_view(workflow_builder_views.workflow_builder_save),
-                name='workflow_builder_save'
+                "workflow/api/save/",
+                self.admin_site.admin_view(
+                    workflow_builder_views.workflow_builder_save
+                ),
+                name="workflow_builder_save",
             ),
         ]
         return custom_urls + urls
@@ -648,15 +658,13 @@ class FormTemplateAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Basic Information",
-            {
-                "fields": ("name", "slug", "description", "category")
-            },
+            {"fields": ("name", "slug", "description", "category")},
         ),
         (
             "Template Data",
             {
                 "fields": ("template_data",),
-                "description": "JSON structure containing form definition and fields"
+                "description": "JSON structure containing form definition and fields",
             },
         ),
         (

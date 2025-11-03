@@ -64,7 +64,7 @@ class BaseActionHandler(ABC):
                 return getattr(self.user, field_name, None)
 
             # Then try to get from user profile if it exists
-            if hasattr(self.user, 'profile'):
+            if hasattr(self.user, "profile"):
                 profile = self.user.profile
                 return getattr(profile, field_name, None)
 

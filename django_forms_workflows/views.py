@@ -123,6 +123,7 @@ def form_submit(request, slug):
 
     # Get form enhancements configuration
     import json
+
     form_enhancements_config = json.dumps(form.get_enhancements_config())
 
     return render(
@@ -145,7 +146,9 @@ def form_auto_save(request, slug):
 
     # Check permissions
     if not user_can_submit_form(request.user, form_def):
-        return JsonResponse({"success": False, "error": "Permission denied"}, status=403)
+        return JsonResponse(
+            {"success": False, "error": "Permission denied"}, status=403
+        )
 
     try:
         # Parse JSON data
@@ -159,7 +162,7 @@ def form_auto_save(request, slug):
             defaults={
                 "submission_ip": get_client_ip(request),
                 "user_agent": request.META.get("HTTP_USER_AGENT", ""),
-            }
+            },
         )
 
         # Update form data
@@ -176,12 +179,14 @@ def form_auto_save(request, slug):
             comments="Auto-saved draft",
         )
 
-        return JsonResponse({
-            "success": True,
-            "message": "Draft saved",
-            "draft_id": draft.id,
-            "saved_at": draft.created_at.isoformat(),
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Draft saved",
+                "draft_id": draft.id,
+                "saved_at": draft.created_at.isoformat(),
+            }
+        )
 
     except Exception as e:
         logger.error(f"Auto-save error for form {slug}: {e}")

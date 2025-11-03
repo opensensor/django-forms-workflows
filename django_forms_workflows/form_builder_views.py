@@ -10,13 +10,11 @@ import logging
 import uuid
 
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
-from .forms import DynamicForm
 from .models import FormDefinition, FormField, FormTemplate, PrefillSource
 
 logger = logging.getLogger(__name__)
@@ -469,6 +467,7 @@ def form_builder_preview(request):
         # Use actual DynamicForm rendering with crispy forms
         # We'll create temporary objects in a rolled-back transaction
         from django.db import transaction
+
         from .forms import DynamicForm
 
         with transaction.atomic():
@@ -528,7 +527,7 @@ def form_builder_preview(request):
             dynamic_form = DynamicForm(form_definition)
 
             # Render the form using crispy forms template rendering
-            from django.template import Template, Context
+            from django.template import Context, Template
 
             # Use crispy forms to render the form properly
             template_string = """

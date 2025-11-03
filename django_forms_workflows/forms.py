@@ -62,7 +62,7 @@ class DynamicForm(forms.Form):
                             Row(
                                 Column(Field(field.field_name), css_class="col-md-6"),
                             ),
-                            css_class=field_wrapper_class
+                            css_class=field_wrapper_class,
                         )
                     )
                 elif field.width == "third":
@@ -71,15 +71,12 @@ class DynamicForm(forms.Form):
                             Row(
                                 Column(Field(field.field_name), css_class="col-md-4"),
                             ),
-                            css_class=field_wrapper_class
+                            css_class=field_wrapper_class,
                         )
                     )
                 else:
                     layout_fields.append(
-                        Div(
-                            Field(field.field_name),
-                            css_class=field_wrapper_class
-                        )
+                        Div(Field(field.field_name), css_class=field_wrapper_class)
                     )
 
         # Add submit buttons
@@ -96,8 +93,8 @@ class DynamicForm(forms.Form):
         # Add form ID for JavaScript targeting
         self.helper.form_id = f"form_{form_definition.slug}"
         self.helper.attrs = {
-            'data-form-enhancements': 'true',
-            'data-form-slug': form_definition.slug,
+            "data-form-enhancements": "true",
+            "data-form-slug": form_definition.slug,
         }
 
     def _parse_choices(self, choices):
@@ -382,33 +379,40 @@ class DynamicForm(forms.Form):
         import json
 
         config = {
-            'autoSaveEnabled': getattr(self.form_definition, 'enable_auto_save', True),
-            'autoSaveInterval': getattr(self.form_definition, 'auto_save_interval', 30) * 1000,  # Convert to ms
-            'autoSaveEndpoint': f'/forms/{self.form_definition.slug}/auto-save/',
-            'multiStepEnabled': getattr(self.form_definition, 'enable_multi_step', False),
-            'steps': getattr(self.form_definition, 'form_steps', None) or [],
-            'conditionalRules': [],
-            'fieldDependencies': [],
-            'validationRules': [],
+            "autoSaveEnabled": getattr(self.form_definition, "enable_auto_save", True),
+            "autoSaveInterval": getattr(self.form_definition, "auto_save_interval", 30)
+            * 1000,  # Convert to ms
+            "autoSaveEndpoint": f"/forms/{self.form_definition.slug}/auto-save/",
+            "multiStepEnabled": getattr(
+                self.form_definition, "enable_multi_step", False
+            ),
+            "steps": getattr(self.form_definition, "form_steps", None) or [],
+            "conditionalRules": [],
+            "fieldDependencies": [],
+            "validationRules": [],
         }
 
         # Collect conditional rules from all fields
         for field in self.form_definition.fields.all():
             # Legacy simple conditional logic
             if field.show_if_field and field.show_if_value:
-                config['conditionalRules'].append({
-                    'targetField': field.field_name,
-                    'action': 'show',
-                    'operator': 'AND',
-                    'conditions': [{
-                        'field': field.show_if_field,
-                        'operator': 'equals',
-                        'value': field.show_if_value,
-                    }]
-                })
+                config["conditionalRules"].append(
+                    {
+                        "targetField": field.field_name,
+                        "action": "show",
+                        "operator": "AND",
+                        "conditions": [
+                            {
+                                "field": field.show_if_field,
+                                "operator": "equals",
+                                "value": field.show_if_value,
+                            }
+                        ],
+                    }
+                )
 
             # Advanced conditional rules
-            if hasattr(field, 'conditional_rules') and field.conditional_rules:
+            if hasattr(field, "conditional_rules") and field.conditional_rules:
                 if isinstance(field.conditional_rules, str):
                     try:
                         rules = json.loads(field.conditional_rules)
@@ -418,13 +422,12 @@ class DynamicForm(forms.Form):
                     rules = field.conditional_rules
 
                 if rules:
-                    config['conditionalRules'].append({
-                        'targetField': field.field_name,
-                        **rules
-                    })
+                    config["conditionalRules"].append(
+                        {"targetField": field.field_name, **rules}
+                    )
 
             # Field dependencies
-            if hasattr(field, 'field_dependencies') and field.field_dependencies:
+            if hasattr(field, "field_dependencies") and field.field_dependencies:
                 if isinstance(field.field_dependencies, str):
                     try:
                         deps = json.loads(field.field_dependencies)
@@ -434,66 +437,73 @@ class DynamicForm(forms.Form):
                     deps = field.field_dependencies
 
                 if deps:
-                    config['fieldDependencies'].extend(deps)
+                    config["fieldDependencies"].extend(deps)
 
             # Validation rules
             validation_rules = []
 
             if field.required:
-                validation_rules.append({
-                    'type': 'required',
-                    'message': f'{field.field_label} is required'
-                })
+                validation_rules.append(
+                    {"type": "required", "message": f"{field.field_label} is required"}
+                )
 
-            if field.field_type == 'email':
-                validation_rules.append({
-                    'type': 'email',
-                    'message': 'Please enter a valid email address'
-                })
+            if field.field_type == "email":
+                validation_rules.append(
+                    {"type": "email", "message": "Please enter a valid email address"}
+                )
 
-            if field.field_type == 'url':
-                validation_rules.append({
-                    'type': 'url',
-                    'message': 'Please enter a valid URL'
-                })
+            if field.field_type == "url":
+                validation_rules.append(
+                    {"type": "url", "message": "Please enter a valid URL"}
+                )
 
             if field.min_length:
-                validation_rules.append({
-                    'type': 'min',
-                    'value': field.min_length,
-                    'message': f'Minimum {field.min_length} characters required'
-                })
+                validation_rules.append(
+                    {
+                        "type": "min",
+                        "value": field.min_length,
+                        "message": f"Minimum {field.min_length} characters required",
+                    }
+                )
 
             if field.max_length:
-                validation_rules.append({
-                    'type': 'max',
-                    'value': field.max_length,
-                    'message': f'Maximum {field.max_length} characters allowed'
-                })
+                validation_rules.append(
+                    {
+                        "type": "max",
+                        "value": field.max_length,
+                        "message": f"Maximum {field.max_length} characters allowed",
+                    }
+                )
 
             if field.min_value is not None:
-                validation_rules.append({
-                    'type': 'min_value',
-                    'value': float(field.min_value),
-                    'message': f'Minimum value is {field.min_value}'
-                })
+                validation_rules.append(
+                    {
+                        "type": "min_value",
+                        "value": float(field.min_value),
+                        "message": f"Minimum value is {field.min_value}",
+                    }
+                )
 
             if field.max_value is not None:
-                validation_rules.append({
-                    'type': 'max_value',
-                    'value': float(field.max_value),
-                    'message': f'Maximum value is {field.max_value}'
-                })
+                validation_rules.append(
+                    {
+                        "type": "max_value",
+                        "value": float(field.max_value),
+                        "message": f"Maximum value is {field.max_value}",
+                    }
+                )
 
             if field.regex_validation:
-                validation_rules.append({
-                    'type': 'pattern',
-                    'value': field.regex_validation,
-                    'message': field.regex_error_message or 'Invalid format'
-                })
+                validation_rules.append(
+                    {
+                        "type": "pattern",
+                        "value": field.regex_validation,
+                        "message": field.regex_error_message or "Invalid format",
+                    }
+                )
 
             # Custom validation rules from field config
-            if hasattr(field, 'validation_rules') and field.validation_rules:
+            if hasattr(field, "validation_rules") and field.validation_rules:
                 if isinstance(field.validation_rules, str):
                     try:
                         custom_rules = json.loads(field.validation_rules)
@@ -506,9 +516,8 @@ class DynamicForm(forms.Form):
                     validation_rules.extend(custom_rules)
 
             if validation_rules:
-                config['validationRules'].append({
-                    'field': field.field_name,
-                    'rules': validation_rules
-                })
+                config["validationRules"].append(
+                    {"field": field.field_name, "rules": validation_rules}
+                )
 
         return config

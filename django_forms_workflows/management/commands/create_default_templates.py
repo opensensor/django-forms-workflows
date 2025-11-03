@@ -6,6 +6,7 @@ Usage:
 """
 
 from django.core.management.base import BaseCommand
+
 from django_forms_workflows.models import FormTemplate
 
 

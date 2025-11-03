@@ -8,14 +8,13 @@ import json
 import logging
 
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import Group
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import FormDefinition, WorkflowDefinition, PostSubmissionAction
+from .models import FormDefinition, PostSubmissionAction, WorkflowDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -169,12 +168,11 @@ def convert_workflow_to_visual(workflow, form_definition):
     node_id_counter = 1
 
     # Layout configuration for better spacing
-    HORIZONTAL_SPACING = 280  # Increased from 200 for better readability
-    VERTICAL_SPACING = 150
-    START_X = 120
-    START_Y = 200
-    current_x = START_X
-    current_y = START_Y
+    horizontal_spacing = 280  # Increased from 200 for better readability
+    start_x = 120
+    start_y = 200
+    current_x = start_x
+    current_y = start_y
 
     # Start node (always present)
     start_node = {
@@ -187,7 +185,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     nodes.append(start_node)
     last_node_id = start_node["id"]
     node_id_counter += 1
-    current_x += HORIZONTAL_SPACING
+    current_x += horizontal_spacing
 
     # Form submission node (always present - represents the actual form)
     form_fields = list(form_definition.fields.all().order_by("order"))
@@ -235,7 +233,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     )
     last_node_id = form_node["id"]
     node_id_counter += 1
-    current_x += HORIZONTAL_SPACING
+    current_x += horizontal_spacing
 
     # Approval configuration node (always present - shows approval requirements)
     approval_groups = list(workflow.approval_groups.all())
@@ -270,7 +268,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     )
     last_node_id = approval_config_node["id"]
     node_id_counter += 1
-    current_x += HORIZONTAL_SPACING
+    current_x += horizontal_spacing
 
     # Manager approval node (if enabled)
     if workflow.requires_manager_approval:
@@ -293,13 +291,13 @@ def convert_workflow_to_visual(workflow, form_definition):
         )
         last_node_id = manager_node["id"]
         node_id_counter += 1
-        current_x += HORIZONTAL_SPACING
+        current_x += horizontal_spacing
 
     # Group approval nodes (already fetched above)
     if approval_groups:
         if workflow.approval_logic == "sequence":
             # Sequential nodes - horizontal flow
-            for i, group in enumerate(approval_groups):
+            for group in approval_groups:
                 group_node = {
                     "id": f"node_{node_id_counter}",
                     "type": "approval",
@@ -321,7 +319,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
                 last_node_id = group_node["id"]
                 node_id_counter += 1
-                current_x += HORIZONTAL_SPACING
+                current_x += horizontal_spacing
         else:
             # Parallel nodes (all/any)
             parallel_node = {
@@ -345,13 +343,13 @@ def convert_workflow_to_visual(workflow, form_definition):
             )
             last_node_id = parallel_node["id"]
             node_id_counter += 1
-            current_x += HORIZONTAL_SPACING
+            current_x += horizontal_spacing
 
     # Post-submission actions
     actions = form_definition.post_actions.filter(is_active=True).order_by("order")
 
     # Actions continue on the same horizontal line for a cleaner flow
-    for i, action in enumerate(actions):
+    for action in actions:
         # Determine node type based on action type
         node_type = "email" if action.action_type == "email" else "action"
 
@@ -418,7 +416,7 @@ def convert_workflow_to_visual(workflow, form_definition):
         )
         last_node_id = action_node["id"]
         node_id_counter += 1
-        current_x += HORIZONTAL_SPACING
+        current_x += horizontal_spacing
 
     # End node
     end_node = {
@@ -448,10 +446,8 @@ def convert_visual_to_workflow(workflow_data, form_definition):
     """
     Convert visual workflow format to WorkflowDefinition model.
     """
-    from .models import PostSubmissionAction
 
     nodes = workflow_data.get("nodes", [])
-    connections = workflow_data.get("connections", [])
 
     # Extract workflow configuration from nodes
     requires_approval = False

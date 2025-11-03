@@ -6,6 +6,7 @@ configure approval workflows, and review submissions and audit logs.
 """
 
 from django.contrib import admin
+from django.db import transaction
 from django.urls import path, reverse
 from django.utils.html import format_html
 
@@ -204,7 +205,6 @@ class FormDefinitionAdmin(admin.ModelAdmin):
 
     def clone_forms(self, request, queryset):
         """Admin action to clone selected forms"""
-        from . import form_builder_views
 
         cloned_count = 0
         for form in queryset:

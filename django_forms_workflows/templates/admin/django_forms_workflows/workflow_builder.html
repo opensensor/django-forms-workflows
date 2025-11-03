@@ -58,6 +58,7 @@
         cursor: grabbing;
     }
     
+    .palette-node.form { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
     .palette-node.approval { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
     .palette-node.condition { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
     .palette-node.action { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
@@ -129,6 +130,12 @@
         min-width: 220px;
     }
 
+    .workflow-node.approval_config {
+        border-color: #ffc107;
+        background: linear-gradient(135deg, #fffbf0 0%, #fff8e6 100%);
+        min-width: 240px;
+    }
+
     .workflow-node.approval {
         border-color: #f5576c;
         background: linear-gradient(135deg, #fff0f3 0%, #ffe6ea 100%);
@@ -174,6 +181,7 @@
     
     .node-icon.start { background: #28a745; color: white; }
     .node-icon.form { background: #667eea; color: white; }
+    .node-icon.approval_config { background: #ffc107; color: #333; }
     .node-icon.approval { background: #f5576c; color: white; }
     .node-icon.condition { background: #00f2fe; color: white; }
     .node-icon.action { background: #38f9d7; color: white; }
@@ -294,7 +302,71 @@
         color: #6c757d;
         padding: 2rem 0;
     }
-    
+
+    /* Properties Panel Form Controls */
+    .properties-panel .form-select[multiple] {
+        min-height: 120px;
+        padding: 0.5rem;
+        overflow-y: auto;
+        width: 100%;
+    }
+
+    .properties-panel .form-select[multiple] option {
+        padding: 0.5rem 0.75rem;
+        border-radius: 4px;
+        margin-bottom: 2px;
+        cursor: pointer;
+        white-space: normal;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        line-height: 1.4;
+        min-height: 2.5rem;
+        display: block;
+    }
+
+    .properties-panel .form-select[multiple] option:checked {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        font-weight: 500;
+        box-shadow: none !important;
+    }
+
+    .properties-panel .form-select[multiple] option:hover {
+        background: #f0f3ff;
+    }
+
+    .properties-panel .form-select[multiple] option:checked:hover {
+        background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%) !important;
+    }
+
+    /* Override Bootstrap default select styling */
+    .properties-panel select[multiple] {
+        background-image: none;
+        padding-right: 0.75rem;
+    }
+
+    /* Regular select dropdowns in properties panel */
+    .properties-panel .form-select:not([multiple]) {
+        width: 100%;
+        padding: 0.5rem 2.5rem 0.5rem 0.75rem;
+        height: auto;
+        min-height: 38px;
+        line-height: 1.5;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        display: flex;
+        align-items: center;
+    }
+
+    .properties-panel .form-select:not([multiple]) option {
+        white-space: normal;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        padding: 0.5rem;
+        line-height: 1.5;
+    }
+
     /* Toolbar */
     .workflow-toolbar {
         display: flex;
@@ -329,17 +401,22 @@
         <div class="palette-header">
             <i class="bi bi-box"></i> Workflow Nodes
         </div>
-        
+
+        <div class="palette-node form" draggable="true" data-node-type="form">
+            <i class="bi bi-file-earmark-text"></i>
+            <span>Form</span>
+        </div>
+
         <div class="palette-node approval" draggable="true" data-node-type="approval">
             <i class="bi bi-person-check"></i>
             <span>Approval Step</span>
         </div>
-        
+
         <div class="palette-node condition" draggable="true" data-node-type="condition">
             <i class="bi bi-diagram-3"></i>
             <span>Condition</span>
         </div>
-        
+
         <div class="palette-node action" draggable="true" data-node-type="action">
             <i class="bi bi-lightning"></i>
             <span>Action</span>

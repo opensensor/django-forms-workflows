@@ -1,0 +1,459 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Workflow Builder - {{ form_definition.name }}{% endblock %}
+
+{% block extrastyle %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+<style>
+    body {
+        background: #f5f7fa;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    
+    .workflow-builder-container {
+        display: flex;
+        height: calc(100vh - 100px);
+        gap: 1rem;
+        padding: 1rem;
+    }
+    
+    /* Node Palette */
+    .node-palette {
+        width: 250px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 1.5rem;
+        overflow-y: auto;
+    }
+    
+    .palette-header {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #2c3e50;
+    }
+    
+    .palette-node {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        border-radius: 8px;
+        cursor: grab;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .palette-node:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+    
+    .palette-node:active {
+        cursor: grabbing;
+    }
+    
+    .palette-node.approval { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .palette-node.condition { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .palette-node.action { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+    .palette-node.email { background: linear-gradient(135deg, #fa8bff 0%, #2bd2ff 100%); }
+    .palette-node.end { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+    
+    /* Workflow Canvas */
+    .workflow-canvas-container {
+        flex: 1;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .canvas-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .workflow-canvas {
+        width: 100%;
+        height: calc(100% - 60px);
+        min-height: 600px;
+        position: relative;
+        background-image:
+            linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+        background-size: 20px 20px;
+        overflow: auto;
+    }
+    
+    /* Workflow Nodes */
+    .workflow-node {
+        position: absolute;
+        background: white;
+        border: 2px solid #dee2e6;
+        border-radius: 12px;
+        padding: 1rem;
+        min-width: 180px;
+        cursor: move;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: all 0.2s;
+    }
+    
+    .workflow-node:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        border-color: #667eea;
+    }
+    
+    .workflow-node.selected {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+    }
+    
+    .workflow-node.start {
+        border-color: #28a745;
+        background: linear-gradient(135deg, #f0fff4 0%, #e6f9ea 100%);
+    }
+
+    .workflow-node.form {
+        border-color: #667eea;
+        background: linear-gradient(135deg, #f0f3ff 0%, #e6eaff 100%);
+        min-width: 220px;
+    }
+
+    .workflow-node.approval {
+        border-color: #f5576c;
+        background: linear-gradient(135deg, #fff0f3 0%, #ffe6ea 100%);
+    }
+
+    .workflow-node.condition {
+        border-color: #00f2fe;
+        background: linear-gradient(135deg, #f0fcff 0%, #e6f9ff 100%);
+    }
+
+    .workflow-node.action {
+        border-color: #38f9d7;
+        background: linear-gradient(135deg, #f0fff9 0%, #e6fff5 100%);
+    }
+
+    .workflow-node.email {
+        border-color: #2bd2ff;
+        background: linear-gradient(135deg, #f0f9ff 0%, #e6f5ff 100%);
+    }
+
+    .workflow-node.end {
+        border-color: #fee140;
+        background: linear-gradient(135deg, #fffef0 0%, #fffce6 100%);
+    }
+    
+    .node-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+    
+    .node-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+    }
+    
+    .node-icon.start { background: #28a745; color: white; }
+    .node-icon.form { background: #667eea; color: white; }
+    .node-icon.approval { background: #f5576c; color: white; }
+    .node-icon.condition { background: #00f2fe; color: white; }
+    .node-icon.action { background: #38f9d7; color: white; }
+    .node-icon.email { background: #2bd2ff; color: white; }
+    .node-icon.end { background: #fee140; color: #333; }
+    
+    .node-content {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    .node-actions {
+        margin-top: 0.75rem;
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .node-actions button {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    /* Connection Points */
+    .connection-point {
+        width: 12px;
+        height: 12px;
+        background: #667eea;
+        border: 2px solid white;
+        border-radius: 50%;
+        position: absolute;
+        cursor: crosshair;
+        transition: all 0.2s;
+        z-index: 100;
+    }
+
+    .connection-point:hover {
+        background: #28a745;
+        transform: translateY(-50%) scale(1.3);
+        box-shadow: 0 0 8px rgba(40, 167, 69, 0.5);
+    }
+
+    .connection-point.input {
+        left: -6px;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .connection-point.output {
+        right: -6px;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .connection-point.output:hover {
+        background: #667eea;
+        box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
+    }
+    
+    /* SVG Connections */
+    .connections-svg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 5;
+    }
+
+    .connections-svg * {
+        pointer-events: auto;
+    }
+
+    .workflow-node {
+        z-index: 10;
+    }
+    
+    .connection-line {
+        stroke: #667eea;
+        stroke-width: 2;
+        fill: none;
+        marker-end: url(#arrowhead);
+        cursor: pointer;
+        transition: all 0.2s;
+        pointer-events: stroke;
+        stroke-linecap: round;
+    }
+
+    .connection-line:hover {
+        stroke: #dc3545;
+        stroke-width: 3;
+    }
+
+    .connection-line.selected {
+        stroke: #f5576c;
+        stroke-width: 3;
+    }
+    
+    /* Properties Panel */
+    .properties-panel {
+        width: 320px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 1.5rem;
+        overflow-y: auto;
+    }
+    
+    .properties-header {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #2c3e50;
+    }
+    
+    .properties-empty {
+        text-align: center;
+        color: #6c757d;
+        padding: 2rem 0;
+    }
+    
+    /* Toolbar */
+    .workflow-toolbar {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .toolbar-btn {
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.3);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .toolbar-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+    
+    .save-status {
+        color: rgba(255,255,255,0.8);
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="workflow-builder-container">
+    <!-- Node Palette -->
+    <div class="node-palette">
+        <div class="palette-header">
+            <i class="bi bi-box"></i> Workflow Nodes
+        </div>
+        
+        <div class="palette-node approval" draggable="true" data-node-type="approval">
+            <i class="bi bi-person-check"></i>
+            <span>Approval Step</span>
+        </div>
+        
+        <div class="palette-node condition" draggable="true" data-node-type="condition">
+            <i class="bi bi-diagram-3"></i>
+            <span>Condition</span>
+        </div>
+        
+        <div class="palette-node action" draggable="true" data-node-type="action">
+            <i class="bi bi-lightning"></i>
+            <span>Action</span>
+        </div>
+
+        <div class="palette-node email" draggable="true" data-node-type="email">
+            <i class="bi bi-envelope"></i>
+            <span>Email</span>
+        </div>
+
+        <div class="palette-node end" draggable="true" data-node-type="end">
+            <i class="bi bi-flag"></i>
+            <span>End</span>
+        </div>
+    </div>
+    
+    <!-- Workflow Canvas -->
+    <div class="workflow-canvas-container">
+        <div class="canvas-header">
+            <div>
+                <h5 class="mb-0">{{ form_definition.name }} - Workflow</h5>
+                <small class="text-muted">
+                    Visual workflow builder •
+                    {% if workflow_id %}
+                    <a href="{% url 'admin:django_forms_workflows_workflowdefinition_change' workflow_id %}" target="_blank" style="color: #667eea;">
+                        <i class="bi bi-gear"></i> Advanced Settings
+                    </a>
+                    {% endif %}
+                </small>
+            </div>
+            <div class="workflow-toolbar">
+                <span class="save-status" id="saveStatus">Ready</span>
+                <button class="toolbar-btn" id="btnSave">
+                    <i class="bi bi-save"></i> Save Workflow
+                </button>
+                <button class="toolbar-btn" id="btnBack" onclick="window.location.href='{% url 'admin:django_forms_workflows_formdefinition_change' form_id %}'">
+                    <i class="bi bi-arrow-left"></i> Back
+                </button>
+            </div>
+        </div>
+        <div class="workflow-canvas" id="workflowCanvas">
+            <svg class="connections-svg" id="connectionsSvg">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                        <polygon points="0 0, 10 3, 0 6" fill="#667eea" />
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+    </div>
+    
+    <!-- Properties Panel -->
+    <div class="properties-panel">
+        <div class="properties-header">
+            <i class="bi bi-sliders"></i> Properties
+        </div>
+        <div id="propertiesContent">
+            <div class="properties-empty">
+                <i class="bi bi-info-circle" style="font-size: 2rem; color: #dee2e6;"></i>
+                <p>Select a node to edit its properties</p>
+
+                <hr class="my-4" />
+
+                <div class="text-start">
+                    <h6><i class="bi bi-info-circle"></i> Visual Builder Scope</h6>
+                    <p class="small text-muted mb-2">This visual builder configures:</p>
+                    <ul class="small text-muted">
+                        <li>Approval workflow steps</li>
+                        <li>Post-submission actions</li>
+                        <li>Email notifications</li>
+                        <li>Conditional branching</li>
+                    </ul>
+
+                    <p class="small text-muted mb-2 mt-3">For advanced settings, use the
+                        {% if workflow_id %}
+                        <a href="{% url 'admin:django_forms_workflows_workflowdefinition_change' workflow_id %}" target="_blank">
+                            Admin Panel
+                        </a>
+                        {% else %}
+                        Admin Panel
+                        {% endif %}:
+                    </p>
+                    <ul class="small text-muted">
+                        <li>Approval timeouts & deadlines</li>
+                        <li>Notification settings</li>
+                        <li>Conditional escalation</li>
+                        <li>Manager approval settings</li>
+                        <li>Database update mappings</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extrahead %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'django_forms_workflows/js/workflow-builder.js' %}"></script>
+<script>
+    const WORKFLOW_CONFIG = {
+        formId: {{ form_id }},
+        csrfToken: '{{ csrf_token }}',
+        apiUrls: {
+            load: '{% url "admin:workflow_builder_load" form_id %}',
+            save: '{% url "admin:workflow_builder_save" %}',
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded, initializing workflow builder...');
+        console.log('WORKFLOW_CONFIG:', WORKFLOW_CONFIG);
+        window.workflowBuilder = new WorkflowBuilder(WORKFLOW_CONFIG);
+    });
+</script>
+{% endblock %}
+

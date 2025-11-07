@@ -909,11 +909,15 @@ class UserProfile(models.Model):
 
     # External System IDs
     employee_id = models.CharField(
-        max_length=50, blank=True, help_text="Employee ID from LDAP or HR system"
+        max_length=50,
+        blank=True,
+        db_index=True,
+        help_text="Employee ID from LDAP or HR system (e.g., extensionAttribute1)",
     )
     external_id = models.CharField(
         max_length=100,
         blank=True,
+        db_index=True,
         help_text="ID from external system (for database lookups)",
     )
 
@@ -936,6 +940,9 @@ class UserProfile(models.Model):
     )
 
     # Metadata
+    ldap_last_sync = models.DateTimeField(
+        null=True, blank=True, help_text="Last time LDAP attributes were synced"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -945,6 +952,28 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"Profile for {self.user.username}"
+
+    @property
+    def full_name(self):
+        """Get user's full name."""
+        return self.user.get_full_name() or self.user.username
+
+    @property
+    def display_name(self):
+        """Get display name with title if available."""
+        if self.title:
+            return f"{self.full_name} ({self.title})"
+        return self.full_name
+
+    @property
+    def id_number(self):
+        """Alias for employee_id for backward compatibility."""
+        return self.employee_id
+
+    @id_number.setter
+    def id_number(self, value):
+        """Set employee_id via id_number alias."""
+        self.employee_id = value
 
 
 class FormTemplate(models.Model):

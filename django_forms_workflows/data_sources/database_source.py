@@ -256,3 +256,170 @@ class DatabaseDataSource(DataSource):
 
     def get_display_name(self) -> str:
         return "External Database"
+
+    def test_connection(self, database_alias: str = None) -> bool:
+        """
+        Test the database connection.
+
+        Args:
+            database_alias: Database alias to test (uses config default if not provided)
+
+        Returns:
+            True if connection successful, False otherwise
+        """
+        if database_alias is None:
+            config = self._get_config()
+            database_alias = config.get("database_alias")
+
+        if not database_alias:
+            logger.error("No database alias configured")
+            return False
+
+        try:
+            with connections[database_alias].cursor() as cursor:
+                # Try to get database version
+                engine = connections[database_alias].settings_dict.get("ENGINE", "")
+
+                if "mssql" in engine or "sql_server" in engine:
+                    cursor.execute("SELECT @@VERSION")
+                elif "postgresql" in engine or "postgis" in engine:
+                    cursor.execute("SELECT version()")
+                elif "mysql" in engine:
+                    cursor.execute("SELECT VERSION()")
+                elif "sqlite" in engine:
+                    cursor.execute("SELECT sqlite_version()")
+                else:
+                    cursor.execute("SELECT 1")
+
+                result = cursor.fetchone()
+                if result:
+                    logger.info(
+                        f"Database connection successful for '{database_alias}'"
+                    )
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Database connection test failed for '{database_alias}': {e}")
+            return False
+
+    def get_available_tables(
+        self, schema: str = None, database_alias: str = None
+    ) -> list:
+        """
+        Get list of available tables in a schema.
+
+        Args:
+            schema: Schema name (uses config default if not provided)
+            database_alias: Database alias (uses config default if not provided)
+
+        Returns:
+            List of table names
+        """
+        config = self._get_config()
+
+        if schema is None:
+            schema = config.get("default_schema", "dbo")
+
+        if database_alias is None:
+            database_alias = config.get("database_alias")
+
+        if not database_alias:
+            logger.error("No database alias configured")
+            return []
+
+        if not self._is_safe_identifier(schema):
+            logger.error(f"Invalid schema name: {schema}")
+            return []
+
+        try:
+            query = """
+                SELECT TABLE_NAME
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = %s
+                AND TABLE_TYPE = 'BASE TABLE'
+                ORDER BY TABLE_NAME
+            """
+
+            with connections[database_alias].cursor() as cursor:
+                cursor.execute(query, [schema])
+                rows = cursor.fetchall()
+                return [row[0] for row in rows]
+
+        except Exception as e:
+            logger.error(f"Error getting tables from {schema}: {e}")
+            return []
+
+    def get_table_columns(
+        self, table: str, schema: str = None, database_alias: str = None
+    ) -> list:
+        """
+        Get list of columns in a table.
+
+        Args:
+            table: Table name
+            schema: Schema name (uses config default if not provided)
+            database_alias: Database alias (uses config default if not provided)
+
+        Returns:
+            List of dictionaries with column information:
+            [
+                {
+                    'name': 'COLUMN_NAME',
+                    'type': 'DATA_TYPE',
+                    'max_length': 100,
+                    'nullable': True
+                },
+                ...
+            ]
+        """
+        config = self._get_config()
+
+        if schema is None:
+            schema = config.get("default_schema", "dbo")
+
+        if database_alias is None:
+            database_alias = config.get("database_alias")
+
+        if not database_alias:
+            logger.error("No database alias configured")
+            return []
+
+        if not self._is_safe_identifier(schema) or not self._is_safe_identifier(table):
+            logger.error(f"Invalid schema or table name: {schema}.{table}")
+            return []
+
+        try:
+            query = """
+                SELECT
+                    COLUMN_NAME,
+                    DATA_TYPE,
+                    CHARACTER_MAXIMUM_LENGTH,
+                    IS_NULLABLE
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = %s
+                AND TABLE_NAME = %s
+                ORDER BY ORDINAL_POSITION
+            """
+
+            with connections[database_alias].cursor() as cursor:
+                cursor.execute(query, [schema, table])
+                rows = cursor.fetchall()
+
+                columns = []
+                for row in rows:
+                    columns.append(
+                        {
+                            "name": row[0],
+                            "type": row[1],
+                            "max_length": row[2],
+                            "nullable": row[3] == "YES",
+                        }
+                    )
+
+                return columns
+
+        except Exception as e:
+            logger.error(f"Error getting columns from {schema}.{table}: {e}")
+            return []

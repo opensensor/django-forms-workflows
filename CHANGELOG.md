@@ -15,6 +15,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced reporting and analytics
 - Multi-tenancy support
 
+## [0.4.0] - 2025-11-06
+
+### Added - SJCME Migration Support
+- **Enhanced UserProfile Model**
+  - Added `ldap_last_sync` timestamp field for tracking LDAP synchronization
+  - Added database indexes to `employee_id` and `external_id` fields for better performance
+  - Added `id_number` property as backward-compatible alias for `employee_id`
+  - Added `full_name` and `display_name` properties for convenient user display
+  - Enhanced help text for LDAP attribute fields
+
+- **LDAP Integration Enhancements**
+  - New `signals.py` module with automatic LDAP attribute synchronization
+  - `sync_ldap_attributes()` function for syncing LDAP data to UserProfile
+  - `get_ldap_attribute()` helper function for retrieving LDAP attributes
+  - Auto-sync on user login (configurable via `FORMS_WORKFLOWS['LDAP_SYNC']`)
+  - Signal handlers for automatic UserProfile creation on user creation
+  - Configurable LDAP attribute mappings in settings
+
+- **Database Introspection Utilities**
+  - `DatabaseDataSource.test_connection()` - Test external database connections
+  - `DatabaseDataSource.get_available_tables()` - List tables in a schema
+  - `DatabaseDataSource.get_table_columns()` - Get column information for a table
+  - Support for SQL Server, PostgreSQL, MySQL, and SQLite introspection
+
+- **Utility Functions**
+  - `get_user_manager()` - Get user's manager from LDAP or UserProfile
+  - `user_can_view_form()` - Check if user can view a form
+  - `user_can_view_submission()` - Check if user can view a submission
+  - `check_escalation_needed()` - Check if submission needs escalation
+  - `sync_ldap_groups()` - Synchronize LDAP groups to Django groups
+
+- **Management Commands**
+  - `sync_ldap_profiles` - Bulk sync LDAP attributes for all users
+    - Supports `--username` for single user sync
+    - Supports `--dry-run` for testing without changes
+    - Supports `--verbose` for detailed output
+  - `test_db_connection` - Test external database connections
+    - Supports `--database` to specify database alias
+    - Supports `--verbose` for detailed connection information
+    - Works with SQL Server, PostgreSQL, MySQL, and SQLite
+
+- **Documentation**
+  - `PORTING_ANALYSIS.md` - Detailed analysis of SJCME to package migration
+  - `FEATURE_COMPARISON.md` - Comprehensive feature comparison matrix
+  - `SJCME_SIMPLIFICATION_PLAN.md` - Code reduction and migration strategy
+  - `EXECUTIVE_SUMMARY.md` - High-level overview for stakeholders
+  - `NEXT_STEPS.md` - Actionable implementation guide
+
+### Changed
+- Updated version to 0.4.0 to reflect significant new features
+- Enhanced UserProfile model with LDAP-specific fields and properties
+- Improved database source with introspection capabilities
+- Expanded utility functions for better LDAP and permission handling
+
+### Migration Notes
+- Run `python manage.py migrate django_forms_workflows` to apply UserProfile enhancements
+- Configure LDAP sync in settings:
+  ```python
+  FORMS_WORKFLOWS = {
+      'LDAP_SYNC': {
+          'enabled': True,
+          'sync_on_login': True,
+          'attributes': {
+              'employee_id': 'extensionAttribute1',
+              'department': 'department',
+              'title': 'title',
+              'phone': 'telephoneNumber',
+              'manager_dn': 'manager',
+          }
+      }
+  }
+  ```
+- Use `python manage.py sync_ldap_profiles` to bulk sync existing users
+
 ## [0.2.2] - 2025-10-31
 
 ### Changed

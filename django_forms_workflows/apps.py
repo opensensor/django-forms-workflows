@@ -16,6 +16,5 @@ class DjangoFormsWorkflowsConfig(AppConfig):
         """
         Import signal handlers and perform app initialization.
         """
-        # Import signals if you have any
-        # from . import signals
-        pass
+        # Import signals to register handlers
+        from . import signals  # noqa: F401

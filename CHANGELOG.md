@@ -15,6 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced reporting and analytics
 - Multi-tenancy support
 
+## [0.4.1] - 2025-11-11
+
+### Added
+- **Configurable LDAP TLS Certificate Verification**
+  - Added `configure_ldap_connection()` helper function in `ldap_backend.py`
+  - Support for `LDAP_TLS_REQUIRE_CERT` environment variable with options: `never`, `allow`, `try`, `demand` (default)
+  - Updated all LDAP connection initialization points to use configurable TLS settings
+  - Added `_configure_ldap_connection()` helper in `ldap_handler.py` with fallback implementation
+
+### Changed
+- **LDAP Backend Improvements**
+  - All LDAP connections now respect the `LDAP_TLS_REQUIRE_CERT` environment variable
+  - Updated `get_user_manager()`, `search_ldap_users()`, and `get_ldap_user_attributes()` functions
+  - Updated `LDAPUpdateHandler` to use configurable TLS settings
+
+### Documentation
+- Added `LDAP_TLS_CONFIGURATION.md` with comprehensive documentation on TLS configuration options
+- Documented security considerations for different TLS verification levels
+- Added deployment instructions for Kubernetes environments
+
 ## [0.4.0] - 2025-11-06
 
 ### Added - SJCME Migration Support

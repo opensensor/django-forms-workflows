@@ -13,6 +13,38 @@ from .base import BaseActionHandler
 logger = logging.getLogger(__name__)
 
 
+def _configure_ldap_connection(conn):
+    """
+    Configure LDAP connection with TLS settings from environment variables.
+
+    This is a local helper that imports and uses the configure_ldap_connection
+    function from ldap_backend module.
+
+    Args:
+        conn: LDAP connection object
+    """
+    try:
+        from django_forms_workflows.ldap_backend import configure_ldap_connection
+        configure_ldap_connection(conn)
+    except ImportError:
+        # Fallback if ldap_backend is not available
+        import os
+        import ldap
+
+        tls_require_cert = os.getenv('LDAP_TLS_REQUIRE_CERT', 'demand').lower()
+
+        if tls_require_cert == 'never':
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+        elif tls_require_cert == 'allow':
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
+        elif tls_require_cert == 'try':
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_TRY)
+        else:
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_DEMAND)
+
+        conn.set_option(ldap.OPT_REFERRALS, 0)
+
+
 class LDAPUpdateHandler(BaseActionHandler):
     """
     Handler for updating LDAP attributes with form data.
@@ -182,7 +214,7 @@ class LDAPUpdateHandler(BaseActionHandler):
 
             # Connect to LDAP
             conn = ldap.initialize(server_uri)
-            conn.set_option(ldap.OPT_REFERRALS, 0)
+            _configure_ldap_connection(conn)
             conn.simple_bind_s(bind_dn, bind_password)
 
             # Build modification list

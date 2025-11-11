@@ -8,6 +8,7 @@ All LDAP attribute mappings are configurable via Django settings.
 """
 
 import logging
+import os
 
 import ldap
 from django.conf import settings
@@ -16,6 +17,44 @@ from django_auth_ldap.backend import LDAPBackend
 from ldap.filter import escape_filter_chars
 
 logger = logging.getLogger(__name__)
+
+
+def configure_ldap_connection(conn):
+    """
+    Configure LDAP connection with TLS settings from environment variables.
+
+    This function applies TLS certificate verification settings based on the
+    LDAP_TLS_REQUIRE_CERT environment variable.
+
+    Args:
+        conn: LDAP connection object
+
+    Environment Variables:
+        LDAP_TLS_REQUIRE_CERT: TLS certificate verification level
+            - 'never': Don't require or verify certificates (ldap.OPT_X_TLS_NEVER)
+            - 'allow': Allow connection without cert verification (ldap.OPT_X_TLS_ALLOW)
+            - 'try': Try to verify but proceed if verification fails (ldap.OPT_X_TLS_TRY)
+            - 'demand' or 'hard': Require valid certificate (ldap.OPT_X_TLS_DEMAND)
+            - Default: 'demand'
+    """
+    # Configure TLS settings based on environment variable
+    tls_require_cert = os.getenv('LDAP_TLS_REQUIRE_CERT', 'demand').lower()
+
+    if tls_require_cert == 'never':
+        conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+        logger.debug("LDAP TLS certificate verification: NEVER")
+    elif tls_require_cert == 'allow':
+        conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
+        logger.debug("LDAP TLS certificate verification: ALLOW")
+    elif tls_require_cert == 'try':
+        conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_TRY)
+        logger.debug("LDAP TLS certificate verification: TRY")
+    else:  # 'demand' or 'hard' or any other value
+        conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_DEMAND)
+        logger.debug("LDAP TLS certificate verification: DEMAND")
+
+    # Set other standard options
+    conn.set_option(ldap.OPT_REFERRALS, 0)
 
 
 class ConfigurableLDAPBackend(LDAPBackend):
@@ -239,7 +278,7 @@ def get_user_manager(user):
     try:
         # Initialize LDAP connection
         conn = ldap.initialize(settings.AUTH_LDAP_SERVER_URI)
-        conn.set_option(ldap.OPT_REFERRALS, 0)
+        configure_ldap_connection(conn)
 
         # Bind with service account
         conn.simple_bind_s(settings.AUTH_LDAP_BIND_DN, settings.AUTH_LDAP_BIND_PASSWORD)
@@ -317,7 +356,7 @@ def search_ldap_users(search_term, max_results=10):
     try:
         # Initialize LDAP connection
         conn = ldap.initialize(settings.AUTH_LDAP_SERVER_URI)
-        conn.set_option(ldap.OPT_REFERRALS, 0)
+        configure_ldap_connection(conn)
 
         # Bind with service account
         conn.simple_bind_s(settings.AUTH_LDAP_BIND_DN, settings.AUTH_LDAP_BIND_PASSWORD)
@@ -401,7 +440,7 @@ def get_ldap_user_attributes(username):
     try:
         # Initialize LDAP connection
         conn = ldap.initialize(settings.AUTH_LDAP_SERVER_URI)
-        conn.set_option(ldap.OPT_REFERRALS, 0)
+        configure_ldap_connection(conn)
 
         # Bind with service account
         conn.simple_bind_s(settings.AUTH_LDAP_BIND_DN, settings.AUTH_LDAP_BIND_PASSWORD)

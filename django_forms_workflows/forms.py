@@ -335,14 +335,17 @@ class DynamicForm(forms.Form):
 
                     # Check if this is a template-based multi-column lookup
                     if prefill_config.has_template():
-                        return source.get_template_value(
-                            self.user,
-                            schema=prefill_config.db_schema,
-                            table=prefill_config.db_table,
-                            columns=prefill_config.db_columns,
-                            template=prefill_config.db_template,
-                            **kwargs,
-                        ) or ""
+                        return (
+                            source.get_template_value(
+                                self.user,
+                                schema=prefill_config.db_schema,
+                                table=prefill_config.db_table,
+                                columns=prefill_config.db_columns,
+                                template=prefill_config.db_template,
+                                **kwargs,
+                            )
+                            or ""
+                        )
 
                 # Standard single-column lookup
                 source_str = prefill_source.strip()

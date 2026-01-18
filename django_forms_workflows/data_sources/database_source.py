@@ -357,7 +357,9 @@ class DatabaseDataSource(DataSource):
                 return None
 
             # Validate identifiers
-            if not self._is_safe_identifier(schema) or not self._is_safe_identifier(table):
+            if not self._is_safe_identifier(schema) or not self._is_safe_identifier(
+                table
+            ):
                 logger.error(f"Invalid schema or table: {schema}.{table}")
                 return None
 

@@ -69,7 +69,10 @@
                 <h5 class="mb-0">Your Decision</h5>
             </div>
             <div class="card-body">
-                <form method="post" id="approvalForm">
+                <form method="post" id="approvalForm"
+                      hx-post=""
+                      hx-indicator="#loadingIndicator"
+                      hx-disabled-elt="button[type=submit]">
                     {% csrf_token %}
                     <div class="mb-3">
                         <label for="comments" class="form-label">Comments (Optional)</label>
@@ -85,12 +88,24 @@
                         <a href="{% url 'forms_workflows:approval_inbox' %}" class="btn btn-outline-secondary btn-lg">
                             <i class="bi bi-arrow-left"></i> Back
                         </a>
+                        <span id="loadingIndicator" class="htmx-indicator ms-3">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            Processing...
+                        </span>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-block; }
+    .htmx-request button[type=submit] { opacity: 0.6; }
+</style>
 {% endblock %}
 
 

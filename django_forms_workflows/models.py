@@ -4,7 +4,8 @@ Django Forms Workflows - Core Models
 Database-driven form definitions with approval workflows and external data integration.
 """
 
-from django.contrib.auth.models import Group, User
+from django.conf import settings
+from django.contrib.auth.models import Group
 from django.db import models
 
 
@@ -88,7 +89,7 @@ class FormDefinition(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )
 
     class Meta:
@@ -739,7 +740,7 @@ class FormSubmission(models.Model):
         FormDefinition, on_delete=models.PROTECT, related_name="submissions"
     )
     submitter = models.ForeignKey(
-        User, on_delete=models.PROTECT, related_name="form_submissions"
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="form_submissions"
     )
 
     # Submission Data
@@ -798,7 +799,7 @@ class ApprovalTask(models.Model):
 
     # Assignment
     assigned_to = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -818,7 +819,7 @@ class ApprovalTask(models.Model):
 
     # Response
     completed_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -868,7 +869,7 @@ class AuditLog(models.Model):
     object_id = models.IntegerField()
 
     # Who did it
-    user = models.ForeignKey(User, on_delete=models.PROTECT)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     user_ip = models.GenericIPAddressField(null=True, blank=True)
 
     # Details
@@ -904,7 +905,7 @@ class UserProfile(models.Model):
     """
 
     user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name="forms_profile"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="forms_profile"
     )
 
     # External System IDs
@@ -932,7 +933,7 @@ class UserProfile(models.Model):
         max_length=500, blank=True, help_text="Manager's Distinguished Name from LDAP"
     )
     manager = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -1039,7 +1040,7 @@ class FormTemplate(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

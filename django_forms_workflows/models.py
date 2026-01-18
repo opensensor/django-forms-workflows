@@ -302,6 +302,10 @@ class FormField(models.Model):
 
     # Validation
     required = models.BooleanField(default=False)
+    readonly = models.BooleanField(
+        default=False,
+        help_text="If checked, the field will be displayed but not editable",
+    )
     min_value = models.DecimalField(
         null=True,
         blank=True,

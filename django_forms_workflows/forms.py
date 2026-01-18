@@ -135,6 +135,10 @@ class DynamicForm(forms.Form):
             widget_attrs["placeholder"] = field_def.placeholder
         if field_def.css_class:
             widget_attrs["class"] = field_def.css_class
+        if field_def.readonly:
+            widget_attrs["readonly"] = "readonly"
+            # Readonly fields should not be required since they can't be edited
+            field_args["required"] = False
 
         # Create appropriate field type
         if field_def.field_type == "text":

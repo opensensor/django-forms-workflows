@@ -38,7 +38,8 @@ class FormFieldInline(admin.StackedInline):
             None,
             {
                 "fields": (
-                    ("order", "field_label", "field_name", "field_type", "required"),
+                    ("order", "field_label", "field_name", "field_type"),
+                    ("required", "readonly"),
                     ("help_text", "placeholder", "width", "css_class"),
                 )
             },

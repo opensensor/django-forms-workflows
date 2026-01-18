@@ -13,10 +13,13 @@ from django.utils.html import format_html
 from .models import (
     ApprovalTask,
     AuditLog,
+    FileUploadConfig,
+    FileWorkflowHook,
     FormDefinition,
     FormField,
     FormSubmission,
     FormTemplate,
+    ManagedFile,
     PostSubmissionAction,
     PrefillSource,
     UserProfile,
@@ -694,3 +697,332 @@ class FormTemplateAdmin(admin.ModelAdmin):
         if not change:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+
+
+# --- File Upload Configuration Admin ---
+
+
+@admin.register(FileUploadConfig)
+class FileUploadConfigAdmin(admin.ModelAdmin):
+    """Admin for file upload configurations."""
+
+    list_display = (
+        "name",
+        "naming_pattern",
+        "upload_to",
+        "enable_versioning",
+        "is_active",
+    )
+    list_filter = ("is_active", "enable_versioning")
+    search_fields = ("name", "description", "naming_pattern")
+    list_editable = ("is_active",)
+    readonly_fields = ("created_at", "updated_at")
+
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": ("name", "description", "is_active"),
+            },
+        ),
+        (
+            "Naming Pattern",
+            {
+                "fields": (
+                    "naming_pattern",
+                    "pending_prefix",
+                    "approved_prefix",
+                    "rejected_prefix",
+                ),
+                "description": "Tokens: {user.id}, {user.username}, {user.employee_id}, "
+                "{field_name}, {form_slug}, {submission_id}, {status}, {date}, "
+                "{datetime}, {original_name}, {ext}",
+            },
+        ),
+        (
+            "Storage Settings",
+            {
+                "fields": (
+                    "upload_to",
+                    "approved_storage_path",
+                    "rejected_storage_path",
+                ),
+            },
+        ),
+        (
+            "File Restrictions",
+            {
+                "fields": (
+                    "allowed_extensions",
+                    "max_file_size_mb",
+                    "allowed_mime_types",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Versioning",
+            {
+                "fields": ("enable_versioning", "max_versions"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+
+class FileWorkflowHookInline(admin.TabularInline):
+    """Inline for file workflow hooks on FileUploadConfig."""
+
+    model = FileWorkflowHook
+    extra = 0
+    fields = ("name", "trigger", "action", "order", "is_active")
+    ordering = ("order", "name")
+
+
+@admin.register(FileWorkflowHook)
+class FileWorkflowHookAdmin(admin.ModelAdmin):
+    """Admin for file workflow hooks."""
+
+    list_display = (
+        "name",
+        "trigger",
+        "action",
+        "form_definition",
+        "upload_config",
+        "order",
+        "is_active",
+    )
+    list_filter = ("trigger", "action", "is_active", "form_definition")
+    search_fields = ("name", "description", "webhook_url")
+    list_editable = ("order", "is_active")
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("form_definition", "upload_config")
+
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "name",
+                    "description",
+                    "is_active",
+                    "order",
+                ),
+            },
+        ),
+        (
+            "Scope",
+            {
+                "fields": (
+                    "form_definition",
+                    "upload_config",
+                    "field_name",
+                ),
+                "description": "Leave empty to apply to all forms/configs/fields.",
+            },
+        ),
+        (
+            "Trigger & Action",
+            {
+                "fields": ("trigger", "action"),
+            },
+        ),
+        (
+            "File Operations",
+            {
+                "fields": ("target_pattern",),
+                "classes": ("collapse",),
+                "description": "For rename/move/copy actions. Supports naming pattern tokens.",
+            },
+        ),
+        (
+            "Webhook/API Configuration",
+            {
+                "fields": (
+                    "webhook_url",
+                    "webhook_method",
+                    "webhook_headers",
+                    "webhook_payload_template",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Custom Handler",
+            {
+                "fields": (
+                    "custom_handler_path",
+                    "custom_handler_config",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Conditional Execution",
+            {
+                "fields": (
+                    "condition_field",
+                    "condition_operator",
+                    "condition_value",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Error Handling",
+            {
+                "fields": (
+                    "fail_silently",
+                    "retry_on_failure",
+                    "max_retries",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+
+@admin.register(ManagedFile)
+class ManagedFileAdmin(admin.ModelAdmin):
+    """Admin for managed files."""
+
+    list_display = (
+        "original_filename",
+        "submission_link",
+        "status",
+        "version",
+        "is_current",
+        "file_size_display",
+        "uploaded_by",
+        "uploaded_at",
+    )
+    list_filter = ("status", "is_current", "uploaded_at")
+    search_fields = (
+        "original_filename",
+        "stored_filename",
+        "submission__id",
+        "uploaded_by__username",
+    )
+    readonly_fields = (
+        "submission",
+        "form_field",
+        "upload_config",
+        "original_filename",
+        "stored_filename",
+        "file_path",
+        "file_size",
+        "mime_type",
+        "file_hash",
+        "version",
+        "previous_version",
+        "uploaded_by",
+        "uploaded_at",
+        "updated_at",
+        "status_changed_at",
+        "status_changed_by",
+    )
+    autocomplete_fields = ("submission",)
+
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "submission",
+                    "form_field",
+                    "upload_config",
+                ),
+            },
+        ),
+        (
+            "File Information",
+            {
+                "fields": (
+                    "original_filename",
+                    "stored_filename",
+                    "file_path",
+                    "file_size",
+                    "mime_type",
+                    "file_hash",
+                ),
+            },
+        ),
+        (
+            "Status",
+            {
+                "fields": (
+                    "status",
+                    "status_changed_at",
+                    "status_changed_by",
+                    "status_notes",
+                ),
+            },
+        ),
+        (
+            "Versioning",
+            {
+                "fields": (
+                    "version",
+                    "previous_version",
+                    "is_current",
+                ),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": (
+                    "uploaded_by",
+                    "uploaded_at",
+                    "updated_at",
+                    "metadata",
+                ),
+            },
+        ),
+    )
+
+    def submission_link(self, obj):
+        """Link to the submission."""
+        url = reverse("admin:django_forms_workflows_formsubmission_change", args=[obj.submission.id])
+        return format_html('<a href="{}">{}</a>', url, f"Submission #{obj.submission.id}")
+
+    submission_link.short_description = "Submission"
+
+    def file_size_display(self, obj):
+        """Display file size in human-readable format."""
+        if obj.file_size < 1024:
+            return f"{obj.file_size} B"
+        elif obj.file_size < 1024 * 1024:
+            return f"{obj.file_size / 1024:.1f} KB"
+        else:
+            return f"{obj.file_size / (1024 * 1024):.1f} MB"
+
+    file_size_display.short_description = "Size"
+
+    actions = ["mark_approved", "mark_rejected"]
+
+    @admin.action(description="Mark selected files as approved")
+    def mark_approved(self, request, queryset):
+        for managed_file in queryset.filter(status="pending"):
+            managed_file.mark_approved(user=request.user, notes="Approved via admin")
+        self.message_user(request, f"Marked {queryset.count()} files as approved.")
+
+    @admin.action(description="Mark selected files as rejected")
+    def mark_rejected(self, request, queryset):
+        for managed_file in queryset.filter(status="pending"):
+            managed_file.mark_rejected(user=request.user, notes="Rejected via admin")
+        self.message_user(request, f"Marked {queryset.count()} files as rejected.")

@@ -233,7 +233,11 @@ class DatabaseDataSource(DataSource):
                 row = cursor.fetchone()
 
                 if row:
-                    return row[0]
+                    # Strip whitespace for fixed-width NCHAR columns
+                    value = row[0]
+                    if isinstance(value, str):
+                        value = value.strip()
+                    return value
 
                 logger.debug(
                     f"No data found for user {user_id} in {schema}.{table}.{column} (lookup: {lookup_field})"
@@ -291,13 +295,16 @@ class DatabaseDataSource(DataSource):
                 row = cursor.fetchone()
 
                 if row:
-                    # Build dictionary of column values
-                    values = {col: (row[i] or "") for i, col in enumerate(columns)}
+                    # Build dictionary of column values, stripping whitespace
+                    # (handles fixed-width NCHAR columns with trailing spaces)
+                    values = {
+                        col: str(row[i] or "").strip() for i, col in enumerate(columns)
+                    }
 
                     # Apply template
                     result = template
                     for col, val in values.items():
-                        result = result.replace(f"{{{col}}}", str(val))
+                        result = result.replace(f"{{{col}}}", val)
 
                     return result.strip()
 

@@ -15,7 +15,7 @@
                         <div class="card h-100">
                             <div class="card-body">
                                 <h5 class="card-title">{{ form.name }}</h5>
-                                <p class="card-text">{{ form.description|truncatewords:20 }}</p>
+                                <p class="card-text">{{ form.description|striptags|truncatewords:20 }}</p>
                             </div>
                             <div class="card-footer bg-transparent">
                                 <a href="{% url 'forms_workflows:form_submit' form.slug %}" class="btn btn-primary btn-sm">

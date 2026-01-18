@@ -322,7 +322,29 @@ class DynamicForm(forms.Form):
             # Handle db.* or {{ db.* }} sources
             elif prefill_source.startswith("db.") or prefill_source.startswith("{{"):
                 source = DatabaseDataSource()
-                # Parse the source string
+
+                # Build kwargs from prefill_config
+                kwargs = {}
+                if prefill_config and prefill_config.source_type == "database":
+                    if prefill_config.db_alias:
+                        kwargs["database_alias"] = prefill_config.db_alias
+                    if prefill_config.db_lookup_field:
+                        kwargs["lookup_field"] = prefill_config.db_lookup_field
+                    if prefill_config.db_user_field:
+                        kwargs["user_id_field"] = prefill_config.db_user_field
+
+                    # Check if this is a template-based multi-column lookup
+                    if prefill_config.has_template():
+                        return source.get_template_value(
+                            self.user,
+                            schema=prefill_config.db_schema,
+                            table=prefill_config.db_table,
+                            columns=prefill_config.db_columns,
+                            template=prefill_config.db_template,
+                            **kwargs,
+                        ) or ""
+
+                # Standard single-column lookup
                 source_str = prefill_source.strip()
                 if source_str.startswith("{{") and source_str.endswith("}}"):
                     source_str = source_str[2:-2].strip()
@@ -332,16 +354,6 @@ class DynamicForm(forms.Form):
                 # Parse schema.table.column
                 parts = source_str.split(".")
                 if len(parts) >= 2:
-                    # If we have a prefill_config with custom field mappings, use them
-                    kwargs = {}
-                    if prefill_config and prefill_config.source_type == "database":
-                        if prefill_config.db_alias:
-                            kwargs["database_alias"] = prefill_config.db_alias
-                        if prefill_config.db_lookup_field:
-                            kwargs["lookup_field"] = prefill_config.db_lookup_field
-                        if prefill_config.db_user_field:
-                            kwargs["user_id_field"] = prefill_config.db_user_field
-
                     # Pass the full path to the data source
                     return source.get_value(self.user, source_str, **kwargs) or ""
 

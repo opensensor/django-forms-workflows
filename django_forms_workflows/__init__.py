@@ -3,7 +3,7 @@ Django Forms Workflows
 Enterprise-grade, database-driven form builder with approval workflows
 """
 
-__version__ = "0.5.12"
+__version__ = "0.5.13"
 __author__ = "Django Forms Workflows Contributors"
 __license__ = "LGPL-3.0-only"
 

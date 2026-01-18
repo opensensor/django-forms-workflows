@@ -354,11 +354,6 @@ def approve_submission(request, task_id):
         )
 
         messages.success(request, f"Submission {decision}d successfully.")
-        redirect_url = reverse("forms_workflows:approval_inbox")
-        if request.headers.get("HX-Request"):
-            response = HttpResponse()
-            response["HX-Redirect"] = redirect_url
-            return response
         return redirect("forms_workflows:approval_inbox")
 
     return render(

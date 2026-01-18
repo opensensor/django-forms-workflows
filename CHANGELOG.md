@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced reporting and analytics
 - Multi-tenancy support
 
+## [0.5.4] - 2026-01-18
+
+### Fixed
+- **Database Prefill User Field Lookup**
+  - Fixed `DatabaseDataSource._get_user_id()` to first check direct user attributes (e.g., `username`, `email`) before checking the user profile
+  - This allows database prefill to use `user.username` for lookup when `db_user_field` is set to `username`
+
+## [0.5.3] - 2026-01-18
+
+### Added
+- **Readonly Form Fields**
+  - Added `readonly` boolean field to FormField model
+  - Readonly fields are rendered with disabled styling and cannot be modified by users
+  - Migration `0009_add_formfield_readonly` adds the new field
+
 ## [0.4.1] - 2025-11-11
 
 ### Added

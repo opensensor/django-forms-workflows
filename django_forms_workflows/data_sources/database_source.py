@@ -125,8 +125,15 @@ class DatabaseDataSource(DataSource):
         return getattr(settings, "FORMS_WORKFLOWS", {}).get("DATABASE_SOURCE", {})
 
     def _get_user_id(self, user, user_id_field: str) -> str | None:
-        """Get user's external ID from profile."""
+        """Get user's external ID from profile or user object."""
         try:
+            # First check if it's a direct user attribute (e.g., 'username', 'email')
+            if hasattr(user, user_id_field):
+                value = getattr(user, user_id_field)
+                if value:
+                    return value
+
+            # Then check the user's profile
             if hasattr(user, "forms_profile"):
                 profile = user.forms_profile
                 if hasattr(profile, user_id_field):

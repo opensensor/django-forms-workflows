@@ -1,6 +1,7 @@
-from django.urls import path
+from django.urls import include, path
 
 from . import views
+from .sso_backends import is_sso_available
 
 app_name = "forms_workflows"
 
@@ -29,3 +30,9 @@ urlpatterns = [
         name="approve_submission",
     ),
 ]
+
+# Conditionally include SSO URLs if SSO dependencies are available
+if is_sso_available():
+    urlpatterns += [
+        path("sso/", include("django_forms_workflows.sso_urls")),
+    ]

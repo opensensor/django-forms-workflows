@@ -102,9 +102,9 @@
 
 {% block extra_css %}
 <style>
-    .htmx-indicator { display: none; }
-    .htmx-request .htmx-indicator { display: inline-block; }
-    .htmx-request button[type=submit] { opacity: 0.6; }
+    .htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+    .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
+    form.htmx-request button[type=submit] { opacity: 0.6; pointer-events: none; }
 </style>
 {% endblock %}
 

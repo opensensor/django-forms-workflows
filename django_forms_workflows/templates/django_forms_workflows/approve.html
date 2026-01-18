@@ -132,10 +132,10 @@ document.addEventListener('DOMContentLoaded', function() {
         actionButtons.classList.add('d-none');
         loadingSpinner.classList.remove('d-none');
 
-        // Disable all form inputs to prevent double submission
-        const inputs = form.querySelectorAll('input, textarea, button');
-        inputs.forEach(function(input) {
-            input.disabled = true;
+        // Disable only buttons to prevent double-click (not inputs - that breaks CSRF)
+        const buttons = form.querySelectorAll('button');
+        buttons.forEach(function(btn) {
+            btn.disabled = true;
         });
     });
 });

@@ -979,6 +979,560 @@ class UserProfile(models.Model):
         self.employee_id = value
 
 
+class FileUploadConfig(models.Model):
+    """
+    Configurable file upload settings for form fields.
+
+    Allows administrators to define naming patterns, storage settings,
+    and workflow integration for file uploads.
+    """
+
+    # File naming pattern tokens:
+    # {user.id} - User ID
+    # {user.username} - Username
+    # {user.employee_id} - Employee ID from profile
+    # {field_name} - Form field name
+    # {form_slug} - Form definition slug
+    # {submission_id} - Submission ID
+    # {status} - Current file status
+    # {date} - Current date (YYYY-MM-DD)
+    # {datetime} - Current datetime (YYYYMMDD_HHMMSS)
+    # {original_name} - Original filename (without extension)
+    # {ext} - File extension
+
+    # Core Configuration
+    name = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="Display name for this configuration",
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Description of this file upload configuration",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this configuration is active",
+    )
+
+    # Naming Pattern
+    naming_pattern = models.CharField(
+        max_length=500,
+        default="{user.username}_{field_name}_{datetime}.{ext}",
+        help_text="File naming pattern. Tokens: {user.id}, {user.username}, {user.employee_id}, "
+        "{field_name}, {form_slug}, {submission_id}, {status}, {date}, {datetime}, "
+        "{original_name}, {ext}",
+    )
+
+    # Status-based naming (optional)
+    pending_prefix = models.CharField(
+        max_length=100,
+        blank=True,
+        default="pending_",
+        help_text="Prefix to add to pending files",
+    )
+    approved_prefix = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Prefix to add to approved files (empty means no prefix)",
+    )
+    rejected_prefix = models.CharField(
+        max_length=100,
+        blank=True,
+        default="rejected_",
+        help_text="Prefix to add to rejected files",
+    )
+
+    # Storage settings
+    upload_to = models.CharField(
+        max_length=500,
+        default="form_uploads/{form_slug}/{user.username}/",
+        help_text="Upload directory pattern. Supports same tokens as naming_pattern.",
+    )
+    approved_storage_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Move approved files to this path. Leave empty to keep in place.",
+    )
+    rejected_storage_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Move rejected files to this path. Leave empty to keep in place.",
+    )
+
+    # File restrictions (override form field settings if set)
+    allowed_extensions = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Comma-separated: pdf,doc,docx,xls,xlsx. Leave empty to use field settings.",
+    )
+    max_file_size_mb = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum file size in MB. Leave empty to use field settings.",
+    )
+    allowed_mime_types = models.TextField(
+        blank=True,
+        help_text="Comma-separated MIME types. Leave empty to allow any.",
+    )
+
+    # Versioning
+    enable_versioning = models.BooleanField(
+        default=False,
+        help_text="Keep previous versions of files",
+    )
+    max_versions = models.IntegerField(
+        default=5,
+        help_text="Maximum number of versions to keep",
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "File Upload Configuration"
+        verbose_name_plural = "File Upload Configurations"
+
+    def __str__(self):
+        return self.name
+
+
+class ManagedFile(models.Model):
+    """
+    Tracks file uploads with approval workflow integration.
+
+    Provides status tracking, versioning, and workflow hooks for file uploads.
+    """
+
+    FILE_STATUS = [
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("superseded", "Superseded"),  # Replaced by a newer version
+        ("deleted", "Deleted"),
+    ]
+
+    # Core relationships
+    submission = models.ForeignKey(
+        FormSubmission,
+        on_delete=models.CASCADE,
+        related_name="managed_files",
+    )
+    form_field = models.ForeignKey(
+        FormField,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="managed_files",
+    )
+    upload_config = models.ForeignKey(
+        FileUploadConfig,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="managed_files",
+    )
+
+    # File information
+    original_filename = models.CharField(
+        max_length=500,
+        help_text="Original filename as uploaded",
+    )
+    stored_filename = models.CharField(
+        max_length=500,
+        help_text="Filename as stored (after naming pattern applied)",
+    )
+    file_path = models.CharField(
+        max_length=1000,
+        help_text="Full path to file storage",
+    )
+    file_size = models.BigIntegerField(
+        default=0,
+        help_text="File size in bytes",
+    )
+    mime_type = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="MIME type of the file",
+    )
+    file_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        help_text="SHA-256 hash of file content for integrity/dedup",
+    )
+
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=FILE_STATUS,
+        default="pending",
+        db_index=True,
+    )
+    status_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When status last changed",
+    )
+    status_changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="file_status_changes",
+        help_text="User who changed the status",
+    )
+    status_notes = models.TextField(
+        blank=True,
+        help_text="Notes about the status change (e.g., rejection reason)",
+    )
+
+    # Versioning
+    version = models.IntegerField(
+        default=1,
+        help_text="Version number for this file",
+    )
+    previous_version = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="newer_versions",
+        help_text="Link to previous version of this file",
+    )
+    is_current = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Is this the current version?",
+    )
+
+    # Metadata
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="uploaded_files",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Custom metadata (JSON)
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional metadata as JSON",
+    )
+
+    class Meta:
+        ordering = ["-uploaded_at"]
+        indexes = [
+            models.Index(fields=["submission", "status"]),
+            models.Index(fields=["status", "is_current"]),
+        ]
+        verbose_name = "Managed File"
+        verbose_name_plural = "Managed Files"
+
+    def __str__(self):
+        return f"{self.original_filename} ({self.get_status_display()})"
+
+    def mark_approved(self, user=None, notes=""):
+        """Mark file as approved and trigger hooks."""
+        from django.utils import timezone
+
+        self.status = "approved"
+        self.status_changed_at = timezone.now()
+        self.status_changed_by = user
+        self.status_notes = notes
+        self.save(
+            update_fields=["status", "status_changed_at", "status_changed_by", "status_notes"]
+        )
+
+    def mark_rejected(self, user=None, notes=""):
+        """Mark file as rejected and trigger hooks."""
+        from django.utils import timezone
+
+        self.status = "rejected"
+        self.status_changed_at = timezone.now()
+        self.status_changed_by = user
+        self.status_notes = notes
+        self.save(
+            update_fields=["status", "status_changed_at", "status_changed_by", "status_notes"]
+        )
+
+    def mark_superseded(self, notes=""):
+        """Mark file as superseded by a newer version."""
+        from django.utils import timezone
+
+        self.status = "superseded"
+        self.status_changed_at = timezone.now()
+        self.status_notes = notes
+        self.is_current = False
+        self.save(
+            update_fields=["status", "status_changed_at", "status_notes", "is_current"]
+        )
+
+
+class FileWorkflowHook(models.Model):
+    """
+    Configurable workflow hooks for file operations.
+
+    Allows defining actions to execute when file status changes,
+    such as renaming, moving, webhook calls, or external integrations.
+    """
+
+    TRIGGER_CHOICES = [
+        ("on_upload", "On Upload"),
+        ("on_submit", "On Submission"),
+        ("on_approve", "On Approval"),
+        ("on_reject", "On Rejection"),
+        ("on_supersede", "On Supersede"),
+    ]
+
+    ACTION_CHOICES = [
+        ("rename", "Rename File"),
+        ("move", "Move File"),
+        ("copy", "Copy File"),
+        ("delete", "Delete File"),
+        ("webhook", "Call Webhook"),
+        ("api", "API Call"),
+        ("custom", "Custom Handler"),
+    ]
+
+    # Core configuration
+    name = models.CharField(
+        max_length=200,
+        help_text="Descriptive name for this hook",
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Description of what this hook does",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this hook is active",
+    )
+    order = models.IntegerField(
+        default=0,
+        help_text="Execution order (lower numbers run first)",
+    )
+
+    # Scope (which files this hook applies to)
+    form_definition = models.ForeignKey(
+        FormDefinition,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="file_hooks",
+        help_text="Specific form (leave empty for all forms)",
+    )
+    upload_config = models.ForeignKey(
+        FileUploadConfig,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="hooks",
+        help_text="Specific upload config (leave empty for all)",
+    )
+    field_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Specific field name (leave empty for all file fields)",
+    )
+
+    # Trigger and action
+    trigger = models.CharField(
+        max_length=20,
+        choices=TRIGGER_CHOICES,
+        help_text="When to execute this hook",
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=ACTION_CHOICES,
+        help_text="Action to perform",
+    )
+
+    # Action-specific configuration
+    # For rename/move/copy
+    target_pattern = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Target path/name pattern. Supports same tokens as FileUploadConfig.",
+    )
+
+    # For webhook/API
+    webhook_url = models.URLField(
+        blank=True,
+        max_length=500,
+        help_text="Webhook URL to call",
+    )
+    webhook_method = models.CharField(
+        max_length=10,
+        blank=True,
+        default="POST",
+        help_text="HTTP method for webhook",
+    )
+    webhook_headers = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Headers to send with webhook request",
+    )
+    webhook_payload_template = models.TextField(
+        blank=True,
+        help_text="JSON template for webhook payload. Use {field} for tokens.",
+    )
+
+    # For custom handler
+    custom_handler_path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Python path to custom handler (e.g., 'myapp.handlers.process_file')",
+    )
+    custom_handler_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Configuration passed to custom handler",
+    )
+
+    # Conditional execution
+    condition_field = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Form field to check for conditional execution",
+    )
+    condition_operator = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=[
+            ("equals", "Equals"),
+            ("not_equals", "Not Equals"),
+            ("contains", "Contains"),
+            ("greater_than", "Greater Than"),
+            ("less_than", "Less Than"),
+            ("is_true", "Is True"),
+            ("is_false", "Is False"),
+            ("file_ext_equals", "File Extension Equals"),
+            ("file_size_greater", "File Size Greater Than (MB)"),
+            ("file_size_less", "File Size Less Than (MB)"),
+        ],
+        help_text="Comparison operator for condition",
+    )
+    condition_value = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Value to compare against",
+    )
+
+    # Error handling
+    fail_silently = models.BooleanField(
+        default=False,
+        help_text="If True, errors won't block the workflow",
+    )
+    retry_on_failure = models.BooleanField(
+        default=False,
+        help_text="Retry failed actions",
+    )
+    max_retries = models.IntegerField(
+        default=3,
+        help_text="Maximum retry attempts",
+    )
+
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "name"]
+        verbose_name = "File Workflow Hook"
+        verbose_name_plural = "File Workflow Hooks"
+
+    def __str__(self):
+        scope = ""
+        if self.form_definition:
+            scope = f" for {self.form_definition.name}"
+        return f"{self.name} ({self.get_trigger_display()}{scope})"
+
+    def should_execute(self, managed_file, submission=None):
+        """
+        Check if this hook should execute for the given file.
+        """
+        if not self.is_active:
+            return False
+
+        # Check form scope
+        if self.form_definition_id:
+            if managed_file.submission.form_definition_id != self.form_definition_id:
+                return False
+
+        # Check upload config scope
+        if self.upload_config_id:
+            if managed_file.upload_config_id != self.upload_config_id:
+                return False
+
+        # Check field name scope
+        if self.field_name:
+            if managed_file.form_field and managed_file.form_field.field_name != self.field_name:
+                return False
+
+        # Check conditional execution
+        if self.condition_field and self.condition_operator:
+            return self._check_condition(managed_file, submission)
+
+        return True
+
+    def _check_condition(self, managed_file, submission=None):
+        """Evaluate condition for this hook."""
+        # Get submission from file if not provided
+        if submission is None:
+            submission = managed_file.submission
+
+        # File-specific conditions
+        if self.condition_operator == "file_ext_equals":
+            ext = managed_file.original_filename.rsplit(".", 1)[-1].lower()
+            return ext == self.condition_value.lower()
+
+        if self.condition_operator == "file_size_greater":
+            try:
+                size_mb = managed_file.file_size / (1024 * 1024)
+                return size_mb > float(self.condition_value)
+            except (ValueError, TypeError):
+                return False
+
+        if self.condition_operator == "file_size_less":
+            try:
+                size_mb = managed_file.file_size / (1024 * 1024)
+                return size_mb < float(self.condition_value)
+            except (ValueError, TypeError):
+                return False
+
+        # Form field conditions
+        field_value = submission.form_data.get(self.condition_field)
+
+        if self.condition_operator == "equals":
+            return str(field_value) == self.condition_value
+        elif self.condition_operator == "not_equals":
+            return str(field_value) != self.condition_value
+        elif self.condition_operator == "contains":
+            return self.condition_value in str(field_value)
+        elif self.condition_operator == "greater_than":
+            try:
+                return float(field_value) > float(self.condition_value)
+            except (ValueError, TypeError):
+                return False
+        elif self.condition_operator == "less_than":
+            try:
+                return float(field_value) < float(self.condition_value)
+            except (ValueError, TypeError):
+                return False
+        elif self.condition_operator == "is_true":
+            return bool(field_value)
+        elif self.condition_operator == "is_false":
+            return not bool(field_value)
+
+        return True
+
+
 class FormTemplate(models.Model):
     """
     Pre-built form templates for common use cases.

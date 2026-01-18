@@ -67,7 +67,26 @@ def _finalize_submission(submission: FormSubmission) -> None:
 
     execute_post_approval_updates(submission)
     execute_post_submission_actions(submission, "on_complete")
+    execute_file_workflow_hooks(submission, "on_approve")
     _notify_final_approval(submission)
+
+
+def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
+    """Mark submission as rejected and execute rejection hooks."""
+    submission.status = "rejected"
+    submission.completed_at = timezone.now()
+    submission.save(update_fields=["status", "completed_at"])
+
+    # Cancel any remaining pending tasks
+    submission.approval_tasks.filter(status="pending").update(status="skipped")
+
+    # Execute rejection actions
+    execute_post_submission_actions(submission, "on_reject")
+    execute_file_workflow_hooks(submission, "on_reject")
+
+    # Mark all managed files as rejected
+    for managed_file in submission.managed_files.filter(is_current=True, status="pending"):
+        managed_file.mark_rejected(notes=reason)
 
 
 # --- Public API -------------------------------------------------------------
@@ -92,6 +111,9 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
 
     # Execute on_submit actions
     execute_post_submission_actions(submission, "on_submit")
+
+    # Execute file workflow hooks for submission
+    execute_file_workflow_hooks(submission, "on_submit")
 
     if not workflow or not workflow.requires_approval:
         _finalize_submission(submission)
@@ -300,6 +322,9 @@ def execute_post_approval_updates(submission: FormSubmission) -> None:
     # Execute new post-submission actions
     execute_post_submission_actions(submission, "on_approve")
 
+    # Execute file workflow hooks for approval
+    execute_file_workflow_hooks(submission, "on_approve")
+
     # Legacy support for db_update_mappings
     workflow: WorkflowDefinition | None = getattr(
         submission.form_definition, "workflow", None
@@ -311,3 +336,38 @@ def execute_post_approval_updates(submission: FormSubmission) -> None:
                 "Legacy db_update_mappings detected. "
                 "Consider migrating to PostSubmissionAction model for better configurability."
             )
+
+
+def execute_file_workflow_hooks(submission: FormSubmission, trigger: str) -> None:
+    """Execute file workflow hooks for all managed files in a submission.
+
+    Args:
+        submission: FormSubmission instance
+        trigger: Trigger type ('on_upload', 'on_submit', 'on_approve', 'on_reject', 'on_supersede')
+    """
+    try:
+        from .handlers.file_handler import execute_file_hooks
+
+        # Get all managed files for this submission
+        managed_files = submission.managed_files.filter(is_current=True)
+
+        for managed_file in managed_files:
+            try:
+                results = execute_file_hooks(managed_file, trigger)
+
+                if results["failed"] > 0:
+                    logger.warning(
+                        f"Some file hooks failed for file {managed_file.id}: "
+                        f"{results['failed']} failed, {results['succeeded']} succeeded"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error executing file hooks for file {managed_file.id}: {e}",
+                    exc_info=True,
+                )
+
+    except Exception as e:
+        logger.error(
+            f"Error executing file workflow hooks for submission {submission.id}: {e}",
+            exc_info=True,
+        )

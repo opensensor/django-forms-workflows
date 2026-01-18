@@ -1246,7 +1246,12 @@ class ManagedFile(models.Model):
         self.status_changed_by = user
         self.status_notes = notes
         self.save(
-            update_fields=["status", "status_changed_at", "status_changed_by", "status_notes"]
+            update_fields=[
+                "status",
+                "status_changed_at",
+                "status_changed_by",
+                "status_notes",
+            ]
         )
 
     def mark_rejected(self, user=None, notes=""):
@@ -1258,7 +1263,12 @@ class ManagedFile(models.Model):
         self.status_changed_by = user
         self.status_notes = notes
         self.save(
-            update_fields=["status", "status_changed_at", "status_changed_by", "status_notes"]
+            update_fields=[
+                "status",
+                "status_changed_at",
+                "status_changed_by",
+                "status_notes",
+            ]
         )
 
     def mark_superseded(self, notes=""):
@@ -1472,7 +1482,10 @@ class FileWorkflowHook(models.Model):
 
         # Check field name scope
         if self.field_name:
-            if managed_file.form_field and managed_file.form_field.field_name != self.field_name:
+            if (
+                managed_file.form_field
+                and managed_file.form_field.field_name != self.field_name
+            ):
                 return False
 
         # Check conditional execution

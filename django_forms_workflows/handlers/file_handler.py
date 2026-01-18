@@ -278,9 +278,7 @@ class WebhookHandler:
                     "data": {"status_code": response.status_code},
                 }
             else:
-                logger.warning(
-                    f"Webhook call failed: {url} ({response.status_code})"
-                )
+                logger.warning(f"Webhook call failed: {url} ({response.status_code})")
                 return {
                     "success": False,
                     "message": f"Webhook returned {response.status_code}",
@@ -329,6 +327,7 @@ class WebhookHandler:
         if self.hook.webhook_payload_template:
             try:
                 import json
+
                 template = self.hook.webhook_payload_template
                 resolved = self.resolver.resolve(template)
                 payload = json.loads(resolved)
@@ -420,7 +419,10 @@ class FileHookExecutor:
             elif hook.action == "custom":
                 exec_result = self._execute_custom(hook)
             else:
-                exec_result = {"success": False, "message": f"Unknown action: {hook.action}"}
+                exec_result = {
+                    "success": False,
+                    "message": f"Unknown action: {hook.action}",
+                }
 
             result.update(exec_result)
 
@@ -496,4 +498,3 @@ def execute_file_hooks(managed_file, trigger):
             exc_info=True,
         )
         return {"executed": 0, "succeeded": 0, "failed": 0, "skipped": 0, "results": []}
-

@@ -85,7 +85,9 @@ def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
     execute_file_workflow_hooks(submission, "on_reject")
 
     # Mark all managed files as rejected
-    for managed_file in submission.managed_files.filter(is_current=True, status="pending"):
+    for managed_file in submission.managed_files.filter(
+        is_current=True, status="pending"
+    ):
         managed_file.mark_rejected(notes=reason)
 
 

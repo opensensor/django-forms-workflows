@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced reporting and analytics
 - Multi-tenancy support
 
+## [0.5.5] - 2026-01-18
+
+### Added
+- **Multi-Column Database Prefill Templates**
+  - Added `db_columns` (JSONField) and `db_template` (CharField) to PrefillSource model
+  - Allows combining multiple database columns into a single prefill value
+  - Example: `db_columns=["FIRST_NAME", "LAST_NAME"]`, `db_template="{FIRST_NAME} {LAST_NAME}"` produces "John Smith"
+  - New `DatabaseDataSource.get_template_value()` method for template-based lookups
+  - Migration `0010_add_prefillsource_template_fields`
+
 ## [0.5.4] - 2026-01-18
 
 ### Fixed

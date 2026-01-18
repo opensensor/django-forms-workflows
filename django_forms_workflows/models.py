@@ -156,7 +156,17 @@ class PrefillSource(models.Model):
     db_column = models.CharField(
         max_length=100,
         blank=True,
-        help_text="Database column name (e.g., 'FIRST_NAME')",
+        help_text="Database column name (e.g., 'FIRST_NAME') - for single column lookup",
+    )
+    db_columns = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="List of columns to fetch for template (e.g., ['FIRST_NAME', 'LAST_NAME'])",
+    )
+    db_template = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Template for combining columns (e.g., '{FIRST_NAME} {LAST_NAME}')",
     )
     db_lookup_field = models.CharField(
         max_length=100,
@@ -209,19 +219,22 @@ class PrefillSource(models.Model):
         Get the source identifier string for backward compatibility.
         Returns the source_key or constructs it from components.
         """
-        if (
-            self.source_type == "database"
-            and self.db_schema
-            and self.db_table
-            and self.db_column
-        ):
-            return f"{{{{ {self.db_schema}.{self.db_table}.{self.db_column} }}}}"
+        if self.source_type == "database" and self.db_schema and self.db_table:
+            # Template-based multi-column lookup
+            if self.db_template and self.db_columns:
+                return f"{{{{ {self.db_schema}.{self.db_table}.* }}}}"
+            # Single column lookup
+            elif self.db_column:
+                return f"{{{{ {self.db_schema}.{self.db_table}.{self.db_column} }}}}"
         elif self.source_type == "ldap" and self.ldap_attribute:
             return f"ldap.{self.ldap_attribute}"
         elif self.source_type == "user":
             return self.source_key
-        else:
-            return self.source_key
+        return self.source_key
+
+    def has_template(self):
+        """Check if this source uses a multi-column template."""
+        return bool(self.db_template and self.db_columns)
 
 
 class FormField(models.Model):

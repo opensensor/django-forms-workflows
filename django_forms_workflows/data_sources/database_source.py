@@ -244,6 +244,137 @@ class DatabaseDataSource(DataSource):
             logger.error(f"Database query error: {e}")
             return None
 
+    def _query_database_template(
+        self,
+        database_alias: str,
+        schema: str,
+        table: str,
+        columns: list[str],
+        template: str,
+        user_id: str,
+        lookup_field: str = "ID_NUMBER",
+    ) -> str | None:
+        """
+        Execute database query for multiple columns and apply template.
+
+        Args:
+            database_alias: Django database alias
+            schema: Database schema
+            table: Table name
+            columns: List of column names to fetch
+            template: Template string with {COLUMN_NAME} placeholders
+            user_id: User's external ID for lookup
+            lookup_field: Database column to match against
+
+        Returns:
+            Formatted string with template applied, or None if not found
+        """
+        try:
+            # Validate all column identifiers
+            if not all(self._is_safe_identifier(col) for col in columns):
+                logger.error(f"Invalid column identifiers in: {columns}")
+                return None
+
+            # Build column list for SELECT
+            column_list = ", ".join(f"[{col}]" for col in columns)
+
+            # Build parameterized query
+            query = f"""
+                SELECT TOP 1 {column_list}
+                FROM [{schema}].[{table}]
+                WHERE [{lookup_field}] = %s
+            """
+
+            # Execute query
+            with connections[database_alias].cursor() as cursor:
+                cursor.execute(query, [user_id])
+                row = cursor.fetchone()
+
+                if row:
+                    # Build dictionary of column values
+                    values = {col: (row[i] or "") for i, col in enumerate(columns)}
+
+                    # Apply template
+                    result = template
+                    for col, val in values.items():
+                        result = result.replace(f"{{{col}}}", str(val))
+
+                    return result.strip()
+
+                logger.debug(
+                    f"No data found for user {user_id} in {schema}.{table} (lookup: {lookup_field})"
+                )
+                return None
+
+        except Exception as e:
+            logger.error(f"Database template query error: {e}")
+            return None
+
+    def get_template_value(
+        self,
+        user,
+        schema: str,
+        table: str,
+        columns: list[str],
+        template: str,
+        **kwargs,
+    ) -> str | None:
+        """
+        Get a templated value from multiple database columns.
+
+        Args:
+            user: Django User object
+            schema: Database schema
+            table: Table name
+            columns: List of column names to fetch
+            template: Template string with {COLUMN_NAME} placeholders
+            **kwargs: Optional overrides (database_alias, user_id_field, lookup_field)
+
+        Returns:
+            Formatted string with template applied, or None
+        """
+        if not user or not user.is_authenticated:
+            return None
+
+        if not self.is_available():
+            logger.warning("Database data source is not available")
+            return None
+
+        try:
+            config = self._get_config()
+            database_alias = kwargs.get("database_alias", config.get("database_alias"))
+            user_id_field = kwargs.get(
+                "user_id_field", config.get("user_id_field", "external_id")
+            )
+            lookup_field = kwargs.get(
+                "lookup_field", config.get("lookup_field", "ID_NUMBER")
+            )
+
+            # Get user's external ID
+            user_id = self._get_user_id(user, user_id_field)
+            if not user_id:
+                logger.debug(f"User {user.username} has no {user_id_field}")
+                return None
+
+            # Validate identifiers
+            if not self._is_safe_identifier(schema) or not self._is_safe_identifier(table):
+                logger.error(f"Invalid schema or table: {schema}.{table}")
+                return None
+
+            return self._query_database_template(
+                database_alias=database_alias,
+                schema=schema,
+                table=table,
+                columns=columns,
+                template=template,
+                user_id=user_id,
+                lookup_field=lookup_field,
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting template value: {e}")
+            return None
+
     def is_available(self) -> bool:
         """
         Check if database source is configured.

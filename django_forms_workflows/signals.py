@@ -5,7 +5,6 @@ Handles automatic UserProfile creation and LDAP attribute synchronization.
 """
 
 import logging
-from datetime import datetime
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -149,4 +148,3 @@ def sync_ldap_on_login(sender, user, request, **kwargs):
             sync_ldap_attributes(user)
         except Exception as e:
             logger.error(f"Error syncing LDAP attributes for {user.username}: {e}")
-

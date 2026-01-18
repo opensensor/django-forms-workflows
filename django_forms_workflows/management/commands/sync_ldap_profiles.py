@@ -40,9 +40,7 @@ class Command(BaseCommand):
         if username:
             users = User.objects.filter(username=username)
             if not users.exists():
-                self.stdout.write(
-                    self.style.ERROR(f"User '{username}' not found")
-                )
+                self.stdout.write(self.style.ERROR(f"User '{username}' not found"))
                 return
         else:
             users = User.objects.all()
@@ -106,30 +104,21 @@ class Command(BaseCommand):
             except Exception as e:
                 error_count += 1
                 self.stdout.write(
-                    self.style.ERROR(
-                        f"Error syncing user {user.username}: {e}"
-                    )
+                    self.style.ERROR(f"Error syncing user {user.username}: {e}")
                 )
 
         # Summary
         self.stdout.write("\n" + "=" * 50)
         if dry_run:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"DRY RUN: Would sync {synced_count} user(s)"
-                )
+                self.style.SUCCESS(f"DRY RUN: Would sync {synced_count} user(s)")
             )
         else:
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"Successfully synced {synced_count} user(s)"
-                )
+                self.style.SUCCESS(f"Successfully synced {synced_count} user(s)")
             )
 
         if error_count > 0:
-            self.stdout.write(
-                self.style.ERROR(f"Errors: {error_count}")
-            )
+            self.stdout.write(self.style.ERROR(f"Errors: {error_count}"))
 
         self.stdout.write("=" * 50)
-

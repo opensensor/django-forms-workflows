@@ -25,19 +25,21 @@ def _configure_ldap_connection(conn):
     """
     try:
         from django_forms_workflows.ldap_backend import configure_ldap_connection
+
         configure_ldap_connection(conn)
     except ImportError:
         # Fallback if ldap_backend is not available
         import os
+
         import ldap
 
-        tls_require_cert = os.getenv('LDAP_TLS_REQUIRE_CERT', 'demand').lower()
+        tls_require_cert = os.getenv("LDAP_TLS_REQUIRE_CERT", "demand").lower()
 
-        if tls_require_cert == 'never':
+        if tls_require_cert == "never":
             conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
-        elif tls_require_cert == 'allow':
+        elif tls_require_cert == "allow":
             conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
-        elif tls_require_cert == 'try':
+        elif tls_require_cert == "try":
             conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_TRY)
         else:
             conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_DEMAND)

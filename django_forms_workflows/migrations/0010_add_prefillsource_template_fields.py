@@ -28,5 +28,14 @@ class Migration(migrations.Migration):
                 help_text="Template for combining columns (e.g., '{FIRST_NAME} {LAST_NAME}')",
             ),
         ),
+        migrations.AlterField(
+            model_name="prefillsource",
+            name="db_column",
+            field=models.CharField(
+                blank=True,
+                help_text="Database column name (e.g., 'FIRST_NAME') - for single column lookup",
+                max_length=100,
+            ),
+        ),
     ]
 

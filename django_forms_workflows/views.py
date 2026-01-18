@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.files.storage import default_storage
 from django.db import models
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -71,15 +72,22 @@ def form_submit(request, slug):
         )
 
         if form.is_valid():
-            # Save submission
+            # Save submission first to get an ID for file storage paths
             submission = draft or FormSubmission(
                 form_definition=form_def,
                 submitter=request.user,
                 submission_ip=get_client_ip(request),
                 user_agent=request.META.get("HTTP_USER_AGENT", ""),
             )
-            # Serialize form data to JSON-compatible format
-            submission.form_data = serialize_form_data(form.cleaned_data)
+            # Save to get ID (needed for file paths)
+            if not submission.pk:
+                submission.form_data = {}  # Temporary empty data
+                submission.save()
+
+            # Serialize form data to JSON-compatible format (now with submission ID)
+            submission.form_data = serialize_form_data(
+                form.cleaned_data, submission_id=submission.pk
+            )
 
             if "save_draft" in request.POST:
                 submission.status = "draft"
@@ -408,19 +416,94 @@ def withdraw_submission(request, submission_id):
 # Helper functions
 
 
-def serialize_form_data(data):
-    """Convert form data to JSON-serializable format"""
+def serialize_form_data(data, submission_id=None):
+    """
+    Convert form data to JSON-serializable format.
+
+    For file uploads, saves the file to storage and stores both
+    the filename and the storage path.
+    """
     serialized = {}
     for key, value in data.items():
-        if isinstance(value, (date, datetime, time)):
+        if isinstance(value, date | datetime | time):
             serialized[key] = value.isoformat()
         elif isinstance(value, Decimal):
             serialized[key] = str(value)
-        elif hasattr(value, "name"):  # File upload
-            serialized[key] = value.name
+        elif hasattr(value, "read"):  # File upload (InMemoryUploadedFile or similar)
+            # Save file to storage (uses S3/Spaces if configured)
+            file_path = save_uploaded_file(value, key, submission_id)
+            if file_path:
+                # Get the URL for the saved file
+                try:
+                    file_url = default_storage.url(file_path)
+                except Exception:
+                    file_url = None
+
+                serialized[key] = {
+                    "filename": value.name,
+                    "path": file_path,
+                    "url": file_url,
+                    "size": value.size if hasattr(value, "size") else 0,
+                    "content_type": (
+                        value.content_type
+                        if hasattr(value, "content_type")
+                        else "application/octet-stream"
+                    ),
+                }
+            else:
+                # Fallback if save fails
+                serialized[key] = value.name
         else:
             serialized[key] = value
     return serialized
+
+
+def save_uploaded_file(file_obj, field_name, submission_id=None):
+    """
+    Save an uploaded file to storage.
+
+    Returns the storage path or None if save fails.
+    """
+    try:
+        # Generate a unique path for the file
+        timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+        sub_id = submission_id or "temp"
+
+        # Sanitize filename
+        original_name = file_obj.name
+        # Remove any path components from the filename
+        safe_name = original_name.replace("/", "_").replace("\\", "_")
+
+        # Build storage path: uploads/<submission_id>/<timestamp>_<filename>
+        storage_path = f"uploads/{sub_id}/{field_name}_{timestamp}_{safe_name}"
+
+        # Save to storage (will use S3/Spaces if configured via STORAGES)
+        saved_path = default_storage.save(storage_path, file_obj)
+
+        logger.info(f"Saved uploaded file to: {saved_path}")
+        return saved_path
+
+    except Exception as e:
+        logger.error(f"Failed to save uploaded file: {e}", exc_info=True)
+        return None
+
+
+def get_file_url(file_info):
+    """
+    Get a URL for accessing an uploaded file.
+
+    Handles both old format (just filename) and new format (dict with path).
+    """
+    if isinstance(file_info, dict) and "path" in file_info:
+        try:
+            return default_storage.url(file_info["path"])
+        except Exception as e:
+            logger.error(f"Failed to get file URL: {e}")
+            return None
+    elif isinstance(file_info, str):
+        # Old format - just filename, can't generate URL
+        return None
+    return None
 
 
 def get_client_ip(request):

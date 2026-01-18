@@ -57,7 +57,28 @@
                     {% for key, value in submission.form_data.items %}
                         <tr>
                             <th style="width: 30%;">{{ key|title }}</th>
-                            <td>{{ value }}</td>
+                            <td>
+                                {% if value.url %}
+                                    {# File upload with URL - display as image or link #}
+                                    {% if value.content_type and 'image' in value.content_type %}
+                                        <div class="mb-2">
+                                            <img src="{{ value.url }}" alt="{{ value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
+                                        </div>
+                                    {% endif %}
+                                    <a href="{{ value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-download"></i> {{ value.filename }}
+                                    </a>
+                                    <small class="text-muted ms-2">
+                                        {% if value.size %}({{ value.size|filesizeformat }}){% endif %}
+                                    </small>
+                                {% elif value.path %}
+                                    {# File upload with path but no URL #}
+                                    <span class="text-muted">{{ value.filename }}</span>
+                                    <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                                {% else %}
+                                    {{ value }}
+                                {% endif %}
+                            </td>
                         </tr>
                     {% endfor %}
                 </table>

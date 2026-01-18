@@ -997,8 +997,13 @@ class ManagedFileAdmin(admin.ModelAdmin):
 
     def submission_link(self, obj):
         """Link to the submission."""
-        url = reverse("admin:django_forms_workflows_formsubmission_change", args=[obj.submission.id])
-        return format_html('<a href="{}">{}</a>', url, f"Submission #{obj.submission.id}")
+        url = reverse(
+            "admin:django_forms_workflows_formsubmission_change",
+            args=[obj.submission.id],
+        )
+        return format_html(
+            '<a href="{}">{}</a>', url, f"Submission #{obj.submission.id}"
+        )
 
     submission_link.short_description = "Submission"
 

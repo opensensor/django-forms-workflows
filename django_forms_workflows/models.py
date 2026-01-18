@@ -740,7 +740,9 @@ class FormSubmission(models.Model):
         FormDefinition, on_delete=models.PROTECT, related_name="submissions"
     )
     submitter = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="form_submissions"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="form_submissions",
     )
 
     # Submission Data

@@ -7,7 +7,6 @@ Provides helper functions for permissions, LDAP integration, and workflow logic.
 import logging
 import re
 from decimal import Decimal
-from typing import Optional
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -117,7 +116,7 @@ def get_ldap_attribute(user, attr_name: str, ldap_attr_name: str = None) -> str:
     return ""
 
 
-def get_user_manager(user) -> Optional[User]:
+def get_user_manager(user) -> User | None:
     """
     Get the manager of a user from LDAP or UserProfile.
 
@@ -277,7 +276,7 @@ def sync_ldap_groups():
     try:
         from django_auth_ldap.backend import LDAPBackend
 
-        backend = LDAPBackend()
+        _backend = LDAPBackend()  # noqa: F841 - Placeholder for future implementation
 
         # This would need to be implemented based on your LDAP structure
         # and how you want to sync groups

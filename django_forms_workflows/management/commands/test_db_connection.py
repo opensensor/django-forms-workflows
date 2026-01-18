@@ -45,10 +45,16 @@ class Command(BaseCommand):
             connection = connections[database_alias]
 
             if verbose:
-                self.stdout.write(f"Database engine: {connection.settings_dict['ENGINE']}")
+                self.stdout.write(
+                    f"Database engine: {connection.settings_dict['ENGINE']}"
+                )
                 self.stdout.write(f"Database name: {connection.settings_dict['NAME']}")
-                self.stdout.write(f"Database host: {connection.settings_dict.get('HOST', 'N/A')}")
-                self.stdout.write(f"Database port: {connection.settings_dict.get('PORT', 'N/A')}")
+                self.stdout.write(
+                    f"Database host: {connection.settings_dict.get('HOST', 'N/A')}"
+                )
+                self.stdout.write(
+                    f"Database port: {connection.settings_dict.get('PORT', 'N/A')}"
+                )
                 self.stdout.write("")
 
             # Test connection
@@ -60,9 +66,7 @@ class Command(BaseCommand):
                     # SQL Server
                     cursor.execute("SELECT @@VERSION")
                     version = cursor.fetchone()
-                    self.stdout.write(
-                        self.style.SUCCESS("✓ Connection successful!")
-                    )
+                    self.stdout.write(self.style.SUCCESS("✓ Connection successful!"))
                     if verbose and version:
                         self.stdout.write(f"Version: {version[0][:100]}...")
 
@@ -70,9 +74,7 @@ class Command(BaseCommand):
                     # PostgreSQL
                     cursor.execute("SELECT version()")
                     version = cursor.fetchone()
-                    self.stdout.write(
-                        self.style.SUCCESS("✓ Connection successful!")
-                    )
+                    self.stdout.write(self.style.SUCCESS("✓ Connection successful!"))
                     if verbose and version:
                         self.stdout.write(f"Version: {version[0][:100]}...")
 
@@ -80,9 +82,7 @@ class Command(BaseCommand):
                     # MySQL
                     cursor.execute("SELECT VERSION()")
                     version = cursor.fetchone()
-                    self.stdout.write(
-                        self.style.SUCCESS("✓ Connection successful!")
-                    )
+                    self.stdout.write(self.style.SUCCESS("✓ Connection successful!"))
                     if verbose and version:
                         self.stdout.write(f"Version: {version[0]}")
 
@@ -90,9 +90,7 @@ class Command(BaseCommand):
                     # SQLite
                     cursor.execute("SELECT sqlite_version()")
                     version = cursor.fetchone()
-                    self.stdout.write(
-                        self.style.SUCCESS("✓ Connection successful!")
-                    )
+                    self.stdout.write(self.style.SUCCESS("✓ Connection successful!"))
                     if verbose and version:
                         self.stdout.write(f"Version: {version[0]}")
 
@@ -106,7 +104,9 @@ class Command(BaseCommand):
                         )
                     else:
                         self.stdout.write(
-                            self.style.WARNING("⚠ Connection test returned unexpected result")
+                            self.style.WARNING(
+                                "⚠ Connection test returned unexpected result"
+                            )
                         )
 
                 # Test a simple query
@@ -120,11 +120,10 @@ class Command(BaseCommand):
                         )
 
         except Exception as e:
-            self.stdout.write(
-                self.style.ERROR(f"✗ Connection test failed: {e}")
-            )
+            self.stdout.write(self.style.ERROR(f"✗ Connection test failed: {e}"))
             if verbose:
                 import traceback
+
                 self.stdout.write("\nFull error:")
                 self.stdout.write(traceback.format_exc())
             return
@@ -135,4 +134,3 @@ class Command(BaseCommand):
                 f"Database '{database_alias}' is accessible and working correctly."
             )
         )
-

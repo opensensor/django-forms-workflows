@@ -48,6 +48,21 @@
           </div>
         </form>
 
+        {% if sso_providers %}
+        <hr class="my-4">
+        <div class="text-center mb-3">
+          <p class="text-muted small mb-3">Or sign in with</p>
+          <div class="d-grid gap-2">
+            {% for provider in sso_providers %}
+            <a href="{% url 'social:begin' provider.name %}?next={{ next|urlencode }}"
+               class="btn {{ provider.button_class }}">
+              <i class="{{ provider.icon_class }} me-2"></i>{{ provider.display_name }}
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
         <hr class="my-4">
         <div class="text-center">
           <p class="text-muted small mb-0">

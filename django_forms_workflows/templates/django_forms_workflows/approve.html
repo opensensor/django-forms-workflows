@@ -69,13 +69,15 @@
                 <h5 class="mb-0">Your Decision</h5>
             </div>
             <div class="card-body">
-                <form method="post">
+                <form method="post" id="approvalForm">
                     {% csrf_token %}
                     <div class="mb-3">
                         <label for="comments" class="form-label">Comments (Optional)</label>
                         <textarea class="form-control" id="comments" name="comments" rows="3" placeholder="Add any comments about your decision..."></textarea>
                     </div>
-                    <div class="d-grid gap-2 d-md-block">
+
+                    <!-- Action buttons (shown initially) -->
+                    <div class="d-grid gap-2 d-md-block" id="actionButtons">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
                             <i class="bi bi-check-circle"></i> Approve
                         </button>
@@ -86,10 +88,57 @@
                             <i class="bi bi-arrow-left"></i> Back
                         </a>
                     </div>
+
+                    <!-- Loading spinner (hidden initially) -->
+                    <div class="d-none" id="loadingSpinner">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border text-primary me-3" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <div>
+                                <strong id="loadingText">Processing your decision...</strong>
+                                <p class="text-muted mb-0 small">This may take a few moments.</p>
+                            </div>
+                        </div>
+                    </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('approvalForm');
+    const actionButtons = document.getElementById('actionButtons');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const loadingText = document.getElementById('loadingText');
+
+    form.addEventListener('submit', function(e) {
+        // Get the clicked button's value
+        const clickedButton = e.submitter;
+        const decision = clickedButton ? clickedButton.value : 'processing';
+
+        // Update loading text based on decision
+        if (decision === 'approve') {
+            loadingText.textContent = 'Approving submission...';
+        } else if (decision === 'reject') {
+            loadingText.textContent = 'Rejecting submission...';
+        }
+
+        // Hide buttons, show spinner
+        actionButtons.classList.add('d-none');
+        loadingSpinner.classList.remove('d-none');
+
+        // Disable all form inputs to prevent double submission
+        const inputs = form.querySelectorAll('input, textarea, button');
+        inputs.forEach(function(input) {
+            input.disabled = true;
+        });
+    });
+});
+</script>
 {% endblock %}
 

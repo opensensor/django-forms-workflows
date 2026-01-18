@@ -226,7 +226,7 @@ class DynamicForm(forms.Form):
 
         elif field_def.field_type == "checkbox":
             self.fields[field_def.field_name] = forms.BooleanField(
-                required=False,  # Checkboxes are never required
+                required=field_def.required,
                 label=field_def.field_label,
                 help_text=field_def.help_text,
                 initial=initial,

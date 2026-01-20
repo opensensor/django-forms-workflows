@@ -104,6 +104,23 @@ class SAMLACSView(View):
     Receives SAML responses from the IdP and authenticates the user.
     """
 
+    def _prepare_django_request(self, request):
+        """
+        Prepare a Django request for python3-saml.
+
+        Returns a dict with the request data in the format expected by OneLogin_Saml2_Auth.
+        """
+        return {
+            "https": "on" if request.is_secure() else "off",
+            "http_host": request.META["HTTP_HOST"],
+            "script_name": request.META["PATH_INFO"],
+            "server_port": request.META.get(
+                "SERVER_PORT", "443" if request.is_secure() else "80"
+            ),
+            "get_data": request.GET.copy(),
+            "post_data": request.POST.copy(),
+        }
+
     def post(self, request):
         if not is_saml_available():
             return HttpResponseBadRequest(

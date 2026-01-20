@@ -109,14 +109,26 @@ class SAMLACSView(View):
         Prepare a Django request for python3-saml.
 
         Returns a dict with the request data in the format expected by OneLogin_Saml2_Auth.
+        Handles reverse proxy scenarios where X-Forwarded-* headers indicate the real protocol.
         """
+        # Check if request is secure (handles reverse proxy via X-Forwarded-Proto)
+        is_secure = request.is_secure()
+        if not is_secure:
+            # Check X-Forwarded-Proto header for reverse proxy
+            forwarded_proto = request.META.get("HTTP_X_FORWARDED_PROTO", "")
+            is_secure = forwarded_proto.lower() == "https"
+
+        # Get the host without port (proxy may forward with port)
+        http_host = request.META.get("HTTP_HOST", "")
+        # Strip port if present to avoid mismatches
+        if ":" in http_host:
+            http_host = http_host.split(":")[0]
+
         return {
-            "https": "on" if request.is_secure() else "off",
-            "http_host": request.META["HTTP_HOST"],
+            "https": "on" if is_secure else "off",
+            "http_host": http_host,
             "script_name": request.META["PATH_INFO"],
-            "server_port": request.META.get(
-                "SERVER_PORT", "443" if request.is_secure() else "80"
-            ),
+            "server_port": "443" if is_secure else "80",
             "get_data": request.GET.copy(),
             "post_data": request.POST.copy(),
         }

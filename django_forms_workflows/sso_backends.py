@@ -290,6 +290,7 @@ def get_saml_config():
                 "wantAssertionsSigned": True,
                 "wantMessagesSigned": False,
                 "wantNameIdEncrypted": False,
+                "wantAttributeStatement": False,  # Don't require attributes (Google may not send them)
             },
         ),
     }

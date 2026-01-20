@@ -150,9 +150,34 @@ class SAMLACSView(View):
                 return HttpResponseBadRequest("SAML authentication failed")
 
             # Get user attributes from SAML response
-            attributes = auth.get_attributes()
+            # Note: Google SAML may not include AttributeStatement, so attributes may be empty
+            attributes = auth.get_attributes() or {}
             name_id = auth.get_nameid()
-            email = attributes.get("email", [name_id])[0]
+
+            # Try to get email from attributes, fall back to NameID
+            email = None
+            for attr_name in ["email", "Email", "emailAddress", "mail"]:
+                if attr_name in attributes and attributes[attr_name]:
+                    email = attributes[attr_name][0]
+                    break
+            if not email:
+                email = name_id  # NameID should be the email for Google SAML
+
+            if not email:
+                return HttpResponseBadRequest("SAML response missing email/NameID")
+
+            # Get first/last name from attributes if available
+            first_name = ""
+            for attr_name in ["firstName", "FirstName", "first_name", "givenName"]:
+                if attr_name in attributes and attributes[attr_name]:
+                    first_name = attributes[attr_name][0]
+                    break
+
+            last_name = ""
+            for attr_name in ["lastName", "LastName", "last_name", "sn", "surname"]:
+                if attr_name in attributes and attributes[attr_name]:
+                    last_name = attributes[attr_name][0]
+                    break
 
             # Find or create user
             user_model = get_user_model()
@@ -160,8 +185,8 @@ class SAMLACSView(View):
                 email=email,
                 defaults={
                     "username": email.split("@")[0],
-                    "first_name": attributes.get("firstName", [""])[0],
-                    "last_name": attributes.get("lastName", [""])[0],
+                    "first_name": first_name,
+                    "last_name": last_name,
                 },
             )
 

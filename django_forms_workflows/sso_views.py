@@ -139,8 +139,12 @@ class SAMLACSView(View):
             errors = auth.get_errors()
 
             if errors:
+                last_error_reason = auth.get_last_error_reason()
                 logger.error(f"SAML authentication errors: {errors}")
-                return HttpResponseBadRequest(f"SAML authentication failed: {errors}")
+                logger.error(f"SAML last error reason: {last_error_reason}")
+                return HttpResponseBadRequest(
+                    f"SAML authentication failed: {errors}. Reason: {last_error_reason}"
+                )
 
             if not auth.is_authenticated():
                 return HttpResponseBadRequest("SAML authentication failed")

@@ -239,6 +239,23 @@ def get_saml_config():
     idp_slo_url = saml_settings.get("idp_slo_url", "")
     idp_x509_cert = saml_settings.get("idp_x509_cert", "")
 
+    # Handle certificate that may be base64 encoded or have escaped newlines
+    if idp_x509_cert:
+        import base64
+
+        # First, replace literal \n with actual newlines
+        if "\\n" in idp_x509_cert:
+            idp_x509_cert = idp_x509_cert.replace("\\n", "\n")
+
+        # If it doesn't look like a PEM certificate, try base64 decoding
+        if not idp_x509_cert.strip().startswith("-----BEGIN"):
+            try:
+                decoded = base64.b64decode(idp_x509_cert).decode("utf-8")
+                if "-----BEGIN" in decoded:
+                    idp_x509_cert = decoded
+            except Exception:
+                pass  # Keep original if decoding fails
+
     config = {
         "strict": saml_settings.get("strict", True),
         "debug": saml_settings.get("debug", settings.DEBUG),

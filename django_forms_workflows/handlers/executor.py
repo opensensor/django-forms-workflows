@@ -9,6 +9,7 @@ from importlib import import_module
 
 from .api_handler import APICallHandler
 from .database_handler import DatabaseUpdateHandler
+from .email_handler import EmailHandler
 from .ldap_handler import LDAPUpdateHandler
 
 logger = logging.getLogger(__name__)
@@ -23,12 +24,14 @@ class PostSubmissionActionExecutor:
     - Conditional execution
     - Error handling and retries
     - Custom handler loading
+    - Action execution logging (for is_locked functionality)
     """
 
     HANDLER_MAP = {
         "database": DatabaseUpdateHandler,
         "ldap": LDAPUpdateHandler,
         "api": APICallHandler,
+        "email": EmailHandler,
     }
 
     def __init__(self, submission, trigger):
@@ -195,12 +198,42 @@ class PostSubmissionActionExecutor:
                     f"{result['message']}"
                 )
 
+            # Log the execution for is_locked functionality
+            self._log_execution(action, result)
+
             return result
 
         except Exception as e:
             result["message"] = f"Execution error: {str(e)}"
             logger.error(f"Error executing action '{action.name}': {e}", exc_info=True)
+            # Log failed execution
+            self._log_execution(action, result)
             return result
+
+    def _log_execution(self, action, result):
+        """
+        Log action execution for is_locked functionality.
+
+        Args:
+            action: PostSubmissionAction instance
+            result: Execution result dict
+        """
+        try:
+            from django_forms_workflows.models import ActionExecutionLog
+
+            ActionExecutionLog.objects.create(
+                action=action,
+                submission=self.submission,
+                trigger=self.trigger,
+                success=result.get("success", False),
+                message=result.get("message", ""),
+                execution_data={
+                    "attempts": result.get("attempts", 0),
+                    "data": result.get("data"),
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Could not log action execution: {e}")
 
     def _get_handler(self, action):
         """

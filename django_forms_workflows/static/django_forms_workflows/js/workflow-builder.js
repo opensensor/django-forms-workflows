@@ -835,6 +835,11 @@ class WorkflowBuilder {
     }
     
     createNodeElement(node) {
+        // Ensure node.data exists (may be missing from saved workflow data)
+        if (!node.data) {
+            node.data = this.getDefaultNodeData(node.type);
+        }
+
         const div = document.createElement('div');
         div.className = `workflow-node ${node.type}`;
         if (this.selectedNode === node.id) {

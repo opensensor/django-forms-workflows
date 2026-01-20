@@ -11,6 +11,7 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 
 from .models import (
+    ActionExecutionLog,
     ApprovalTask,
     AuditLog,
     FileUploadConfig,
@@ -533,14 +534,35 @@ class PostSubmissionActionAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Email Notification Configuration",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    ("email_to", "email_to_field"),
+                    ("email_cc", "email_cc_field"),
+                    "email_subject_template",
+                    "email_body_template",
+                    "email_template_name",
+                ),
+                "description": (
+                    "Configure email notifications. Use {field_name} for form field values. "
+                    "email_to_field reads recipient from a form field (e.g., 'instructor_email')."
+                ),
+            },
+        ),
+        (
             "Conditional Execution",
             {
                 "classes": ("collapse",),
                 "fields": (
                     "condition_field",
                     ("condition_operator", "condition_value"),
+                    "is_locked",
                 ),
-                "description": ("Execute this action only when the condition is met."),
+                "description": (
+                    "Execute this action only when the condition is met. "
+                    "Use is_locked to prevent duplicate executions."
+                ),
             },
         ),
         (
@@ -566,6 +588,40 @@ class PostSubmissionActionAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ActionExecutionLog)
+class ActionExecutionLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "action",
+        "submission",
+        "trigger",
+        "success",
+        "executed_at",
+    )
+    list_filter = ("success", "trigger", "action__action_type")
+    search_fields = (
+        "action__name",
+        "submission__id",
+        "message",
+    )
+    readonly_fields = (
+        "action",
+        "submission",
+        "trigger",
+        "success",
+        "message",
+        "executed_at",
+        "execution_data",
+    )
+    ordering = ("-executed_at",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(FormSubmission)

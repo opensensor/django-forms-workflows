@@ -191,21 +191,68 @@ class SAMLACSView(View):
                     last_name = attributes[attr_name][0]
                     break
 
-            # Find or create user
+            # Find or create user - try to link to existing user first
             user_model = get_user_model()
-            user, created = user_model.objects.get_or_create(
-                email=email,
-                defaults={
-                    "username": email.split("@")[0],
-                    "first_name": first_name,
-                    "last_name": last_name,
-                },
-            )
+            user = None
+            created = False
 
-            if created:
-                user.set_unusable_password()
-                user.save()
-                logger.info(f"Created new user from SAML: {user.username}")
+            # Extract username from email
+            username = email.split("@")[0].lower()
+
+            # Try to find existing user by username (case-insensitive)
+            # This links SSO users to their existing LDAP accounts
+            try:
+                user = user_model.objects.get(username__iexact=username)
+                logger.info(
+                    f"SAML login linked to existing user '{user.username}' "
+                    f"(email: {email})"
+                )
+            except user_model.DoesNotExist:
+                # Try by email
+                try:
+                    user = user_model.objects.get(email__iexact=email)
+                    logger.info(
+                        f"SAML login linked to existing user '{user.username}' "
+                        f"by email (email: {email})"
+                    )
+                except user_model.DoesNotExist:
+                    # Create new user
+                    user = user_model.objects.create(
+                        username=username,
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                    )
+                    user.set_unusable_password()
+                    user.save()
+                    created = True
+                    logger.info(f"Created new user from SAML: {user.username}")
+
+            # Update user attributes if they logged in with existing account
+            if not created and (first_name or last_name):
+                updated = False
+                if first_name and not user.first_name:
+                    user.first_name = first_name
+                    updated = True
+                if last_name and not user.last_name:
+                    user.last_name = last_name
+                    updated = True
+                if updated:
+                    user.save()
+
+            # Sync LDAP groups for this user
+            try:
+                from .sso_backends import sync_user_ldap_groups
+
+                groups_synced = sync_user_ldap_groups(user)
+                if groups_synced:
+                    logger.info(
+                        f"Synced {groups_synced} LDAP groups for SAML user '{user.username}'"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to sync LDAP groups for SAML user '{user.username}': {e}"
+                )
 
             # Log user in
             login(request, user, backend="django.contrib.auth.backends.ModelBackend")

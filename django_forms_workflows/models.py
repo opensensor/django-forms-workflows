@@ -652,6 +652,46 @@ class PostSubmissionAction(models.Model):
         blank=True, null=True, help_text="Configuration passed to custom handler"
     )
 
+    # Email Notification Configuration
+    email_to = models.TextField(
+        blank=True,
+        help_text="Static email addresses (comma-separated) for recipients",
+    )
+    email_to_field = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Form field containing recipient email address (e.g., 'instructor_email')",
+    )
+    email_cc = models.TextField(
+        blank=True,
+        help_text="Static CC email addresses (comma-separated)",
+    )
+    email_cc_field = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Form field containing CC email address",
+    )
+    email_subject_template = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Email subject template. Use {field_name} for form field values.",
+    )
+    email_body_template = models.TextField(
+        blank=True,
+        help_text="Email body template. Use {field_name} for form field values.",
+    )
+    email_template_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Django template path for HTML email (e.g., 'emails/approval.html')",
+    )
+
+    # Lock mechanism to prevent duplicate actions
+    is_locked = models.BooleanField(
+        default=False,
+        help_text="If True, this action will only execute once per submission (prevents duplicates)",
+    )
+
     # Conditional Execution
     condition_field = models.CharField(
         max_length=100,
@@ -659,16 +699,22 @@ class PostSubmissionAction(models.Model):
         help_text="Form field to check for conditional execution",
     )
     condition_operator = models.CharField(
-        max_length=20,
+        max_length=30,
         blank=True,
         choices=[
             ("equals", "Equals"),
             ("not_equals", "Not Equals"),
             ("contains", "Contains"),
+            ("not_contains", "Does Not Contain"),
             ("greater_than", "Greater Than"),
             ("less_than", "Less Than"),
+            ("greater_than_today", "Date Is After Today"),
+            ("less_than_today", "Date Is Before Today"),
+            ("is_today", "Date Is Today"),
             ("is_true", "Is True"),
             ("is_false", "Is False"),
+            ("is_empty", "Is Empty"),
+            ("is_not_empty", "Is Not Empty"),
         ],
         help_text="Comparison operator for condition",
     )
@@ -704,8 +750,20 @@ class PostSubmissionAction(models.Model):
         """
         Check if this action should execute based on conditions.
         """
+        from datetime import date, datetime
+
         if not self.is_active:
             return False
+
+        # Check if action is locked and has already executed
+        if self.is_locked:
+            # Check if this action has already executed successfully for this submission
+            from django_forms_workflows.models import ActionExecutionLog
+
+            if ActionExecutionLog.objects.filter(
+                action=self, submission=submission, success=True
+            ).exists():
+                return False
 
         # Check conditional execution
         if self.condition_field and self.condition_operator:
@@ -717,6 +775,8 @@ class PostSubmissionAction(models.Model):
                 return str(field_value) != self.condition_value
             elif self.condition_operator == "contains":
                 return self.condition_value in str(field_value)
+            elif self.condition_operator == "not_contains":
+                return self.condition_value not in str(field_value)
             elif self.condition_operator == "greater_than":
                 try:
                     return float(field_value) > float(self.condition_value)
@@ -727,12 +787,106 @@ class PostSubmissionAction(models.Model):
                     return float(field_value) < float(self.condition_value)
                 except (ValueError, TypeError):
                     return False
+            elif self.condition_operator == "greater_than_today":
+                # Compare date field against today
+                try:
+                    if isinstance(field_value, str):
+                        field_date = datetime.strptime(
+                            field_value[:10], "%Y-%m-%d"
+                        ).date()
+                    elif isinstance(field_value, datetime):
+                        field_date = field_value.date()
+                    elif isinstance(field_value, date):
+                        field_date = field_value
+                    else:
+                        return False
+                    return field_date > date.today()
+                except (ValueError, TypeError):
+                    return False
+            elif self.condition_operator == "less_than_today":
+                # Compare date field against today
+                try:
+                    if isinstance(field_value, str):
+                        field_date = datetime.strptime(
+                            field_value[:10], "%Y-%m-%d"
+                        ).date()
+                    elif isinstance(field_value, datetime):
+                        field_date = field_value.date()
+                    elif isinstance(field_value, date):
+                        field_date = field_value
+                    else:
+                        return False
+                    return field_date < date.today()
+                except (ValueError, TypeError):
+                    return False
+            elif self.condition_operator == "is_today":
+                # Check if date field equals today
+                try:
+                    if isinstance(field_value, str):
+                        field_date = datetime.strptime(
+                            field_value[:10], "%Y-%m-%d"
+                        ).date()
+                    elif isinstance(field_value, datetime):
+                        field_date = field_value.date()
+                    elif isinstance(field_value, date):
+                        field_date = field_value
+                    else:
+                        return False
+                    return field_date == date.today()
+                except (ValueError, TypeError):
+                    return False
             elif self.condition_operator == "is_true":
                 return bool(field_value)
             elif self.condition_operator == "is_false":
                 return not bool(field_value)
+            elif self.condition_operator == "is_empty":
+                return field_value is None or str(field_value).strip() == ""
+            elif self.condition_operator == "is_not_empty":
+                return field_value is not None and str(field_value).strip() != ""
 
         return True
+
+
+class ActionExecutionLog(models.Model):
+    """
+    Log of post-submission action executions.
+
+    Used to track which actions have been executed for each submission,
+    enabling the is_locked functionality to prevent duplicate actions.
+    """
+
+    action = models.ForeignKey(
+        PostSubmissionAction,
+        on_delete=models.CASCADE,
+        related_name="execution_logs",
+    )
+    submission = models.ForeignKey(
+        "FormSubmission",
+        on_delete=models.CASCADE,
+        related_name="action_logs",
+    )
+    trigger = models.CharField(
+        max_length=20,
+        help_text="The trigger type that initiated this execution",
+    )
+    success = models.BooleanField(default=False)
+    message = models.TextField(blank=True)
+    executed_at = models.DateTimeField(auto_now_add=True)
+    execution_data = models.JSONField(
+        blank=True, null=True, help_text="Additional execution details"
+    )
+
+    class Meta:
+        ordering = ["-executed_at"]
+        verbose_name = "Action Execution Log"
+        verbose_name_plural = "Action Execution Logs"
+        indexes = [
+            models.Index(fields=["action", "submission", "success"]),
+        ]
+
+    def __str__(self):
+        status = "✓" if self.success else "✗"
+        return f"{status} {self.action.name} on submission {self.submission_id}"
 
 
 class FormSubmission(models.Model):

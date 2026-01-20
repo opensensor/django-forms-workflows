@@ -13,7 +13,7 @@ with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='django-forms-workflows',
-    version='0.2.2',
+    version='0.6.0',
     description='Enterprise-grade, database-driven form builder with approval workflows and external data integration',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -61,7 +61,13 @@ setup(
         'mysql': [
             'mysqlclient>=2.2',
         ],
-        
+
+        # Gmail API email backend
+        'gmail': [
+            'google-auth>=2.20',
+            'google-api-python-client>=2.100',
+        ],
+
         # Development dependencies
         'dev': [
             'pytest>=7.4',
@@ -88,6 +94,8 @@ setup(
             'mssql-django>=1.6',
             'pyodbc>=5.0',
             'psycopg2-binary>=2.9',
+            'google-auth>=2.20',
+            'google-api-python-client>=2.100',
         ],
     },
     

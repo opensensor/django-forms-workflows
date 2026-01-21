@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2025-11-06
 
-### Added - SJCME Migration Support
+### Added - Enterprise Integration Features
 - **Enhanced UserProfile Model**
   - Added `ldap_last_sync` timestamp field for tracking LDAP synchronization
   - Added database indexes to `employee_id` and `external_id` fields for better performance
@@ -100,13 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Supports `--database` to specify database alias
     - Supports `--verbose` for detailed connection information
     - Works with SQL Server, PostgreSQL, MySQL, and SQLite
-
-- **Documentation**
-  - `PORTING_ANALYSIS.md` - Detailed analysis of SJCME to package migration
-  - `FEATURE_COMPARISON.md` - Comprehensive feature comparison matrix
-  - `SJCME_SIMPLIFICATION_PLAN.md` - Code reduction and migration strategy
-  - `EXECUTIVE_SUMMARY.md` - High-level overview for stakeholders
-  - `NEXT_STEPS.md` - Actionable implementation guide
 
 ### Changed
 - Updated version to 0.4.0 to reflect significant new features

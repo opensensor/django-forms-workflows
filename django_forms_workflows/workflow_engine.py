@@ -65,9 +65,23 @@ def _finalize_submission(submission: FormSubmission) -> None:
     # Cancel any remaining pending tasks
     submission.approval_tasks.filter(status="pending").update(status="skipped")
 
-    execute_post_approval_updates(submission)
-    execute_post_submission_actions(submission, "on_complete")
-    execute_file_workflow_hooks(submission, "on_approve")
+    # Execute post-approval actions with exception handling to prevent
+    # failures from affecting the submission status update
+    try:
+        execute_post_approval_updates(submission)
+    except Exception as e:
+        logger.error("Error in execute_post_approval_updates: %s", e, exc_info=True)
+
+    try:
+        execute_post_submission_actions(submission, "on_complete")
+    except Exception as e:
+        logger.error("Error in execute_post_submission_actions: %s", e, exc_info=True)
+
+    try:
+        execute_file_workflow_hooks(submission, "on_approve")
+    except Exception as e:
+        logger.error("Error in execute_file_workflow_hooks: %s", e, exc_info=True)
+
     _notify_final_approval(submission)
 
 
@@ -80,15 +94,30 @@ def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
     # Cancel any remaining pending tasks
     submission.approval_tasks.filter(status="pending").update(status="skipped")
 
-    # Execute rejection actions
-    execute_post_submission_actions(submission, "on_reject")
-    execute_file_workflow_hooks(submission, "on_reject")
+    # Execute rejection actions with exception handling to prevent
+    # failures from affecting the submission status update
+    try:
+        execute_post_submission_actions(submission, "on_reject")
+    except Exception as e:
+        logger.error(
+            "Error in execute_post_submission_actions (on_reject): %s", e, exc_info=True
+        )
+
+    try:
+        execute_file_workflow_hooks(submission, "on_reject")
+    except Exception as e:
+        logger.error(
+            "Error in execute_file_workflow_hooks (on_reject): %s", e, exc_info=True
+        )
 
     # Mark all managed files as rejected
-    for managed_file in submission.managed_files.filter(
-        is_current=True, status="pending"
-    ):
-        managed_file.mark_rejected(notes=reason)
+    try:
+        for managed_file in submission.managed_files.filter(
+            is_current=True, status="pending"
+        ):
+            managed_file.mark_rejected(notes=reason)
+    except Exception as e:
+        logger.error("Error marking managed files as rejected: %s", e, exc_info=True)
 
 
 # --- Public API -------------------------------------------------------------

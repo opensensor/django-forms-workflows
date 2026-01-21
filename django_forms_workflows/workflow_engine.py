@@ -199,6 +199,7 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
             submission=submission,
             assigned_group=g,
             step_name=f"{g.name} Approval (Step 1 of {len(groups)})",
+            step_number=1,
             status="pending",
             due_date=due_date,
         )
@@ -239,6 +240,7 @@ def handle_approval(
                 submission=submission,
                 assigned_group=g,
                 step_name=f"{g.name} Approval (Step 1 of {len(groups)})",
+                step_number=1,
                 status="pending",
                 due_date=due_date,
             )
@@ -303,6 +305,7 @@ def handle_approval(
                 submission=submission,
                 assigned_group=next_group,
                 step_name=f"{next_group.name} Approval (Step {idx + 2} of {len(groups)})",
+                step_number=idx + 2,
                 status="pending",
                 due_date=due_date,
             )

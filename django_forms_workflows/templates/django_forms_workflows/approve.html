@@ -1,4 +1,5 @@
 {% extends 'django_forms_workflows/base.html' %}
+{% load crispy_forms_tags %}
 
 {% block title %}Approve Submission #{{ submission.id }} - Django Forms Workflows{% endblock %}
 
@@ -26,6 +27,50 @@
                 </div>
             </div>
         </div>
+
+        {% if has_approval_step_fields and approval_step_form %}
+        <!-- Approval Form with Step Fields -->
+        <form method="post" data-loading-message="Processing your decision...">
+            {% csrf_token %}
+
+            <!-- Step Fields Section -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-pencil-square"></i> {{ task.step_name }}</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">Please review the submission and fill in the required fields below.</p>
+                    {{ approval_step_form|crispy }}
+                </div>
+            </div>
+
+            <!-- Decision Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Your Decision</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="comments" class="form-label">Comments (Optional)</label>
+                        <textarea class="form-control" id="comments" name="comments" rows="3" placeholder="Add any comments about your decision..."></textarea>
+                    </div>
+                    <div class="d-grid gap-2 d-md-block">
+                        <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
+                            <i class="bi bi-check-circle"></i> Approve
+                        </button>
+                        <button type="submit" name="decision" value="reject" class="btn btn-danger btn-lg">
+                            <i class="bi bi-x-circle"></i> Reject
+                        </button>
+                        <a href="{% url 'forms_workflows:approval_inbox' %}" class="btn btn-outline-secondary btn-lg">
+                            <i class="bi bi-arrow-left"></i> Back
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        {% else %}
+        <!-- Standard Approval (No Step Fields) -->
         <!-- Form Data -->
         <div class="card mb-4">
             <div class="card-header">
@@ -89,6 +134,7 @@
                 </form>
             </div>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

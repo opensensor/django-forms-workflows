@@ -281,6 +281,8 @@ def approval_inbox(request):
 def approve_submission(request, task_id):
     """Approve or reject a submission"""
     task = get_object_or_404(ApprovalTask, id=task_id)
+    submission = task.submission
+    form_def = submission.form_definition
 
     # Check permission
     can_approve = (
@@ -297,6 +299,12 @@ def approve_submission(request, task_id):
         messages.warning(request, "This task has already been processed.")
         return redirect("forms_workflows:approval_inbox")
 
+    # Check if this form has approval step fields for the current step
+    has_approval_step_fields = form_def.fields.filter(
+        approval_step=task.step_number
+    ).exists()
+    approval_step_form = None
+
     if request.method == "POST":
         decision = request.POST.get("decision")
         comments = request.POST.get("comments", "")
@@ -304,6 +312,37 @@ def approve_submission(request, task_id):
         if decision not in ["approve", "reject"]:
             messages.error(request, "Invalid decision.")
             return redirect("forms_workflows:approve_submission", task_id=task_id)
+
+        # If there are approval step fields and decision is approve, validate them
+        if has_approval_step_fields and decision == "approve":
+            from .forms import ApprovalStepForm
+
+            approval_step_form = ApprovalStepForm(
+                form_definition=form_def,
+                submission=submission,
+                approval_task=task,
+                user=request.user,
+                data=request.POST,
+            )
+
+            if not approval_step_form.is_valid():
+                messages.error(
+                    request, "Please correct the errors in the approval fields."
+                )
+                return render(
+                    request,
+                    "django_forms_workflows/approve.html",
+                    {
+                        "task": task,
+                        "submission": submission,
+                        "approval_step_form": approval_step_form,
+                        "has_approval_step_fields": has_approval_step_fields,
+                    },
+                )
+
+            # Update submission form_data with approval step fields
+            submission.form_data = approval_step_form.get_updated_form_data()
+            submission.save()
 
         # Update task
         task.status = "approved" if decision == "approve" else "rejected"
@@ -314,8 +353,7 @@ def approve_submission(request, task_id):
         task.save()
 
         # Update submission status
-        submission = task.submission
-        workflow = submission.form_definition.workflow
+        workflow = form_def.workflow
 
         if decision == "reject":
             # Rejection - mark submission as rejected
@@ -359,10 +397,26 @@ def approve_submission(request, task_id):
         messages.success(request, f"Submission {decision}d successfully.")
         return redirect("forms_workflows:approval_inbox")
 
+    # GET request - create the approval step form if needed
+    if has_approval_step_fields:
+        from .forms import ApprovalStepForm
+
+        approval_step_form = ApprovalStepForm(
+            form_definition=form_def,
+            submission=submission,
+            approval_task=task,
+            user=request.user,
+        )
+
     return render(
         request,
         "django_forms_workflows/approve.html",
-        {"task": task, "submission": task.submission},
+        {
+            "task": task,
+            "submission": submission,
+            "approval_step_form": approval_step_form,
+            "has_approval_step_fields": has_approval_step_fields,
+        },
     )
 
 

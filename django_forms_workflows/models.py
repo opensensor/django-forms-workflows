@@ -414,6 +414,14 @@ class FormField(models.Model):
         help_text="Step number for multi-step forms (1, 2, 3, etc.)",
     )
 
+    # Approval Step Fields (for sequential approval workflows)
+    approval_step = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Approval step that can edit this field (1, 2, 3, etc.). "
+        "NULL means submitter fills this field. Used in sequential approval workflows.",
+    )
+
     # File Upload Settings
     allowed_extensions = models.CharField(
         max_length=200, blank=True, help_text="Comma-separated: pdf,doc,docx,xls,xlsx"
@@ -989,6 +997,11 @@ class ApprovalTask(models.Model):
     # Status
     status = models.CharField(max_length=20, choices=TASK_STATUS, default="pending")
     step_name = models.CharField(max_length=100)
+    step_number = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Step number in sequential approval workflow (1, 2, 3, etc.)",
+    )
 
     # Response
     completed_by = models.ForeignKey(

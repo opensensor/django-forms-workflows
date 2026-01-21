@@ -2,7 +2,8 @@
 Dynamic Form Generation for Django Form Workflows
 
 This module provides the DynamicForm class that generates forms
-based on database-stored form definitions.
+based on database-stored form definitions, and the ApprovalStepForm
+class for handling approval-step field editing.
 """
 
 import logging
@@ -540,3 +541,285 @@ class DynamicForm(forms.Form):
                 )
 
         return config
+
+
+class ApprovalStepForm(forms.Form):
+    """
+    Form for approvers to fill in fields specific to their approval step.
+
+    This form is used during the approval process to allow approvers to:
+    - View all previously submitted/approved data as read-only
+    - Edit fields designated for their approval step (approval_step = current step)
+    - Have approver name auto-filled from their user account
+    - Have date fields auto-filled with the current date
+    """
+
+    def __init__(
+        self,
+        form_definition,
+        submission,
+        approval_task,
+        user=None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.form_definition = form_definition
+        self.submission = submission
+        self.approval_task = approval_task
+        self.user = user
+        self.current_step = approval_task.step_number or 1
+
+        # Get existing form data
+        self.form_data = submission.form_data or {}
+
+        # Build form fields from definition
+        self._build_fields()
+
+        # Setup form layout with Crispy Forms
+        self._setup_layout()
+
+    def _build_fields(self):
+        """Build all form fields, making approval step fields editable."""
+        for field_def in self.form_definition.fields.exclude(
+            field_type="section"
+        ).order_by("order"):
+            self._add_field(field_def)
+
+    def _add_field(self, field_def):
+        """Add a single field to the form."""
+        # Determine if this field is editable for the current approval step
+        is_editable = field_def.approval_step == self.current_step
+
+        # Get current value from form data
+        current_value = self.form_data.get(field_def.field_name, "")
+
+        # Auto-fill approver name from current user
+        if is_editable and self._is_approver_name_field(field_def):
+            current_value = self._get_approver_name()
+        # Auto-fill date with current date
+        elif is_editable and self._is_date_field(field_def):
+            current_value = date.today()
+
+        # Common field arguments
+        field_args = {
+            "label": field_def.field_label,
+            "required": field_def.required if is_editable else False,
+            "help_text": field_def.help_text,
+            "initial": current_value,
+        }
+
+        # Widget attributes
+        widget_attrs = {}
+        if field_def.placeholder:
+            widget_attrs["placeholder"] = field_def.placeholder
+        if field_def.css_class:
+            widget_attrs["class"] = field_def.css_class
+
+        # Make non-editable fields read-only
+        if not is_editable:
+            widget_attrs["readonly"] = "readonly"
+            widget_attrs["disabled"] = "disabled"
+            field_args["required"] = False
+
+        # Create appropriate field type
+        self._create_field(field_def, field_args, widget_attrs, is_editable)
+
+    def _is_approver_name_field(self, field_def):
+        """Check if this is an approver name field (to auto-fill)."""
+        name_lower = field_def.field_name.lower()
+        return "name" in name_lower and (
+            "advisor" in name_lower
+            or "registrar" in name_lower
+            or "manager" in name_lower
+            or "fa_" in name_lower
+            or "approver" in name_lower
+        )
+
+    def _is_date_field(self, field_def):
+        """Check if this is a date field for the approval step."""
+        return field_def.field_type in ["date", "datetime"]
+
+    def _get_approver_name(self):
+        """Get the approver's name for auto-fill."""
+        if self.user:
+            full_name = self.user.get_full_name()
+            if full_name:
+                return full_name
+            return self.user.username
+        return ""
+
+    def _create_field(self, field_def, field_args, widget_attrs, is_editable):
+        """Create the appropriate Django form field."""
+        if field_def.field_type == "text":
+            if widget_attrs:
+                field_args["widget"] = forms.TextInput(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.CharField(
+                max_length=field_def.max_length or 255,
+                **field_args,
+            )
+
+        elif field_def.field_type == "textarea":
+            widget_attrs["rows"] = 4
+            self.fields[field_def.field_name] = forms.CharField(
+                widget=forms.Textarea(attrs=widget_attrs),
+                **field_args,
+            )
+
+        elif field_def.field_type == "number":
+            if widget_attrs:
+                field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.IntegerField(**field_args)
+
+        elif field_def.field_type == "decimal":
+            if widget_attrs:
+                field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.DecimalField(
+                decimal_places=2,
+                **field_args,
+            )
+
+        elif field_def.field_type == "date":
+            widget_attrs["type"] = "date"
+            self.fields[field_def.field_name] = forms.DateField(
+                widget=forms.DateInput(attrs=widget_attrs), **field_args
+            )
+
+        elif field_def.field_type == "datetime":
+            widget_attrs["type"] = "datetime-local"
+            self.fields[field_def.field_name] = forms.DateTimeField(
+                widget=forms.DateTimeInput(attrs=widget_attrs), **field_args
+            )
+
+        elif field_def.field_type == "email":
+            if widget_attrs:
+                field_args["widget"] = forms.EmailInput(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.EmailField(**field_args)
+
+        elif field_def.field_type == "select":
+            choices = [("", "-- Select --")] + self._parse_choices(field_def.choices)
+            if widget_attrs:
+                field_args["widget"] = forms.Select(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.ChoiceField(
+                choices=choices, **field_args
+            )
+
+        elif field_def.field_type == "radio":
+            choices = self._parse_choices(field_def.choices)
+            self.fields[field_def.field_name] = forms.ChoiceField(
+                choices=choices,
+                widget=forms.RadioSelect(attrs=widget_attrs),
+                **field_args,
+            )
+
+        elif field_def.field_type == "checkbox":
+            self.fields[field_def.field_name] = forms.BooleanField(
+                required=field_args.get("required", False),
+                label=field_def.field_label,
+                help_text=field_def.help_text,
+                initial=field_args["initial"],
+            )
+
+        else:
+            # Default to text field for unknown types
+            if widget_attrs:
+                field_args["widget"] = forms.TextInput(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.CharField(
+                max_length=255,
+                **field_args,
+            )
+
+    def _parse_choices(self, choices):
+        """Parse choices from either JSON format or comma-separated string."""
+        if not choices:
+            return []
+        if isinstance(choices, list):
+            return [(c["value"], c["label"]) for c in choices]
+        if isinstance(choices, str):
+            return [(c.strip(), c.strip()) for c in choices.split(",") if c.strip()]
+        return []
+
+    def _setup_layout(self):
+        """Setup Crispy Forms layout."""
+        self.helper = FormHelper()
+        self.helper.form_method = "post"
+        self.helper.form_class = "needs-validation"
+
+        layout_fields = []
+
+        # Add fields organized by approval step
+        current_step_fields = []
+        other_fields = []
+
+        for field_def in self.form_definition.fields.order_by("order"):
+            if field_def.field_type == "section":
+                section_html = HTML(
+                    f'<h4 class="mt-4 mb-3">{field_def.field_label}</h4>'
+                )
+                if field_def.approval_step == self.current_step:
+                    current_step_fields.append(section_html)
+                else:
+                    other_fields.append(section_html)
+            else:
+                field_wrapper = Div(
+                    Field(field_def.field_name),
+                    css_class=f"field-wrapper field-{field_def.field_name}",
+                )
+                if field_def.approval_step == self.current_step:
+                    current_step_fields.append(field_wrapper)
+                else:
+                    other_fields.append(field_wrapper)
+
+        # Add submitted data section first (read-only)
+        if other_fields:
+            layout_fields.append(
+                HTML('<h3 class="mb-3">Submitted Information (Read-Only)</h3>')
+            )
+            layout_fields.extend(other_fields)
+
+        # Add current step fields section
+        if current_step_fields:
+            layout_fields.append(HTML('<hr class="my-4">'))
+            step_name = self.approval_task.step_name or f"Step {self.current_step}"
+            layout_fields.append(
+                HTML(f'<h3 class="mb-3">{step_name} - Your Input</h3>')
+            )
+            layout_fields.extend(current_step_fields)
+
+        self.helper.layout = Layout(*layout_fields)
+        self.helper.form_id = f"approval_form_{self.submission.pk}"
+
+    def get_updated_form_data(self):
+        """
+        Get the updated form data after validation.
+        Merges the approval step field values with existing form data.
+        """
+        if not self.is_valid():
+            return self.form_data
+
+        # Start with existing form data
+        updated_data = dict(self.form_data)
+
+        # Update only fields for the current approval step
+        for field_def in self.form_definition.fields.filter(
+            approval_step=self.current_step
+        ):
+            field_name = field_def.field_name
+            if field_name in self.cleaned_data:
+                value = self.cleaned_data[field_name]
+                # Convert date/datetime to string for JSON serialization
+                if isinstance(value, datetime):
+                    value = value.isoformat()
+                elif isinstance(value, date):
+                    value = value.isoformat()
+                updated_data[field_name] = value
+
+        return updated_data
+
+    def get_editable_field_names(self):
+        """Get list of field names that are editable for the current approval step."""
+        return list(
+            self.form_definition.fields.filter(
+                approval_step=self.current_step
+            ).values_list("field_name", flat=True)
+        )

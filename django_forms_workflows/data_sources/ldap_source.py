@@ -52,7 +52,7 @@ class LDAPDataSource(DataSource):
 
         Args:
             user: Django User object
-            field_name: LDAP attribute name (e.g., 'department', 'title')
+            field_name: LDAP attribute name (e.g., 'department', 'title', 'mail')
             **kwargs: Unused
 
         Returns:
@@ -61,13 +61,15 @@ class LDAPDataSource(DataSource):
         if not user or not user.is_authenticated:
             return None
 
-        if not self.is_available():
-            logger.warning(
-                "LDAP data source is not available (django-auth-ldap not configured)"
-            )
-            return None
+        # Map friendly name to LDAP attribute
+        ldap_attr = self.ATTRIBUTE_MAP.get(field_name, field_name)
 
         try:
+            # For 'mail', try user.email first (usually synced from LDAP/SSO)
+            if field_name == "mail" or ldap_attr == "mail":
+                if user.email:
+                    return user.email
+
             # Try to get from user profile first (cached LDAP data)
             if hasattr(user, "forms_profile"):
                 profile = user.forms_profile
@@ -76,33 +78,107 @@ class LDAPDataSource(DataSource):
                     if value:
                         return value
 
-            # Try to get from LDAP backend directly
+            # Try to get from LDAP backend directly (for LDAP-authenticated users)
             ldap_user = getattr(user, "ldap_user", None)
-            if not ldap_user:
-                logger.debug(f"User {user.username} has no LDAP user object")
-                return None
+            if ldap_user:
+                # Special handling for manager email
+                if field_name == "manager_email":
+                    return self._get_manager_email(ldap_user)
 
-            # Map friendly name to LDAP attribute
-            ldap_attr = self.ATTRIBUTE_MAP.get(field_name, field_name)
+                # Get attribute from cached LDAP attrs
+                if hasattr(ldap_user, "attrs") and ldap_attr in ldap_user.attrs:
+                    value = ldap_user.attrs[ldap_attr]
+                    # LDAP attributes are often lists
+                    if isinstance(value, list) and value:
+                        return value[0]
+                    return value
 
-            # Special handling for manager email
-            if field_name == "manager_email":
-                return self._get_manager_email(ldap_user)
-
-            # Get attribute from LDAP
-            if hasattr(ldap_user, "attrs") and ldap_attr in ldap_user.attrs:
-                value = ldap_user.attrs[ldap_attr]
-                # LDAP attributes are often lists
-                if isinstance(value, list) and value:
-                    return value[0]
-                return value
-
-            logger.debug(f"LDAP attribute not found: {ldap_attr}")
-            return None
+            # For SSO users without ldap_user, query LDAP directly
+            return self._query_ldap_attribute(user.username, ldap_attr)
 
         except Exception as e:
             logger.error(f"Error getting LDAP attribute {field_name}: {e}")
             return None
+
+    def _query_ldap_attribute(self, username: str, ldap_attr: str) -> Any | None:
+        """
+        Query LDAP directly for a user attribute.
+
+        This is used for SSO users who don't have a cached ldap_user object.
+        """
+        import os
+
+        try:
+            import ldap
+            from ldap.filter import escape_filter_chars
+        except ImportError:
+            logger.debug("python-ldap not installed")
+            return None
+
+        ldap_server = getattr(settings, "AUTH_LDAP_SERVER_URI", None)
+        if not ldap_server:
+            return None
+
+        bind_dn = getattr(settings, "AUTH_LDAP_BIND_DN", "")
+        bind_password = getattr(settings, "AUTH_LDAP_BIND_PASSWORD", "")
+
+        # Get search base
+        user_search = getattr(settings, "AUTH_LDAP_USER_SEARCH", None)
+        search_base = None
+        if user_search and hasattr(user_search, "base_dn"):
+            search_base = user_search.base_dn
+        if not search_base:
+            search_base = getattr(settings, "AUTH_LDAP_USER_SEARCH_BASE", None)
+        if not search_base and bind_dn:
+            parts = bind_dn.split(",")
+            dc_parts = [p for p in parts if p.strip().upper().startswith("DC=")]
+            if dc_parts:
+                search_base = ",".join(dc_parts)
+
+        if not search_base:
+            logger.debug("Could not determine LDAP search base")
+            return None
+
+        try:
+            conn = ldap.initialize(ldap_server)
+            conn.set_option(ldap.OPT_REFERRALS, 0)
+            conn.set_option(ldap.OPT_PROTOCOL_VERSION, ldap.VERSION3)
+
+            # Configure TLS
+            tls_require_cert = os.getenv("LDAP_TLS_REQUIRE_CERT", "demand").lower()
+            if tls_require_cert == "never":
+                conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+
+            if bind_dn and bind_password:
+                conn.simple_bind_s(bind_dn, bind_password)
+            else:
+                conn.simple_bind_s("", "")
+
+            search_filter = f"(sAMAccountName={escape_filter_chars(username)})"
+            result = conn.search_s(
+                search_base, ldap.SCOPE_SUBTREE, search_filter, [ldap_attr]
+            )
+
+            if result and result[0][0]:
+                attrs = result[0][1]
+                if ldap_attr in attrs:
+                    value = attrs[ldap_attr]
+                    if isinstance(value, list) and value:
+                        val = value[0]
+                        if isinstance(val, bytes):
+                            return val.decode("utf-8")
+                        return val
+
+            return None
+
+        except ldap.LDAPError as e:
+            logger.debug(f"LDAP query failed for {username}.{ldap_attr}: {e}")
+            return None
+        finally:
+            try:
+                conn.unbind_s()
+            except Exception:
+                pass
 
     def _get_manager_email(self, ldap_user) -> str | None:
         """

@@ -254,6 +254,20 @@ class SAMLACSView(View):
                     f"Failed to sync LDAP groups for SAML user '{user.username}': {e}"
                 )
 
+            # Sync LDAP attributes (mail, department, etc.) to UserProfile
+            try:
+                from .sso_backends import sync_user_ldap_attributes
+
+                ldap_attrs = sync_user_ldap_attributes(user)
+                if ldap_attrs:
+                    logger.info(
+                        f"Synced LDAP attributes for SAML user '{user.username}'"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to sync LDAP attributes for SAML user '{user.username}': {e}"
+                )
+
             # Log user in
             login(request, user, backend="django.contrib.auth.backends.ModelBackend")
             logger.info(f"SAML login successful for: {user.username}")

@@ -550,6 +550,166 @@ def sync_user_ldap_groups(user):
         conn.unbind_s()
 
 
+def sync_user_ldap_attributes(user):
+    """
+    Sync LDAP attributes to UserProfile for a specific user.
+
+    This fetches key attributes from LDAP (mail, department, title, etc.)
+    and stores them in the user's UserProfile. This is especially useful
+    for SSO users who authenticate via Google/SAML but need LDAP attributes
+    for form prefilling.
+
+    Args:
+        user: Django User object
+
+    Returns:
+        dict: Dictionary of synced attributes, or None if LDAP unavailable
+    """
+    from django_forms_workflows.models import UserProfile
+
+    # Check if LDAP is configured
+    ldap_server = getattr(settings, "AUTH_LDAP_SERVER_URI", None)
+    if not ldap_server:
+        logger.debug("LDAP not configured, skipping attribute sync")
+        return None
+
+    try:
+        import ldap
+        import os
+        from ldap.filter import escape_filter_chars
+    except ImportError:
+        logger.debug("python-ldap not installed, skipping attribute sync")
+        return None
+
+    # Get LDAP connection settings
+    bind_dn = getattr(settings, "AUTH_LDAP_BIND_DN", "")
+    bind_password = getattr(settings, "AUTH_LDAP_BIND_PASSWORD", "")
+    user_search_base = getattr(settings, "AUTH_LDAP_USER_SEARCH", None)
+
+    # Try to get search base from user search configuration
+    search_base = None
+    if user_search_base:
+        if hasattr(user_search_base, "base_dn"):
+            search_base = user_search_base.base_dn
+        elif isinstance(user_search_base, tuple) and len(user_search_base) >= 1:
+            search_base = user_search_base[0]
+
+    if not search_base:
+        search_base = getattr(settings, "AUTH_LDAP_USER_SEARCH_BASE", None)
+        if not search_base and bind_dn:
+            parts = bind_dn.split(",")
+            dc_parts = [p for p in parts if p.strip().upper().startswith("DC=")]
+            if dc_parts:
+                search_base = ",".join(dc_parts)
+
+    if not search_base:
+        logger.warning("Could not determine LDAP search base, skipping attribute sync")
+        return None
+
+    # Connect to LDAP
+    try:
+        conn = ldap.initialize(ldap_server)
+        conn.set_option(ldap.OPT_REFERRALS, 0)
+        conn.set_option(ldap.OPT_PROTOCOL_VERSION, ldap.VERSION3)
+
+        # Configure TLS
+        tls_require_cert = os.getenv("LDAP_TLS_REQUIRE_CERT", "demand").lower()
+        if tls_require_cert == "never":
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+
+        if bind_dn and bind_password:
+            conn.simple_bind_s(bind_dn, bind_password)
+        else:
+            conn.simple_bind_s("", "")
+
+    except ldap.LDAPError as e:
+        logger.error(f"LDAP connection failed for attribute sync: {e}")
+        raise
+
+    try:
+        # Attributes to fetch from LDAP
+        ldap_attrs = [
+            "mail",
+            "department",
+            "title",
+            "telephoneNumber",
+            "mobile",
+            "employeeID",
+            "physicalDeliveryOfficeName",
+            "company",
+            "givenName",
+            "sn",
+        ]
+
+        # Search for the user
+        search_filter = f"(sAMAccountName={escape_filter_chars(user.username)})"
+        result = conn.search_s(
+            search_base,
+            ldap.SCOPE_SUBTREE,
+            search_filter,
+            ldap_attrs,
+        )
+
+        if not result:
+            logger.debug(f"User '{user.username}' not found in LDAP for attribute sync")
+            return {}
+
+        # Get user's attributes
+        user_dn, user_attrs = result[0]
+        synced_attrs = {}
+
+        def get_attr(attrs, name):
+            """Helper to get first value of an LDAP attribute."""
+            val = attrs.get(name, [])
+            if val:
+                if isinstance(val[0], bytes):
+                    return val[0].decode("utf-8")
+                return val[0]
+            return None
+
+        # Map LDAP attributes
+        synced_attrs["mail"] = get_attr(user_attrs, "mail")
+        synced_attrs["department"] = get_attr(user_attrs, "department")
+        synced_attrs["title"] = get_attr(user_attrs, "title")
+        synced_attrs["phone"] = get_attr(user_attrs, "telephoneNumber")
+        synced_attrs["mobile"] = get_attr(user_attrs, "mobile")
+        synced_attrs["employee_id"] = get_attr(user_attrs, "employeeID")
+        synced_attrs["office_location"] = get_attr(user_attrs, "physicalDeliveryOfficeName")
+        synced_attrs["company"] = get_attr(user_attrs, "company")
+        synced_attrs["first_name"] = get_attr(user_attrs, "givenName")
+        synced_attrs["last_name"] = get_attr(user_attrs, "sn")
+
+        # Update or create UserProfile
+        profile, created = UserProfile.objects.get_or_create(user=user)
+
+        # Sync attributes to profile
+        profile_fields = {
+            "department": synced_attrs.get("department"),
+            "title": synced_attrs.get("title"),
+            "phone": synced_attrs.get("phone"),
+            "employee_id": synced_attrs.get("employee_id"),
+            "office_location": synced_attrs.get("office_location"),
+        }
+
+        updated = False
+        for field, value in profile_fields.items():
+            if value and hasattr(profile, field):
+                setattr(profile, field, value)
+                updated = True
+
+        if updated or created:
+            profile.save()
+            logger.info(
+                f"Synced LDAP attributes for user '{user.username}': "
+                f"{[k for k, v in synced_attrs.items() if v]}"
+            )
+
+        return synced_attrs
+
+    finally:
+        conn.unbind_s()
+
+
 # Pipeline for social-auth-app-django
 # Recommended pipeline configuration:
 #

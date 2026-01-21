@@ -156,12 +156,20 @@ def convert_workflow_to_visual(workflow, form_definition):
     """
     Convert WorkflowDefinition model to visual workflow format.
     """
-    # If visual workflow data exists, return it directly
+    # Check if visual workflow data exists AND has the correct format (nodes array)
     if workflow.visual_workflow_data:
-        logger.info("Loading saved visual workflow data")
-        return workflow.visual_workflow_data
+        visual_data = workflow.visual_workflow_data
+        # Check if it has the new format with nodes array
+        if isinstance(visual_data, dict) and "nodes" in visual_data:
+            logger.info("Loading saved visual workflow data (new format)")
+            return visual_data
+        else:
+            # Old format (e.g., stages array) - regenerate
+            logger.info(
+                "Found legacy visual_workflow_data format, regenerating visual layout"
+            )
 
-    # Otherwise, generate default layout from workflow configuration
+    # Generate default layout from workflow configuration
     logger.info("Generating default visual workflow layout")
     nodes = []
     connections = []

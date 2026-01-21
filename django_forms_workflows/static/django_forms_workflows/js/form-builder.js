@@ -594,6 +594,17 @@ class FormBuilder {
                     <label class="form-label">CSS Class</label>
                     <input type="text" class="form-control" id="propCssClass" value="${this.escapeHtml(field.css_class)}">
                 </div>
+                <div class="col-12">
+                    <label class="form-label">Approval Step</label>
+                    <select class="form-select" id="propApprovalStep">
+                        <option value="" ${!field.approval_step ? 'selected' : ''}>None (Student-facing)</option>
+                        <option value="1" ${field.approval_step === 1 ? 'selected' : ''}>Step 1</option>
+                        <option value="2" ${field.approval_step === 2 ? 'selected' : ''}>Step 2</option>
+                        <option value="3" ${field.approval_step === 3 ? 'selected' : ''}>Step 3</option>
+                        <option value="4" ${field.approval_step === 4 ? 'selected' : ''}>Step 4</option>
+                    </select>
+                    <small class="text-muted">Assign to an approval step for sequential approval workflows</small>
+                </div>
             </div>
         `;
     }
@@ -1386,6 +1397,10 @@ class FormBuilder {
 
         const prefillSelect = document.getElementById('propPrefillSource');
         field.prefill_source_id = prefillSelect.value ? parseInt(prefillSelect.value) : null;
+
+        // Save approval step
+        const approvalStepSelect = document.getElementById('propApprovalStep');
+        field.approval_step = approvalStepSelect.value ? parseInt(approvalStepSelect.value) : null;
 
         const choicesEl = document.getElementById('propChoices');
         if (choicesEl) {

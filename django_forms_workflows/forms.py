@@ -585,9 +585,11 @@ class ApprovalStepForm(forms.Form):
         self._setup_layout()
 
     def _build_fields(self):
-        """Build all form fields, making approval step fields editable."""
+        """Build only fields for the current approval step."""
         for field_def in self.form_definition.fields.exclude(
             field_type="section"
+        ).filter(
+            approval_step=self.current_step
         ).order_by("order"):
             self._add_field(field_def)
 

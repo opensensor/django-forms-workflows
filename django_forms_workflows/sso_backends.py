@@ -574,8 +574,9 @@ def sync_user_ldap_attributes(user):
         return None
 
     try:
-        import ldap
         import os
+
+        import ldap
         from ldap.filter import escape_filter_chars
     except ImportError:
         logger.debug("python-ldap not installed, skipping attribute sync")

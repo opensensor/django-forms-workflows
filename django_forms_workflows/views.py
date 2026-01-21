@@ -36,11 +36,14 @@ def form_list(request):
         forms = FormDefinition.objects.filter(is_active=True)
     else:
         # Get forms where user is in submit_groups or no groups specified
+        # Note: For ManyToMany fields, we need to check if the count is 0
+        # because __isnull=True doesn't work correctly for empty M2M relationships
         forms = (
             FormDefinition.objects.filter(is_active=True)
+            .annotate(submit_group_count=models.Count("submit_groups"))
             .filter(
                 models.Q(submit_groups__in=user_groups)
-                | models.Q(submit_groups__isnull=True)
+                | models.Q(submit_group_count=0)
             )
             .distinct()
         )

@@ -42,8 +42,7 @@ def form_list(request):
             FormDefinition.objects.filter(is_active=True)
             .annotate(submit_group_count=models.Count("submit_groups"))
             .filter(
-                models.Q(submit_groups__in=user_groups)
-                | models.Q(submit_group_count=0)
+                models.Q(submit_groups__in=user_groups) | models.Q(submit_group_count=0)
             )
             .distinct()
         )

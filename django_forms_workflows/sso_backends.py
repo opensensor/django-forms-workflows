@@ -674,7 +674,9 @@ def sync_user_ldap_attributes(user):
         synced_attrs["phone"] = get_attr(user_attrs, "telephoneNumber")
         synced_attrs["mobile"] = get_attr(user_attrs, "mobile")
         synced_attrs["employee_id"] = get_attr(user_attrs, "employeeID")
-        synced_attrs["office_location"] = get_attr(user_attrs, "physicalDeliveryOfficeName")
+        synced_attrs["office_location"] = get_attr(
+            user_attrs, "physicalDeliveryOfficeName"
+        )
         synced_attrs["company"] = get_attr(user_attrs, "company")
         synced_attrs["first_name"] = get_attr(user_attrs, "givenName")
         synced_attrs["last_name"] = get_attr(user_attrs, "sn")

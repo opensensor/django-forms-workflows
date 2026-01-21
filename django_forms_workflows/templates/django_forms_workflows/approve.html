@@ -92,11 +92,39 @@
             </div>
         </div>
 
+        <!-- Completed Approval Steps (show previous approvals) -->
+        {% for step in approval_steps %}
+            {% if step.is_completed %}
+            <div class="card mb-4 border-success">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-check-circle"></i> Step {{ step.number }}: {{ step.group_name }}
+                        <span class="badge bg-light text-success float-end">Completed</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-bordered table-sm mb-0">
+                        {% for key, value in submission.form_data.items %}
+                            {% if step.number == 1 and key|slice:":7" == "advisor" %}
+                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
+                            {% elif step.number == 2 and key|slice:":3" == "fa_" %}
+                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
+                            {% elif step.number == 3 and key|slice:":9" == "registrar" %}
+                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
+                            {% elif step.number == 4 and key|slice:":7" == "manager" %}
+                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
+                            {% endif %}
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+
         <!-- Approval Form with Step Fields -->
         <form method="post" data-loading-message="Processing your decision...">
             {% csrf_token %}
 
-            <!-- Current Step Fields Section -->
+            <!-- Current Step Fields Section with Decision inline -->
             <div class="card mb-4 border-primary">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Step {{ current_step_number }}: {{ task.step_name }}
@@ -106,34 +134,14 @@
                 <div class="card-body">
                     <p class="text-muted mb-4">Please review the submission above and fill in the required fields below.</p>
                     {{ approval_step_form|crispy }}
-                </div>
-            </div>
 
-            <!-- Future Steps Preview (greyed out) -->
-            {% for step in approval_steps %}
-                {% if step.number > current_step_number %}
-                <div class="card mb-4 border-secondary opacity-50">
-                    <div class="card-header bg-light text-muted">
-                        <h5 class="mb-0"><i class="bi bi-hourglass"></i> Step {{ step.number }}: {{ step.group_name }}
-                            <span class="badge bg-secondary float-end">Pending</span>
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted mb-0"><em>This step will be available after all previous steps are approved.</em></p>
-                    </div>
-                </div>
-                {% endif %}
-            {% endfor %}
+                    <hr class="my-4">
 
-            <!-- Decision Section -->
-            <div class="card mb-4 border-success">
-                <div class="card-header bg-light">
-                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Your Decision</h5>
-                </div>
-                <div class="card-body">
+                    <!-- Decision Section inline -->
+                    <h6 class="mb-3"><i class="bi bi-clipboard-check"></i> Your Decision</h6>
                     <div class="mb-3">
                         <label for="comments" class="form-label">Comments (Optional)</label>
-                        <textarea class="form-control" id="comments" name="comments" rows="3" placeholder="Add any comments about your decision..."></textarea>
+                        <textarea class="form-control" id="comments" name="comments" rows="2" placeholder="Add any comments about your decision..."></textarea>
                     </div>
                     <div class="d-grid gap-2 d-md-block">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
@@ -149,6 +157,22 @@
                 </div>
             </div>
         </form>
+
+        <!-- Future Steps Preview (greyed out) -->
+        {% for step in approval_steps %}
+            {% if step.number > current_step_number %}
+            <div class="card mb-4 border-secondary opacity-50">
+                <div class="card-header bg-light text-muted">
+                    <h5 class="mb-0"><i class="bi bi-hourglass"></i> Step {{ step.number }}: {{ step.group_name }}
+                        <span class="badge bg-secondary float-end">Pending</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-0"><em>This step will be available after all previous steps are approved.</em></p>
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
 
         {% else %}
         <!-- Standard Approval (No Step Fields) -->

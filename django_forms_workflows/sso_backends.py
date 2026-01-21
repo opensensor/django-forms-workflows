@@ -554,10 +554,19 @@ def sync_user_ldap_attributes(user):
     """
     Sync LDAP attributes to UserProfile for a specific user.
 
-    This fetches key attributes from LDAP (mail, department, title, etc.)
-    and stores them in the user's UserProfile. This is especially useful
-    for SSO users who authenticate via Google/SAML but need LDAP attributes
-    for form prefilling.
+    This fetches key attributes from LDAP and stores them in the user's
+    UserProfile. This is especially useful for SSO users who authenticate
+    via Google/SAML but need LDAP attributes for form prefilling.
+
+    The mapping of UserProfile fields to LDAP attributes is configurable via:
+
+        FORMS_WORKFLOWS_LDAP_PROFILE_MAPPING = {
+            'employee_id': 'extensionAttribute1',  # Custom ID number attribute
+            'department': 'department',
+            'title': 'title',
+            'phone': 'telephoneNumber',
+            'office_location': 'physicalDeliveryOfficeName',
+        }
 
     Args:
         user: Django User object
@@ -581,6 +590,25 @@ def sync_user_ldap_attributes(user):
     except ImportError:
         logger.debug("python-ldap not installed, skipping attribute sync")
         return None
+
+    # Default mapping of UserProfile fields to LDAP attributes
+    default_mapping = {
+        "employee_id": "employeeID",
+        "department": "department",
+        "title": "title",
+        "phone": "telephoneNumber",
+        "office_location": "physicalDeliveryOfficeName",
+    }
+
+    # Get custom mapping from settings, falling back to defaults
+    profile_mapping = getattr(
+        settings, "FORMS_WORKFLOWS_LDAP_PROFILE_MAPPING", default_mapping
+    )
+
+    # Merge with defaults for any missing fields
+    for key, value in default_mapping.items():
+        if key not in profile_mapping:
+            profile_mapping[key] = value
 
     # Get LDAP connection settings
     bind_dn = getattr(settings, "AUTH_LDAP_BIND_DN", "")
@@ -628,19 +656,11 @@ def sync_user_ldap_attributes(user):
         raise
 
     try:
-        # Attributes to fetch from LDAP
-        ldap_attrs = [
-            "mail",
-            "department",
-            "title",
-            "telephoneNumber",
-            "mobile",
-            "employeeID",
-            "physicalDeliveryOfficeName",
-            "company",
-            "givenName",
-            "sn",
-        ]
+        # Build list of LDAP attributes to fetch from the mapping
+        # Include additional common attributes for synced_attrs dict
+        ldap_attrs = list(set(profile_mapping.values()))
+        ldap_attrs.extend(["mail", "mobile", "company", "givenName", "sn"])
+        ldap_attrs = list(set(ldap_attrs))  # Remove duplicates
 
         # Search for the user
         search_filter = f"(sAMAccountName={escape_filter_chars(user.username)})"
@@ -668,16 +688,13 @@ def sync_user_ldap_attributes(user):
                 return val[0]
             return None
 
-        # Map LDAP attributes
+        # Build synced_attrs from LDAP response using the configured mapping
+        for profile_field, ldap_attr in profile_mapping.items():
+            synced_attrs[profile_field] = get_attr(user_attrs, ldap_attr)
+
+        # Also include common attributes for logging/debugging
         synced_attrs["mail"] = get_attr(user_attrs, "mail")
-        synced_attrs["department"] = get_attr(user_attrs, "department")
-        synced_attrs["title"] = get_attr(user_attrs, "title")
-        synced_attrs["phone"] = get_attr(user_attrs, "telephoneNumber")
         synced_attrs["mobile"] = get_attr(user_attrs, "mobile")
-        synced_attrs["employee_id"] = get_attr(user_attrs, "employeeID")
-        synced_attrs["office_location"] = get_attr(
-            user_attrs, "physicalDeliveryOfficeName"
-        )
         synced_attrs["company"] = get_attr(user_attrs, "company")
         synced_attrs["first_name"] = get_attr(user_attrs, "givenName")
         synced_attrs["last_name"] = get_attr(user_attrs, "sn")
@@ -685,20 +702,18 @@ def sync_user_ldap_attributes(user):
         # Update or create UserProfile
         profile, created = UserProfile.objects.get_or_create(user=user)
 
-        # Sync attributes to profile
-        profile_fields = {
-            "department": synced_attrs.get("department"),
-            "title": synced_attrs.get("title"),
-            "phone": synced_attrs.get("phone"),
-            "employee_id": synced_attrs.get("employee_id"),
-            "office_location": synced_attrs.get("office_location"),
-        }
-
+        # Sync attributes to profile using the configured mapping
         updated = False
-        for field, value in profile_fields.items():
-            if value and hasattr(profile, field):
-                setattr(profile, field, value)
-                updated = True
+        for profile_field in profile_mapping.keys():
+            value = synced_attrs.get(profile_field)
+            if value and hasattr(profile, profile_field):
+                current_value = getattr(profile, profile_field, None)
+                if current_value != value:
+                    setattr(profile, profile_field, value)
+                    updated = True
+                    logger.debug(
+                        f"Updated {profile_field} for user '{user.username}': {value}"
+                    )
 
         if updated or created:
             profile.save()

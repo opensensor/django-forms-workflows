@@ -408,6 +408,31 @@ def approve_submission(request, task_id):
             user=request.user,
         )
 
+    # Build approval steps info for display
+    approval_steps = []
+    workflow = form_def.workflow
+    if workflow and workflow.approval_logic == "sequence":
+        # Get all approval groups in order
+        approval_groups = list(workflow.approval_groups.all())
+        total_steps = len(approval_groups)
+
+        # Get all tasks for this submission to check completion status
+        all_tasks = {t.step_number: t for t in submission.approval_tasks.all()}
+
+        for idx, group in enumerate(approval_groups, start=1):
+            step_task = all_tasks.get(idx)
+            step_info = {
+                "number": idx,
+                "total": total_steps,
+                "group_name": group.name,
+                "is_current": idx == task.step_number,
+                "is_completed": step_task.status == "approved" if step_task else False,
+                "is_rejected": step_task.status == "rejected" if step_task else False,
+                "is_pending": idx > task.step_number,
+                "task": step_task,
+            }
+            approval_steps.append(step_info)
+
     return render(
         request,
         "django_forms_workflows/approve.html",
@@ -416,6 +441,9 @@ def approve_submission(request, task_id):
             "submission": submission,
             "approval_step_form": approval_step_form,
             "has_approval_step_fields": has_approval_step_fields,
+            "approval_steps": approval_steps,
+            "current_step_number": task.step_number,
+            "total_steps": len(approval_steps) if approval_steps else 0,
         },
     )
 

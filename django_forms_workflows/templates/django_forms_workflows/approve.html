@@ -1,5 +1,6 @@
 {% extends 'django_forms_workflows/base.html' %}
 {% load crispy_forms_tags %}
+{% load forms_workflows_tags %}
 
 {% block title %}Approve Submission #{{ submission.id }} - Django Forms Workflows{% endblock %}
 
@@ -68,7 +69,7 @@
             <div class="card-body">
                 <table class="table table-bordered table-sm">
                     {% for key, value in submission.form_data.items %}
-                        {% if not key|slice:":7" == "advisor" and not key|slice:":2" == "fa" and not key|slice:":9" == "registrar" and not key|slice:":7" == "manager" %}
+                        {% if key not in approval_field_names %}
                         <tr>
                             <th style="width: 30%;">{{ key|title }}</th>
                             <td>
@@ -103,16 +104,17 @@
                 </div>
                 <div class="card-body">
                     <table class="table table-bordered table-sm mb-0">
-                        {% for key, value in submission.form_data.items %}
-                            {% if step.number == 1 and key|slice:":7" == "advisor" %}
-                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
-                            {% elif step.number == 2 and key|slice:":3" == "fa_" %}
-                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
-                            {% elif step.number == 3 and key|slice:":9" == "registrar" %}
-                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
-                            {% elif step.number == 4 and key|slice:":7" == "manager" %}
-                            <tr><th style="width: 30%;">{{ key|title }}</th><td>{{ value }}</td></tr>
-                            {% endif %}
+                        {% for field_info in step.fields %}
+                            {% with field_name=field_info.field_name %}
+                                {% if field_name in submission.form_data %}
+                                <tr>
+                                    <th style="width: 30%;">{{ field_info.field_label }}</th>
+                                    <td>{{ submission.form_data|get_item:field_name }}</td>
+                                </tr>
+                                {% endif %}
+                            {% endwith %}
+                        {% empty %}
+                            <tr><td colspan="2" class="text-muted">No fields recorded for this step.</td></tr>
                         {% endfor %}
                     </table>
                 </div>

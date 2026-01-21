@@ -410,6 +410,8 @@ def approve_submission(request, task_id):
 
     # Build approval steps info for display
     approval_steps = []
+    approval_step_fields = {}  # Maps step number to list of field info
+    all_approval_field_names = []  # List of all field names that belong to approval steps
     workflow = form_def.workflow
     if workflow and workflow.approval_logic == "sequence":
         # Get all approval groups in order
@@ -418,6 +420,21 @@ def approve_submission(request, task_id):
 
         # Get all tasks for this submission to check completion status
         all_tasks = {t.step_number: t for t in submission.approval_tasks.all()}
+
+        # Build mapping of approval steps to their fields
+        for field in form_def.fields.filter(approval_step__isnull=False).order_by(
+            "approval_step", "order"
+        ):
+            step_num = field.approval_step
+            if step_num not in approval_step_fields:
+                approval_step_fields[step_num] = []
+            approval_step_fields[step_num].append(
+                {
+                    "field_name": field.field_name,
+                    "field_label": field.field_label,
+                }
+            )
+            all_approval_field_names.append(field.field_name)
 
         for idx, group in enumerate(approval_groups, start=1):
             step_task = all_tasks.get(idx)
@@ -430,6 +447,7 @@ def approve_submission(request, task_id):
                 "is_rejected": step_task.status == "rejected" if step_task else False,
                 "is_pending": idx > task.step_number,
                 "task": step_task,
+                "fields": approval_step_fields.get(idx, []),
             }
             approval_steps.append(step_info)
 
@@ -444,6 +462,7 @@ def approve_submission(request, task_id):
             "approval_steps": approval_steps,
             "current_step_number": task.step_number,
             "total_steps": len(approval_steps) if approval_steps else 0,
+            "approval_field_names": all_approval_field_names,
         },
     )
 

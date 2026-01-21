@@ -36,8 +36,11 @@ class DynamicForm(forms.Form):
         self.user = user
 
         # Build form fields from definition
-        for field in form_definition.fields.exclude(field_type="section").order_by(
-            "order"
+        # Exclude fields with approval_step set - those are for approvers only
+        for field in (
+            form_definition.fields.exclude(field_type="section")
+            .filter(approval_step__isnull=True)
+            .order_by("order")
         ):
             self.add_field(field, initial_data)
 
@@ -46,9 +49,11 @@ class DynamicForm(forms.Form):
         self.helper.form_method = "post"
         self.helper.form_class = "needs-validation"
 
-        # Build layout
+        # Build layout - exclude approval step fields
         layout_fields = []
-        for field in form_definition.fields.order_by("order"):
+        for field in form_definition.fields.filter(approval_step__isnull=True).order_by(
+            "order"
+        ):
             if field.field_type == "section":
                 layout_fields.append(
                     HTML(f'<h3 class="mt-4 mb-3">{field.field_label}</h3>')

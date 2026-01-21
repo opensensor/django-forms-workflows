@@ -338,6 +338,8 @@ def approve_submission(request, task_id):
                 send_rejection_notification.delay(submission.id)
             except ImportError:
                 logger.warning("Celery tasks not available, skipping notification")
+            except Exception as e:
+                logger.warning("Failed to queue rejection notification: %s", e)
         else:
             # Approval - check workflow logic
             from .workflow_engine import handle_approval

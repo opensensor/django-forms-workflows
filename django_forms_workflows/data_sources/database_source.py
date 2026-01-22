@@ -384,6 +384,80 @@ class DatabaseDataSource(DataSource):
             logger.error(f"Error getting template value: {e}")
             return None
 
+    def execute_custom_query(self, user, query_key: str) -> str | None:
+        """
+        Execute a code-defined database query.
+
+        Queries are defined in settings.FORMS_WORKFLOWS_DATABASE_QUERIES
+        and referenced by key. This allows complex queries (JOINs, multiple
+        WHERE conditions) while keeping SQL in version-controlled code.
+
+        Args:
+            user: Django User object
+            query_key: Key from FORMS_WORKFLOWS_DATABASE_QUERIES setting
+
+        Returns:
+            Query result (first column of first row) or None
+        """
+        if not user or not user.is_authenticated:
+            return None
+
+        try:
+            # Get query definition from settings
+            queries = getattr(settings, "FORMS_WORKFLOWS_DATABASE_QUERIES", {})
+            if query_key not in queries:
+                logger.error(
+                    f"Database query key '{query_key}' not found in "
+                    "FORMS_WORKFLOWS_DATABASE_QUERIES setting"
+                )
+                return None
+
+            query_config = queries[query_key]
+
+            # Extract configuration
+            query_text = query_config.get("query")
+            db_alias = query_config.get("db_alias")
+            user_field = query_config.get("user_field", "employee_id")
+
+            if not query_text or not db_alias:
+                logger.error(
+                    f"Database query '{query_key}' missing required 'query' or 'db_alias'"
+                )
+                return None
+
+            # Get user's lookup value
+            user_id = self._get_user_id(user, user_field)
+            if not user_id:
+                logger.debug(f"User {user.username} has no {user_field}")
+                return None
+
+            # Check database exists
+            databases = getattr(settings, "DATABASES", {})
+            if db_alias not in databases:
+                logger.error(f"Database alias '{db_alias}' not configured")
+                return None
+
+            # Execute the query
+            with connections[db_alias].cursor() as cursor:
+                cursor.execute(query_text, [user_id])
+                row = cursor.fetchone()
+
+                if row:
+                    value = row[0]
+                    # Strip whitespace for fixed-width columns
+                    if isinstance(value, str):
+                        value = value.strip()
+                    return value
+
+                logger.debug(
+                    f"No data found for user {user_id} with query '{query_key}'"
+                )
+                return None
+
+        except Exception as e:
+            logger.error(f"Error executing custom query '{query_key}': {e}")
+            return None
+
     def is_available(self) -> bool:
         """
         Check if database source is configured.

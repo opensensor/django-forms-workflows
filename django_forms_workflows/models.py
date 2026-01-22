@@ -201,6 +201,15 @@ class PrefillSource(models.Model):
         blank=True, null=True, help_text="Additional configuration as JSON"
     )
 
+    # Code-defined database query (for complex queries like JOINs)
+    database_query_key = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Key from FORMS_WORKFLOWS_DATABASE_QUERIES setting. "
+        "Use this for complex queries (JOINs, additional WHERE conditions). "
+        "Takes precedence over db_schema/db_table/db_column fields.",
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -219,6 +228,9 @@ class PrefillSource(models.Model):
         Get the source identifier string for backward compatibility.
         Returns the source_key or constructs it from components.
         """
+        # Code-defined database query takes precedence
+        if self.source_type == "database" and self.database_query_key:
+            return f"dbquery.{self.database_query_key}"
         if self.source_type == "database" and self.db_schema and self.db_table:
             # Template-based multi-column lookup
             if self.db_template and self.db_columns:
@@ -231,6 +243,10 @@ class PrefillSource(models.Model):
         elif self.source_type == "user":
             return self.source_key
         return self.source_key
+
+    def has_custom_query(self):
+        """Check if this source uses a code-defined database query."""
+        return bool(self.database_query_key)
 
     def has_template(self):
         """Check if this source uses a multi-column template."""

@@ -300,7 +300,8 @@ class DynamicForm(forms.Form):
         Supports:
         - user.* - User model fields
         - ldap.* - LDAP attributes
-        - db.* or {{ db.* }} - Database queries
+        - dbquery.* - Code-defined database queries (for complex SQL)
+        - db.* or {{ db.* }} - Simple database queries
         - api.* - API calls
         - current_date, current_datetime - Current date/time
         - last_submission - Previous submission data
@@ -324,6 +325,12 @@ class DynamicForm(forms.Form):
                 source = LDAPDataSource()
                 field_name = prefill_source.replace("ldap.", "")
                 return source.get_value(self.user, field_name) or ""
+
+            # Handle dbquery.* sources (code-defined complex queries)
+            elif prefill_source.startswith("dbquery."):
+                source = DatabaseDataSource()
+                query_key = prefill_source.replace("dbquery.", "")
+                return source.execute_custom_query(self.user, query_key) or ""
 
             # Handle db.* or {{ db.* }} sources
             elif prefill_source.startswith("db.") or prefill_source.startswith("{{"):

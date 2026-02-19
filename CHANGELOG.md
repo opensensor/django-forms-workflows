@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-02-19
+
+### Fixed
+- **Presigned file URL expiry** — file URLs in submission detail and approval pages were expiring after 1 hour because presigned S3/DigitalOcean Spaces URLs were being generated at upload time and stored permanently in the `form_data` JSON field in the database.  URLs are no longer persisted; instead, a new `_resolve_form_data_urls()` helper generates fresh presigned URLs on every view render so files are always accessible regardless of how long ago they were uploaded.
+
+### Changed
+- `serialize_form_data()` no longer stores a `url` key in file-upload entries — only `filename`, `path`, `size`, and `content_type` are persisted.  This is a **data-format change**: existing database records that contain a stale `url` key are handled correctly because the views now always regenerate the URL from the stored `path`.
+
 ## [0.8.4] - 2026-02-19
 
 ### Added

@@ -407,10 +407,17 @@ def submission_detail(request, submission_id):
     # Get approval tasks
     approval_tasks = submission.approval_tasks.all().order_by("-created_at")
 
+    # Resolve fresh presigned URLs for any file-upload fields
+    form_data = _resolve_form_data_urls(submission.form_data)
+
     return render(
         request,
         "django_forms_workflows/submission_detail.html",
-        {"submission": submission, "approval_tasks": approval_tasks},
+        {
+            "submission": submission,
+            "approval_tasks": approval_tasks,
+            "form_data": form_data,
+        },
     )
 
 
@@ -590,6 +597,7 @@ def approve_submission(request, task_id):
                         "submission": submission,
                         "approval_step_form": approval_step_form,
                         "has_approval_step_fields": has_approval_step_fields,
+                        "form_data": _resolve_form_data_urls(submission.form_data),
                     },
                 )
 
@@ -704,6 +712,9 @@ def approve_submission(request, task_id):
             }
             approval_steps.append(step_info)
 
+    # Resolve fresh presigned URLs for any file-upload fields
+    form_data = _resolve_form_data_urls(submission.form_data)
+
     return render(
         request,
         "django_forms_workflows/approve.html",
@@ -716,6 +727,7 @@ def approve_submission(request, task_id):
             "current_step_number": task.step_number,
             "total_steps": len(approval_steps) if approval_steps else 0,
             "approval_field_names": all_approval_field_names,
+            "form_data": form_data,
         },
     )
 
@@ -778,8 +790,10 @@ def serialize_form_data(data, submission_id=None):
     """
     Convert form data to JSON-serializable format.
 
-    For file uploads, saves the file to storage and stores both
-    the filename and the storage path.
+    For file uploads, saves the file to storage and stores the filename,
+    storage path, size, and content-type.  The URL is intentionally NOT
+    stored here — presigned S3/Spaces URLs expire and must be generated
+    on-demand at render time via ``_resolve_form_data_urls()``.
     """
     serialized = {}
     for key, value in data.items():
@@ -791,16 +805,9 @@ def serialize_form_data(data, submission_id=None):
             # Save file to storage (uses S3/Spaces if configured)
             file_path = save_uploaded_file(value, key, submission_id)
             if file_path:
-                # Get the URL for the saved file
-                try:
-                    file_url = default_storage.url(file_path)
-                except Exception:
-                    file_url = None
-
                 serialized[key] = {
                     "filename": value.name,
                     "path": file_path,
-                    "url": file_url,
                     "size": value.size if hasattr(value, "size") else 0,
                     "content_type": (
                         value.content_type
@@ -862,6 +869,31 @@ def get_file_url(file_info):
         # Old format - just filename, can't generate URL
         return None
     return None
+
+
+def _resolve_form_data_urls(form_data):
+    """
+    Return a copy of form_data with fresh presigned URLs injected for every
+    file-upload entry (i.e. any dict value that contains a ``path`` key).
+
+    Presigned S3/Spaces URLs expire and must never be stored in the database.
+    This helper is called in views immediately before rendering a template so
+    that the template always receives a valid, unexpired URL.
+
+    Values that are not file-upload dicts are passed through unchanged.
+    """
+    if not form_data:
+        return {}
+    resolved = {}
+    for key, value in form_data.items():
+        if isinstance(value, dict) and "path" in value:
+            # Build a fresh copy with a newly-generated URL
+            entry = dict(value)  # shallow copy so we don't mutate the model field
+            entry["url"] = get_file_url(value)  # may be None if storage is unavailable
+            resolved[key] = entry
+        else:
+            resolved[key] = value
+    return resolved
 
 
 def get_client_ip(request):

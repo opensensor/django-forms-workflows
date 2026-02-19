@@ -68,7 +68,7 @@
             </div>
             <div class="card-body">
                 <table class="table table-bordered table-sm">
-                    {% for key, value in submission.form_data.items %}
+                    {% for key, value in form_data.items %}
                         {% if key not in approval_field_names %}
                         <tr>
                             <th style="width: 30%;">{{ key|title }}</th>
@@ -106,10 +106,10 @@
                     <table class="table table-bordered table-sm mb-0">
                         {% for field_info in step.fields %}
                             {% with field_name=field_info.field_name %}
-                                {% if field_name in submission.form_data %}
+                                {% if field_name in form_data %}
                                 <tr>
                                     <th style="width: 30%;">{{ field_info.field_label }}</th>
-                                    <td>{{ submission.form_data|get_item:field_name }}</td>
+                                    <td>{{ form_data|get_item:field_name }}</td>
                                 </tr>
                                 {% endif %}
                             {% endwith %}
@@ -185,7 +185,7 @@
             </div>
             <div class="card-body">
                 <table class="table table-bordered">
-                    {% for key, value in submission.form_data.items %}
+                    {% for key, value in form_data.items %}
                         <tr>
                             <th style="width: 30%;">{{ key|title }}</th>
                             <td>

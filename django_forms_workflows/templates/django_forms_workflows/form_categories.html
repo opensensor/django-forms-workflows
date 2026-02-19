@@ -1,12 +1,12 @@
 {% load forms_workflows_tags %}
-{#
+{% comment %}
   Inclusion template for render_form_categories template tag.
 
   Context variables
   -----------------
   grouped_forms   : list of (FormCategory|None, [FormDefinition, ...])
   form_url_name   : URL name for the "Fill Out Form" link
-#}
+{% endcomment %}
 
 {% if grouped_forms %}
 <div class="accordion" id="formCategoriesAccordion">

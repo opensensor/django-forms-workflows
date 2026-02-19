@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-02-19
+
+### Fixed
+- **`form_categories.html`** — replaced multiline `{# ... #}` comment (Django only supports single-line `{#}` comments) with `{% comment %}...{% endcomment %}` tags to prevent the comment block from rendering as raw text on the page
+
 ## [0.8.0] - 2026-02-19
 
 ### Added

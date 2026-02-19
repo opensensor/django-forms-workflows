@@ -1,52 +1,144 @@
 {% extends 'django_forms_workflows/base.html' %}
 
-{% block title %}Approval Inbox - Django Forms Workflows{% endblock %}
+{% block title %}Approval Inbox - {{ site_name }}{% endblock %}
 
 {% block content %}
 <div class="row">
-    <div class="col-12">
-        <h1 class="mb-4">
-            <i class="bi bi-inbox"></i> Approval Inbox
-        </h1>
-        {% if tasks %}
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Form</th>
-                            <th>Submitter</th>
-                            <th>Step</th>
-                            <th>Submitted</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for task in tasks %}
-                            <tr>
-                                <td>{{ task.submission.form_definition.name }}</td>
-                                <td>{{ task.submission.submitter.get_full_name|default:task.submission.submitter.username }}</td>
-                                <td>{{ task.step_name }}</td>
-                                <td>{{ task.submission.submitted_at|date:"Y-m-d H:i" }}</td>
-                                <td>
-                                    <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-sm btn-primary">
-                                        <i class="bi bi-check-circle"></i> Review
-                                    </a>
-                                    <a href="{% url 'forms_workflows:submission_detail' task.submission.id %}" class="btn btn-sm btn-outline-secondary">
-                                        <i class="bi bi-eye"></i> View
-                                    </a>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+  <div class="col-12">
+
+    {# ── Page header ── #}
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="mb-0"><i class="bi bi-inbox"></i> Approval Inbox</h1>
+      <span class="text-muted small">
+        {% if active_form %}
+          Showing {{ tasks|length }} task{{ tasks|length|pluralize }} in
+          <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
+          &mdash;
+          <a href="?category={{ category_slug }}" class="text-decoration-none">clear form filter</a>
+        {% elif active_category %}
+          Showing {{ tasks|length }} task{{ tasks|length|pluralize }} in
+          <strong>{{ active_category.name }}</strong>
+          &mdash;
+          <a href="?" class="text-decoration-none">clear filter</a>
         {% else %}
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i>
-                You have no pending approvals at this time.
-            </div>
+          {{ total_tasks_count }} pending task{{ total_tasks_count|pluralize }} total
         {% endif %}
+      </span>
     </div>
+
+    {# ── Category filter bar ── #}
+    {% if category_counts %}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center" role="toolbar" aria-label="Filter by category">
+      <span class="text-muted small fw-semibold me-1">Filter:</span>
+
+      <a href="?"
+         class="btn btn-sm {% if not category_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if not category_slug %}aria-current="true"{% endif %}>
+        All
+        <span class="badge {% if not category_slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+          {{ total_tasks_count }}
+        </span>
+      </a>
+
+      {% for cat in category_counts %}
+      <a href="?category={{ cat.slug }}"
+         class="btn btn-sm {% if category_slug == cat.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if category_slug == cat.slug %}aria-current="true"{% endif %}>
+        {% if cat.icon %}<i class="bi {{ cat.icon }} me-1"></i>{% endif %}
+        {{ cat.name }}
+        <span class="badge {% if category_slug == cat.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+          {{ cat.count }}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ── Form filter bar (only when a category is active) ── #}
+    {% if form_counts %}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center ps-3 border-start border-2"
+         role="toolbar" aria-label="Filter by form">
+      <span class="text-muted small fw-semibold me-1">Form:</span>
+
+      <a href="?category={{ category_slug }}"
+         class="btn btn-sm {% if not form_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if not form_slug %}aria-current="true"{% endif %}>
+        All
+      </a>
+
+      {% for form_item in form_counts %}
+      <a href="?category={{ category_slug }}&form={{ form_item.slug }}"
+         class="btn btn-sm {% if form_slug == form_item.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if form_slug == form_item.slug %}aria-current="true"{% endif %}>
+        {{ form_item.name }}
+        <span class="badge {% if form_slug == form_item.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+          {{ form_item.count }}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ── Task table ── #}
+    {% if tasks %}
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              {% if not category_slug %}<th>Category</th>{% endif %}
+              <th>Form</th>
+              <th>Submitter</th>
+              <th>Step</th>
+              <th>Submitted</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for task in tasks %}
+            <tr>
+              {% if not category_slug %}
+              <td>
+                {% with cat=task.submission.form_definition.category %}
+                {% if cat %}
+                  {% if cat.icon %}<i class="bi {{ cat.icon }} me-1 text-muted"></i>{% endif %}
+                  {{ cat.name }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+                {% endwith %}
+              </td>
+              {% endif %}
+              <td>{{ task.submission.form_definition.name }}</td>
+              <td>{{ task.submission.submitter.get_full_name|default:task.submission.submitter.username }}</td>
+              <td>{{ task.step_name }}</td>
+              <td>{{ task.submission.submitted_at|date:"Y-m-d H:i" }}</td>
+              <td>
+                <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-sm btn-primary">
+                  <i class="bi bi-check-circle"></i> Review
+                </a>
+                <a href="{% url 'forms_workflows:submission_detail' task.submission.id %}" class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-eye"></i> View
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i>
+        {% if active_form %}
+          No pending approvals for <strong>{{ active_form.name }}</strong> in <strong>{{ active_category.name }}</strong>.
+        {% elif active_category %}
+          No pending approvals in <strong>{{ active_category.name }}</strong>.
+        {% else %}
+          You have no pending approvals at this time.
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
 </div>
 {% endblock %}
 

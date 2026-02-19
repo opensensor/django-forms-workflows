@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-02-19
+
+### Added
+- **Configurable site name** — deployers can set `FORMS_WORKFLOWS = {'SITE_NAME': 'My Org Workflows'}` in Django settings to replace the default "Django Forms Workflows" brand across all page titles, the navbar brand, and the footer copyright line
+- **Context processor** — `django_forms_workflows.context_processors.forms_workflows` injects `site_name` into every template context; add it to `TEMPLATES['OPTIONS']['context_processors']` in your settings to enable custom branding
+- **Rich approval inbox template** — the generic `approval_inbox.html` is now feature-complete: category filter bar with counts and icons, form-level drill-down bar (indented, only visible when a category is active), dynamic page header showing task count and `Category › Form` breadcrumb, a Category column in the table (hidden when filtering by category), and context-aware empty-state messages
+
 ## [0.8.3] - 2026-02-19
 
 ### Added

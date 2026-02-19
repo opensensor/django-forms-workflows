@@ -330,10 +330,9 @@ def my_submissions(request):
             (c for c in category_counts if c["slug"] == category_slug), None
         )
     else:
-        submissions = (
-            base_submissions.select_related("form_definition__category")
-            .order_by("-created_at")
-        )
+        submissions = base_submissions.select_related(
+            "form_definition__category"
+        ).order_by("-created_at")
 
     return render(
         request,

@@ -6,9 +6,35 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h1 class="mb-4">
-            <i class="bi bi-list-ul"></i> Available Forms
-        </h1>
+
+        {# ── Page header + search ── #}
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+            <h1 class="mb-0"><i class="bi bi-list-ul"></i> Available Forms</h1>
+            <form method="get" action="" class="d-flex" role="search">
+                <div class="input-group input-group-sm">
+                    <input type="search" name="q" class="form-control"
+                           placeholder="Search forms…"
+                           value="{{ search_query }}"
+                           aria-label="Search forms">
+                    <button class="btn btn-outline-secondary" type="submit">
+                        <i class="bi bi-search"></i>
+                    </button>
+                    {% if search_query %}
+                    <a href="?" class="btn btn-outline-danger" title="Clear search">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+
+        {% if search_query %}
+        <p class="text-muted small mb-3">
+            {% with total=forms|length %}
+            {{ total }} result{{ total|pluralize }} for &ldquo;<strong>{{ search_query }}</strong>&rdquo;
+            {% endwith %}
+        </p>
+        {% endif %}
 
         {% if grouped_forms %}
             {% render_form_categories grouped_forms %}

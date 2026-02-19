@@ -10,7 +10,12 @@
     <div class="d-flex align-items-center justify-content-between mb-3">
       <h1 class="mb-0"><i class="bi bi-file-earmark-check"></i> My Submissions</h1>
       <span class="text-muted small">
-        {% if active_category %}
+        {% if active_form %}
+          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
+          <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
+          &mdash;
+          <a href="?category={{ category_slug }}" class="text-decoration-none">clear form filter</a>
+        {% elif active_category %}
           Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
           <strong>{{ active_category.name }}</strong>
           &mdash;
@@ -45,6 +50,33 @@
         {{ cat.name }}
         <span class="badge {% if category_slug == cat.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
           {{ cat.count }}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ── Form filter bar (only when a category is active) ── #}
+    {% if form_counts %}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center ps-3 border-start border-2"
+         role="toolbar" aria-label="Filter by form">
+      <span class="text-muted small fw-semibold me-1">Form:</span>
+
+      {# All-forms pill #}
+      <a href="?category={{ category_slug }}"
+         class="btn btn-sm {% if not form_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if not form_slug %}aria-current="true"{% endif %}>
+        All
+      </a>
+
+      {# Per-form pills #}
+      {% for form_item in form_counts %}
+      <a href="?category={{ category_slug }}&form={{ form_item.slug }}"
+         class="btn btn-sm {% if form_slug == form_item.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if form_slug == form_item.slug %}aria-current="true"{% endif %}>
+        {{ form_item.name }}
+        <span class="badge {% if form_slug == form_item.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+          {{ form_item.count }}
         </span>
       </a>
       {% endfor %}
@@ -129,7 +161,9 @@
     {% else %}
       <div class="alert alert-info">
         <i class="bi bi-info-circle"></i>
-        {% if active_category %}
+        {% if active_form %}
+          No submissions found for <strong>{{ active_form.name }}</strong> in <strong>{{ active_category.name }}</strong>.
+        {% elif active_category %}
           No submissions found in <strong>{{ active_category.name }}</strong>.
         {% else %}
           You haven't submitted any forms yet.

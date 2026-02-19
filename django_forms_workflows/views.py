@@ -109,6 +109,11 @@ def form_list(request):
             .select_related("category")
         )
 
+    # --- Optional name search ---
+    search_query = request.GET.get("q", "").strip()
+    if search_query:
+        forms = forms.filter(name__icontains=search_query)
+
     grouped_forms = _build_grouped_forms(forms)
 
     return render(
@@ -117,6 +122,7 @@ def form_list(request):
         {
             "forms": forms,
             "grouped_forms": grouped_forms,
+            "search_query": search_query,
         },
     )
 
@@ -321,18 +327,46 @@ def my_submissions(request):
     active_category = None
 
     if category_slug:
-        submissions = (
-            base_submissions.filter(form_definition__category__slug=category_slug)
-            .select_related("form_definition__category")
-            .order_by("-created_at")
+        submissions = base_submissions.filter(
+            form_definition__category__slug=category_slug
         )
         active_category = next(
             (c for c in category_counts if c["slug"] == category_slug), None
         )
     else:
-        submissions = base_submissions.select_related(
-            "form_definition__category"
-        ).order_by("-created_at")
+        submissions = base_submissions
+
+    # --- Form counts within the active category (for the form-level filter bar) ---
+    form_slug = request.GET.get("form", "").strip()
+    form_counts = []
+    active_form = None
+
+    if category_slug:
+        raw_form_counts = (
+            submissions.values(
+                "form_definition__pk",
+                "form_definition__name",
+                "form_definition__slug",
+            )
+            .annotate(count=models.Count("id"))
+            .order_by("form_definition__name")
+        )
+        form_counts = [
+            {
+                "name": r["form_definition__name"],
+                "slug": r["form_definition__slug"],
+                "count": r["count"],
+            }
+            for r in raw_form_counts
+            if r["form_definition__slug"]
+        ]
+        if form_slug:
+            submissions = submissions.filter(form_definition__slug=form_slug)
+            active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
+
+    submissions = submissions.select_related("form_definition__category").order_by(
+        "-created_at"
+    )
 
     return render(
         request,
@@ -343,6 +377,9 @@ def my_submissions(request):
             "active_category": active_category,
             "category_slug": category_slug,
             "total_submissions_count": total_submissions_count,
+            "form_counts": form_counts,
+            "form_slug": form_slug,
+            "active_form": active_form,
         },
     )
 
@@ -433,22 +470,49 @@ def approval_inbox(request):
     active_category = None
 
     if category_slug:
-        display_tasks = (
-            base_tasks.filter(submission__form_definition__category__slug=category_slug)
-            .select_related(
-                "submission__form_definition__category",
-                "submission__submitter",
-            )
-            .order_by("-created_at")
+        display_tasks = base_tasks.filter(
+            submission__form_definition__category__slug=category_slug
         )
         active_category = next(
             (c for c in category_counts if c["slug"] == category_slug), None
         )
     else:
-        display_tasks = base_tasks.select_related(
-            "submission__form_definition__category",
-            "submission__submitter",
-        ).order_by("-created_at")
+        display_tasks = base_tasks
+
+    # --- Form counts within the active category (for the form-level filter bar) ---
+    form_slug = request.GET.get("form", "").strip()
+    form_counts = []
+    active_form = None
+
+    if category_slug:
+        raw_form_counts = (
+            display_tasks.values(
+                "submission__form_definition__pk",
+                "submission__form_definition__name",
+                "submission__form_definition__slug",
+            )
+            .annotate(count=models.Count("id"))
+            .order_by("submission__form_definition__name")
+        )
+        form_counts = [
+            {
+                "name": r["submission__form_definition__name"],
+                "slug": r["submission__form_definition__slug"],
+                "count": r["count"],
+            }
+            for r in raw_form_counts
+            if r["submission__form_definition__slug"]
+        ]
+        if form_slug:
+            display_tasks = display_tasks.filter(
+                submission__form_definition__slug=form_slug
+            )
+            active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
+
+    display_tasks = display_tasks.select_related(
+        "submission__form_definition__category",
+        "submission__submitter",
+    ).order_by("-created_at")
 
     return render(
         request,
@@ -459,6 +523,9 @@ def approval_inbox(request):
             "active_category": active_category,
             "category_slug": category_slug,
             "total_tasks_count": total_tasks_count,
+            "form_counts": form_counts,
+            "form_slug": form_slug,
+            "active_form": active_form,
         },
     )
 

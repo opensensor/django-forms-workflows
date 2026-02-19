@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-02-19
+
+### Added
+- **Form name search on the landing page** — `form_list` view accepts `?q=<text>` to filter the visible forms by name (case-insensitive); a search box with a clear button is rendered in the page header alongside the heading; result count is shown when a query is active
+- **Form-level drill-down on submissions page** — when a category filter is active on `my_submissions`, a second pill bar appears (indented under the category bar) listing every form the user has submissions for within that category; selecting a pill appends `&form=<slug>` to the URL and narrows the table to that form; the page header shows `Category › Form` breadcrumb text and a targeted clear link
+- **Form-level drill-down on approval inbox** — same drill-down behaviour as submissions: after selecting a category, a form pill bar appears so approvers can focus on a single form's queue; context variables `form_counts`, `form_slug`, and `active_form` are passed to the template
+
 ## [0.8.2] - 2026-02-19
 
 ### Added

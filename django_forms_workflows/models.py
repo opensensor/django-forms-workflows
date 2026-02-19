@@ -9,6 +9,64 @@ from django.contrib.auth.models import Group
 from django.db import models
 
 
+class FormCategory(models.Model):
+    """
+    Grouping primitive for FormDefinitions.
+
+    Categories control how forms are organised in the list view,
+    which groups of users can see them, and how the UI renders the
+    section (icon, collapse state, display order).
+    """
+
+    name = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="Human-readable category name (e.g. 'HR', 'IT Requests')",
+    )
+    slug = models.SlugField(
+        unique=True,
+        help_text="URL-safe identifier; auto-populated from name",
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Optional description shown to administrators",
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text="Controls display order in the form list (lower = first)",
+    )
+    is_collapsed_by_default = models.BooleanField(
+        default=False,
+        help_text="If True, the category section renders collapsed in the UI",
+    )
+    allowed_groups = models.ManyToManyField(
+        Group,
+        blank=True,
+        related_name="form_categories",
+        help_text=(
+            "Groups that may see/access forms in this category. "
+            "Leave empty to allow all authenticated users."
+        ),
+    )
+    icon = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Bootstrap icon class (e.g. 'bi-people-fill') shown in the section header",
+    )
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "name"]
+        verbose_name = "Form Category"
+        verbose_name_plural = "Form Categories"
+
+    def __str__(self):
+        return self.name
+
+
 class FormDefinition(models.Model):
     """
     Master form configuration - created via Django Admin.
@@ -16,6 +74,16 @@ class FormDefinition(models.Model):
     Forms are stored in the database, not code, allowing non-developers
     to create and modify forms without deployments.
     """
+
+    # Category
+    category = models.ForeignKey(
+        FormCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="forms",
+        help_text="Grouping category for this form. Leave blank for 'General/Other'.",
+    )
 
     # Basic Info
     name = models.CharField(max_length=200, help_text="Display name for the form")

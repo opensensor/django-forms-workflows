@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-02-19
+
+### Added
+- **FormCategory model** — new `FormCategory` grouping primitive with `name`, `slug`, `description`, `order`, `icon`, `is_collapsed_by_default`, and `allowed_groups` (M2M) fields; migration `0014_add_form_category`
+- **Category-grouped form list** — `form_list` view now passes `grouped_forms` (ordered list of `(FormCategory | None, [FormDefinition, ...])` tuples) and enforces category-level `allowed_groups` access control for non-staff users; new `form_categories.html` template
+- **Category-aware approval inbox** — `approval_inbox` view accepts `?category=<slug>` query parameter to filter the task table to a single category; template context now includes `category_counts`, `active_category`, `category_slug`, and `total_tasks_count` for rendering a filter-pill bar with per-category pending counts
+- **`forms_workflows_tags` templatetag additions** — new tags supporting the grouped form list and category header rendering
+
 ### Planned Features
 - Form builder UI (drag-and-drop)
 - REST API for form submission

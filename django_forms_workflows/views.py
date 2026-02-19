@@ -26,28 +26,100 @@ from .utils import user_can_approve, user_can_submit_form
 logger = logging.getLogger(__name__)
 
 
+def _build_grouped_forms(forms):
+    """
+    Return an ordered list of ``(category_or_None, [form, ...])`` tuples.
+
+    Forms with a category are sorted first by ``category.order``, then by
+    ``category.name``, then by form ``name``.  Uncategorised forms are
+    appended at the end under ``None``.
+    """
+    ordered = forms.order_by(
+        "category__order",
+        "category__name",
+        "name",
+    ).select_related("category")
+
+    seen_keys = {}      # category pk -> index in results list
+    results = []        # list of [category_or_None, [forms]]
+    uncategorised = []
+
+    for form in ordered:
+        cat = form.category
+        if cat is None:
+            uncategorised.append(form)
+            continue
+        if cat.pk not in seen_keys:
+            seen_keys[cat.pk] = len(results)
+            results.append([cat, []])
+        results[seen_keys[cat.pk]][1].append(form)
+
+    # Append uncategorised as the final bucket
+    if uncategorised:
+        results.append([None, uncategorised])
+
+    return [(cat, forms_list) for cat, forms_list in results]
+
+
 @login_required
 def form_list(request):
-    """List all forms user has access to"""
-    user_groups = request.user.groups.all()
+    """List all active forms the current user has access to.
 
-    if request.user.is_superuser:
-        # Superusers can see all active forms
-        forms = FormDefinition.objects.filter(is_active=True)
+    For non-staff users two layers of group filtering are applied:
+
+    1. **Form-level** — the user must be in ``submit_groups``, or the form
+       has no ``submit_groups`` restriction.
+    2. **Category-level** — the user must be in one of the category's
+       ``allowed_groups``, or the category has no group restriction, or the
+       form has no category at all.
+
+    Staff / superusers bypass both filters and see every active form.
+
+    Context variables
+    -----------------
+    forms
+        Raw queryset (for templates that just want a flat list).
+    grouped_forms
+        Ordered list of ``(FormCategory | None, [FormDefinition, ...])``.
+    """
+    if request.user.is_staff or request.user.is_superuser:
+        forms = FormDefinition.objects.filter(is_active=True).select_related("category")
     else:
-        # Get forms where user is in submit_groups or no groups specified
-        # Note: For ManyToMany fields, we need to check if the count is 0
-        # because __isnull=True doesn't work correctly for empty M2M relationships
+        user_groups = request.user.groups.all()
         forms = (
             FormDefinition.objects.filter(is_active=True)
-            .annotate(submit_group_count=models.Count("submit_groups"))
+            # Annotate counts so we can distinguish "no groups" from "some groups"
+            .annotate(
+                submit_group_count=models.Count("submit_groups", distinct=True),
+                category_group_count=models.Count(
+                    "category__allowed_groups", distinct=True
+                ),
+            )
+            # Form-level: user in submit_groups OR form has no restriction
             .filter(
-                models.Q(submit_groups__in=user_groups) | models.Q(submit_group_count=0)
+                models.Q(submit_groups__in=user_groups)
+                | models.Q(submit_group_count=0)
+            )
+            # Category-level: no category, or category unrestricted, or user in group
+            .filter(
+                models.Q(category__isnull=True)
+                | models.Q(category_group_count=0)
+                | models.Q(category__allowed_groups__in=user_groups)
             )
             .distinct()
+            .select_related("category")
         )
 
-    return render(request, "django_forms_workflows/form_list.html", {"forms": forms})
+    grouped_forms = _build_grouped_forms(forms)
+
+    return render(
+        request,
+        "django_forms_workflows/form_list.html",
+        {
+            "forms": forms,
+            "grouped_forms": grouped_forms,
+        },
+    )
 
 
 @login_required
@@ -251,29 +323,91 @@ def submission_detail(request, submission_id):
 
 @login_required
 def approval_inbox(request):
-    """View pending approvals"""
-    # Superusers can see all pending tasks
+    """View pending approvals, optionally filtered by form category.
+
+    Accepts an optional ``?category=<slug>`` query parameter to narrow the
+    task list to a single form category.  The template also receives a
+    ``category_counts`` list so the UI can render a filter-pill bar showing
+    how many pending tasks belong to each category.
+    """
+    # Build base queryset of accessible pending tasks (no select_related yet
+    # so the values()/annotate() path stays lightweight).
     if request.user.is_superuser:
-        tasks = (
-            ApprovalTask.objects.filter(status="pending")
-            .select_related("submission__form_definition", "submission__submitter")
+        base_tasks = ApprovalTask.objects.filter(status="pending")
+    else:
+        user_groups = request.user.groups.all()
+        base_tasks = ApprovalTask.objects.filter(status="pending").filter(
+            models.Q(assigned_to=request.user)
+            | models.Q(assigned_group__in=user_groups)
+        )
+
+    # --- Category counts (for the filter bar) ---
+    raw_counts = (
+        base_tasks.values(
+            "submission__form_definition__category__pk",
+            "submission__form_definition__category__name",
+            "submission__form_definition__category__slug",
+            "submission__form_definition__category__icon",
+            "submission__form_definition__category__order",
+        )
+        .annotate(count=models.Count("id"))
+        .order_by(
+            "submission__form_definition__category__order",
+            "submission__form_definition__category__name",
+        )
+    )
+
+    category_counts = []
+    for row in raw_counts:
+        slug = row["submission__form_definition__category__slug"]
+        if slug:  # only include categorised entries in the filter bar
+            category_counts.append(
+                {
+                    "name": row["submission__form_definition__category__name"],
+                    "slug": slug,
+                    "icon": row["submission__form_definition__category__icon"] or "",
+                    "count": row["count"],
+                }
+            )
+
+    total_tasks_count = base_tasks.count()
+
+    # --- Apply optional category filter ---
+    category_slug = request.GET.get("category", "").strip()
+    active_category = None
+
+    if category_slug:
+        display_tasks = (
+            base_tasks.filter(
+                submission__form_definition__category__slug=category_slug
+            )
+            .select_related(
+                "submission__form_definition__category",
+                "submission__submitter",
+            )
             .order_by("-created_at")
         )
+        active_category = next(
+            (c for c in category_counts if c["slug"] == category_slug), None
+        )
     else:
-        # Regular users see tasks assigned to them or their groups
-        user_groups = request.user.groups.all()
-        tasks = (
-            ApprovalTask.objects.filter(status="pending")
-            .filter(
-                models.Q(assigned_to=request.user)
-                | models.Q(assigned_group__in=user_groups)
-            )
-            .select_related("submission__form_definition", "submission__submitter")
-            .order_by("-created_at")
+        display_tasks = (
+            base_tasks.select_related(
+                "submission__form_definition__category",
+                "submission__submitter",
+            ).order_by("-created_at")
         )
 
     return render(
-        request, "django_forms_workflows/approval_inbox.html", {"tasks": tasks}
+        request,
+        "django_forms_workflows/approval_inbox.html",
+        {
+            "tasks": display_tasks,
+            "category_counts": category_counts,
+            "active_category": active_category,
+            "category_slug": category_slug,
+            "total_tasks_count": total_tasks_count,
+        },
     )
 
 

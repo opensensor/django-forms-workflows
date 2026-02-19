@@ -16,6 +16,7 @@ from .models import (
     AuditLog,
     FileUploadConfig,
     FileWorkflowHook,
+    FormCategory,
     FormDefinition,
     FormField,
     FormSubmission,
@@ -145,11 +146,47 @@ class PrefillSourceAdmin(admin.ModelAdmin):
     )
 
 
+@admin.register(FormCategory)
+class FormCategoryAdmin(admin.ModelAdmin):
+    """Admin interface for FormCategory grouping primitives."""
+
+    list_display = ["name", "slug", "order", "is_collapsed_by_default", "icon"]
+    list_editable = ["order", "is_collapsed_by_default"]
+    prepopulated_fields = {"slug": ("name",)}
+    filter_horizontal = ["allowed_groups"]
+    search_fields = ["name", "description"]
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": ("name", "slug", "description", "icon"),
+            },
+        ),
+        (
+            "Display Options",
+            {
+                "fields": ("order", "is_collapsed_by_default"),
+            },
+        ),
+        (
+            "Access Control",
+            {
+                "fields": ("allowed_groups",),
+                "description": (
+                    "Restrict this category to specific groups. "
+                    "Leave empty to allow all authenticated users."
+                ),
+            },
+        ),
+    )
+
+
 @admin.register(FormDefinition)
 class FormDefinitionAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "slug",
+        "category",
         "is_active",
         "requires_login",
         "version",
@@ -158,7 +195,8 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         "workflow_builder_link",
         "clone_link",
     )
-    list_filter = ("is_active", "requires_login")
+    list_filter = ("is_active", "requires_login", "category")
+    list_select_related = ["category"]
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
     inlines = [FormFieldInline]

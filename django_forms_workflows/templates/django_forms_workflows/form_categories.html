@@ -1,0 +1,119 @@
+{% load forms_workflows_tags %}
+{#
+  Inclusion template for render_form_categories template tag.
+
+  Context variables
+  -----------------
+  grouped_forms   : list of (FormCategory|None, [FormDefinition, ...])
+  form_url_name   : URL name for the "Fill Out Form" link
+#}
+
+{% if grouped_forms %}
+<div class="accordion" id="formCategoriesAccordion">
+  {% for category, cat_forms in grouped_forms %}
+    {% if category %}
+      {# ---- Named category ---- #}
+      {% with cat_id="cat-"|add:category.slug %}
+      <div class="accordion-item mb-2 border rounded shadow-sm"
+           data-category-slug="{{ category.slug }}">
+
+        <h2 class="accordion-header" id="heading-{{ category.slug }}">
+          <button
+            class="accordion-button{% if category.is_collapsed_by_default %} collapsed{% endif %} fw-semibold"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#{{ cat_id }}"
+            aria-expanded="{% if category.is_collapsed_by_default %}false{% else %}true{% endif %}"
+            aria-controls="{{ cat_id }}">
+            {% if category.icon %}
+              <i class="bi {{ category.icon }} me-2"></i>
+            {% endif %}
+            {{ category.name }}
+            <span class="badge bg-secondary ms-2 fw-normal">{{ cat_forms|length }}</span>
+          </button>
+        </h2>
+
+        <div id="{{ cat_id }}"
+             class="accordion-collapse collapse{% if not category.is_collapsed_by_default %} show{% endif %}"
+             aria-labelledby="heading-{{ category.slug }}"
+             data-bs-parent="#formCategoriesAccordion">
+          <div class="accordion-body">
+            {% if category.description %}
+              <p class="text-muted small mb-3">{{ category.description }}</p>
+            {% endif %}
+            <div class="row">
+              {% for form in cat_forms %}
+                <div class="col-md-6 col-lg-4 mb-3">
+                  <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                      <h5 class="card-title">{{ form.name }}</h5>
+                      <p class="card-text text-muted small">{{ form.description|striptags|truncatewords:20 }}</p>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pt-0">
+                      <a href="{% url form_url_name form.slug %}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-pencil-square"></i> Fill Out Form
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endwith %}
+
+    {% else %}
+      {# ---- Uncategorised / "General" bucket ---- #}
+      <div class="accordion-item mb-2 border rounded shadow-sm"
+           data-category-slug="general">
+
+        <h2 class="accordion-header" id="heading-general">
+          <button
+            class="accordion-button fw-semibold"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#cat-general"
+            aria-expanded="true"
+            aria-controls="cat-general">
+            <i class="bi bi-collection me-2"></i>
+            General
+            <span class="badge bg-secondary ms-2 fw-normal">{{ cat_forms|length }}</span>
+          </button>
+        </h2>
+
+        <div id="cat-general"
+             class="accordion-collapse collapse show"
+             aria-labelledby="heading-general"
+             data-bs-parent="#formCategoriesAccordion">
+          <div class="accordion-body">
+            <div class="row">
+              {% for form in cat_forms %}
+                <div class="col-md-6 col-lg-4 mb-3">
+                  <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                      <h5 class="card-title">{{ form.name }}</h5>
+                      <p class="card-text text-muted small">{{ form.description|striptags|truncatewords:20 }}</p>
+                    </div>
+                    <div class="card-footer bg-transparent border-0 pt-0">
+                      <a href="{% url form_url_name form.slug %}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-pencil-square"></i> Fill Out Form
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle"></i>
+  No forms are currently available. Please check back later or contact your administrator.
+</div>
+{% endif %}
+

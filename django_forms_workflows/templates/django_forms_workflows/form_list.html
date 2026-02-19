@@ -1,4 +1,5 @@
 {% extends 'django_forms_workflows/base.html' %}
+{% load forms_workflows_tags %}
 
 {% block title %}Available Forms - Django Forms Workflows{% endblock %}
 
@@ -8,7 +9,11 @@
         <h1 class="mb-4">
             <i class="bi bi-list-ul"></i> Available Forms
         </h1>
-        {% if forms %}
+
+        {% if grouped_forms %}
+            {% render_form_categories grouped_forms %}
+        {% elif forms %}
+            {# Fallback: flat list when grouped_forms is not provided #}
             <div class="row">
                 {% for form in forms %}
                     <div class="col-md-6 col-lg-4 mb-4">

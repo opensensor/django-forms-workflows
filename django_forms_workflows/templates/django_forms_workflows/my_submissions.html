@@ -4,79 +4,141 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-12">
-        <h1 class="mb-4">
-            <i class="bi bi-file-earmark-check"></i> My Submissions
-        </h1>
-        {% if submissions %}
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Form</th>
-                            <th>Status</th>
-                            <th>Submitted</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for submission in submissions %}
-                            <tr>
-                                <td>{{ submission.id }}</td>
-                                <td>{{ submission.form_definition.name }}</td>
-                                <td>
-                                    {% if submission.status == 'draft' %}
-                                        <span class="badge bg-secondary">Draft</span>
-                                    {% elif submission.status == 'submitted' %}
-                                        <span class="badge bg-info">Submitted</span>
-                                    {% elif submission.status == 'pending_approval' %}
-                                        <span class="badge bg-warning text-dark">Pending Approval</span>
-                                    {% elif submission.status == 'approved' %}
-                                        <span class="badge bg-success">Approved</span>
-                                    {% elif submission.status == 'rejected' %}
-                                        <span class="badge bg-danger">Rejected</span>
-                                    {% elif submission.status == 'withdrawn' %}
-                                        <span class="badge bg-secondary">Withdrawn</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if submission.submitted_at %}
-                                        {{ submission.submitted_at|date:"Y-m-d H:i" }}
-                                    {% else %}
-                                        <em class="text-muted">Not submitted</em>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-eye"></i> View
-                                    </a>
-                                    {% if submission.status == 'draft' %}
-                                        <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}" class="btn btn-sm btn-outline-secondary">
-                                            <i class="bi bi-pencil"></i> Continue
-                                        </a>
-                                    {% endif %}
-                                    {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
-                                        {% if submission.form_definition.allow_withdrawal %}
-                                            <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
-                                                <i class="bi bi-x-circle"></i> Withdraw
-                                            </a>
-                                        {% endif %}
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+  <div class="col-12">
+
+    {# ── Page header ── #}
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h1 class="mb-0"><i class="bi bi-file-earmark-check"></i> My Submissions</h1>
+      <span class="text-muted small">
+        {% if active_category %}
+          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
+          <strong>{{ active_category.name }}</strong>
+          &mdash;
+          <a href="?" class="text-decoration-none">clear filter</a>
         {% else %}
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i>
-                You haven't submitted any forms yet.
-                <a href="{% url 'forms_workflows:form_list' %}" class="alert-link">Browse available forms</a>.
-            </div>
+          {{ total_submissions_count }} submission{{ total_submissions_count|pluralize }} total
         {% endif %}
+      </span>
     </div>
+
+    {# ── Category filter bar ── #}
+    {% if category_counts %}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center" role="toolbar" aria-label="Filter by category">
+      <span class="text-muted small fw-semibold me-1">Filter:</span>
+
+      {# All pill #}
+      <a href="?"
+         class="btn btn-sm {% if not category_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if not category_slug %}aria-current="true"{% endif %}>
+        All
+        <span class="badge {% if not category_slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+          {{ total_submissions_count }}
+        </span>
+      </a>
+
+      {# Per-category pills #}
+      {% for cat in category_counts %}
+      <a href="?category={{ cat.slug }}"
+         class="btn btn-sm {% if category_slug == cat.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if category_slug == cat.slug %}aria-current="true"{% endif %}>
+        {% if cat.icon %}<i class="bi {{ cat.icon }} me-1"></i>{% endif %}
+        {{ cat.name }}
+        <span class="badge {% if category_slug == cat.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+          {{ cat.count }}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ── Submissions table ── #}
+    {% if submissions %}
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th>ID</th>
+              {% if not category_slug %}<th>Category</th>{% endif %}
+              <th>Form</th>
+              <th>Status</th>
+              <th>Submitted</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for submission in submissions %}
+            <tr>
+              <td>{{ submission.id }}</td>
+              {% if not category_slug %}
+              <td>
+                {% with cat=submission.form_definition.category %}
+                {% if cat %}
+                  {% if cat.icon %}<i class="bi {{ cat.icon }} me-1 text-muted"></i>{% endif %}
+                  {{ cat.name }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+                {% endwith %}
+              </td>
+              {% endif %}
+              <td>{{ submission.form_definition.name }}</td>
+              <td>
+                {% if submission.status == 'draft' %}
+                  <span class="badge bg-secondary">Draft</span>
+                {% elif submission.status == 'submitted' %}
+                  <span class="badge bg-info">Submitted</span>
+                {% elif submission.status == 'pending_approval' %}
+                  <span class="badge bg-warning text-dark">Pending Approval</span>
+                {% elif submission.status == 'approved' %}
+                  <span class="badge bg-success">Approved</span>
+                {% elif submission.status == 'rejected' %}
+                  <span class="badge bg-danger">Rejected</span>
+                {% elif submission.status == 'withdrawn' %}
+                  <span class="badge bg-secondary">Withdrawn</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if submission.submitted_at %}
+                  {{ submission.submitted_at|date:"Y-m-d H:i" }}
+                {% else %}
+                  <em class="text-muted">Not submitted</em>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-eye"></i> View
+                </a>
+                {% if submission.status == 'draft' %}
+                  <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-pencil"></i> Continue
+                  </a>
+                {% endif %}
+                {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
+                  {% if submission.form_definition.allow_withdrawal %}
+                    <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-x-circle"></i> Withdraw
+                    </a>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i>
+        {% if active_category %}
+          No submissions found in <strong>{{ active_category.name }}</strong>.
+        {% else %}
+          You haven't submitted any forms yet.
+          <a href="{% url 'forms_workflows:form_list' %}" class="alert-link">Browse available forms</a>.
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
 </div>
 {% endblock %}
 

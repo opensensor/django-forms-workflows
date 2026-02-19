@@ -276,17 +276,75 @@ def form_auto_save(request, slug):
 
 @login_required
 def my_submissions(request):
-    """View user's submissions"""
-    submissions = (
-        FormSubmission.objects.filter(submitter=request.user)
-        .select_related("form_definition")
-        .order_by("-created_at")
+    """View user's submissions, optionally filtered by form category.
+
+    Accepts an optional ``?category=<slug>`` query parameter to narrow the
+    submission list to a single form category.  The template also receives a
+    ``category_counts`` list so the UI can render a filter-pill bar showing
+    how many submissions belong to each category.
+    """
+    base_submissions = FormSubmission.objects.filter(submitter=request.user)
+
+    # --- Category counts (for the filter bar) ---
+    raw_counts = (
+        base_submissions.values(
+            "form_definition__category__pk",
+            "form_definition__category__name",
+            "form_definition__category__slug",
+            "form_definition__category__icon",
+            "form_definition__category__order",
+        )
+        .annotate(count=models.Count("id"))
+        .order_by(
+            "form_definition__category__order",
+            "form_definition__category__name",
+        )
     )
+
+    category_counts = []
+    for row in raw_counts:
+        slug = row["form_definition__category__slug"]
+        if slug:  # only include categorised entries in the filter bar
+            category_counts.append(
+                {
+                    "name": row["form_definition__category__name"],
+                    "slug": slug,
+                    "icon": row["form_definition__category__icon"] or "",
+                    "count": row["count"],
+                }
+            )
+
+    total_submissions_count = base_submissions.count()
+
+    # --- Apply optional category filter ---
+    category_slug = request.GET.get("category", "").strip()
+    active_category = None
+
+    if category_slug:
+        submissions = (
+            base_submissions.filter(form_definition__category__slug=category_slug)
+            .select_related("form_definition__category")
+            .order_by("-created_at")
+        )
+        active_category = next(
+            (c for c in category_counts if c["slug"] == category_slug), None
+        )
+    else:
+        submissions = (
+            base_submissions.select_related("form_definition__category")
+            .order_by("-created_at")
+        )
 
     return render(
         request,
         "django_forms_workflows/my_submissions.html",
-        {"submissions": submissions},
+        {
+            "submissions": submissions,
+            "category_counts": category_counts,
+            "active_category": active_category,
+            "category_slug": category_slug,
+            "total_submissions_count": total_submissions_count,
+        },
     )
 
 

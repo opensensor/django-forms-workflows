@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-02-19
+
+### Added
+- **Category-aware submissions page** — `my_submissions` view now accepts `?category=<slug>` query parameter to filter the submission table to a single form category; template context includes `category_counts`, `active_category`, `category_slug`, and `total_submissions_count` for rendering a filter-pill bar with per-category submission counts
+- **Category column in submissions table** — the submissions table now shows the form category (icon + name) for each row; the column is hidden when a category filter is active since it would be redundant
+
 ## [0.8.1] - 2026-02-19
 
 ### Fixed

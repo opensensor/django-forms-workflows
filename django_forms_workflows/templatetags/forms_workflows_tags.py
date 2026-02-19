@@ -1,6 +1,7 @@
 """
 Custom template tags and filters for django_forms_workflows.
 """
+
 from django import template
 
 register = template.Library()
@@ -29,7 +30,9 @@ def get_item(dictionary, key):
     "django_forms_workflows/form_categories.html",
     takes_context=True,
 )
-def render_form_categories(context, grouped_forms, form_url_name="forms_workflows:form_submit"):
+def render_form_categories(
+    context, grouped_forms, form_url_name="forms_workflows:form_submit"
+):
     """
     Render a Bootstrap 5 accordion of forms grouped by category.
 
@@ -53,4 +56,3 @@ def render_form_categories(context, grouped_forms, form_url_name="forms_workflow
         # Forward request so the inclusion template can call {% url %} correctly
         "request": context.get("request"),
     }
-

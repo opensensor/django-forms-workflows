@@ -593,11 +593,11 @@ class ApprovalStepForm(forms.Form):
 
     def _build_fields(self):
         """Build only fields for the current approval step."""
-        for field_def in self.form_definition.fields.exclude(
-            field_type="section"
-        ).filter(
-            approval_step=self.current_step
-        ).order_by("order"):
+        for field_def in (
+            self.form_definition.fields.exclude(field_type="section")
+            .filter(approval_step=self.current_step)
+            .order_by("order")
+        ):
             self._add_field(field_def)
 
     def _add_field(self, field_def):

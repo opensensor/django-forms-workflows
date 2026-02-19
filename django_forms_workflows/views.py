@@ -40,8 +40,8 @@ def _build_grouped_forms(forms):
         "name",
     ).select_related("category")
 
-    seen_keys = {}      # category pk -> index in results list
-    results = []        # list of [category_or_None, [forms]]
+    seen_keys = {}  # category pk -> index in results list
+    results = []  # list of [category_or_None, [forms]]
     uncategorised = []
 
     for form in ordered:
@@ -97,8 +97,7 @@ def form_list(request):
             )
             # Form-level: user in submit_groups OR form has no restriction
             .filter(
-                models.Q(submit_groups__in=user_groups)
-                | models.Q(submit_group_count=0)
+                models.Q(submit_groups__in=user_groups) | models.Q(submit_group_count=0)
             )
             # Category-level: no category, or category unrestricted, or user in group
             .filter(
@@ -378,9 +377,7 @@ def approval_inbox(request):
 
     if category_slug:
         display_tasks = (
-            base_tasks.filter(
-                submission__form_definition__category__slug=category_slug
-            )
+            base_tasks.filter(submission__form_definition__category__slug=category_slug)
             .select_related(
                 "submission__form_definition__category",
                 "submission__submitter",
@@ -391,12 +388,10 @@ def approval_inbox(request):
             (c for c in category_counts if c["slug"] == category_slug), None
         )
     else:
-        display_tasks = (
-            base_tasks.select_related(
-                "submission__form_definition__category",
-                "submission__submitter",
-            ).order_by("-created_at")
-        )
+        display_tasks = base_tasks.select_related(
+            "submission__form_definition__category",
+            "submission__submitter",
+        ).order_by("-created_at")
 
     return render(
         request,

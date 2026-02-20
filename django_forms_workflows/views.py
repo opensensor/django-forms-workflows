@@ -26,6 +26,60 @@ from .utils import user_can_approve, user_can_submit_form
 logger = logging.getLogger(__name__)
 
 
+def _get_accessible_category_pks(user):
+    """Return the set of FormCategory PKs the user is permitted to access.
+
+    A category is accessible when the user satisfies the group restriction at
+    **every** level of the ancestor chain:
+
+    * If a category has its own ``allowed_groups``, the user must be in at
+      least one of them.
+    * If a category has *no* ``allowed_groups`` of its own, access is
+      inherited from the parent (or granted freely if there is no parent).
+
+    This means sub-categories without explicit groups automatically inherit
+    their parent's restriction, so adding "Students - All" to Student Services
+    automatically gates On-Campus and Online as well.
+    """
+    from .models import FormCategory
+
+    user_group_ids = set(user.groups.values_list("id", flat=True))
+
+    all_cats = list(
+        FormCategory.objects.prefetch_related("allowed_groups").order_by("id")
+    )
+    cat_by_pk = {cat.pk: cat for cat in all_cats}
+    # Map each category to its set of required group IDs
+    cat_groups = {
+        cat.pk: set(cat.allowed_groups.values_list("id", flat=True))
+        for cat in all_cats
+    }
+
+    _cache = {}  # pk -> bool
+
+    def _can_access(cat_pk):
+        if cat_pk in _cache:
+            return _cache[cat_pk]
+        cat = cat_by_pk[cat_pk]
+        groups = cat_groups[cat_pk]
+        if groups:
+            # Has own restriction — user must be in at least one group
+            result = bool(user_group_ids & groups)
+        elif cat.parent_id is None:
+            # Top-level with no restriction — open to all authenticated users
+            result = True
+        else:
+            # Inherit from parent
+            result = _can_access(cat.parent_id)
+        _cache[cat_pk] = result
+        return result
+
+    for cat in all_cats:
+        _can_access(cat.pk)
+
+    return {pk for pk, ok in _cache.items() if ok}
+
+
 def _build_grouped_forms(forms):
     """
     Return a hierarchical list of category-tree nodes for rendering grouped forms.
@@ -124,9 +178,11 @@ def form_list(request):
 
     1. **Form-level** — the user must be in ``submit_groups``, or the form
        has no ``submit_groups`` restriction.
-    2. **Category-level** — the user must be in one of the category's
-       ``allowed_groups``, or the category has no group restriction, or the
-       form has no category at all.
+    2. **Category-level** — the full ancestor chain is checked via
+       :func:`_get_accessible_category_pks`.  A category with no
+       ``allowed_groups`` of its own inherits the restriction of the nearest
+       ancestor that has groups set.  A root category with no groups is open
+       to all authenticated users.
 
     Staff / superusers bypass both filters and see every active form.
 
@@ -141,24 +197,23 @@ def form_list(request):
         forms = FormDefinition.objects.filter(is_active=True).select_related("category")
     else:
         user_groups = request.user.groups.all()
+        accessible_cat_pks = _get_accessible_category_pks(request.user)
         forms = (
             FormDefinition.objects.filter(is_active=True)
-            # Annotate counts so we can distinguish "no groups" from "some groups"
+            # Annotate submit_group_count to distinguish "no restriction" from "restricted"
             .annotate(
                 submit_group_count=models.Count("submit_groups", distinct=True),
-                category_group_count=models.Count(
-                    "category__allowed_groups", distinct=True
-                ),
             )
             # Form-level: user in submit_groups OR form has no restriction
             .filter(
                 models.Q(submit_groups__in=user_groups) | models.Q(submit_group_count=0)
             )
-            # Category-level: no category, or category unrestricted, or user in group
+            # Category-level: no category, or category accessible via hierarchy
+            # _get_accessible_category_pks walks the parent chain, so a child
+            # category with no allowed_groups inherits its parent's restriction.
             .filter(
                 models.Q(category__isnull=True)
-                | models.Q(category_group_count=0)
-                | models.Q(category__allowed_groups__in=user_groups)
+                | models.Q(category_id__in=accessible_cat_pks)
             )
             .distinct()
             .select_related("category")

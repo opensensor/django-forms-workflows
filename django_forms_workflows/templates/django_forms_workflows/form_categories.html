@@ -13,7 +13,7 @@
   {% for node in grouped_forms %}
     {% if node.category %}
       {# ---- Named category (rendered recursively via _category_node.html) ---- #}
-      {% include "django_forms_workflows/_category_node.html" with node=node depth=0 accordion_id="" %}
+      {% include "django_forms_workflows/_category_node.html" with node=node depth=0 %}
     {% else %}
       {# ---- Uncategorised / "General" bucket ---- #}
       <div class="accordion-item mb-2 border rounded shadow-sm"

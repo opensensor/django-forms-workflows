@@ -139,22 +139,22 @@
             </div>
             <div class="card-body">
                 <table class="table table-bordered table-sm">
-                    {% for key, value in form_data.items %}
-                        {% if key not in approval_field_names %}
+                    {% for entry in form_data_ordered %}
+                        {% if entry.key not in approval_field_names %}
                         <tr>
-                            <th style="width: 30%;">{{ key|title }}</th>
+                            <th style="width: 30%;">{{ entry.label }}</th>
                             <td>
-                                {% if value.url %}
-                                    {% if value.content_type and 'image' in value.content_type %}
-                                        <img src="{{ value.url }}" alt="{{ value.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
+                                {% if entry.value.url %}
+                                    {% if entry.value.content_type and 'image' in entry.value.content_type %}
+                                        <img src="{{ entry.value.url }}" alt="{{ entry.value.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
                                     {% endif %}
-                                    <a href="{{ value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-download"></i> {{ value.filename }}
+                                    <a href="{{ entry.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-download"></i> {{ entry.value.filename }}
                                     </a>
-                                {% elif value.path %}
-                                    <span class="text-muted">{{ value.filename }}</span>
+                                {% elif entry.value.path %}
+                                    <span class="text-muted">{{ entry.value.filename }}</span>
                                 {% else %}
-                                    {{ value }}
+                                    {{ entry.value }}
                                 {% endif %}
                             </td>
                         </tr>
@@ -256,29 +256,29 @@
             </div>
             <div class="card-body">
                 <table class="table table-bordered">
-                    {% for key, value in form_data.items %}
+                    {% for entry in form_data_ordered %}
                         <tr>
-                            <th style="width: 30%;">{{ key|title }}</th>
+                            <th style="width: 30%;">{{ entry.label }}</th>
                             <td>
-                                {% if value.url %}
+                                {% if entry.value.url %}
                                     {# File upload with URL - display as image or link #}
-                                    {% if value.content_type and 'image' in value.content_type %}
+                                    {% if entry.value.content_type and 'image' in entry.value.content_type %}
                                         <div class="mb-2">
-                                            <img src="{{ value.url }}" alt="{{ value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
+                                            <img src="{{ entry.value.url }}" alt="{{ entry.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
                                         </div>
                                     {% endif %}
-                                    <a href="{{ value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-download"></i> {{ value.filename }}
+                                    <a href="{{ entry.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-download"></i> {{ entry.value.filename }}
                                     </a>
                                     <small class="text-muted ms-2">
-                                        {% if value.size %}({{ value.size|filesizeformat }}){% endif %}
+                                        {% if entry.value.size %}({{ entry.value.size|filesizeformat }}){% endif %}
                                     </small>
-                                {% elif value.path %}
+                                {% elif entry.value.path %}
                                     {# File upload with path but no URL #}
-                                    <span class="text-muted">{{ value.filename }}</span>
+                                    <span class="text-muted">{{ entry.value.filename }}</span>
                                     <small class="text-muted ms-2">(File stored but URL unavailable)</small>
                                 {% else %}
-                                    {{ value }}
+                                    {{ entry.value }}
                                 {% endif %}
                             </td>
                         </tr>

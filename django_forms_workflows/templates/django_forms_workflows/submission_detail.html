@@ -54,29 +54,29 @@
             </div>
             <div class="card-body">
                 <table class="table table-bordered">
-                    {% for key, value in form_data.items %}
+                    {% for entry in form_data_ordered %}
                         <tr>
-                            <th style="width: 30%;">{{ key|title }}</th>
+                            <th style="width: 30%;">{{ entry.label }}</th>
                             <td>
-                                {% if value.url %}
+                                {% if entry.value.url %}
                                     {# File upload with URL - display as image or link #}
-                                    {% if value.content_type and 'image' in value.content_type %}
+                                    {% if entry.value.content_type and 'image' in entry.value.content_type %}
                                         <div class="mb-2">
-                                            <img src="{{ value.url }}" alt="{{ value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
+                                            <img src="{{ entry.value.url }}" alt="{{ entry.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
                                         </div>
                                     {% endif %}
-                                    <a href="{{ value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-download"></i> {{ value.filename }}
+                                    <a href="{{ entry.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-download"></i> {{ entry.value.filename }}
                                     </a>
                                     <small class="text-muted ms-2">
-                                        {% if value.size %}({{ value.size|filesizeformat }}){% endif %}
+                                        {% if entry.value.size %}({{ entry.value.size|filesizeformat }}){% endif %}
                                     </small>
-                                {% elif value.path %}
+                                {% elif entry.value.path %}
                                     {# File upload with path but no URL #}
-                                    <span class="text-muted">{{ value.filename }}</span>
+                                    <span class="text-muted">{{ entry.value.filename }}</span>
                                     <small class="text-muted ms-2">(File stored but URL unavailable)</small>
                                 {% else %}
-                                    {{ value }}
+                                    {{ entry.value }}
                                 {% endif %}
                             </td>
                         </tr>
@@ -226,6 +226,17 @@
                     </a>
                 {% endif %}
             {% endif %}
+            {% with pdf=submission.form_definition.pdf_generation %}
+                {% if pdf == 'anytime' and submission.status != 'draft' %}
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary">
+                        <i class="bi bi-file-earmark-pdf"></i> Download PDF
+                    </a>
+                {% elif pdf == 'post_approval' and submission.status == 'approved' %}
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary">
+                        <i class="bi bi-file-earmark-pdf"></i> Download PDF
+                    </a>
+                {% endif %}
+            {% endwith %}
         </div>
     </div>
 </div>

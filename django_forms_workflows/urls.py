@@ -22,6 +22,11 @@ urlpatterns = [
         views.withdraw_submission,
         name="withdraw_submission",
     ),
+    path(
+        "submissions/<int:submission_id>/pdf/",
+        views.submission_pdf,
+        name="submission_pdf",
+    ),
     # Approvals
     path("approvals/", views.approval_inbox, name="approval_inbox"),
     path(

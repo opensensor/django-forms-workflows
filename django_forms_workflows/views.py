@@ -14,7 +14,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
 from django.db import models
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -443,6 +443,7 @@ def submission_detail(request, submission_id):
 
     # Resolve fresh presigned URLs for any file-upload fields
     form_data = _resolve_form_data_urls(submission.form_data)
+    form_data_ordered = _build_ordered_form_data(submission, form_data)
 
     return render(
         request,
@@ -452,6 +453,7 @@ def submission_detail(request, submission_id):
             "approval_tasks": approval_tasks,
             "stage_groups": stage_groups,
             "form_data": form_data,
+            "form_data_ordered": form_data_ordered,
         },
     )
 
@@ -624,6 +626,7 @@ def approve_submission(request, task_id):
                 messages.error(
                     request, "Please correct the errors in the approval fields."
                 )
+                _fd = _resolve_form_data_urls(submission.form_data)
                 return render(
                     request,
                     "django_forms_workflows/approve.html",
@@ -632,7 +635,8 @@ def approve_submission(request, task_id):
                         "submission": submission,
                         "approval_step_form": approval_step_form,
                         "has_approval_step_fields": has_approval_step_fields,
-                        "form_data": _resolve_form_data_urls(submission.form_data),
+                        "form_data": _fd,
+                        "form_data_ordered": _build_ordered_form_data(submission, _fd),
                     },
                 )
 
@@ -787,6 +791,7 @@ def approve_submission(request, task_id):
 
     # Resolve fresh presigned URLs for any file-upload fields
     form_data = _resolve_form_data_urls(submission.form_data)
+    form_data_ordered = _build_ordered_form_data(submission, form_data)
 
     return render(
         request,
@@ -810,6 +815,7 @@ def approve_submission(request, task_id):
             # shared
             "workflow_mode": workflow_mode,
             "form_data": form_data,
+            "form_data_ordered": form_data_ordered,
         },
     )
 
@@ -863,6 +869,89 @@ def withdraw_submission(request, submission_id):
         "django_forms_workflows/withdraw_confirm.html",
         {"submission": submission},
     )
+
+
+@login_required
+def submission_pdf(request, submission_id):
+    """Generate and serve a PDF of a form submission.
+
+    Respects the ``pdf_generation`` setting on the form definition:
+      - ``none``          – PDF download is disabled; returns 403.
+      - ``anytime``       – PDF is available as soon as the form is submitted.
+      - ``post_approval`` – PDF is only available once the submission is approved.
+    """
+    submission = get_object_or_404(FormSubmission, id=submission_id)
+    form_def = submission.form_definition
+
+    # --- permission check (same as submission_detail) ---
+    can_view = (
+        submission.submitter == request.user
+        or request.user.is_superuser
+        or user_can_approve(request.user, submission)
+        or request.user.groups.filter(
+            id__in=form_def.admin_groups.all()
+        ).exists()
+    )
+    if not can_view:
+        return HttpResponseForbidden(
+            "You don't have permission to view this submission."
+        )
+
+    # --- pdf_generation setting check ---
+    pdf_setting = form_def.pdf_generation
+    if pdf_setting == "none":
+        return HttpResponseForbidden("PDF generation is not enabled for this form.")
+
+    if pdf_setting == "post_approval" and submission.status != "approved":
+        return HttpResponseForbidden(
+            "PDF is only available after the submission has been approved."
+        )
+
+    # --- build ordered data (no presigned URLs needed for PDF) ---
+    form_data_ordered = _build_ordered_form_data(submission, submission.form_data or {})
+
+    # --- render HTML template to a string ---
+    from django.template.loader import render_to_string
+
+    html_string = render_to_string(
+        "django_forms_workflows/submission_pdf.html",
+        {
+            "submission": submission,
+            "form_def": form_def,
+            "form_data_ordered": form_data_ordered,
+            "request": request,
+        },
+    )
+
+    # --- convert HTML to PDF using xhtml2pdf ---
+    try:
+        from io import BytesIO
+
+        from xhtml2pdf import pisa
+
+        buffer = BytesIO()
+        pisa_status = pisa.CreatePDF(html_string, dest=buffer)
+        if pisa_status.err:
+            logger.error(
+                "xhtml2pdf error for submission %s: %s",
+                submission_id,
+                pisa_status.err,
+            )
+            return HttpResponse(
+                "An error occurred while generating the PDF.", status=500
+            )
+        pdf_bytes = buffer.getvalue()
+    except ImportError:
+        return HttpResponse(
+            "PDF generation requires the xhtml2pdf package. "
+            "Please install it with: pip install xhtml2pdf",
+            status=501,
+        )
+
+    filename = f"submission_{submission_id}.pdf"
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 # Helper functions
@@ -951,6 +1040,56 @@ def get_file_url(file_info):
         # Old format - just filename, can't generate URL
         return None
     return None
+
+
+def _build_ordered_form_data(submission, form_data):
+    """
+    Return form data as an ordered list of dicts, respecting FormField.order.
+
+    The raw ``form_data`` JSON dict preserves insertion order (Python 3.7+),
+    but that order reflects when fields were *submitted*, not the declared field
+    order on the form.  This helper re-orders the entries so they match the
+    field definition ordering configured by the form designer.
+
+    Each returned item has:
+      - ``label``: the human-readable field label
+      - ``key``:   the field_name / dict key
+      - ``value``: the resolved value (may be a file-info dict after URL resolution)
+    """
+    if not form_data:
+        return []
+
+    ordered = []
+    seen_keys = set()
+
+    # Walk fields in declared order (sections are skipped – they have no data)
+    for field in submission.form_definition.fields.exclude(
+        field_type="section"
+    ).order_by("order"):
+        key = field.field_name
+        if key in form_data:
+            ordered.append(
+                {
+                    "label": field.field_label,
+                    "key": key,
+                    "value": form_data[key],
+                }
+            )
+            seen_keys.add(key)
+
+    # Append any keys in form_data that aren't represented in field definitions
+    # (e.g. approval-step fields or legacy entries) so nothing is lost.
+    for key, value in form_data.items():
+        if key not in seen_keys:
+            ordered.append(
+                {
+                    "label": key.replace("_", " ").title(),
+                    "key": key,
+                    "value": value,
+                }
+            )
+
+    return ordered
 
 
 def _resolve_form_data_urls(form_data):

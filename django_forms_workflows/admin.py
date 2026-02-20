@@ -205,6 +205,65 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
     actions = ["clone_forms"]
 
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    ("name", "slug"),
+                    "category",
+                    "description",
+                    "instructions",
+                    ("is_active", "version"),
+                )
+            },
+        ),
+        (
+            "Access Control",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "requires_login",
+                    "submit_groups",
+                    "view_groups",
+                    "admin_groups",
+                ),
+            },
+        ),
+        (
+            "Behavior",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "allow_save_draft",
+                    "allow_withdrawal",
+                ),
+            },
+        ),
+        (
+            "Multi-Step & Auto-Save",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "enable_multi_step",
+                    "form_steps",
+                    "enable_auto_save",
+                    "auto_save_interval",
+                ),
+            },
+        ),
+        (
+            "PDF Generation",
+            {
+                "fields": ("pdf_generation",),
+                "description": (
+                    "Control when users can download a PDF of their submission. "
+                    "Requires the <code>xhtml2pdf</code> package to be installed."
+                ),
+            },
+        ),
+    )
+
     def form_builder_link(self, obj):
         """Display a link to the visual form builder"""
         if obj.pk:

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Submission #{{ submission.id }} – {{ form_def.name }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 11pt;
+            color: #222;
+        }
+        h1 {
+            font-size: 16pt;
+            margin-bottom: 4pt;
+            border-bottom: 2px solid #444;
+            padding-bottom: 4pt;
+        }
+        h2 {
+            font-size: 12pt;
+            margin-top: 14pt;
+            margin-bottom: 4pt;
+            color: #444;
+        }
+        .meta-table {
+            width: 100%;
+            margin-bottom: 16pt;
+            font-size: 10pt;
+        }
+        .meta-table td {
+            padding: 2pt 4pt;
+        }
+        .meta-table td:first-child {
+            font-weight: bold;
+            width: 30%;
+            color: #555;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8pt;
+        }
+        .data-table th,
+        .data-table td {
+            border: 1px solid #bbb;
+            padding: 5pt 8pt;
+            text-align: left;
+            vertical-align: top;
+        }
+        .data-table th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            width: 30%;
+            font-size: 10pt;
+        }
+        .data-table td {
+            font-size: 10pt;
+        }
+        .data-table tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+        .footer {
+            margin-top: 20pt;
+            font-size: 9pt;
+            color: #777;
+            border-top: 1px solid #ccc;
+            padding-top: 6pt;
+        }
+        .status-badge {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ form_def.name }}</h1>
+
+    <table class="meta-table">
+        <tr>
+            <td>Submission ID</td>
+            <td>#{{ submission.id }}</td>
+        </tr>
+        <tr>
+            <td>Submitted by</td>
+            <td>{{ submission.submitter.get_full_name|default:submission.submitter.username }}</td>
+        </tr>
+        <tr>
+            <td>Submitted on</td>
+            <td>{{ submission.submitted_at|date:"N j, Y \a\t g:i a" }}</td>
+        </tr>
+        <tr>
+            <td>Status</td>
+            <td class="status-badge">{{ submission.get_status_display }}</td>
+        </tr>
+        {% if submission.completed_at %}
+        <tr>
+            <td>Completed on</td>
+            <td>{{ submission.completed_at|date:"N j, Y \a\t g:i a" }}</td>
+        </tr>
+        {% endif %}
+    </table>
+
+    <h2>Form Responses</h2>
+    <table class="data-table">
+        {% for entry in form_data_ordered %}
+        <tr>
+            <th>{{ entry.label }}</th>
+            <td>
+                {% if entry.value.filename %}
+                    {{ entry.value.filename }}{% if entry.value.size %} ({{ entry.value.size|filesizeformat }}){% endif %}
+                {% else %}
+                    {{ entry.value }}
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="2">No form data available.</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <div class="footer">
+        Generated on {% now "N j, Y \a\t g:i a" %} &nbsp;|&nbsp; {{ form_def.name }} &nbsp;|&nbsp; Submission #{{ submission.id }}
+    </div>
+</body>
+</html>
+

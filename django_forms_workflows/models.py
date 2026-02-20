@@ -153,6 +153,23 @@ class FormDefinition(models.Model):
         help_text="Auto-save interval in seconds",
     )
 
+    # PDF Generation
+    PDF_GENERATION_CHOICES = [
+        ("none", "Disabled"),
+        ("anytime", "Anytime"),
+        ("post_approval", "Post Approval Only"),
+    ]
+    pdf_generation = models.CharField(
+        max_length=20,
+        choices=PDF_GENERATION_CHOICES,
+        default="none",
+        help_text=(
+            "When a PDF of the submission can be downloaded. "
+            "'Anytime' allows download as soon as the form is submitted; "
+            "'Post Approval Only' restricts download to approved submissions."
+        ),
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

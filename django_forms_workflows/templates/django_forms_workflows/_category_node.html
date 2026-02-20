@@ -1,0 +1,77 @@
+{% comment %}
+  Recursive partial for a single category node.
+
+  Context variables (passed via {% include … with … %})
+  ------------------------------------------------------
+  node            : dict with keys "category", "forms", "children"
+  form_url_name   : URL name for the "Fill Out Form" link
+  depth           : integer nesting depth (0 = top-level)
+  accordion_id    : id attribute of the *parent* accordion element (for data-bs-parent)
+{% endcomment %}
+{% with cat=node.category cat_id="cat-"|add:node.category.slug sub_id="sub-"|add:node.category.slug %}
+<div class="accordion-item{% if depth > 0 %} border-0 border-start border-2 ms-3{% else %} mb-2 border rounded shadow-sm{% endif %}"
+     data-category-slug="{{ cat.slug }}">
+
+  <h2 class="accordion-header" id="heading-{{ cat.slug }}">
+    <button
+      class="accordion-button{% if cat.is_collapsed_by_default %} collapsed{% endif %}{% if depth > 0 %} py-2 ps-3 text-body-secondary{% else %} fw-semibold{% endif %}"
+      type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#{{ cat_id }}"
+      aria-expanded="{% if cat.is_collapsed_by_default %}false{% else %}true{% endif %}"
+      aria-controls="{{ cat_id }}">
+      {% if cat.icon %}
+        <i class="bi {{ cat.icon }} me-2{% if depth > 0 %} fs-6{% endif %}"></i>
+      {% endif %}
+      {{ cat.name }}
+      <span class="badge bg-secondary ms-2 fw-normal">
+        {% with direct=node.forms|length %}{{ direct }}{% endwith %}
+      </span>
+    </button>
+  </h2>
+
+  <div id="{{ cat_id }}"
+       class="accordion-collapse collapse{% if not cat.is_collapsed_by_default %} show{% endif %}"
+       aria-labelledby="heading-{{ cat.slug }}"
+       {% if accordion_id %}data-bs-parent="#{{ accordion_id }}"{% endif %}>
+    <div class="accordion-body{% if depth > 0 %} pb-1{% endif %}">
+
+      {% if cat.description and depth == 0 %}
+        <p class="text-muted small mb-3">{{ cat.description }}</p>
+      {% endif %}
+
+      {# ---- Direct forms ---- #}
+      {% if node.forms %}
+        <div class="row">
+          {% for form in node.forms %}
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                  <h5 class="card-title">{{ form.name }}</h5>
+                  <p class="card-text text-muted small">{{ form.description|striptags|truncatewords:20 }}</p>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0">
+                  <a href="{% url form_url_name form.slug %}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-pencil-square"></i> Fill Out Form
+                  </a>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {# ---- Child sub-categories (recursive) ---- #}
+      {% if node.children %}
+        <div class="accordion{% if depth == 0 %} mt-2{% endif %}" id="{{ sub_id }}">
+          {% for child_node in node.children %}
+            {% include "django_forms_workflows/_category_node.html" with node=child_node depth=depth|add:1 accordion_id=sub_id %}
+          {% endfor %}
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endwith %}
+

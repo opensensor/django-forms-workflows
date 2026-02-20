@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-02-20
+
+### Added
+- **Nested `FormCategory` hierarchy** — `FormCategory` now has a nullable self-referential `parent` FK (`SET_NULL` on delete), enabling arbitrary category nesting for more granular organisation and access control
+- **`FormCategory.get_ancestors()`** — returns the ordered list of ancestor categories from root to direct parent; useful for breadcrumbs and permission checks
+- **`FormCategory.full_path()`** — returns a `" > "`-separated string of the full category path (e.g. `"HR > Benefits > Leave Requests"`)
+- **Migration `0018_add_form_category_parent`** — adds `parent_id` column using the safe `IF NOT EXISTS` SQL pattern; fully backward-compatible, existing flat categories remain top-level
+- **Hierarchical form-list UI** — `_build_grouped_forms()` now produces a category-tree structure; sub-categories are rendered as nested Bootstrap accordions inside their parent section using the new `_category_node.html` recursive partial
+- **Admin hierarchy support** — `FormCategoryAdmin` now exposes a **Hierarchy** fieldset with `parent` (via `autocomplete_fields`), `parent` in `list_display`, and `list_filter` by parent category
+
 ## [0.9.0] - 2026-02-20
 
 ### Added

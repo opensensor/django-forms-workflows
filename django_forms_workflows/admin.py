@@ -151,16 +151,28 @@ class PrefillSourceAdmin(admin.ModelAdmin):
 class FormCategoryAdmin(admin.ModelAdmin):
     """Admin interface for FormCategory grouping primitives."""
 
-    list_display = ["name", "slug", "order", "is_collapsed_by_default", "icon"]
+    list_display = ["name", "parent", "slug", "order", "is_collapsed_by_default", "icon"]
     list_editable = ["order", "is_collapsed_by_default"]
+    list_filter = ["parent"]
     prepopulated_fields = {"slug": ("name",)}
     filter_horizontal = ["allowed_groups"]
     search_fields = ["name", "description"]
+    autocomplete_fields = ["parent"]
     fieldsets = (
         (
             None,
             {
                 "fields": ("name", "slug", "description", "icon"),
+            },
+        ),
+        (
+            "Hierarchy",
+            {
+                "fields": ("parent",),
+                "description": (
+                    "Optionally nest this category under a parent. "
+                    "Leave empty to make this a top-level category."
+                ),
             },
         ),
         (

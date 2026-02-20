@@ -28,37 +28,92 @@ logger = logging.getLogger(__name__)
 
 def _build_grouped_forms(forms):
     """
-    Return an ordered list of ``(category_or_None, [form, ...])`` tuples.
+    Return a hierarchical list of category-tree nodes for rendering grouped forms.
 
-    Forms with a category are sorted first by ``category.order``, then by
-    ``category.name``, then by form ``name``.  Uncategorised forms are
-    appended at the end under ``None``.
+    Each node in the returned list is a dict::
+
+        {
+            "category": FormCategory | None,   # None = uncategorised bucket
+            "forms":    [FormDefinition, ...], # forms directly under this category
+            "children": [node, ...],           # child category nodes (same structure)
+        }
+
+    Only categories that contain at least one visible form (directly or via a
+    descendant) are included.  Uncategorised forms are appended as the final
+    node with ``"category": None``.
+
+    The tree is built with a single call to ``FormCategory.objects.all()``
+    plus the already-filtered ``forms`` queryset, so the number of SQL
+    queries is small and constant regardless of nesting depth.
     """
+    from .models import FormCategory
+
+    # ---- 1. Bucket forms by category pk --------------------------------
     ordered = forms.order_by(
         "category__order",
         "category__name",
         "name",
     ).select_related("category")
 
-    seen_keys = {}  # category pk -> index in results list
-    results = []  # list of [category_or_None, [forms]]
+    forms_by_cat = {}   # cat_pk -> [FormDefinition]
     uncategorised = []
 
     for form in ordered:
-        cat = form.category
-        if cat is None:
+        if form.category_id is None:
             uncategorised.append(form)
-            continue
-        if cat.pk not in seen_keys:
-            seen_keys[cat.pk] = len(results)
-            results.append([cat, []])
-        results[seen_keys[cat.pk]][1].append(form)
+        else:
+            forms_by_cat.setdefault(form.category_id, []).append(form)
 
-    # Append uncategorised as the final bucket
+    if not forms_by_cat and not uncategorised:
+        return []
+
+    # ---- 2. Load all categories and build parent → children map --------
+    all_cats = {
+        cat.pk: cat
+        for cat in FormCategory.objects.all().order_by("order", "name")
+    }
+    children_by_parent = {}   # parent_pk | None -> [FormCategory]
+    for cat in all_cats.values():
+        children_by_parent.setdefault(cat.parent_id, []).append(cat)
+
+    # ---- 3. Determine which categories have visible forms (memoised) ----
+    _has_forms_cache = {}
+
+    def _subtree_has_forms(cat_pk):
+        if cat_pk in _has_forms_cache:
+            return _has_forms_cache[cat_pk]
+        result = cat_pk in forms_by_cat
+        if not result:
+            for child in children_by_parent.get(cat_pk, []):
+                if _subtree_has_forms(child.pk):
+                    result = True
+                    break
+        _has_forms_cache[cat_pk] = result
+        return result
+
+    # ---- 4. Recursively assemble the tree ------------------------------
+    def _build_subtree(cat):
+        visible_children = [
+            _build_subtree(child)
+            for child in children_by_parent.get(cat.pk, [])
+            if _subtree_has_forms(child.pk)
+        ]
+        return {
+            "category": cat,
+            "forms": forms_by_cat.get(cat.pk, []),
+            "children": visible_children,
+        }
+
+    top_level = [
+        _build_subtree(cat)
+        for cat in children_by_parent.get(None, [])
+        if _subtree_has_forms(cat.pk)
+    ]
+
     if uncategorised:
-        results.append([None, uncategorised])
+        top_level.append({"category": None, "forms": uncategorised, "children": []})
 
-    return [(cat, forms_list) for cat, forms_list in results]
+    return top_level
 
 
 @login_required

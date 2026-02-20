@@ -53,6 +53,17 @@ class FormCategory(models.Model):
         blank=True,
         help_text="Bootstrap icon class (e.g. 'bi-people-fill') shown in the section header",
     )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="children",
+        help_text=(
+            "Optional parent category. Leave empty for a top-level category. "
+            "Allows arbitrary nesting for more granular organisation and permissioning."
+        ),
+    )
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -65,6 +76,19 @@ class FormCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_ancestors(self):
+        """Return a list of ancestor categories ordered from root to direct parent."""
+        ancestors = []
+        current = self.parent
+        while current is not None:
+            ancestors.insert(0, current)
+            current = current.parent
+        return ancestors
+
+    def full_path(self):
+        """Return a ' > ' separated path string from the root category to this one."""
+        return " > ".join(cat.name for cat in self.get_ancestors() + [self])
 
 
 class FormDefinition(models.Model):

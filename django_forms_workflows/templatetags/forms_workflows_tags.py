@@ -34,7 +34,8 @@ def render_form_categories(
     context, grouped_forms, form_url_name="forms_workflows:form_submit"
 ):
     """
-    Render a Bootstrap 5 accordion of forms grouped by category.
+    Render a Bootstrap 5 accordion of forms grouped by category, with support
+    for arbitrarily nested sub-categories.
 
     Usage::
 
@@ -44,8 +45,14 @@ def render_form_categories(
         {# Override the submit URL name for projects that use a different namespace: #}
         {% render_form_categories grouped_forms form_url_name="form_submit" %}
 
-    ``grouped_forms`` must be an iterable of ``(FormCategory | None, [FormDefinition, ...])``
-    tuples as produced by the ``form_list`` view.
+    ``grouped_forms`` must be a list of category-tree node dicts as produced by
+    ``_build_grouped_forms()`` in the ``form_list`` view.  Each node has the shape::
+
+        {
+            "category": FormCategory | None,   # None = uncategorised bucket
+            "forms":    [FormDefinition, ...], # forms directly under this category
+            "children": [node, ...],           # nested sub-category nodes
+        }
 
     ``form_url_name`` is the Django URL name used to build the "Fill Out Form" link.
     Defaults to ``forms_workflows:form_submit`` (the package's own namespace).

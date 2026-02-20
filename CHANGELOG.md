@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-02-20
+
+### Fixed
+- **Category hierarchy permission inheritance** — sub-categories with no `allowed_groups` of their own now correctly inherit the restriction of the nearest ancestor that has groups set. Previously, `category_group_count=0` caused child categories (e.g. On-Campus, Online) to bypass the parent's `allowed_groups` restriction entirely. The `form_list` view now uses `_get_accessible_category_pks()` which walks the full ancestor chain.
+
 ## [0.13.0] - 2026-02-20
 
 ### Added

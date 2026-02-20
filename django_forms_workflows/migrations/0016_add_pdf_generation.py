@@ -2,6 +2,18 @@
 
 from django.db import migrations, models
 
+# Use IF NOT EXISTS so this migration is safe to run against a database
+# where the column was already added manually (e.g. via direct SQL).
+ADD_COLUMN_SQL = """
+ALTER TABLE django_forms_workflows_formdefinition
+    ADD COLUMN IF NOT EXISTS pdf_generation VARCHAR(20) NOT NULL DEFAULT 'none';
+"""
+
+DROP_COLUMN_SQL = """
+ALTER TABLE django_forms_workflows_formdefinition
+    DROP COLUMN IF EXISTS pdf_generation;
+"""
+
 
 class Migration(migrations.Migration):
 
@@ -10,23 +22,33 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="formdefinition",
-            name="pdf_generation",
-            field=models.CharField(
-                choices=[
-                    ("none", "Disabled"),
-                    ("anytime", "Anytime"),
-                    ("post_approval", "Post Approval Only"),
-                ],
-                default="none",
-                help_text=(
-                    "When a PDF of the submission can be downloaded. "
-                    "'Anytime' allows download as soon as the form is submitted; "
-                    "'Post Approval Only' restricts download to approved submissions."
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql=ADD_COLUMN_SQL,
+                    reverse_sql=DROP_COLUMN_SQL,
                 ),
-                max_length=20,
-            ),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name="formdefinition",
+                    name="pdf_generation",
+                    field=models.CharField(
+                        choices=[
+                            ("none", "Disabled"),
+                            ("anytime", "Anytime"),
+                            ("post_approval", "Post Approval Only"),
+                        ],
+                        default="none",
+                        help_text=(
+                            "When a PDF of the submission can be downloaded. "
+                            "'Anytime' allows download as soon as the form is submitted; "
+                            "'Post Approval Only' restricts download to approved submissions."
+                        ),
+                        max_length=20,
+                    ),
+                ),
+            ],
         ),
     ]
 

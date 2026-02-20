@@ -545,6 +545,24 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Notification Batching",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "Control <em>when</em> approval-request and submission-received "
+                    "notifications are sent. Non-immediate cadences queue notifications "
+                    "and send a single digest email when the schedule fires. "
+                    "Requires the <code>send_batched_notifications</code> Celery Beat task to be running."
+                ),
+                "fields": (
+                    "notification_cadence",
+                    "notification_cadence_day",
+                    "notification_cadence_time",
+                    "notification_cadence_form_field",
+                ),
+            },
+        ),
+        (
             "Post-approval DB updates",
             {
                 "classes": ("collapse",),

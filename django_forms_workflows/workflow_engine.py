@@ -50,6 +50,23 @@ logger = logging.getLogger(__name__)
 
 
 def _notify_submission_created(submission: FormSubmission) -> None:
+    workflow = getattr(submission.form_definition, "workflow", None)
+    cadence = getattr(workflow, "notification_cadence", "immediate") if workflow else "immediate"
+
+    if cadence != "immediate" and workflow is not None:
+        try:
+            from .tasks import _queue_submission_notifications
+
+            _queue_submission_notifications(submission, workflow)
+        except Exception:
+            logger.warning("Failed to queue batched submission notification; falling back to immediate")
+            _notify_submission_created_immediate(submission)
+        return
+
+    _notify_submission_created_immediate(submission)
+
+
+def _notify_submission_created_immediate(submission: FormSubmission) -> None:
     try:  # defer import to avoid hard Celery dependency at import time
         from .tasks import send_submission_notification
 
@@ -59,6 +76,23 @@ def _notify_submission_created(submission: FormSubmission) -> None:
 
 
 def _notify_task_request(task: ApprovalTask) -> None:
+    workflow = getattr(task.submission.form_definition, "workflow", None)
+    cadence = getattr(workflow, "notification_cadence", "immediate") if workflow else "immediate"
+
+    if cadence != "immediate" and workflow is not None:
+        try:
+            from .tasks import _queue_approval_request_notifications
+
+            _queue_approval_request_notifications(task, workflow)
+        except Exception:
+            logger.warning("Failed to queue batched approval request; falling back to immediate")
+            _notify_task_request_immediate(task)
+        return
+
+    _notify_task_request_immediate(task)
+
+
+def _notify_task_request_immediate(task: ApprovalTask) -> None:
     try:
         from .tasks import send_approval_request
 

@@ -622,6 +622,45 @@ class WorkflowDefinition(models.Model):
         blank=True, help_text="Comma-separated emails for all notifications"
     )
 
+    # Notification Batching
+    NOTIFICATION_CADENCE_CHOICES = [
+        ("immediate", "Immediate (send right away)"),
+        ("daily", "Daily digest"),
+        ("weekly", "Weekly digest"),
+        ("monthly", "Monthly digest"),
+        ("form_field_date", "On date from a form field"),
+    ]
+
+    notification_cadence = models.CharField(
+        max_length=20,
+        choices=NOTIFICATION_CADENCE_CHOICES,
+        default="immediate",
+        help_text=(
+            "When to send approval-request and submission notifications. "
+            "Non-immediate options batch multiple notifications into a single digest email."
+        ),
+    )
+    notification_cadence_day = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "For weekly: day of week (0=Monday … 6=Sunday). "
+            "For monthly: day of month (1–31)."
+        ),
+    )
+    notification_cadence_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Time of day to send batch digest (leave blank to use 08:00).",
+    )
+    notification_cadence_form_field = models.SlugField(
+        blank=True,
+        help_text=(
+            "For 'On date from a form field': the field slug whose date value "
+            "determines when to send the digest."
+        ),
+    )
+
     # Post-Approval Database Updates (optional feature)
     enable_db_updates = models.BooleanField(
         default=False, help_text="Enable database updates after approval"
@@ -701,6 +740,62 @@ class WorkflowStage(models.Model):
 
     def __str__(self) -> str:
         return f"Stage {self.order}: {self.name}"
+
+
+class PendingNotification(models.Model):
+    """
+    Queue of notifications waiting to be sent as part of a batch digest.
+
+    When a WorkflowDefinition has a non-immediate notification_cadence, incoming
+    approval-request and submission-received events are stored here instead of
+    being emailed immediately.  The ``send_batched_notifications`` periodic task
+    finds due records, groups them by recipient + type, and sends a single digest
+    email per group.
+    """
+
+    NOTIFICATION_TYPES = [
+        ("submission_received", "Submission Received"),
+        ("approval_request", "Approval Request"),
+    ]
+
+    workflow = models.ForeignKey(
+        WorkflowDefinition,
+        on_delete=models.CASCADE,
+        related_name="pending_notifications",
+    )
+    notification_type = models.CharField(max_length=30, choices=NOTIFICATION_TYPES)
+    submission = models.ForeignKey(
+        "FormSubmission",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="pending_notifications",
+    )
+    approval_task = models.ForeignKey(
+        "ApprovalTask",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_notifications",
+    )
+    recipient_email = models.EmailField()
+    scheduled_for = models.DateTimeField(
+        help_text="When this notification should be included in a batch send.",
+        db_index=True,
+    )
+    sent = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Pending Notification"
+        verbose_name_plural = "Pending Notifications"
+        ordering = ["scheduled_for", "notification_type"]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.get_notification_type_display()} → {self.recipient_email} "
+            f"(due {self.scheduled_for:%Y-%m-%d %H:%M})"
+        )
 
 
 class PostSubmissionAction(models.Model):

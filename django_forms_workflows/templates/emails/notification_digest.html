@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #1a3a52; background:#f8f9fa; margin:0; padding:20px; }
+    .container { max-width:660px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .header { background:#0d6efd; color:#fff; padding:20px; text-align:center; }
+    .content { padding:24px; }
+    .button { display:inline-block; padding:10px 18px; background:#0d6efd; color:#fff; text-decoration:none; border-radius:6px; font-size:14px; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:14px; }
+    th, td { padding:10px 12px; border-bottom:1px solid #e9ecef; text-align:left; }
+    th { background:#f1f5ff; font-weight:600; white-space:nowrap; }
+    tr:last-child td { border-bottom:none; }
+    .badge { display:inline-block; background:#0d6efd; color:#fff; border-radius:12px; padding:2px 10px; font-size:13px; font-weight:bold; }
+    .footer { font-size:12px; color:#6c757d; text-align:center; padding:16px; background:#f8f9fa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      {% if notification_type == "approval_request" %}
+        <h2 style="margin:0;">Pending Approvals Digest</h2>
+      {% else %}
+        <h2 style="margin:0;">New Submissions Digest</h2>
+      {% endif %}
+      <p style="margin:6px 0 0 0; opacity:.85;">{{ site_name }} — {{ form_name }}</p>
+    </div>
+    <div class="content">
+
+      {% if notification_type == "approval_request" %}
+        <p>
+          You have <span class="badge">{{ count }}</span>
+          item{{ count|pluralize }} pending your approval for <strong>{{ form_name }}</strong>.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Submitted By</th>
+              <th>Submitted On</th>
+              {% if items.0.approval_task.due_date %}<th>Due</th>{% endif %}
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+            <tr>
+              <td>{{ item.submission.id }}</td>
+              <td>
+                {% if item.submission.submitter %}
+                  {{ item.submission.submitter.get_full_name|default:item.submission.submitter.username }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ item.submission.submitted_at|date:"M d, Y g:i A" }}</td>
+              {% if items.0.approval_task.due_date %}
+              <td>{{ item.approval_task.due_date|date:"M d, Y"|default:"—" }}</td>
+              {% endif %}
+              <td>
+                {% if item.approval_url %}
+                  <a class="button" href="{{ item.approval_url }}">Review</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+      {% else %}
+        <p>
+          <span class="badge">{{ count }}</span>
+          new submission{{ count|pluralize }} received for <strong>{{ form_name }}</strong>.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Submitted By</th>
+              <th>Submitted On</th>
+              <th>Status</th>
+              <th>View</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in submissions %}
+            <tr>
+              <td>{{ item.submission.id }}</td>
+              <td>
+                {% if item.submission.submitter %}
+                  {{ item.submission.submitter.get_full_name|default:item.submission.submitter.username }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ item.submission.submitted_at|date:"M d, Y g:i A" }}</td>
+              <td>{{ item.submission.get_status_display|default:item.submission.status }}</td>
+              <td><a class="button" href="{{ item.submission_url }}">View</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+
+      <p style="color:#6c757d; font-size:13px; margin-top:20px;">
+        This digest was generated because your workflow is configured to batch notifications.
+        To change the notification schedule, contact your administrator.
+      </p>
+    </div>
+    <div class="footer">This is an automated digest from {{ site_name }}.</div>
+  </div>
+</body>
+</html>
+

@@ -404,8 +404,42 @@ def submission_detail(request, submission_id):
             "You don't have permission to view this submission."
         )
 
-    # Get approval tasks
-    approval_tasks = submission.approval_tasks.all().order_by("-created_at")
+    # Get approval tasks with related objects for efficient rendering
+    approval_tasks = submission.approval_tasks.select_related(
+        "workflow_stage", "assigned_to", "assigned_group", "completed_by"
+    ).order_by("stage_number", "-created_at")
+
+    # Build stage groups if any tasks are linked to a workflow stage
+    stage_groups = None
+    if approval_tasks.filter(workflow_stage__isnull=False).exists():
+        groups: dict = {}
+        for task in approval_tasks:
+            stage_key = task.stage_number or 0
+            if stage_key not in groups:
+                stage_name = (
+                    task.workflow_stage.name
+                    if task.workflow_stage
+                    else f"Stage {stage_key}"
+                )
+                approval_logic = (
+                    task.workflow_stage.approval_logic if task.workflow_stage else "all"
+                )
+                groups[stage_key] = {
+                    "number": stage_key,
+                    "name": stage_name,
+                    "approval_logic": approval_logic,
+                    "tasks": [],
+                    "approved_count": 0,
+                    "rejected_count": 0,
+                    "total_count": 0,
+                }
+            groups[stage_key]["tasks"].append(task)
+            groups[stage_key]["total_count"] += 1
+            if task.status == "approved":
+                groups[stage_key]["approved_count"] += 1
+            elif task.status == "rejected":
+                groups[stage_key]["rejected_count"] += 1
+        stage_groups = sorted(groups.values(), key=lambda x: x["number"])
 
     # Resolve fresh presigned URLs for any file-upload fields
     form_data = _resolve_form_data_urls(submission.form_data)
@@ -416,6 +450,7 @@ def submission_detail(request, submission_id):
         {
             "submission": submission,
             "approval_tasks": approval_tasks,
+            "stage_groups": stage_groups,
             "form_data": form_data,
         },
     )
@@ -617,28 +652,9 @@ def approve_submission(request, task_id):
         workflow = form_def.workflow
 
         if decision == "reject":
-            # Rejection - mark submission as rejected
-            submission.status = "rejected"
-            submission.completed_at = timezone.now()
-            submission.save()
+            from .workflow_engine import handle_rejection
 
-            # Cancel all pending tasks
-            submission.approval_tasks.filter(status="pending").update(status="skipped")
-
-            # Execute on_reject post-submission actions
-            from .workflow_engine import execute_post_submission_actions
-
-            execute_post_submission_actions(submission, "on_reject")
-
-            # Send rejection notification (if Celery is configured)
-            try:
-                from .tasks import send_rejection_notification
-
-                send_rejection_notification.delay(submission.id)
-            except ImportError:
-                logger.warning("Celery tasks not available, skipping notification")
-            except Exception as e:
-                logger.warning("Failed to queue rejection notification: %s", e)
+            handle_rejection(submission, task, workflow)
         else:
             # Approval - check workflow logic
             from .workflow_engine import handle_approval
@@ -669,48 +685,105 @@ def approve_submission(request, task_id):
             user=request.user,
         )
 
-    # Build approval steps info for display
+    # Build approval progress context — staged, sequential, or parallel
     approval_steps = []
-    approval_step_fields = {}  # Maps step number to list of field info
-    all_approval_field_names = []  # List of all field names that belong to approval steps
+    approval_step_fields: dict = {}
+    all_approval_field_names: list = []
+    approval_stages: list = []
+    parallel_tasks: list = []
+    workflow_mode = "none"
     workflow = form_def.workflow
-    if workflow and workflow.approval_logic == "sequence":
-        # Get all approval groups in order
-        approval_groups = list(workflow.approval_groups.all())
-        total_steps = len(approval_groups)
 
-        # Get all tasks for this submission to check completion status
-        all_tasks = {t.step_number: t for t in submission.approval_tasks.all()}
+    if workflow:
+        stages = list(workflow.stages.order_by("order"))
 
-        # Build mapping of approval steps to their fields
-        for field in form_def.fields.filter(approval_step__isnull=False).order_by(
-            "approval_step", "order"
-        ):
-            step_num = field.approval_step
-            if step_num not in approval_step_fields:
-                approval_step_fields[step_num] = []
-            approval_step_fields[step_num].append(
-                {
-                    "field_name": field.field_name,
-                    "field_label": field.field_label,
-                }
+        if stages:
+            # -------- staged workflow --------
+            workflow_mode = "staged"
+            current_stage_number = task.stage_number or 1
+            all_sub_tasks = list(
+                submission.approval_tasks.select_related(
+                    "workflow_stage", "assigned_group", "assigned_to"
+                ).all()
             )
-            all_approval_field_names.append(field.field_name)
+            tasks_by_stage: dict = {}
+            for t in all_sub_tasks:
+                key = t.workflow_stage_id
+                tasks_by_stage.setdefault(key, []).append(t)
 
-        for idx, group in enumerate(approval_groups, start=1):
-            step_task = all_tasks.get(idx)
-            step_info = {
-                "number": idx,
-                "total": total_steps,
-                "group_name": group.name,
-                "is_current": idx == task.step_number,
-                "is_completed": step_task.status == "approved" if step_task else False,
-                "is_rejected": step_task.status == "rejected" if step_task else False,
-                "is_pending": idx > task.step_number,
-                "task": step_task,
-                "fields": approval_step_fields.get(idx, []),
-            }
-            approval_steps.append(step_info)
+            for i, stage in enumerate(stages, start=1):
+                stage_tasks = tasks_by_stage.get(stage.id, [])
+                approved_count = sum(1 for t in stage_tasks if t.status == "approved")
+                approval_stages.append(
+                    {
+                        "number": i,
+                        "name": stage.name,
+                        "approval_logic": stage.approval_logic,
+                        "total_stages": len(stages),
+                        "is_current": i == current_stage_number,
+                        "is_completed": approved_count > 0
+                        and not any(t.status == "pending" for t in stage_tasks),
+                        "is_rejected": any(t.status == "rejected" for t in stage_tasks),
+                        "is_pending": i > current_stage_number,
+                        "tasks": stage_tasks,
+                        "approved_count": approved_count,
+                        "total_count": len(stage_tasks),
+                    }
+                )
+
+        elif workflow.approval_logic == "sequence":
+            # -------- legacy sequential --------
+            workflow_mode = "sequence"
+            approval_groups = list(workflow.approval_groups.all())
+            total_steps = len(approval_groups)
+            all_tasks = {t.step_number: t for t in submission.approval_tasks.all()}
+
+            for field in form_def.fields.filter(approval_step__isnull=False).order_by(
+                "approval_step", "order"
+            ):
+                step_num = field.approval_step
+                if step_num not in approval_step_fields:
+                    approval_step_fields[step_num] = []
+                approval_step_fields[step_num].append(
+                    {"field_name": field.field_name, "field_label": field.field_label}
+                )
+                all_approval_field_names.append(field.field_name)
+
+            for idx, group in enumerate(approval_groups, start=1):
+                step_task = all_tasks.get(idx)
+                approval_steps.append(
+                    {
+                        "number": idx,
+                        "total": total_steps,
+                        "group_name": group.name,
+                        "is_current": idx == task.step_number,
+                        "is_completed": step_task.status == "approved"
+                        if step_task
+                        else False,
+                        "is_rejected": step_task.status == "rejected"
+                        if step_task
+                        else False,
+                        "is_pending": idx > (task.step_number or 0),
+                        "task": step_task,
+                        "fields": approval_step_fields.get(idx, []),
+                    }
+                )
+
+        elif workflow.approval_logic in ("all", "any"):
+            # -------- legacy parallel --------
+            workflow_mode = workflow.approval_logic
+            for t in submission.approval_tasks.filter(
+                assigned_group__isnull=False
+            ).select_related("assigned_group"):
+                parallel_tasks.append(
+                    {
+                        "task": t,
+                        "group_name": t.assigned_group.name
+                        if t.assigned_group
+                        else "—",
+                        "is_current": t.id == task.id,
+                    }
+                )
 
     # Resolve fresh presigned URLs for any file-upload fields
     form_data = _resolve_form_data_urls(submission.form_data)
@@ -723,10 +796,19 @@ def approve_submission(request, task_id):
             "submission": submission,
             "approval_step_form": approval_step_form,
             "has_approval_step_fields": has_approval_step_fields,
+            # sequential legacy
             "approval_steps": approval_steps,
             "current_step_number": task.step_number,
             "total_steps": len(approval_steps) if approval_steps else 0,
             "approval_field_names": all_approval_field_names,
+            # staged
+            "approval_stages": approval_stages,
+            "current_stage_number": task.stage_number or 1,
+            "total_stages": len(approval_stages),
+            # parallel legacy
+            "parallel_tasks": parallel_tasks,
+            # shared
+            "workflow_mode": workflow_mode,
             "form_data": form_data,
         },
     )

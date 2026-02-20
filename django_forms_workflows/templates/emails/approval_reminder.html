@@ -15,14 +15,20 @@
   <div class="container">
     <div class="header">
       <h2 style="margin:0;">Approval Reminder</h2>
-      <p style="margin:6px 0 0 0; opacity:.85;">Django Forms Workflows</p>
+      <p style="margin:6px 0 0 0; opacity:.85;">{{ site_name }}</p>
     </div>
     <div class="content">
       <p>Hello {{ approver.get_full_name|default:approver.username }},</p>
-      <p>This is a friendly reminder to review the submission <strong>{{ submission.form_definition.name }}</strong> (ID {{ submission.id }}).</p>
+      <p>This is a friendly reminder that the following submission is still awaiting your review:</p>
+      <table>
+        <tr><th>Form</th><td>{{ submission.form_definition.name }}</td></tr>
+        <tr><th>Submission ID</th><td>{{ submission.id }}</td></tr>
+        <tr><th>Submitted</th><td>{{ submission.submitted_at|date:"F d, Y g:i A" }}</td></tr>
+        {% if task.due_date %}<tr><th>Due Date</th><td>{{ task.due_date|date:"F d, Y" }}</td></tr>{% endif %}
+      </table>
       <p style="text-align:center; margin:24px 0;"><a class="button" href="{{ approval_url }}">Review Now</a></p>
     </div>
-    <div class="footer">This is an automated message from Django Forms Workflows.</div>
+    <div class="footer">This is an automated message from {{ site_name }}.</div>
   </div>
 </body>
 </html>

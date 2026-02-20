@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-02-20
+
+### Added
+- **Staged / hybrid approval workflows** — `WorkflowDefinition` now supports an ordered set of `WorkflowStage` rows; each stage has its own `approval_logic` (`all` / `any` / `sequence`) and its own set of `approval_groups`, enabling multi-stage pipelines where each stage can use a different parallel or sequential strategy (e.g. Stage 1: any department head, Stage 2: all directors)
+- **`WorkflowStage` model** — new model with fields `name`, `order`, `approval_logic`, `approval_groups` (M2M), `requires_manager_approval`; stages are processed strictly in `order` ascending
+- **`ApprovalTask.workflow_stage` / `stage_number`** — new FK and denormalised integer on `ApprovalTask` so tasks carry their stage reference even after a stage is later edited
+- **Migration 0015** — `add_workflowstage_staged_approvals`; fully backward-compatible, existing workflows without stages continue to use the legacy flat mode
+- **Stage-aware approval engine** — `workflow_engine.py` rewritten with helpers `_create_stage_tasks()` and `_advance_to_next_stage()`; when all tasks for a stage satisfy the stage's `approval_logic` the engine automatically creates tasks for the next stage
+- **`WorkflowStageInline` in admin** — stages are editable directly on the `WorkflowDefinition` change page with a `filter_horizontal` widget for `approval_groups`
+- **Stage context in `approve_submission` view** — `workflow_mode` (`"staged"` / `"sequence"` / `"all"` / `"any"` / `"none"`), `approval_stages`, `current_stage_number`, and `total_stages` are now passed to `approve.html`
+- **Stage-grouped approval history in `submission_detail`** — when a submission has staged tasks the Approval History section renders one colour-coded card per stage showing the stage name, approval logic badge, `X/N approved` counter, and a task table; legacy flat-table display is kept for non-staged workflows
+- **Site name in all email templates** — all six email templates now use `{{ site_name }}` (sourced from `FORMS_WORKFLOWS['SITE_NAME']` in settings) instead of the hardcoded string "Django Forms Workflows"
+- **Stage context in approval-request emails** — `approval_request.html` shows stage name, stage progress (`Stage N of M`), approval logic, and total parallel approver count when the task belongs to a stage
+- **Improved email templates** — `approval_reminder.html` and `escalation_notification.html` reworked with structured `<table>` layouts; all templates render URLs as clickable links
+
+### Fixed
+- **`"any"`-mode rejection bug** — in `"any"` approval-logic mode a single rejection no longer immediately rejects the whole submission; the submission is only rejected when every task in scope has been acted on and none approved
+- **Rejection handling in views** — duplicate inline rejection code in `approve_submission` replaced with a single call to `workflow_engine.handle_rejection()`
+
 ## [0.8.5] - 2026-02-19
 
 ### Fixed

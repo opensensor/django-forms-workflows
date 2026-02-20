@@ -14,14 +14,14 @@
   <div class="container">
     <div class="header">
       <h2 style="margin:0;">Submission Rejected</h2>
-      <p style="margin:6px 0 0 0; opacity:.85;">Django Forms Workflows</p>
+      <p style="margin:6px 0 0 0; opacity:.85;">{{ site_name }}</p>
     </div>
     <div class="content">
       <p>Your submission for <strong>{{ submission.form_definition.name }}</strong> was rejected.</p>
       {% if task.comments %}<p><strong>Reviewer comments:</strong> {{ task.comments }}</p>{% endif %}
-      <p>You can review your submission here: {{ submission_url }}</p>
+      <p>You can review your submission here: <a href="{{ submission_url }}">{{ submission_url }}</a></p>
     </div>
-    <div class="footer">This is an automated message from Django Forms Workflows.</div>
+    <div class="footer">This is an automated message from {{ site_name }}.</div>
   </div>
 </body>
 </html>

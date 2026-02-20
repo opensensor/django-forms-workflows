@@ -57,6 +57,12 @@ def _abs(url_path: str) -> str:
     return url_path  # relative fallback
 
 
+def _site_name() -> str:
+    """Return the configured site name, defaulting to 'Django Forms Workflows'."""
+    cfg = getattr(settings, "FORMS_WORKFLOWS", {})
+    return cfg.get("SITE_NAME", "Django Forms Workflows")
+
+
 def _send_html_email(
     subject: str,
     to: Iterable[str],
@@ -68,6 +74,9 @@ def _send_html_email(
     if not to_list:
         logger.info("Skipping email '%s' (no recipients)", subject)
         return
+
+    # Inject site_name so all email templates can reference {{ site_name }}
+    context.setdefault("site_name", _site_name())
 
     html_body = render_to_string(template, context)
     text_body = strip_tags(html_body)
@@ -216,19 +225,57 @@ def send_approval_request(task_id: int) -> None:
         "submission__submitter",
         "assigned_to",
         "assigned_group",
+        "workflow_stage",
     ).get(id=task_id)
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
     subject = f"Approval Request: {task.submission.form_definition.name} (ID {task.submission.id})"
     template = "django_forms_workflows/emails/approval_request.html"
 
-    if task.assigned_to and getattr(task.assigned_to, "email", None):
-        context = {
+    # Build stage / parallel context so email templates can show progress info
+    stage_context: dict = {}
+    if task.workflow_stage:
+        stage = task.workflow_stage
+        workflow = getattr(task.submission.form_definition, "workflow", None)
+        total_stages = workflow.stages.count() if workflow else 1
+        # Count sibling tasks in the same stage
+        sibling_tasks = task.submission.approval_tasks.filter(
+            workflow_stage=stage
+        ).count()
+        stage_context = {
+            "stage_name": stage.name,
+            "stage_number": task.stage_number or 1,
+            "total_stages": total_stages,
+            "stage_approval_logic": stage.approval_logic,
+            "stage_total_approvers": sibling_tasks,
+        }
+    elif task.step_number:
+        # Legacy sequential: show step info
+        workflow = getattr(task.submission.form_definition, "workflow", None)
+        total_steps = workflow.approval_groups.count() if workflow else 1
+        stage_context = {
+            "stage_number": task.step_number,
+            "total_stages": total_steps,
+            "stage_approval_logic": "sequence",
+            "stage_total_approvers": 1,
+        }
+
+    def _build_context(approver):
+        ctx = {
             "task": task,
             "submission": task.submission,
-            "approver": task.assigned_to,
+            "approver": approver,
             "approval_url": approval_url,
         }
-        _send_html_email(subject, [task.assigned_to.email], template, context)
+        ctx.update(stage_context)
+        return ctx
+
+    if task.assigned_to and getattr(task.assigned_to, "email", None):
+        _send_html_email(
+            subject,
+            [task.assigned_to.email],
+            template,
+            _build_context(task.assigned_to),
+        )
         return
 
     if task.assigned_group:
@@ -237,13 +284,7 @@ def send_approval_request(task_id: int) -> None:
             email = getattr(user, "email", None)
             if not email:
                 continue
-            context = {
-                "task": task,
-                "submission": task.submission,
-                "approver": user,
-                "approval_url": approval_url,
-            }
-            _send_html_email(subject, [email], template, context)
+            _send_html_email(subject, [email], template, _build_context(user))
             recipients.append(email)
         if not recipients:
             logger.info(

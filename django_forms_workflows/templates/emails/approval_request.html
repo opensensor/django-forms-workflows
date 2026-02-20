@@ -18,7 +18,7 @@
   <div class="container">
     <div class="header">
       <h2 style="margin:0;">Approval Request</h2>
-      <p style="margin:6px 0 0 0; opacity:.85;">Django Forms Workflows</p>
+      <p style="margin:6px 0 0 0; opacity:.85;">{{ site_name }}</p>
     </div>
     <div class="content">
       <p>Hello {{ approver.get_full_name|default:approver.username }},</p>
@@ -27,7 +27,18 @@
         <tr><th>Form</th><td>{{ submission.form_definition.name }}</td></tr>
         <tr><th>Submitted By</th><td>{{ submission.submitter.get_full_name|default:submission.submitter.username }}</td></tr>
         <tr><th>Submitted On</th><td>{{ submission.submitted_at|date:"F d, Y g:i A" }}</td></tr>
+        {% if stage_name %}
+        <tr><th>Stage</th><td>{{ stage_name }}{% if total_stages > 1 %} (Stage {{ stage_number }} of {{ total_stages }}){% endif %}</td></tr>
+        {% if stage_approval_logic == "all" and stage_total_approvers > 1 %}
+        <tr><th>Approvers</th><td>You are 1 of {{ stage_total_approvers }} approvers — <em>all must approve</em>.</td></tr>
+        {% elif stage_approval_logic == "any" and stage_total_approvers > 1 %}
+        <tr><th>Approvers</th><td>You are 1 of {{ stage_total_approvers }} approvers — <em>any one approval is sufficient</em>.</td></tr>
+        {% endif %}
+        {% elif stage_number and total_stages %}
+        <tr><th>Approval Step</th><td>Step {{ stage_number }} of {{ total_stages }}{% if task.step_name %}: {{ task.step_name }}{% endif %}</td></tr>
+        {% elif task.step_name %}
         <tr><th>Approval Step</th><td>{{ task.step_name }}</td></tr>
+        {% endif %}
         {% if task.due_date %}<tr><th>Due Date</th><td>{{ task.due_date|date:"F d, Y" }}</td></tr>{% endif %}
       </table>
       <p style="text-align:center; margin:24px 0;">
@@ -35,7 +46,7 @@
       </p>
       <p style="color:#6c757d; font-size:14px;">Thank you.</p>
     </div>
-    <div class="footer">This is an automated message from Django Forms Workflows.</div>
+    <div class="footer">This is an automated message from {{ site_name }}.</div>
   </div>
 </body>
 </html>

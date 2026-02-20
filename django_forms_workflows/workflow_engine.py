@@ -4,6 +4,29 @@ Workflow engine for Django Forms Workflows.
 Creates approval tasks based on the workflow definition and advances the
 workflow when approvals are processed.
 
+Staged / hybrid workflows
+--------------------------
+When a WorkflowDefinition has one or more WorkflowStage rows the engine runs
+in *staged mode*:
+
+  Stage 1 tasks are created on submission.  When a stage completes (according
+  to the stage's own approval_logic: all/any/sequence) the engine creates the
+  tasks for the next stage.  When the final stage completes the submission is
+  finalised.
+
+Legacy (flat) mode
+------------------
+WorkflowDefinitions with no WorkflowStage rows continue to use the existing
+flat approval_logic + approval_groups path unchanged.
+
+Rejection semantics
+-------------------
+* "all" / "sequence" — one rejection vetoes the whole submission immediately.
+* "any"              — a rejection is recorded on that task but the submission
+                       survives until every task in the current scope has been
+                       resolved.  Only when *all* tasks are rejected (and none
+                       are approved) is the submission itself rejected.
+
 Email notifications are delegated to django_forms_workflows.tasks where they
 will run asynchronously if Celery is available or synchronously otherwise.
 """
@@ -16,12 +39,14 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from .models import ApprovalTask, FormSubmission, WorkflowDefinition
+from .models import ApprovalTask, FormSubmission, WorkflowDefinition, WorkflowStage
 
 logger = logging.getLogger(__name__)
 
 
 # --- Internal helpers -------------------------------------------------------
+
+# ---- notification shims ----
 
 
 def _notify_submission_created(submission: FormSubmission) -> None:
@@ -49,6 +74,15 @@ def _notify_final_approval(submission: FormSubmission) -> None:
         send_approval_notification.delay(submission.id)
     except Exception:
         logger.warning("Notification tasks not available for approval_notification")
+
+
+def _notify_rejection(submission: FormSubmission) -> None:
+    try:
+        from .tasks import send_rejection_notification
+
+        send_rejection_notification.delay(submission.id)
+    except Exception:
+        logger.warning("Notification tasks not available for rejection_notification")
 
 
 def _due_date_for(workflow: WorkflowDefinition):
@@ -119,6 +153,109 @@ def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
     except Exception as e:
         logger.error("Error marking managed files as rejected: %s", e, exc_info=True)
 
+    _notify_rejection(submission)
+
+
+# ---- staged workflow helpers ----
+
+
+def _create_stage_tasks(
+    submission: FormSubmission,
+    stage: WorkflowStage,
+    stage_number: int,
+    due_date,
+) -> None:
+    """Create approval tasks for a single workflow stage.
+
+    Handles manager-first ordering within the stage: if ``requires_manager_approval``
+    is True, only the manager task is created; group tasks are created later when
+    ``handle_approval`` processes that manager task.
+    """
+    groups = list(stage.approval_groups.all().order_by("id"))
+
+    manager_task_created = False
+    if stage.requires_manager_approval:
+        try:
+            from .ldap_backend import get_user_manager
+        except Exception:
+            get_user_manager = None  # type: ignore
+        manager = get_user_manager(submission.submitter) if get_user_manager else None
+        if manager:
+            task = ApprovalTask.objects.create(
+                submission=submission,
+                assigned_to=manager,
+                workflow_stage=stage,
+                stage_number=stage_number,
+                step_name=f"Stage {stage_number}: Manager Approval",
+                status="pending",
+                due_date=due_date,
+            )
+            manager_task_created = True
+            _notify_task_request(task)
+        else:
+            logger.info(
+                "Manager approval required but manager not found for user %s (stage %d)",
+                submission.submitter,
+                stage_number,
+            )
+
+    # Manager task gates group tasks — create groups later via handle_approval
+    if manager_task_created:
+        return
+
+    if not groups:
+        return  # caller responsible for advancing/finalizing if stage has no tasks
+
+    if stage.approval_logic == "sequence":
+        g = groups[0]
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=g,
+            workflow_stage=stage,
+            stage_number=stage_number,
+            step_name=f"Stage {stage_number}: {g.name} (Step 1 of {len(groups)})",
+            step_number=1,
+            status="pending",
+            due_date=due_date,
+        )
+        _notify_task_request(task)
+    else:
+        # "all" or "any" → parallel tasks for every group
+        for g in groups:
+            task = ApprovalTask.objects.create(
+                submission=submission,
+                assigned_group=g,
+                workflow_stage=stage,
+                stage_number=stage_number,
+                step_name=f"Stage {stage_number}: {g.name} Approval",
+                status="pending",
+                due_date=due_date,
+            )
+            _notify_task_request(task)
+
+
+def _advance_to_next_stage(
+    submission: FormSubmission,
+    workflow: WorkflowDefinition,
+    stages: list,
+    current_stage_number: int,
+    due_date,
+) -> None:
+    """Create tasks for the next stage, or finalize if this was the last stage.
+
+    ``stages`` must be ordered by ``order``; ``current_stage_number`` is 1-indexed.
+    """
+    if current_stage_number < len(stages):
+        next_stage = stages[current_stage_number]  # 0-indexed = current_stage_number
+        _create_stage_tasks(
+            submission,
+            next_stage,
+            stage_number=current_stage_number + 1,
+            due_date=due_date,
+        )
+    else:
+        _finalize_submission(submission)
+
 
 # --- Public API -------------------------------------------------------------
 
@@ -127,35 +264,47 @@ def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
 def create_workflow_tasks(submission: FormSubmission) -> None:
     """Create approval tasks for a newly submitted form and send notifications.
 
-    Behavior:
-    - If no workflow or approval not required: finalize immediately and notify.
-    - If manager approval is required: create only the manager task first.
-    - Otherwise: create group tasks according to approval_logic.
-    - In all cases: notify submitter that submission was received (respecting flags).
+    Staged mode (workflow has WorkflowStage rows):
+      Creates tasks for the first stage only.  Subsequent stages are created
+      by ``handle_approval`` as each stage completes.
+
+    Legacy mode (no WorkflowStage rows):
+      Manager task first (if required), then group tasks per approval_logic.
     """
     workflow: WorkflowDefinition | None = getattr(
         submission.form_definition, "workflow", None
     )
 
-    # Always notify submission was received (task respects notify_on_submission)
+    # Always notify submission was received (respects notify_on_submission flag)
     _notify_submission_created(submission)
 
     # Execute on_submit actions
     execute_post_submission_actions(submission, "on_submit")
-
-    # Execute file workflow hooks for submission
     execute_file_workflow_hooks(submission, "on_submit")
 
     if not workflow or not workflow.requires_approval:
         _finalize_submission(submission)
         return
 
-    # Pending approval state
     if submission.status != "pending_approval":
         submission.status = "pending_approval"
         submission.save(update_fields=["status"])
 
     due_date = _due_date_for(workflow)
+
+    # --- Staged mode ---
+    stages = list(workflow.stages.order_by("order"))
+    if stages:
+        first_stage = stages[0]
+        groups = list(first_stage.approval_groups.all())
+        if not first_stage.requires_manager_approval and not groups:
+            # Stage has no reviewers configured — finalize immediately
+            _finalize_submission(submission)
+            return
+        _create_stage_tasks(submission, first_stage, stage_number=1, due_date=due_date)
+        return
+
+    # --- Legacy flat mode ---
 
     # 1) Manager approval (first step if required)
     manager_task_created = False
@@ -181,15 +330,12 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
                 submission.submitter,
             )
 
-    # If manager approval was created, we stop here and wait for that to complete
     if manager_task_created:
         return
 
     # 2) Group approvals
     groups = list(workflow.approval_groups.all().order_by("id"))
-
     if not groups:
-        # No groups and no manager: finalize immediately
         _finalize_submission(submission)
         return
 
@@ -205,7 +351,7 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
         )
         _notify_task_request(task)
     else:
-        # 'all' or 'any' -> create all tasks in parallel
+        # "all" or "any" → parallel tasks for every group
         for g in groups:
             task = ApprovalTask.objects.create(
                 submission=submission,
@@ -221,8 +367,110 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
 def handle_approval(
     submission: FormSubmission, task: ApprovalTask, workflow: WorkflowDefinition
 ) -> None:
-    """Advance the workflow after an approval event on a task."""
-    # If this was the manager approval task, create the group tasks next
+    """Advance the workflow after an approval event on a task.
+
+    Dispatches to staged or legacy logic based on whether the task has an
+    associated ``workflow_stage``.
+    """
+    due_date = _due_date_for(workflow)
+
+    # ------------------------------------------------------------------ staged
+    if task.workflow_stage:
+        stage = task.workflow_stage
+        stage_number = task.stage_number or 1
+        stages = list(workflow.stages.order_by("order"))
+
+        is_manager_task = (
+            task.assigned_to_id is not None and "manager" in task.step_name.lower()
+        )
+
+        if is_manager_task:
+            # Manager gate passed — now create group tasks for same stage
+            groups = list(stage.approval_groups.all().order_by("id"))
+            if not groups:
+                _advance_to_next_stage(
+                    submission, workflow, stages, stage_number, due_date
+                )
+                return
+            if stage.approval_logic == "sequence":
+                g = groups[0]
+                new_task = ApprovalTask.objects.create(
+                    submission=submission,
+                    assigned_group=g,
+                    workflow_stage=stage,
+                    stage_number=stage_number,
+                    step_name=f"Stage {stage_number}: {g.name} (Step 1 of {len(groups)})",
+                    step_number=1,
+                    status="pending",
+                    due_date=due_date,
+                )
+                _notify_task_request(new_task)
+            else:
+                for g in groups:
+                    new_task = ApprovalTask.objects.create(
+                        submission=submission,
+                        assigned_group=g,
+                        workflow_stage=stage,
+                        stage_number=stage_number,
+                        step_name=f"Stage {stage_number}: {g.name} Approval",
+                        status="pending",
+                        due_date=due_date,
+                    )
+                    _notify_task_request(new_task)
+            return
+
+        logic = stage.approval_logic
+
+        if logic == "any":
+            # First approval in stage wins; skip remaining stage tasks
+            submission.approval_tasks.filter(
+                workflow_stage=stage, status="pending"
+            ).exclude(id=task.id).update(status="skipped")
+            _advance_to_next_stage(submission, workflow, stages, stage_number, due_date)
+
+        elif logic == "all":
+            # Advance only when all group tasks in this stage are done
+            if not submission.approval_tasks.filter(
+                workflow_stage=stage,
+                status="pending",
+                assigned_group__isnull=False,
+            ).exists():
+                _advance_to_next_stage(
+                    submission, workflow, stages, stage_number, due_date
+                )
+
+        elif logic == "sequence":
+            groups = list(stage.approval_groups.all().order_by("id"))
+            ids = [g.id for g in groups]
+            try:
+                idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]
+            except ValueError:
+                idx = len(ids) - 1  # treat unknown as last step
+
+            if idx + 1 < len(groups):
+                next_group = groups[idx + 1]
+                new_task = ApprovalTask.objects.create(
+                    submission=submission,
+                    assigned_group=next_group,
+                    workflow_stage=stage,
+                    stage_number=stage_number,
+                    step_name=(
+                        f"Stage {stage_number}: {next_group.name}"
+                        f" (Step {idx + 2} of {len(groups)})"
+                    ),
+                    step_number=idx + 2,
+                    status="pending",
+                    due_date=due_date,
+                )
+                _notify_task_request(new_task)
+            else:
+                _advance_to_next_stage(
+                    submission, workflow, stages, stage_number, due_date
+                )
+
+        return
+
+    # ------------------------------------------------------------------ legacy
     is_manager_task = (
         task.assigned_to_id is not None and task.step_name.lower().startswith("manager")
     )
@@ -232,8 +480,6 @@ def handle_approval(
         if not groups:
             _finalize_submission(submission)
             return
-
-        due_date = _due_date_for(workflow)
         if workflow.approval_logic == "sequence":
             g = groups[0]
             new_task = ApprovalTask.objects.create(
@@ -257,11 +503,9 @@ def handle_approval(
                 _notify_task_request(new_task)
         return
 
-    # Otherwise this is a group approval task
     logic = workflow.approval_logic
 
     if logic == "any":
-        # First approval wins; skip the rest and finalize
         submission.approval_tasks.filter(
             status="pending", assigned_group__isnull=False
         ).exclude(id=task.id).update(status="skipped")
@@ -269,7 +513,6 @@ def handle_approval(
         return
 
     if logic == "all":
-        # When no pending group tasks remain, finalize
         if not submission.approval_tasks.filter(
             status="pending", assigned_group__isnull=False
         ).exists():
@@ -281,8 +524,6 @@ def handle_approval(
         if not groups:
             _finalize_submission(submission)
             return
-
-        # Find current group position
         ids = [g.id for g in groups]
         try:
             idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]
@@ -290,17 +531,14 @@ def handle_approval(
             idx = -1
 
         if idx == -1:
-            # Unknown group; if nothing pending, finalize safely
             if not submission.approval_tasks.filter(
                 status="pending", assigned_group__isnull=False
             ).exists():
                 _finalize_submission(submission)
             return
 
-        # If there is a next step, create it; otherwise finalize
         if idx + 1 < len(groups):
             next_group = groups[idx + 1]
-            due_date = _due_date_for(workflow)
             new_task = ApprovalTask.objects.create(
                 submission=submission,
                 assigned_group=next_group,
@@ -312,6 +550,46 @@ def handle_approval(
             _notify_task_request(new_task)
         else:
             _finalize_submission(submission)
+
+
+@transaction.atomic
+def handle_rejection(
+    submission: FormSubmission, task: ApprovalTask, workflow: WorkflowDefinition
+) -> None:
+    """Handle a rejection event on an approval task.
+
+    Semantics depend on the active ``approval_logic`` (per-stage or top-level):
+
+    * ``"all"`` / ``"sequence"`` — one rejection immediately vetoes the
+      submission and cancels all remaining pending tasks.
+    * ``"any"`` — the rejection is recorded on the task but the submission
+      survives until every task in scope is resolved.  The submission is only
+      rejected when *all* tasks in scope are rejected and *none* are approved.
+    """
+    # Determine effective logic and task scope
+    if task.workflow_stage:
+        logic = task.workflow_stage.approval_logic
+        scope_qs = submission.approval_tasks.filter(workflow_stage=task.workflow_stage)
+    else:
+        logic = workflow.approval_logic
+        scope_qs = submission.approval_tasks.filter(
+            workflow_stage__isnull=True,
+            assigned_group__isnull=False,
+        )
+
+    if logic == "any":
+        # Submission survives unless ALL tasks in scope are rejected
+        if scope_qs.filter(status="approved").exists():
+            # At least one has already approved — submission already finalised
+            return
+        if scope_qs.filter(status="pending").exists():
+            # Others still outstanding — just wait
+            return
+        # Every task is rejected (none approved) → veto
+        _reject_submission(submission)
+    else:
+        # "all" or "sequence" — immediate veto
+        _reject_submission(submission)
 
 
 # --- Post-submission actions ------------------------------------------------

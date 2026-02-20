@@ -9,30 +9,99 @@
     <div class="col-lg-10 mx-auto">
         <h1 class="mb-4">Review Submission</h1>
 
-        <!-- Approval Progress (only show for sequential workflows with steps) -->
-        {% if approval_steps %}
+        <!-- Approval Progress (staged / sequential / parallel) -->
+        {% if workflow_mode != "none" %}
         <div class="card mb-4">
             <div class="card-header bg-light">
                 <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Approval Progress</h5>
             </div>
             <div class="card-body">
+
+                {% if workflow_mode == "staged" %}
+                {# ---- staged pipeline ---- #}
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    {% for stage in approval_stages %}
+                    <div class="text-center flex-fill p-2">
+                        <div class="rounded-circle d-inline-flex justify-content-center align-items-center mb-2
+                            {% if stage.is_completed %}bg-success text-white
+                            {% elif stage.is_current %}bg-primary text-white
+                            {% elif stage.is_rejected %}bg-danger text-white
+                            {% else %}bg-light text-muted border{% endif %}"
+                            style="width:44px;height:44px;font-weight:bold;">
+                            {% if stage.is_completed %}<i class="bi bi-check-lg"></i>
+                            {% elif stage.is_rejected %}<i class="bi bi-x-lg"></i>
+                            {% else %}{{ stage.number }}{% endif %}
+                        </div>
+                        <div class="{% if stage.is_current %}fw-bold text-primary{% elif stage.is_pending %}text-muted{% endif %}">
+                            <small>{{ stage.name }}</small><br>
+                            {% if stage.approval_logic == "all" %}<span class="badge bg-secondary" style="font-size:10px;">All must approve</span>
+                            {% elif stage.approval_logic == "any" %}<span class="badge bg-info text-dark" style="font-size:10px;">Any can approve</span>
+                            {% else %}<span class="badge bg-light text-muted border" style="font-size:10px;">Sequential</span>{% endif %}
+                            {% if stage.total_count > 0 %}<br><small class="text-muted">{{ stage.approved_count }}/{{ stage.total_count }} approved</small>{% endif %}
+                        </div>
+                    </div>
+                    {% if not forloop.last %}
+                    <div class="flex-shrink-0 align-self-start pt-3 text-muted d-none d-md-block"><i class="bi bi-arrow-right-circle fs-5"></i></div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% if current_stage_number and total_stages %}
+                <p class="text-center text-muted mt-2 mb-0"><small>Stage {{ current_stage_number }} of {{ total_stages }}</small></p>
+                {% endif %}
+
+                {% elif workflow_mode == "sequence" %}
+                {# ---- sequential legacy ---- #}
                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                     {% for step in approval_steps %}
                     <div class="text-center flex-fill p-2">
-                        <div class="rounded-circle d-inline-flex justify-content-center align-items-center mb-2 {% if step.is_completed %}bg-success text-white{% elif step.is_current %}bg-primary text-white{% elif step.is_rejected %}bg-danger text-white{% else %}bg-light text-muted border{% endif %}" style="width: 40px; height: 40px;">
-                            {% if step.is_completed %}<i class="bi bi-check"></i>{% elif step.is_rejected %}<i class="bi bi-x"></i>{% else %}{{ step.number }}{% endif %}
+                        <div class="rounded-circle d-inline-flex justify-content-center align-items-center mb-2
+                            {% if step.is_completed %}bg-success text-white
+                            {% elif step.is_current %}bg-primary text-white
+                            {% elif step.is_rejected %}bg-danger text-white
+                            {% else %}bg-light text-muted border{% endif %}"
+                            style="width:40px;height:40px;">
+                            {% if step.is_completed %}<i class="bi bi-check"></i>
+                            {% elif step.is_rejected %}<i class="bi bi-x"></i>
+                            {% else %}{{ step.number }}{% endif %}
                         </div>
                         <div class="{% if step.is_current %}fw-bold text-primary{% elif step.is_pending %}text-muted{% endif %}">
                             <small>{{ step.group_name }}</small>
                         </div>
                     </div>
                     {% if not forloop.last %}
-                    <div class="flex-shrink-1 px-2 text-muted d-none d-md-block">
-                        <i class="bi bi-arrow-right"></i>
-                    </div>
+                    <div class="flex-shrink-1 px-2 text-muted d-none d-md-block"><i class="bi bi-arrow-right"></i></div>
                     {% endif %}
                     {% endfor %}
                 </div>
+
+                {% elif workflow_mode == "all" or workflow_mode == "any" %}
+                {# ---- parallel legacy (all/any) ---- #}
+                {% if workflow_mode == "all" %}
+                <p class="text-muted small mb-3"><i class="bi bi-info-circle"></i> All groups listed below must approve this submission.</p>
+                {% else %}
+                <p class="text-muted small mb-3"><i class="bi bi-info-circle"></i> Any one of the groups below can approve this submission.</p>
+                {% endif %}
+                <div class="d-flex flex-wrap gap-3 justify-content-center">
+                    {% for pt in parallel_tasks %}
+                    <div class="text-center p-2">
+                        <div class="rounded-circle d-inline-flex justify-content-center align-items-center mb-2
+                            {% if pt.task.status == 'approved' %}bg-success text-white
+                            {% elif pt.task.status == 'rejected' %}bg-danger text-white
+                            {% elif pt.is_current %}bg-primary text-white
+                            {% else %}bg-light text-muted border{% endif %}"
+                            style="width:40px;height:40px;">
+                            {% if pt.task.status == 'approved' %}<i class="bi bi-check"></i>
+                            {% elif pt.task.status == 'rejected' %}<i class="bi bi-x"></i>
+                            {% else %}<i class="bi bi-hourglass-split"></i>{% endif %}
+                        </div>
+                        <div class="{% if pt.is_current %}fw-bold text-primary{% endif %}">
+                            <small>{{ pt.group_name }}</small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
             </div>
         </div>
         {% endif %}
@@ -52,7 +121,9 @@
                     <div class="col-md-6">
                         <p><strong>Submitted:</strong> {{ submission.submitted_at|date:"Y-m-d H:i" }}</p>
                         <p><strong>Status:</strong> {{ submission.get_status_display }}</p>
-                        {% if current_step_number and total_steps %}
+                        {% if workflow_mode == "staged" and current_stage_number and total_stages %}
+                        <p><strong>Current Stage:</strong> {{ current_stage_number }} of {{ total_stages }}</p>
+                        {% elif workflow_mode == "sequence" and current_step_number and total_steps %}
                         <p><strong>Current Step:</strong> {{ current_step_number }} of {{ total_steps }}</p>
                         {% endif %}
                     </div>

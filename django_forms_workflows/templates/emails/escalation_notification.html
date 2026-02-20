@@ -14,14 +14,19 @@
   <div class="container">
     <div class="header">
       <h2 style="margin:0;">Approval Escalation</h2>
-      <p style="margin:6px 0 0 0; opacity:.85;">Django Forms Workflows</p>
+      <p style="margin:6px 0 0 0; opacity:.85;">{{ site_name }}</p>
     </div>
     <div class="content">
-      <p>An approval task for <strong>{{ submission.form_definition.name }}</strong> (ID {{ submission.id }}) has been escalated.</p>
-      <p>Current step: {{ task.step_name }} | Assigned to: {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}</p>
-      <p>View submission: {{ submission_url }}</p>
+      <p>An approval task has been escalated due to inactivity:</p>
+      <table>
+        <tr><th>Form</th><td>{{ submission.form_definition.name }}</td></tr>
+        <tr><th>Submission ID</th><td>{{ submission.id }}</td></tr>
+        {% if task.step_name %}<tr><th>Approval Step</th><td>{{ task.step_name }}</td></tr>{% endif %}
+        {% if task.assigned_to %}<tr><th>Originally Assigned To</th><td>{{ task.assigned_to.get_full_name|default:task.assigned_to.username }}</td></tr>{% endif %}
+      </table>
+      <p>View submission: <a href="{{ submission_url }}">{{ submission_url }}</a></p>
     </div>
-    <div class="footer">This is an automated message from Django Forms Workflows.</div>
+    <div class="footer">This is an automated message from {{ site_name }}.</div>
   </div>
 </body>
 </html>

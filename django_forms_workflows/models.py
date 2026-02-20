@@ -630,6 +630,62 @@ class WorkflowDefinition(models.Model):
         return f"Workflow for {self.form_definition.name}"
 
 
+class WorkflowStage(models.Model):
+    """
+    A single stage in a staged approval workflow.
+
+    Stages execute sequentially (stage 1 → stage 2 → … → finalize).
+    Within each stage, tasks follow the stage's own approval_logic
+    (all/any/sequence), allowing hybrid workflows like:
+      Stage 1: Manager approval (sequence)
+      Stage 2: Finance AND Legal approve in parallel (all)
+      Stage 3: Any VP can sign off (any)
+
+    Backward-compatible: WorkflowDefinitions with no WorkflowStage rows
+    continue to use the legacy flat approval_logic + approval_groups path.
+    """
+
+    STAGE_LOGIC = [
+        ("all", "All must approve (AND)"),
+        ("any", "Any can approve (OR)"),
+        ("sequence", "Sequential within stage"),
+    ]
+
+    workflow = models.ForeignKey(
+        WorkflowDefinition,
+        related_name="stages",
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(max_length=100, help_text="Human-readable stage name")
+    order = models.PositiveIntegerField(
+        default=0, help_text="Execution order — lower numbers run first"
+    )
+    approval_logic = models.CharField(
+        max_length=20,
+        choices=STAGE_LOGIC,
+        default="all",
+        help_text="How approvals in this stage are resolved",
+    )
+    approval_groups = models.ManyToManyField(
+        Group,
+        related_name="workflow_stages",
+        blank=True,
+        help_text="Groups that participate in this stage",
+    )
+    requires_manager_approval = models.BooleanField(
+        default=False,
+        help_text="Also require submitter's manager approval in this stage (requires LDAP)",
+    )
+
+    class Meta:
+        ordering = ["order"]
+        verbose_name = "Workflow Stage"
+        verbose_name_plural = "Workflow Stages"
+
+    def __str__(self) -> str:
+        return f"Stage {self.order}: {self.name}"
+
+
 class PostSubmissionAction(models.Model):
     """
     Configurable post-submission actions to update external systems.
@@ -1076,6 +1132,21 @@ class ApprovalTask(models.Model):
         null=True,
         blank=True,
         related_name="group_approvals",
+    )
+
+    # Stage association (staged workflows only)
+    workflow_stage = models.ForeignKey(
+        WorkflowStage,
+        related_name="tasks",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        help_text="Stage this task belongs to (staged workflows only)",
+    )
+    stage_number = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Stage number (1-indexed) for display purposes",
     )
 
     # Status

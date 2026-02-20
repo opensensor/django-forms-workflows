@@ -26,6 +26,7 @@ from .models import (
     PrefillSource,
     UserProfile,
     WorkflowDefinition,
+    WorkflowStage,
 )
 
 
@@ -399,8 +400,24 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
 
+class WorkflowStageInline(admin.StackedInline):
+    """Inline for defining ordered stages on a WorkflowDefinition."""
+
+    model = WorkflowStage
+    extra = 0
+    ordering = ("order",)
+    filter_horizontal = ("approval_groups",)
+    fields = (
+        ("order", "name"),
+        "approval_logic",
+        "approval_groups",
+        "requires_manager_approval",
+    )
+
+
 @admin.register(WorkflowDefinition)
 class WorkflowDefinitionAdmin(admin.ModelAdmin):
+    inlines = [WorkflowStageInline]
     list_display = (
         "form_definition",
         "requires_approval",

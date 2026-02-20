@@ -14,15 +14,15 @@
   <div class="container">
     <div class="header">
       <h2 style="margin:0;">Submission Approved</h2>
-      <p style="margin:6px 0 0 0; opacity:.85;">Django Forms Workflows</p>
+      <p style="margin:6px 0 0 0; opacity:.85;">{{ site_name }}</p>
     </div>
     <div class="content">
       <p>Your submission for <strong>{{ submission.form_definition.name }}</strong> has been approved.</p>
       <p><strong>Submission ID:</strong> {{ submission.id }}<br>
          <strong>Completed:</strong> {{ submission.completed_at|date:"F d, Y g:i A" }}</p>
-      <p>You can view details at: {{ submission_url }}</p>
+      <p>You can view details at: <a href="{{ submission_url }}">{{ submission_url }}</a></p>
     </div>
-    <div class="footer">This is an automated message from Django Forms Workflows.</div>
+    <div class="footer">This is an automated message from {{ site_name }}.</div>
   </div>
 </body>
 </html>

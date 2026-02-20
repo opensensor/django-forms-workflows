@@ -85,71 +85,133 @@
             </div>
         </div>
 
-        <!-- Approval Tasks -->
+        <!-- Approval History -->
         {% if approval_tasks %}
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Approval History</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Step</th>
-                                    <th>Assigned To</th>
-                                    <th>Status</th>
-                                    <th>Completed By</th>
-                                    <th>Completed At</th>
-                                    <th>Comments</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for task in approval_tasks %}
-                                    <tr>
-                                        <td>{{ task.step_name }}</td>
-                                        <td>
-                                            {% if task.assigned_to %}
-                                                {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
-                                            {% elif task.assigned_group %}
-                                                {{ task.assigned_group.name }} (Group)
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if task.status == 'pending' %}
-                                                <span class="badge bg-warning text-dark">Pending</span>
-                                            {% elif task.status == 'approved' %}
-                                                <span class="badge bg-success">Approved</span>
-                                            {% elif task.status == 'rejected' %}
-                                                <span class="badge bg-danger">Rejected</span>
-                                            {% elif task.status == 'expired' %}
-                                                <span class="badge bg-secondary">Expired</span>
-                                            {% elif task.status == 'skipped' %}
-                                                <span class="badge bg-secondary">Skipped</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if task.completed_by %}
-                                                {{ task.completed_by.get_full_name|default:task.completed_by.username }}
-                                            {% else %}
-                                                -
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if task.completed_at %}
-                                                {{ task.completed_at|date:"Y-m-d H:i" }}
-                                            {% else %}
-                                                -
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ task.comments|default:"-" }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+
+        {% if stage_groups %}
+        {# ---- Staged workflow: one card per stage ---- #}
+        <h5 class="mb-3"><i class="bi bi-diagram-3"></i> Approval History</h5>
+        {% for stage in stage_groups %}
+        <div class="card mb-3
+            {% if stage.rejected_count > 0 %}border-danger
+            {% elif stage.approved_count == stage.total_count %}border-success
+            {% elif stage.approved_count > 0 %}border-primary
+            {% else %}border-secondary{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center
+                {% if stage.rejected_count > 0 %}bg-danger text-white
+                {% elif stage.approved_count == stage.total_count %}bg-success text-white
+                {% elif stage.approved_count > 0 %}bg-primary text-white
+                {% else %}bg-light text-muted{% endif %}">
+                <span>
+                    <strong>Stage {{ stage.number }}: {{ stage.name }}</strong>
+                    {% if stage.approval_logic == "all" %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">All must approve</span>
+                    {% elif stage.approval_logic == "any" %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">Any can approve</span>
+                    {% else %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">Sequential</span>
+                    {% endif %}
+                </span>
+                <span class="badge bg-white
+                    {% if stage.rejected_count > 0 %}text-danger
+                    {% elif stage.approved_count == stage.total_count %}text-success
+                    {% else %}text-secondary{% endif %}">
+                    {{ stage.approved_count }}/{{ stage.total_count }} approved
+                    {% if stage.rejected_count > 0 %}&nbsp;· {{ stage.rejected_count }} rejected{% endif %}
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Assigned To</th>
+                                <th>Status</th>
+                                <th>Completed By</th>
+                                <th>Completed At</th>
+                                <th>Comments</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in stage.tasks %}
+                            <tr>
+                                <td>
+                                    {% if task.assigned_to %}
+                                        {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
+                                    {% elif task.assigned_group %}
+                                        {{ task.assigned_group.name }} <span class="text-muted">(Group)</span>
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td>
+                                    {% if task.status == 'pending' %}<span class="badge bg-warning text-dark">Pending</span>
+                                    {% elif task.status == 'approved' %}<span class="badge bg-success">Approved</span>
+                                    {% elif task.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+                                    {% elif task.status == 'expired' %}<span class="badge bg-secondary">Expired</span>
+                                    {% elif task.status == 'skipped' %}<span class="badge bg-secondary">Skipped</span>
+                                    {% endif %}
+                                </td>
+                                <td>{% if task.completed_by %}{{ task.completed_by.get_full_name|default:task.completed_by.username }}{% else %}-{% endif %}</td>
+                                <td>{% if task.completed_at %}{{ task.completed_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td>
+                                <td>{{ task.comments|default:"-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
+        </div>
+        {% endfor %}
+
+        {% else %}
+        {# ---- Legacy flat workflow ---- #}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Approval History</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Step</th>
+                                <th>Assigned To</th>
+                                <th>Status</th>
+                                <th>Completed By</th>
+                                <th>Completed At</th>
+                                <th>Comments</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in approval_tasks %}
+                            <tr>
+                                <td>{{ task.step_name }}</td>
+                                <td>
+                                    {% if task.assigned_to %}
+                                        {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
+                                    {% elif task.assigned_group %}
+                                        {{ task.assigned_group.name }} <span class="text-muted">(Group)</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if task.status == 'pending' %}<span class="badge bg-warning text-dark">Pending</span>
+                                    {% elif task.status == 'approved' %}<span class="badge bg-success">Approved</span>
+                                    {% elif task.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+                                    {% elif task.status == 'expired' %}<span class="badge bg-secondary">Expired</span>
+                                    {% elif task.status == 'skipped' %}<span class="badge bg-secondary">Skipped</span>
+                                    {% endif %}
+                                </td>
+                                <td>{% if task.completed_by %}{{ task.completed_by.get_full_name|default:task.completed_by.username }}{% else %}-{% endif %}</td>
+                                <td>{% if task.completed_at %}{{ task.completed_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td>
+                                <td>{{ task.comments|default:"-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         {% endif %}
 
         <!-- Actions -->

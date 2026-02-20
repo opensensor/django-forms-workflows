@@ -29,6 +29,7 @@ urlpatterns = [
     ),
     # Approvals
     path("approvals/", views.approval_inbox, name="approval_inbox"),
+    path("approvals/completed/", views.completed_approvals, name="completed_approvals"),
     path(
         "approvals/<int:task_id>/approve/",
         views.approve_submission,

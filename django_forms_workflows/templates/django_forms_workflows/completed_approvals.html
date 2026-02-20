@@ -1,6 +1,6 @@
 {% extends 'django_forms_workflows/base.html' %}
 
-{% block title %}Approval Inbox - {{ site_name }}{% endblock %}
+{% block title %}Completed Forms - {{ site_name }}{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -14,14 +14,14 @@
     {# ── Tab navigation ── #}
     <ul class="nav nav-tabs mb-3">
       <li class="nav-item">
-        <a class="nav-link active" href="{% url 'forms_workflows:approval_inbox' %}">
+        <a class="nav-link" href="{% url 'forms_workflows:approval_inbox' %}">
           <i class="bi bi-hourglass-split me-1"></i>Pending
-          <span class="badge bg-primary ms-1">{{ total_tasks_count }}</span>
         </a>
       </li>
       <li class="nav-item">
-        <a class="nav-link" href="{% url 'forms_workflows:completed_approvals' %}">
+        <a class="nav-link active" href="{% url 'forms_workflows:completed_approvals' %}">
           <i class="bi bi-archive me-1"></i>Completed Forms
+          <span class="badge bg-secondary ms-1">{{ total_count }}</span>
         </a>
       </li>
     </ul>
@@ -29,17 +29,17 @@
     <div class="d-flex align-items-center justify-content-end mb-3">
       <span class="text-muted small">
         {% if active_form %}
-          Showing {{ tasks|length }} task{{ tasks|length|pluralize }} in
+          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
           <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
           &mdash;
           <a href="?category={{ category_slug }}" class="text-decoration-none">clear form filter</a>
         {% elif active_category %}
-          Showing {{ tasks|length }} task{{ tasks|length|pluralize }} in
+          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
           <strong>{{ active_category.name }}</strong>
           &mdash;
           <a href="?" class="text-decoration-none">clear filter</a>
         {% else %}
-          {{ total_tasks_count }} pending task{{ total_tasks_count|pluralize }} total
+          {{ total_count }} completed submission{{ total_count|pluralize }} total
         {% endif %}
       </span>
     </div>
@@ -54,7 +54,7 @@
          {% if not category_slug %}aria-current="true"{% endif %}>
         All
         <span class="badge {% if not category_slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
-          {{ total_tasks_count }}
+          {{ total_count }}
         </span>
       </a>
 
@@ -97,8 +97,29 @@
     </div>
     {% endif %}
 
-    {# ── Task table ── #}
-    {% if tasks %}
+    {# ── Status filter bar ── #}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center" role="toolbar" aria-label="Filter by status">
+      <span class="text-muted small fw-semibold me-1">Status:</span>
+      <a href="?{% if category_slug %}category={{ category_slug }}&{% endif %}{% if form_slug %}form={{ form_slug }}&{% endif %}"
+         class="btn btn-sm {% if not status_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        All
+      </a>
+      <a href="?{% if category_slug %}category={{ category_slug }}&{% endif %}{% if form_slug %}form={{ form_slug }}&{% endif %}status=approved"
+         class="btn btn-sm {% if status_filter == 'approved' %}btn-success{% else %}btn-outline-success{% endif %}">
+        <i class="bi bi-check-circle me-1"></i>Approved
+      </a>
+      <a href="?{% if category_slug %}category={{ category_slug }}&{% endif %}{% if form_slug %}form={{ form_slug }}&{% endif %}status=rejected"
+         class="btn btn-sm {% if status_filter == 'rejected' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+        <i class="bi bi-x-circle me-1"></i>Rejected
+      </a>
+      <a href="?{% if category_slug %}category={{ category_slug }}&{% endif %}{% if form_slug %}form={{ form_slug }}&{% endif %}status=withdrawn"
+         class="btn btn-sm {% if status_filter == 'withdrawn' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+        <i class="bi bi-dash-circle me-1"></i>Withdrawn
+      </a>
+    </div>
+
+    {# ── Submissions table ── #}
+    {% if submissions %}
       <div class="table-responsive">
         <table class="table table-hover">
           <thead>
@@ -106,17 +127,18 @@
               {% if not category_slug %}<th>Category</th>{% endif %}
               <th>Form</th>
               <th>Submitter</th>
-              <th>Step</th>
+              <th>Status</th>
               <th>Submitted</th>
+              <th>Completed</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {% for task in tasks %}
+            {% for submission in submissions %}
             <tr>
               {% if not category_slug %}
               <td>
-                {% with cat=task.submission.form_definition.category %}
+                {% with cat=submission.form_definition.category %}
                 {% if cat %}
                   {% if cat.icon %}<i class="bi {{ cat.icon }} me-1 text-muted"></i>{% endif %}
                   {{ cat.name }}
@@ -126,15 +148,29 @@
                 {% endwith %}
               </td>
               {% endif %}
-              <td>{{ task.submission.form_definition.name }}</td>
-              <td>{{ task.submission.submitter.get_full_name|default:task.submission.submitter.username }}</td>
-              <td>{{ task.step_name }}</td>
-              <td>{{ task.submission.submitted_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ submission.form_definition.name }}</td>
+              <td>{{ submission.submitter.get_full_name|default:submission.submitter.username }}</td>
               <td>
-                <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-sm btn-primary">
-                  <i class="bi bi-check-circle"></i> Review
-                </a>
-                <a href="{% url 'forms_workflows:submission_detail' task.submission.id %}" class="btn btn-sm btn-outline-secondary">
+                {% if submission.status == 'approved' %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Approved</span>
+                {% elif submission.status == 'rejected' %}
+                  <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>
+                {% elif submission.status == 'withdrawn' %}
+                  <span class="badge bg-secondary"><i class="bi bi-dash-circle me-1"></i>Withdrawn</span>
+                {% else %}
+                  <span class="badge bg-light text-dark">{{ submission.status }}</span>
+                {% endif %}
+              </td>
+              <td>{{ submission.submitted_at|date:"Y-m-d H:i" }}</td>
+              <td>
+                {% if submission.completed_at %}
+                  {{ submission.completed_at|date:"Y-m-d H:i" }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-secondary">
                   <i class="bi bi-eye"></i> View
                 </a>
               </td>
@@ -147,11 +183,13 @@
       <div class="alert alert-info">
         <i class="bi bi-info-circle"></i>
         {% if active_form %}
-          No pending approvals for <strong>{{ active_form.name }}</strong> in <strong>{{ active_category.name }}</strong>.
+          No completed submissions for <strong>{{ active_form.name }}</strong> in <strong>{{ active_category.name }}</strong>.
         {% elif active_category %}
-          No pending approvals in <strong>{{ active_category.name }}</strong>.
+          No completed submissions in <strong>{{ active_category.name }}</strong>.
+        {% elif status_filter %}
+          No <strong>{{ status_filter }}</strong> submissions found.
         {% else %}
-          You have no pending approvals at this time.
+          No completed submissions found in your workflow history.
         {% endif %}
       </div>
     {% endif %}

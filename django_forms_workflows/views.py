@@ -821,6 +821,137 @@ def approve_submission(request, task_id):
 
 
 @login_required
+def completed_approvals(request):
+    """View completed submissions where the user was part of the approval workflow.
+
+    Shows submissions with status approved/rejected/withdrawn where the current
+    user had an ApprovalTask assigned directly or via group membership.  This
+    provides a history / audit view for approvers, which is especially important
+    for business-process workflows (e.g. PCN) where data retention matters.
+
+    Accepts an optional ``?category=<slug>`` query parameter and an optional
+    ``?form=<slug>`` query parameter for narrowing the list.
+    """
+    if request.user.is_superuser:
+        base_submissions = FormSubmission.objects.filter(
+            status__in=["approved", "rejected", "withdrawn"]
+        )
+    else:
+        user_groups = request.user.groups.all()
+        base_submissions = (
+            FormSubmission.objects.filter(
+                status__in=["approved", "rejected", "withdrawn"]
+            )
+            .filter(
+                models.Q(approval_tasks__assigned_to=request.user)
+                | models.Q(approval_tasks__assigned_group__in=user_groups)
+            )
+            .distinct()
+        )
+
+    # --- Category counts (for the filter bar) ---
+    raw_counts = (
+        base_submissions.values(
+            "form_definition__category__pk",
+            "form_definition__category__name",
+            "form_definition__category__slug",
+            "form_definition__category__icon",
+            "form_definition__category__order",
+        )
+        .annotate(count=models.Count("id"))
+        .order_by(
+            "form_definition__category__order",
+            "form_definition__category__name",
+        )
+    )
+
+    category_counts = []
+    for row in raw_counts:
+        slug = row["form_definition__category__slug"]
+        if slug:
+            category_counts.append(
+                {
+                    "name": row["form_definition__category__name"],
+                    "slug": slug,
+                    "icon": row["form_definition__category__icon"] or "",
+                    "count": row["count"],
+                }
+            )
+
+    total_count = base_submissions.count()
+
+    # --- Apply optional category filter ---
+    category_slug = request.GET.get("category", "").strip()
+    active_category = None
+
+    if category_slug:
+        display_submissions = base_submissions.filter(
+            form_definition__category__slug=category_slug
+        )
+        active_category = next(
+            (c for c in category_counts if c["slug"] == category_slug), None
+        )
+    else:
+        display_submissions = base_submissions
+
+    # --- Form counts within the active category (for the form-level filter bar) ---
+    form_slug = request.GET.get("form", "").strip()
+    form_counts = []
+    active_form = None
+
+    if category_slug:
+        raw_form_counts = (
+            display_submissions.values(
+                "form_definition__pk",
+                "form_definition__name",
+                "form_definition__slug",
+            )
+            .annotate(count=models.Count("id"))
+            .order_by("form_definition__name")
+        )
+        form_counts = [
+            {
+                "name": r["form_definition__name"],
+                "slug": r["form_definition__slug"],
+                "count": r["count"],
+            }
+            for r in raw_form_counts
+            if r["form_definition__slug"]
+        ]
+        if form_slug:
+            display_submissions = display_submissions.filter(
+                form_definition__slug=form_slug
+            )
+            active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
+
+    # --- Status filter (optional) ---
+    status_filter = request.GET.get("status", "").strip()
+    if status_filter in ["approved", "rejected", "withdrawn"]:
+        display_submissions = display_submissions.filter(status=status_filter)
+
+    display_submissions = display_submissions.select_related(
+        "form_definition__category",
+        "submitter",
+    ).order_by("-completed_at", "-submitted_at")
+
+    return render(
+        request,
+        "django_forms_workflows/completed_approvals.html",
+        {
+            "submissions": display_submissions,
+            "category_counts": category_counts,
+            "active_category": active_category,
+            "category_slug": category_slug,
+            "total_count": total_count,
+            "form_counts": form_counts,
+            "form_slug": form_slug,
+            "active_form": active_form,
+            "status_filter": status_filter,
+        },
+    )
+
+
+@login_required
 def withdraw_submission(request, submission_id):
     """Withdraw a submission"""
     submission = get_object_or_404(FormSubmission, id=submission_id)

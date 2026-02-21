@@ -51,8 +51,7 @@ def _get_accessible_category_pks(user):
     cat_by_pk = {cat.pk: cat for cat in all_cats}
     # Map each category to its set of required group IDs
     cat_groups = {
-        cat.pk: set(cat.allowed_groups.values_list("id", flat=True))
-        for cat in all_cats
+        cat.pk: set(cat.allowed_groups.values_list("id", flat=True)) for cat in all_cats
     }
 
     _cache = {}  # pk -> bool
@@ -109,7 +108,7 @@ def _build_grouped_forms(forms):
         "name",
     ).select_related("category")
 
-    forms_by_cat = {}   # cat_pk -> [FormDefinition]
+    forms_by_cat = {}  # cat_pk -> [FormDefinition]
     uncategorised = []
 
     for form in ordered:
@@ -123,10 +122,9 @@ def _build_grouped_forms(forms):
 
     # ---- 2. Load all categories and build parent → children map --------
     all_cats = {
-        cat.pk: cat
-        for cat in FormCategory.objects.all().order_by("order", "name")
+        cat.pk: cat for cat in FormCategory.objects.all().order_by("order", "name")
     }
-    children_by_parent = {}   # parent_pk | None -> [FormCategory]
+    children_by_parent = {}  # parent_pk | None -> [FormCategory]
     for cat in all_cats.values():
         children_by_parent.setdefault(cat.parent_id, []).append(cat)
 
@@ -1129,9 +1127,7 @@ def submission_pdf(request, submission_id):
         submission.submitter == request.user
         or request.user.is_superuser
         or user_can_approve(request.user, submission)
-        or request.user.groups.filter(
-            id__in=form_def.admin_groups.all()
-        ).exists()
+        or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
     )
     if not can_view:
         return HttpResponseForbidden(

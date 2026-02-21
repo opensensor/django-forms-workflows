@@ -151,7 +151,14 @@ class PrefillSourceAdmin(admin.ModelAdmin):
 class FormCategoryAdmin(admin.ModelAdmin):
     """Admin interface for FormCategory grouping primitives."""
 
-    list_display = ["name", "parent", "slug", "order", "is_collapsed_by_default", "icon"]
+    list_display = [
+        "name",
+        "parent",
+        "slug",
+        "order",
+        "is_collapsed_by_default",
+        "icon",
+    ]
     list_editable = ["order", "is_collapsed_by_default"]
     list_filter = ["parent"]
     prepopulated_fields = {"slug": ("name",)}

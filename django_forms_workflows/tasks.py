@@ -101,6 +101,7 @@ def _send_html_email(
 # Notification Batching Helpers
 # ---------------------------------------------------------------------------
 
+
 def _compute_scheduled_for(workflow, submission=None):
     """
     Return a timezone-aware datetime indicating when the next batch for the
@@ -150,9 +151,7 @@ def _compute_scheduled_for(workflow, submission=None):
         if date_str:
             try:
                 parsed = datetime.fromisoformat(str(date_str)).date()
-                candidate = timezone.make_aware(
-                    datetime.combine(parsed, raw_time)
-                )
+                candidate = timezone.make_aware(datetime.combine(parsed, raw_time))
                 if candidate > now:
                     return candidate
             except (ValueError, TypeError):
@@ -573,6 +572,7 @@ def send_escalation_notification(task_id: int, to_email: str | None = None) -> N
 # Batched Notification Dispatch
 # ---------------------------------------------------------------------------
 
+
 @shared_task(name="django_forms_workflows.send_batched_notifications")
 def send_batched_notifications() -> str:
     """
@@ -600,7 +600,11 @@ def send_batched_notifications() -> str:
         groups[key].append(pn)
 
     sent_count = 0
-    for (recipient_email, notification_type, _workflow_id), notifications in groups.items():
+    for (
+        recipient_email,
+        notification_type,
+        _workflow_id,
+    ), notifications in groups.items():
         try:
             if notification_type == "submission_received":
                 _dispatch_submission_digest(recipient_email, notifications)

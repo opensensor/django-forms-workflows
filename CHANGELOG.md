@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.4] - 2026-02-21
+
+### Changed
+- **Improved table UI layout** — moved search bar inline with filter row on both `completed_approvals.html` and `my_submissions.html` for a cleaner, more compact layout
+- **Page length selector relocated** — moved the "Show X entries" dropdown from the top to the bottom of tables, positioned next to pagination controls for better UX
+- **Enhanced form element styling** — improved visual design of search inputs (with icon), page length selectors, and pagination controls with better focus states and consistent Bootstrap styling
+
 ## [0.13.3] - 2026-02-21
 
 ### Added

@@ -4,6 +4,60 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<style>
+  /* Improve pagination styling */
+  .dataTables_wrapper .dataTables_paginate {
+    margin-top: 0 !important;
+  }
+
+  .dataTables_wrapper .dataTables_paginate .pagination {
+    margin-bottom: 0;
+  }
+
+  .dataTables_wrapper .dataTables_info {
+    padding-top: 0;
+  }
+
+  /* Clean up table controls */
+  .dataTables_wrapper .row {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  /* Style the page length selector */
+  .form-select-sm {
+    border-color: #dee2e6;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  }
+
+  .form-select-sm:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+  }
+
+  /* Improve search input styling */
+  #searchContainer .input-group-text {
+    border-right: 0;
+  }
+
+  #searchContainer input {
+    border-left: 0;
+  }
+
+  #searchContainer input:focus {
+    border-color: #dee2e6;
+    box-shadow: none;
+  }
+
+  #searchContainer .input-group:focus-within .input-group-text {
+    border-color: #86b7fe;
+  }
+
+  #searchContainer .input-group:focus-within input {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+  }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -77,28 +131,36 @@
     </div>
     {% endif %}
 
-    {# ── Form filter bar (only when a category is active) ── #}
+    {# ── Form filter bar with search (only when a category is active) ── #}
     {% if form_counts %}
-    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center ps-3 border-start border-2"
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center justify-content-between ps-3 border-start border-2"
          role="toolbar" aria-label="Filter by form">
-      <span class="text-muted small fw-semibold me-1">Form:</span>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="text-muted small fw-semibold me-1">Form:</span>
 
-      <a href="?category={{ category_slug }}"
-         class="btn btn-sm {% if not form_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
-         {% if not form_slug %}aria-current="true"{% endif %}>
-        All
-      </a>
+        <a href="?category={{ category_slug }}"
+           class="btn btn-sm {% if not form_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           {% if not form_slug %}aria-current="true"{% endif %}>
+          All
+        </a>
 
-      {% for form_item in form_counts %}
-      <a href="?category={{ category_slug }}&form={{ form_item.slug }}"
-         class="btn btn-sm {% if form_slug == form_item.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
-         {% if form_slug == form_item.slug %}aria-current="true"{% endif %}>
-        {{ form_item.name }}
-        <span class="badge {% if form_slug == form_item.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
-          {{ form_item.count }}
-        </span>
-      </a>
-      {% endfor %}
+        {% for form_item in form_counts %}
+        <a href="?category={{ category_slug }}&form={{ form_item.slug }}"
+           class="btn btn-sm {% if form_slug == form_item.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           {% if form_slug == form_item.slug %}aria-current="true"{% endif %}>
+          {{ form_item.name }}
+          <span class="badge {% if form_slug == form_item.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+            {{ form_item.count }}
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+      <div id="searchContainer"></div>
+    </div>
+    {% else %}
+    {# ── Search bar when no form filter ── #}
+    <div class="mb-3 d-flex justify-content-end">
+      <div id="searchContainer"></div>
     </div>
     {% endif %}
 
@@ -172,16 +234,58 @@
 <script>
 $(document).ready(function() {
     if ($('#approvalsTable').length) {
-        $('#approvalsTable').DataTable({
+        var table = $('#approvalsTable').DataTable({
             order: [[{% if not category_slug %}4{% else %}3{% endif %}, 'desc']],
             columnDefs: [{ orderable: false, targets: -1 }],
             pageLength: 25,
+            dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
-                search: 'Search:',
+                search: '',
+                searchPlaceholder: 'Search approvals...',
                 emptyTable: 'No pending approvals found.',
                 zeroRecords: 'No matching approvals found.',
+                info: 'Showing _START_ to _END_ of _TOTAL_ approvals',
+                infoEmpty: 'Showing 0 to 0 of 0 approvals',
+                infoFiltered: '(filtered from _MAX_ total approvals)',
+                paginate: {
+                    first: '&laquo;',
+                    last: '&raquo;',
+                    next: '&rsaquo;',
+                    previous: '&lsaquo;'
+                }
             }
         });
+
+        // Move search box to the filter row
+        var searchBox = $('<div class="input-group input-group-sm" style="max-width: 300px;">' +
+            '<span class="input-group-text bg-white"><i class="bi bi-search"></i></span>' +
+            '<input type="search" class="form-control form-control-sm" placeholder="Search approvals..." aria-label="Search">' +
+            '</div>');
+
+        searchBox.find('input').on('keyup change', function() {
+            table.search(this.value).draw();
+        });
+
+        $('#searchContainer').append(searchBox);
+
+        // Add page length selector to bottom with improved styling
+        var lengthSelect = $('<div class="d-flex align-items-center gap-2 mb-2">' +
+            '<label class="mb-0 text-muted small">Show:</label>' +
+            '<select class="form-select form-select-sm" style="width: auto;">' +
+            '<option value="10">10</option>' +
+            '<option value="25" selected>25</option>' +
+            '<option value="50">50</option>' +
+            '<option value="100">100</option>' +
+            '<option value="-1">All</option>' +
+            '</select>' +
+            '<span class="text-muted small">entries</span>' +
+            '</div>');
+
+        lengthSelect.find('select').on('change', function() {
+            table.page.len($(this).val()).draw();
+        });
+
+        $('.dataTables_info').parent().prepend(lengthSelect);
     }
 });
 </script>

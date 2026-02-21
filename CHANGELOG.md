@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-02-21
+
+### Added
+- **Sortable, searchable table views** — the Submissions (`my_submissions.html`) and Approval Inbox (`approval_inbox.html`) tables now use DataTables (Bootstrap 5 theme) to provide instant client-side search filtering and click-to-sort on every column. Tables default to descending sort by the *Submitted* date; the *Actions* column is excluded from sorting.
+
 ## [0.13.1] - 2026-02-20
 
 ### Fixed

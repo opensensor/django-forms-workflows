@@ -2,6 +2,10 @@
 
 {% block title %}My Submissions - {{ site_name }}{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+{% endblock %}
+
 {% block content %}
 <div class="row">
   <div class="col-12">
@@ -86,7 +90,7 @@
     {# ── Submissions table ── #}
     {% if submissions %}
       <div class="table-responsive">
-        <table class="table table-hover">
+        <table class="table table-hover" id="submissionsTable">
           <thead>
             <tr>
               <th>ID</th>
@@ -174,5 +178,27 @@
 
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+$(document).ready(function() {
+    if ($('#submissionsTable').length) {
+        $('#submissionsTable').DataTable({
+            order: [[{% if not category_slug %}4{% else %}3{% endif %}, 'desc']],
+            columnDefs: [{ orderable: false, targets: -1 }],
+            pageLength: 25,
+            language: {
+                search: 'Search:',
+                emptyTable: 'No submissions found.',
+                zeroRecords: 'No matching submissions found.',
+            }
+        });
+    }
+});
+</script>
 {% endblock %}
 

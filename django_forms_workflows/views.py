@@ -617,6 +617,24 @@ def approval_inbox(request):
 
     total_tasks_count = base_tasks.count()
 
+    # --- Completed count for cross-tab badge ---
+    if request.user.is_superuser:
+        completed_count = FormSubmission.objects.filter(
+            status__in=["approved", "rejected", "withdrawn"]
+        ).count()
+    else:
+        completed_count = (
+            FormSubmission.objects.filter(
+                status__in=["approved", "rejected", "withdrawn"]
+            )
+            .filter(
+                models.Q(approval_tasks__assigned_to=request.user)
+                | models.Q(approval_tasks__assigned_group__in=user_groups)
+            )
+            .distinct()
+            .count()
+        )
+
     # --- Apply optional category filter ---
     category_slug = request.GET.get("category", "").strip()
     active_category = None
@@ -675,6 +693,7 @@ def approval_inbox(request):
             "active_category": active_category,
             "category_slug": category_slug,
             "total_tasks_count": total_tasks_count,
+            "completed_count": completed_count,
             "form_counts": form_counts,
             "form_slug": form_slug,
             "active_form": active_form,
@@ -988,6 +1007,19 @@ def completed_approvals(request):
 
     total_count = base_submissions.count()
 
+    # --- Pending tasks count for cross-tab badge ---
+    if request.user.is_superuser:
+        pending_tasks_count = ApprovalTask.objects.filter(status="pending").count()
+    else:
+        pending_tasks_count = (
+            ApprovalTask.objects.filter(status="pending")
+            .filter(
+                models.Q(assigned_to=request.user)
+                | models.Q(assigned_group__in=user_groups)
+            )
+            .count()
+        )
+
     # --- Apply optional category filter ---
     category_slug = request.GET.get("category", "").strip()
     active_category = None
@@ -1051,6 +1083,7 @@ def completed_approvals(request):
             "active_category": active_category,
             "category_slug": category_slug,
             "total_count": total_count,
+            "pending_tasks_count": pending_tasks_count,
             "form_counts": form_counts,
             "form_slug": form_slug,
             "active_form": active_form,

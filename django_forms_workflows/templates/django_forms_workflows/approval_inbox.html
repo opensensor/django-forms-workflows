@@ -2,6 +2,10 @@
 
 {% block title %}Approval Inbox - {{ site_name }}{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+{% endblock %}
+
 {% block content %}
 <div class="row">
   <div class="col-12">
@@ -22,6 +26,7 @@
       <li class="nav-item">
         <a class="nav-link" href="{% url 'forms_workflows:completed_approvals' %}">
           <i class="bi bi-archive me-1"></i>Completed Forms
+          <span class="badge bg-secondary ms-1">{{ completed_count }}</span>
         </a>
       </li>
     </ul>
@@ -100,7 +105,7 @@
     {# ── Task table ── #}
     {% if tasks %}
       <div class="table-responsive">
-        <table class="table table-hover">
+        <table class="table table-hover" id="approvalsTable">
           <thead>
             <tr>
               {% if not category_slug %}<th>Category</th>{% endif %}
@@ -160,3 +165,24 @@
 </div>
 {% endblock %}
 
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+$(document).ready(function() {
+    if ($('#approvalsTable').length) {
+        $('#approvalsTable').DataTable({
+            order: [[{% if not category_slug %}4{% else %}3{% endif %}, 'desc']],
+            columnDefs: [{ orderable: false, targets: -1 }],
+            pageLength: 25,
+            language: {
+                search: 'Search:',
+                emptyTable: 'No pending approvals found.',
+                zeroRecords: 'No matching approvals found.',
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

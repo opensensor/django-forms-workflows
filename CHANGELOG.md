@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-02-21
+
+### Added
+- **DataTables on all approvals views** — `my_submissions.html`, `approval_inbox.html`, and `completed_approvals.html` now all include DataTables (Bootstrap 5 theme) for instant client-side search and column sorting. The *Actions* column is excluded from sorting; tables default to descending *Submitted* date order.
+- **Cross-tab counts** — Both the *Pending* and *Completed Forms* tabs in the Approval Inbox always show a count badge so approvers can see the total in each view without switching tabs.
+
 ## [0.13.2] - 2026-02-21
 
 ### Added

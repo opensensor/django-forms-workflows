@@ -105,29 +105,32 @@
 
     {# ── Category filter bar ── #}
     {% if category_counts %}
-    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center" role="toolbar" aria-label="Filter by category">
-      <span class="text-muted small fw-semibold me-1">Filter:</span>
+    <div class="mb-3 d-flex align-items-center justify-content-between" role="toolbar" aria-label="Filter by category">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="text-muted small fw-semibold me-1">Filter:</span>
 
-      <a href="?"
-         class="btn btn-sm {% if not category_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
-         {% if not category_slug %}aria-current="true"{% endif %}>
-        All
-        <span class="badge {% if not category_slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
-          {{ total_tasks_count }}
-        </span>
-      </a>
+        <a href="?"
+           class="btn btn-sm {% if not category_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           {% if not category_slug %}aria-current="true"{% endif %}>
+          All
+          <span class="badge {% if not category_slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+            {{ total_tasks_count }}
+          </span>
+        </a>
 
-      {% for cat in category_counts %}
-      <a href="?category={{ cat.slug }}"
-         class="btn btn-sm {% if category_slug == cat.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
-         {% if category_slug == cat.slug %}aria-current="true"{% endif %}>
-        {% if cat.icon %}<i class="bi {{ cat.icon }} me-1"></i>{% endif %}
-        {{ cat.name }}
-        <span class="badge {% if category_slug == cat.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
-          {{ cat.count }}
-        </span>
-      </a>
-      {% endfor %}
+        {% for cat in category_counts %}
+        <a href="?category={{ cat.slug }}"
+           class="btn btn-sm {% if category_slug == cat.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           {% if category_slug == cat.slug %}aria-current="true"{% endif %}>
+          {% if cat.icon %}<i class="bi {{ cat.icon }} me-1"></i>{% endif %}
+          {{ cat.name }}
+          <span class="badge {% if category_slug == cat.slug %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">
+            {{ cat.count }}
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+      {% if not form_counts %}<div id="searchContainer"></div>{% endif %}
     </div>
     {% endif %}
 
@@ -157,8 +160,8 @@
       </div>
       <div id="searchContainer"></div>
     </div>
-    {% else %}
-    {# ── Search bar when no form filter ── #}
+    {% elif not category_counts %}
+    {# ── Search bar when no filters exist at all ── #}
     <div class="mb-3 d-flex justify-content-end">
       <div id="searchContainer"></div>
     </div>

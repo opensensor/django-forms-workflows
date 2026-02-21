@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-forms-workflows"
-version = "0.13.5"
+version = "0.13.6"
 description = "Enterprise-grade, database-driven form builder with approval workflows and external data integration"
 license = "LGPL-3.0-only"
 readme = "README.md"

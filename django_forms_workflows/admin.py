@@ -14,7 +14,7 @@ from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.urls import path, reverse
-from django.utils.html import format_html
+from django.utils.html import format_html, mark_safe
 from django.views.decorators.http import require_POST
 
 from .models import (
@@ -1595,13 +1595,13 @@ class CustomGroupAdmin(GroupAdmin):
     def ldap_badge(self, obj):
         try:
             obj.ldap_profile  # noqa: B018  — intentional attribute access
-            return format_html(
+            return mark_safe(
                 '<span style="'
                 "background:#2e7d32;color:#fff;padding:2px 8px;"
                 'border-radius:10px;font-size:0.8em;">LDAP</span>'
             )
         except LDAPGroupProfile.DoesNotExist:
-            return format_html(
+            return mark_safe(
                 '<span style="'
                 "background:#bdbdbd;color:#fff;padding:2px 8px;"
                 'border-radius:10px;font-size:0.8em;">Django</span>'

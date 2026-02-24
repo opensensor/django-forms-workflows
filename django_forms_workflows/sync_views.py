@@ -25,7 +25,9 @@ from .sync_api import build_export_payload, import_payload, verify_sync_token
 logger = logging.getLogger(__name__)
 
 _UNAUTHORIZED = JsonResponse(
-    {"error": "Unauthorized. Provide a valid Bearer token via the Authorization header."},
+    {
+        "error": "Unauthorized. Provide a valid Bearer token via the Authorization header."
+    },
     status=401,
 )
 _DISABLED = JsonResponse(
@@ -75,7 +77,9 @@ def sync_import_view(request):
     conflict = request.GET.get("conflict", "update")
     if conflict not in ("update", "skip", "new_slug"):
         return JsonResponse(
-            {"error": f"Invalid conflict mode '{conflict}'. Use update, skip, or new_slug."},
+            {
+                "error": f"Invalid conflict mode '{conflict}'. Use update, skip, or new_slug."
+            },
             status=400,
         )
 
@@ -91,8 +95,7 @@ def sync_import_view(request):
         return JsonResponse({"error": str(exc)}, status=500)
 
     summary = [
-        {"slug": form_obj.slug, "action": action}
-        for form_obj, action in results
+        {"slug": form_obj.slug, "action": action} for form_obj, action in results
     ]
     counts = {"created": 0, "updated": 0, "skipped": 0}
     for _, action in results:
@@ -105,4 +108,3 @@ def sync_import_view(request):
             "forms": summary,
         }
     )
-

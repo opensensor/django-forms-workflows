@@ -8,6 +8,8 @@ configure approval workflows, and review submissions and audit logs.
 import json
 
 from django.contrib import admin
+from django.contrib.auth.admin import GroupAdmin
+from django.contrib.auth.models import Group
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
@@ -26,6 +28,7 @@ from .models import (
     FormField,
     FormSubmission,
     FormTemplate,
+    LDAPGroupProfile,
     ManagedFile,
     PostSubmissionAction,
     PrefillSource,
@@ -441,25 +444,35 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                     raw = uploaded.read().decode("utf-8")
                 except Exception as exc:
                     context["error"] = f"Could not read uploaded file: {exc}"
-                    return render(request, "admin/django_forms_workflows/sync_import.html", context)
+                    return render(
+                        request,
+                        "admin/django_forms_workflows/sync_import.html",
+                        context,
+                    )
             elif json_text:
                 raw = json_text
 
             if not raw:
                 context["error"] = "Please upload a JSON file or paste JSON text."
-                return render(request, "admin/django_forms_workflows/sync_import.html", context)
+                return render(
+                    request, "admin/django_forms_workflows/sync_import.html", context
+                )
 
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError as exc:
                 context["error"] = f"Invalid JSON: {exc}"
-                return render(request, "admin/django_forms_workflows/sync_import.html", context)
+                return render(
+                    request, "admin/django_forms_workflows/sync_import.html", context
+                )
 
             try:
                 results = import_payload(payload, conflict=conflict)
             except Exception as exc:
                 context["error"] = f"Import failed: {exc}"
-                return render(request, "admin/django_forms_workflows/sync_import.html", context)
+                return render(
+                    request, "admin/django_forms_workflows/sync_import.html", context
+                )
 
             counts = {"created": 0, "updated": 0, "skipped": 0}
             for _, action in results:
@@ -511,20 +524,30 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                         remote_name = remote.get("name", remote_url)
                     except (IndexError, KeyError, ValueError):
                         context["error"] = "Invalid remote selection."
-                        return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                        return render(
+                            request,
+                            "admin/django_forms_workflows/sync_pull.html",
+                            context,
+                        )
                 elif manual_url and manual_token:
                     remote_url = manual_url
                     remote_token = manual_token
                     remote_name = manual_url
                 else:
-                    context["error"] = "Please select a configured remote or enter a URL and token."
-                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                    context["error"] = (
+                        "Please select a configured remote or enter a URL and token."
+                    )
+                    return render(
+                        request, "admin/django_forms_workflows/sync_pull.html", context
+                    )
 
                 try:
                     payload = fetch_remote_payload(remote_url, remote_token)
                 except Exception as exc:
                     context["error"] = f"Could not connect to remote: {exc}"
-                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                    return render(
+                        request, "admin/django_forms_workflows/sync_pull.html", context
+                    )
 
                 remote_forms = payload.get("forms", [])
                 context["step"] = 1
@@ -532,7 +555,9 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 context["remote_token"] = remote_token
                 context["remote_name"] = remote_name
                 context["remote_forms"] = remote_forms
-                return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                return render(
+                    request, "admin/django_forms_workflows/sync_pull.html", context
+                )
 
             # ── Step 2: import selected forms ───────────────────────────────
             if step == "2":
@@ -544,21 +569,29 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 if not selected_slugs:
                     context["error"] = "No forms selected."
                     context["step"] = 0
-                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                    return render(
+                        request, "admin/django_forms_workflows/sync_pull.html", context
+                    )
 
                 try:
-                    payload = fetch_remote_payload(remote_url, remote_token, slugs=selected_slugs)
+                    payload = fetch_remote_payload(
+                        remote_url, remote_token, slugs=selected_slugs
+                    )
                 except Exception as exc:
                     context["error"] = f"Could not fetch selected forms: {exc}"
                     context["step"] = 0
-                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                    return render(
+                        request, "admin/django_forms_workflows/sync_pull.html", context
+                    )
 
                 try:
                     results = import_payload(payload, conflict=conflict)
                 except Exception as exc:
                     context["error"] = f"Import failed: {exc}"
                     context["step"] = 0
-                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                    return render(
+                        request, "admin/django_forms_workflows/sync_pull.html", context
+                    )
 
                 counts = {"created": 0, "updated": 0, "skipped": 0}
                 for _, action in results:
@@ -567,7 +600,9 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 context["step"] = 2
                 context["results"] = results
                 context["counts"] = counts
-                return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                return render(
+                    request, "admin/django_forms_workflows/sync_pull.html", context
+                )
 
         return render(request, "admin/django_forms_workflows/sync_pull.html", context)
 
@@ -618,25 +653,39 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                         remote_name = remote.get("name", remote_url)
                     except (IndexError, KeyError, ValueError):
                         context["error"] = "Invalid remote selection."
-                        return render(request, "admin/django_forms_workflows/sync_push.html", context)
+                        return render(
+                            request,
+                            "admin/django_forms_workflows/sync_push.html",
+                            context,
+                        )
                 elif manual_url and manual_token:
                     remote_url = manual_url
                     remote_token = manual_token
                     remote_name = manual_url
                 else:
-                    context["error"] = "Please select a configured remote or enter a URL and token."
-                    return render(request, "admin/django_forms_workflows/sync_push.html", context)
+                    context["error"] = (
+                        "Please select a configured remote or enter a URL and token."
+                    )
+                    return render(
+                        request, "admin/django_forms_workflows/sync_push.html", context
+                    )
 
                 try:
-                    result = push_to_remote(remote_url, remote_token, queryset, conflict=conflict)
+                    result = push_to_remote(
+                        remote_url, remote_token, queryset, conflict=conflict
+                    )
                 except Exception as exc:
                     context["error"] = f"Push failed: {exc}"
-                    return render(request, "admin/django_forms_workflows/sync_push.html", context)
+                    return render(
+                        request, "admin/django_forms_workflows/sync_push.html", context
+                    )
 
                 context["step"] = 1
                 context["remote_name"] = remote_name
                 context["push_result"] = result
-                return render(request, "admin/django_forms_workflows/sync_push.html", context)
+                return render(
+                    request, "admin/django_forms_workflows/sync_push.html", context
+                )
 
         return render(request, "admin/django_forms_workflows/sync_push.html", context)
 
@@ -1492,3 +1541,76 @@ class ManagedFileAdmin(admin.ModelAdmin):
         for managed_file in queryset.filter(status="pending"):
             managed_file.mark_rejected(user=request.user, notes="Rejected via admin")
         self.message_user(request, f"Marked {queryset.count()} files as rejected.")
+
+
+# ── Custom Group admin with LDAP indicator ────────────────────────────────────
+
+
+class LDAPGroupProfileInline(admin.TabularInline):
+    """Read-only inline showing LDAP metadata for a group."""
+
+    model = LDAPGroupProfile
+    extra = 0
+    max_num = 1
+    readonly_fields = ("ldap_dn", "last_synced")
+    can_delete = False
+    verbose_name = "LDAP Profile"
+    verbose_name_name = "LDAP Profile"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class LDAPManagedFilter(admin.SimpleListFilter):
+    """Filter groups by whether they are LDAP-managed or Django-only."""
+
+    title = "Origin"
+    parameter_name = "ldap_managed"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", "LDAP-managed"),
+            ("no", "Django-only"),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(ldap_profile__isnull=False)
+        if self.value() == "no":
+            return queryset.filter(ldap_profile__isnull=True)
+        return queryset
+
+
+admin.site.unregister(Group)
+
+
+@admin.register(Group)
+class CustomGroupAdmin(GroupAdmin):
+    """Extended Group admin showing LDAP vs Django-only origin."""
+
+    inlines = [LDAPGroupProfileInline]
+    list_display = ("name", "ldap_badge", "user_count")
+    list_filter = (LDAPManagedFilter,)
+
+    def ldap_badge(self, obj):
+        try:
+            obj.ldap_profile  # noqa: B018  — intentional attribute access
+            return format_html(
+                '<span style="'
+                "background:#2e7d32;color:#fff;padding:2px 8px;"
+                'border-radius:10px;font-size:0.8em;">LDAP</span>'
+            )
+        except LDAPGroupProfile.DoesNotExist:
+            return format_html(
+                '<span style="'
+                "background:#bdbdbd;color:#fff;padding:2px 8px;"
+                'border-radius:10px;font-size:0.8em;">Django</span>'
+            )
+
+    ldap_badge.short_description = "Origin"
+    ldap_badge.allow_tags = True
+
+    def user_count(self, obj):
+        return obj.user_set.count()
+
+    user_count.short_description = "Users"

@@ -203,9 +203,12 @@ class ConfigurableLDAPBackend(LDAPBackend):
         """
         Synchronize LDAP group memberships to Django groups.
 
-        Creates Django groups if they don't exist and adds user to them.
+        Creates Django groups if they don't exist, adds user to them, and
+        marks each group as LDAP-managed via LDAPGroupProfile.
         """
         try:
+            from django_forms_workflows.models import LDAPGroupProfile
+
             ldap_attrs = ldap_user.attrs
 
             if "memberOf" in ldap_attrs:
@@ -214,8 +217,18 @@ class ConfigurableLDAPBackend(LDAPBackend):
                     group_name = self._extract_cn_from_dn(group_dn)
 
                     if group_name:
+                        # Normalise DN to string
+                        if isinstance(group_dn, bytes):
+                            group_dn = group_dn.decode("utf-8")
+
                         # Create group if it doesn't exist
                         group, created = Group.objects.get_or_create(name=group_name)
+
+                        # Mark the group as LDAP-managed (creates or refreshes last_synced)
+                        LDAPGroupProfile.objects.update_or_create(
+                            group=group,
+                            defaults={"ldap_dn": group_dn},
+                        )
 
                         # Add user to group
                         user.groups.add(group)

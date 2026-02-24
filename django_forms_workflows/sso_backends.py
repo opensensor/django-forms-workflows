@@ -522,7 +522,11 @@ def sync_user_ldap_groups(user):
         user_dn, user_attrs = result[0]
         member_of = user_attrs.get("memberOf", [])
 
+        from django_forms_workflows.models import LDAPGroupProfile
+
         groups_synced = 0
+        current_ldap_group_names = set()
+
         for group_dn in member_of:
             # Handle bytes vs string
             if isinstance(group_dn, bytes):
@@ -538,11 +542,31 @@ def sync_user_ldap_groups(user):
             if group_name:
                 # Create Django group if it doesn't exist
                 group, created = Group.objects.get_or_create(name=group_name)
+
+                # Mark the group as LDAP-managed (creates or updates last_synced)
+                LDAPGroupProfile.objects.update_or_create(
+                    group=group,
+                    defaults={"ldap_dn": group_dn},
+                )
+
                 user.groups.add(group)
+                current_ldap_group_names.add(group_name)
                 groups_synced += 1
 
                 if created:
                     logger.info(f"Created new group from LDAP: {group_name}")
+
+        # Remove the user from LDAP-managed groups that are no longer in their
+        # current LDAP membership list.  Django-only groups (no ldap_profile)
+        # are never touched.
+        stale_ldap_groups = user.groups.filter(ldap_profile__isnull=False).exclude(
+            name__in=current_ldap_group_names
+        )
+        for stale_group in stale_ldap_groups:
+            user.groups.remove(stale_group)
+            logger.info(
+                f"Removed user '{user.username}' from stale LDAP group '{stale_group.name}'"
+            )
 
         return groups_synced
 

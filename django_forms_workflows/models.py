@@ -1454,6 +1454,38 @@ class UserProfile(models.Model):
         self.employee_id = value
 
 
+class LDAPGroupProfile(models.Model):
+    """
+    Marks a Django Group as LDAP-managed.
+
+    The presence of this record on a Group means the group was created and
+    is maintained by LDAP synchronisation. Groups without this profile are
+    treated as Django-only and are never touched by the LDAP sync logic.
+    """
+
+    group = models.OneToOneField(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="ldap_profile",
+    )
+    ldap_dn = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Full Distinguished Name of this group in LDAP",
+    )
+    last_synced = models.DateTimeField(
+        auto_now=True,
+        help_text="Last time this group was seen during an LDAP sync",
+    )
+
+    class Meta:
+        verbose_name = "LDAP Group Profile"
+        verbose_name_plural = "LDAP Group Profiles"
+
+    def __str__(self):
+        return f"LDAP: {self.group.name}"
+
+
 class FileUploadConfig(models.Model):
     """
     Configurable file upload settings for form fields.

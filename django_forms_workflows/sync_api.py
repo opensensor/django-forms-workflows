@@ -47,6 +47,7 @@ SYNC_SCHEMA_VERSION = 1
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
+
 def get_sync_token():
     """Return the configured sync API token, or None if not configured."""
     return getattr(settings, "FORMS_SYNC_API_TOKEN", None)
@@ -64,6 +65,7 @@ def verify_sync_token(request):
 
 
 # ── Remote helpers ────────────────────────────────────────────────────────────
+
 
 def get_sync_remotes():
     """Return configured remote instances from the FORMS_SYNC_REMOTES setting.
@@ -142,6 +144,7 @@ def push_to_remote(remote_url, token, queryset, conflict="update", timeout=30):
 
 
 # ── Serializers ───────────────────────────────────────────────────────────────
+
 
 def _group_names(qs):
     return list(qs.values_list("name", flat=True))
@@ -222,8 +225,6 @@ def _serialize_field(field):
     }
 
 
-
-
 def _serialize_workflow_stage(stage):
     return {
         "name": stage.name,
@@ -244,7 +245,9 @@ def _serialize_workflow(wf):
         "requires_manager_approval": wf.requires_manager_approval,
         "manager_can_override_group": wf.manager_can_override_group,
         "escalation_field": wf.escalation_field,
-        "escalation_threshold": str(wf.escalation_threshold) if wf.escalation_threshold is not None else None,
+        "escalation_threshold": str(wf.escalation_threshold)
+        if wf.escalation_threshold is not None
+        else None,
         "escalation_groups": _group_names(wf.escalation_groups),
         "approval_deadline_days": wf.approval_deadline_days,
         "send_reminder_after_days": wf.send_reminder_after_days,
@@ -256,12 +259,16 @@ def _serialize_workflow(wf):
         "additional_notify_emails": wf.additional_notify_emails,
         "notification_cadence": wf.notification_cadence,
         "notification_cadence_day": wf.notification_cadence_day,
-        "notification_cadence_time": wf.notification_cadence_time.isoformat() if wf.notification_cadence_time else None,
+        "notification_cadence_time": wf.notification_cadence_time.isoformat()
+        if wf.notification_cadence_time
+        else None,
         "notification_cadence_form_field": wf.notification_cadence_form_field,
         "enable_db_updates": wf.enable_db_updates,
         "db_update_mappings": wf.db_update_mappings,
         "visual_workflow_data": wf.visual_workflow_data,
-        "stages": [_serialize_workflow_stage(s) for s in wf.stages.all().order_by("order")],
+        "stages": [
+            _serialize_workflow_stage(s) for s in wf.stages.all().order_by("order")
+        ],
     }
 
 
@@ -333,9 +340,14 @@ def serialize_form(form_definition):
             "auto_save_interval": form_definition.auto_save_interval,
             "pdf_generation": form_definition.pdf_generation,
         },
-        "fields": [_serialize_field(f) for f in form_definition.fields.all().order_by("order")],
+        "fields": [
+            _serialize_field(f) for f in form_definition.fields.all().order_by("order")
+        ],
         "workflow": _serialize_workflow(workflow),
-        "post_actions": [_serialize_post_action(a) for a in form_definition.post_actions.all().order_by("order")],
+        "post_actions": [
+            _serialize_post_action(a)
+            for a in form_definition.post_actions.all().order_by("order")
+        ],
     }
 
 
@@ -362,7 +374,6 @@ def build_export_payload(queryset):
         "form_count": qs.count(),
         "forms": [serialize_form(f) for f in qs],
     }
-
 
 
 # ── Deserializers / Import logic ───────────────────────────────────────────────
@@ -408,7 +419,9 @@ def _get_or_create_category(data, category_cache=None):
         },
     )
     # Sync allowed_groups
-    cat.allowed_groups.set([_get_or_create_group(n) for n in data.get("allowed_groups", [])])
+    cat.allowed_groups.set(
+        [_get_or_create_group(n) for n in data.get("allowed_groups", [])]
+    )
 
     if category_cache is not None:
         category_cache[data["slug"]] = cat
@@ -478,15 +491,23 @@ def import_form(form_data, conflict="update", category_cache=None):
     action = "created" if created else "updated"
 
     # Sync M2M groups
-    form_obj.submit_groups.set([_get_or_create_group(n) for n in fd.get("submit_groups", [])])
-    form_obj.view_groups.set([_get_or_create_group(n) for n in fd.get("view_groups", [])])
-    form_obj.admin_groups.set([_get_or_create_group(n) for n in fd.get("admin_groups", [])])
+    form_obj.submit_groups.set(
+        [_get_or_create_group(n) for n in fd.get("submit_groups", [])]
+    )
+    form_obj.view_groups.set(
+        [_get_or_create_group(n) for n in fd.get("view_groups", [])]
+    )
+    form_obj.admin_groups.set(
+        [_get_or_create_group(n) for n in fd.get("admin_groups", [])]
+    )
 
     # ── Fields ─────────────────────────────────────────────────────────────────
     # Delete existing fields so we get a clean ordered set
     form_obj.fields.all().delete()
     for field_data in form_data.get("fields", []):
-        ps_config = _get_or_create_prefill_source(field_data.pop("prefill_source_config", None))
+        ps_config = _get_or_create_prefill_source(
+            field_data.pop("prefill_source_config", None)
+        )
         field_data_copy = dict(field_data)
         field_data_copy.pop("prefill_source_config", None)
         min_val = field_data_copy.pop("min_value", None)
@@ -520,13 +541,17 @@ def import_form(form_data, conflict="update", category_cache=None):
             },
         )
         wf.approval_groups.set([_get_or_create_group(n) for n in approval_group_names])
-        wf.escalation_groups.set([_get_or_create_group(n) for n in escalation_group_names])
+        wf.escalation_groups.set(
+            [_get_or_create_group(n) for n in escalation_group_names]
+        )
 
         wf.stages.all().delete()
         for stage_data in stages_data:
             stage_group_names = stage_data.pop("approval_groups", [])
             stage = WorkflowStage.objects.create(workflow=wf, **stage_data)
-            stage.approval_groups.set([_get_or_create_group(n) for n in stage_group_names])
+            stage.approval_groups.set(
+                [_get_or_create_group(n) for n in stage_group_names]
+            )
     else:
         # Remove workflow if source had none
         WorkflowDefinition.objects.filter(form_definition=form_obj).delete()
@@ -549,6 +574,8 @@ def import_payload(payload, conflict="update"):
     results = []
     category_cache = {}
     for form_data in payload.get("forms", []):
-        result = import_form(form_data, conflict=conflict, category_cache=category_cache)
+        result = import_form(
+            form_data, conflict=conflict, category_cache=category_cache
+        )
         results.append(result)
     return results

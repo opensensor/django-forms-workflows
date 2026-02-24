@@ -87,7 +87,9 @@ class Command(BaseCommand):
         self.stdout.write(f"Prepared {form_count} form(s) for push.")
 
         if dry_run:
-            self.stdout.write(self.style.WARNING("Dry run — not sending to destination."))
+            self.stdout.write(
+                self.style.WARNING("Dry run — not sending to destination.")
+            )
             for form_data in payload.get("forms", []):
                 slug = form_data.get("form", {}).get("slug", "?")
                 name = form_data.get("form", {}).get("name", "?")
@@ -130,8 +132,10 @@ class Command(BaseCommand):
         for form_summary in result.get("forms", []):
             action = form_summary.get("action", "?")
             slug = form_summary.get("slug", "?")
-            style = self.style.SUCCESS if action == "created" else (
-                self.style.WARNING if action == "updated" else self.style.NOTICE
+            style = (
+                self.style.SUCCESS
+                if action == "created"
+                else (self.style.WARNING if action == "updated" else self.style.NOTICE)
             )
             self.stdout.write(style(f"  [{action}] {slug}"))
 
@@ -141,4 +145,3 @@ class Command(BaseCommand):
                 f"Updated: {counts.get('updated', 0)}, Skipped: {counts.get('skipped', 0)}"
             )
         )
-

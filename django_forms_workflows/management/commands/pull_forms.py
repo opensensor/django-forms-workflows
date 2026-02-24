@@ -116,8 +116,10 @@ class Command(BaseCommand):
         counts = {"created": 0, "updated": 0, "skipped": 0}
         for form_obj, action in results:
             counts[action] = counts.get(action, 0) + 1
-            style = self.style.SUCCESS if action == "created" else (
-                self.style.WARNING if action == "updated" else self.style.NOTICE
+            style = (
+                self.style.SUCCESS
+                if action == "created"
+                else (self.style.WARNING if action == "updated" else self.style.NOTICE)
             )
             self.stdout.write(style(f"  [{action}] {form_obj.slug}: {form_obj.name}"))
 
@@ -127,4 +129,3 @@ class Command(BaseCommand):
                 f"Updated: {counts['updated']}, Skipped: {counts['skipped']}"
             )
         )
-

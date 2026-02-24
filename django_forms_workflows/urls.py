@@ -2,6 +2,7 @@ from django.urls import include, path
 
 from . import views
 from .sso_backends import is_sso_available
+from .sync_views import sync_export_view, sync_import_view
 
 app_name = "forms_workflows"
 
@@ -27,6 +28,9 @@ urlpatterns = [
         views.submission_pdf,
         name="submission_pdf",
     ),
+    # Sync API
+    path("forms-sync/export/", sync_export_view, name="sync_export"),
+    path("forms-sync/import/", sync_import_view, name="sync_import"),
     # Approvals
     path("approvals/", views.approval_inbox, name="approval_inbox"),
     path("approvals/completed/", views.completed_approvals, name="completed_approvals"),

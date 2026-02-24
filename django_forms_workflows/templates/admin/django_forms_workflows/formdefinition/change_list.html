@@ -18,7 +18,41 @@
         background-color: #5a6268;
         color: white;
     }
+    .sync-btn {
+        display: inline-block;
+        padding: 5px 10px;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+        font-size: 13px;
+        margin-left: 4px;
+    }
+    .sync-btn-pull { background-color: #17a2b8; }
+    .sync-btn-pull:hover { background-color: #138496; color: white; }
+    .sync-btn-push { background-color: #6610f2; }
+    .sync-btn-push:hover { background-color: #520dc2; color: white; }
+    .sync-btn-import { background-color: #28a745; }
+    .sync-btn-import:hover { background-color: #1e7e34; color: white; }
 </style>
+{% endblock %}
+
+{% block object-tools-items %}
+{{ block.super }}
+<li>
+    <a href="{% url 'admin:formdefinition_sync_pull' %}" class="sync-btn sync-btn-pull" title="Pull forms from another instance">
+        ↓ Pull from Remote
+    </a>
+</li>
+<li>
+    <a href="{% url 'admin:formdefinition_sync_push' %}" class="sync-btn sync-btn-push" title="Push all forms to another instance">
+        ↑ Push All to Remote
+    </a>
+</li>
+<li>
+    <a href="{% url 'admin:formdefinition_sync_import' %}" class="sync-btn sync-btn-import" title="Import forms from a JSON file">
+        ⤴ Import JSON
+    </a>
+</li>
 {% endblock %}
 
 {% block footer %}

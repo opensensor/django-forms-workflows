@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Cross-instance form sync (push/pull)** — export and import `FormDefinition` records (including all fields, workflow, prefill sources, and post-submission actions) between multiple Django instances without shell access.
+  - `sync_api.py` — serialization/deserialization core; forms are keyed by slug, groups by name for portability across instances.
+  - `sync_views.py` — HTTP endpoints `GET /forms-sync/export/` and `POST /forms-sync/import/` protected by a shared `Bearer` token (`FORMS_SYNC_API_TOKEN`).
+  - Management commands `pull_forms` and `push_forms` for CLI/scripted sync.
+  - **Admin UI — Pull from Remote** (`/admin/.../formdefinition/sync-pull/`) — multi-step page: pick a configured remote from a dropdown (or enter URL + token manually), preview available forms with checkboxes, import selected forms with conflict-mode control.
+  - **Admin UI — Push to Remote** (`/admin/.../formdefinition/sync-push/`) — accessible via the *"Push selected forms to a remote instance"* bulk action; shows forms to push, lets you pick the destination remote, and displays per-form results.
+  - **Admin UI — Import JSON** (`/admin/.../formdefinition/sync-import/`) — upload a `.json` file or paste raw JSON; supports `update`, `skip`, and `new_slug` conflict modes.
+  - **Admin action — Export as JSON** — downloads selected forms as a `.json` file directly from the changelist.
+  - **Form Definitions changelist toolbar** now includes *↓ Pull from Remote*, *↑ Push All to Remote*, and *⤴ Import JSON* shortcut buttons.
+  - New settings:
+    - `FORMS_SYNC_API_TOKEN` — shared secret protecting the sync HTTP endpoints.
+    - `FORMS_SYNC_REMOTES` — named list of remote instances with URL and token, enabling dropdown selection in the admin UI (ideal for Kubernetes deployments where kubectl exec is impractical).
+
 ## [0.13.4] - 2026-02-21
 
 ### Changed

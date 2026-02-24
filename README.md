@@ -98,6 +98,15 @@ DB Field Mappings:
 
 See [Post-Submission Actions Guide](docs/POST_SUBMISSION_ACTIONS.md) for detailed configuration.
 
+### 🔄 Cross-Instance Form Sync (Push / Pull)
+Move form definitions between environments (test → staging → prod) entirely from the Django Admin — no shell access or `kubectl exec` required:
+- **Pull from Remote** — connect to any configured remote instance, preview available forms, and import selected ones with one click
+- **Push to Remote** — select forms in the changelist and push them to any destination instance
+- **Import / Export JSON** — download a portable `.json` snapshot or upload one from another instance
+- **Conflict modes** — `update` (overwrite), `skip` (leave untouched), or `new_slug` (create a copy)
+- **`FORMS_SYNC_REMOTES`** setting — pre-configure named instances (URL + token) so admins pick from a dropdown instead of typing credentials every time
+- HTTP endpoints (`/forms-sync/export/` and `/forms-sync/import/`) protected by a shared Bearer token (`FORMS_SYNC_API_TOKEN`) for scripted / CI use
+
 ### 🔒 Enterprise-Ready Security
 - LDAP/Active Directory authentication
 - Role-based permissions
@@ -267,13 +276,14 @@ GNU Lesser General Public License v3.0 (LGPLv3) - see [LICENSE](LICENSE) for det
 - [x] Audit logging
 
 ### Phase 2: Enhanced UX
-- [ ] Form builder UI (drag-and-drop)
-- [ ] Conditional field visibility (client-side)
-- [ ] File upload validation
-- [ ] Form templates/cloning
+- [x] Form builder UI (drag-and-drop)
+- [x] Conditional field visibility (client-side)
+- [x] File upload validation
+- [x] Form templates/cloning
 - [ ] Dashboard analytics
 
 ### Phase 3: Advanced Features
+- [x] Cross-instance form sync (push/pull) via Admin UI and HTTP API
 - [ ] REST API for form submission
 - [ ] Webhook support
 - [ ] Custom field types (signature, location, etc.)

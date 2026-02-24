@@ -8,6 +8,7 @@ This guide covers all configuration options for Django Forms Workflows.
 - [Data Sources](#data-sources)
 - [LDAP Integration](#ldap-integration)
 - [Database Integration](#database-integration)
+- [Cross-Instance Sync](#cross-instance-sync)
 - [Workflows](#workflows)
 - [Email Notifications](#email-notifications)
 - [File Uploads](#file-uploads)
@@ -333,4 +334,105 @@ The system will:
 1. Get the user's `external_id` from their UserProfile
 2. Query: `SELECT [column] FROM [schema].[table] WHERE ID_NUMBER = ?`
 3. Return the value to prefill the form field
+
+---
+
+## Cross-Instance Sync
+
+Django Forms Workflows supports pushing and pulling form definitions (including all fields, workflow stages, prefill sources, and post-submission actions) between multiple running instances. This is useful for promoting forms from a test or staging environment to production without shell access.
+
+### How it works
+
+Each instance exposes two HTTP endpoints under the app's URL prefix:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `forms-sync/export/` | `GET` | Export forms as JSON (optionally filtered by slug) |
+| `forms-sync/import/` | `POST` | Import a JSON payload of forms |
+
+Both endpoints require a `Bearer` token that must match `FORMS_SYNC_API_TOKEN` on the receiving instance.
+
+### Required setting — `FORMS_SYNC_API_TOKEN`
+
+Set on **every** instance that should accept or serve sync requests:
+
+```python
+# settings.py
+FORMS_SYNC_API_TOKEN = "your-shared-secret-here"
+```
+
+If this setting is absent the endpoints return `403 Forbidden`, effectively disabling sync.
+
+> **Security note:** use a long random secret and keep it out of version control (e.g. via environment variable: `FORMS_SYNC_API_TOKEN = env("FORMS_SYNC_API_TOKEN")`).
+
+### Optional setting — `FORMS_SYNC_REMOTES`
+
+Pre-configure named remote instances so that admin users can pick a destination from a dropdown instead of typing URLs and tokens every time. This is especially valuable in Kubernetes environments where `kubectl exec` is inconvenient.
+
+```python
+# settings.py
+FORMS_SYNC_REMOTES = [
+    {
+        "name": "Test Site",
+        "url": "https://test.example.com",
+        "token": "test-site-secret",
+    },
+    {
+        "name": "Production",
+        "url": "https://prod.example.com",
+        "token": "prod-site-secret",
+    },
+]
+```
+
+Each entry requires:
+- `name` — display label shown in the admin dropdown
+- `url` — base URL of the remote Django instance (no trailing slash required)
+- `token` — the `FORMS_SYNC_API_TOKEN` configured on that remote
+
+### Admin UI
+
+After configuration, the **Form Definitions** changelist in Django Admin gains three toolbar buttons:
+
+| Button | URL | Description |
+|---|---|---|
+| ↓ Pull from Remote | `sync-pull/` | Multi-step: pick remote → preview forms → import selected |
+| ↑ Push All to Remote | `sync-push/` | Push all (or selected) forms to a destination instance |
+| ⤴ Import JSON | `sync-import/` | Upload a `.json` file or paste raw JSON |
+
+There is also an **"Export selected forms as JSON"** and **"Push selected forms to a remote instance"** bulk action available from the changelist action dropdown.
+
+### Conflict modes
+
+All import operations accept a `conflict` parameter controlling what happens when a form with the same slug already exists on the destination:
+
+| Mode | Behaviour |
+|---|---|
+| `update` *(default)* | Overwrite the existing form definition |
+| `skip` | Leave the existing form untouched |
+| `new_slug` | Create a copy with an `_imported` suffix on the slug |
+
+### Management commands
+
+For scripted or CI-based sync workflows:
+
+```bash
+# Pull all forms from a remote instance
+python manage.py pull_forms --source-url https://test.example.com --token SECRET
+
+# Pull specific forms only
+python manage.py pull_forms --source-url https://test.example.com --token SECRET \
+    --slugs time-off-request,onboarding
+
+# Push selected forms to a remote instance
+python manage.py push_forms --dest-url https://prod.example.com --token SECRET \
+    --slugs time-off-request,onboarding
+
+# Dry-run (preview without writing)
+python manage.py pull_forms --source-url https://test.example.com --token SECRET --dry-run
+
+# Use skip conflict mode
+python manage.py pull_forms --source-url https://test.example.com --token SECRET \
+    --conflict skip
+```
 

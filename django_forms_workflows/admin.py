@@ -5,10 +5,15 @@ Provides a friendly admin interface to build forms (with fields),
 configure approval workflows, and review submissions and audit logs.
 """
 
+import json
+
 from django.contrib import admin
 from django.db import transaction
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.shortcuts import render
 from django.urls import path, reverse
 from django.utils.html import format_html
+from django.views.decorators.http import require_POST
 
 from .models import (
     ActionExecutionLog,
@@ -222,7 +227,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     inlines = [FormFieldInline]
     filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
-    actions = ["clone_forms"]
+    actions = ["clone_forms", "export_as_json", "push_forms_to_remote"]
 
     fieldsets = (
         (
@@ -403,6 +408,238 @@ class FormDefinitionAdmin(admin.ModelAdmin):
 
     clone_forms.short_description = "Clone selected forms"
 
+    @admin.action(description="Export selected forms as JSON")
+    def export_as_json(self, request, queryset):
+        """Admin action: download selected FormDefinitions as a JSON file."""
+        from .sync_api import build_export_payload
+
+        payload = build_export_payload(queryset)
+        filename = "forms_export.json"
+        response = HttpResponse(
+            json.dumps(payload, indent=2),
+            content_type="application/json",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    def sync_import_admin_view(self, request):
+        """Admin page for importing form definitions from a JSON file or raw JSON."""
+        from .sync_api import import_payload
+
+        context = dict(self.admin_site.each_context(request))
+        context["title"] = "Import Form Definitions"
+        context["opts"] = self.model._meta
+
+        if request.method == "POST":
+            conflict = request.POST.get("conflict", "update")
+            json_text = request.POST.get("json_text", "").strip()
+            uploaded = request.FILES.get("json_file")
+
+            raw = None
+            if uploaded:
+                try:
+                    raw = uploaded.read().decode("utf-8")
+                except Exception as exc:
+                    context["error"] = f"Could not read uploaded file: {exc}"
+                    return render(request, "admin/django_forms_workflows/sync_import.html", context)
+            elif json_text:
+                raw = json_text
+
+            if not raw:
+                context["error"] = "Please upload a JSON file or paste JSON text."
+                return render(request, "admin/django_forms_workflows/sync_import.html", context)
+
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                context["error"] = f"Invalid JSON: {exc}"
+                return render(request, "admin/django_forms_workflows/sync_import.html", context)
+
+            try:
+                results = import_payload(payload, conflict=conflict)
+            except Exception as exc:
+                context["error"] = f"Import failed: {exc}"
+                return render(request, "admin/django_forms_workflows/sync_import.html", context)
+
+            counts = {"created": 0, "updated": 0, "skipped": 0}
+            for _, action in results:
+                counts[action] = counts.get(action, 0) + 1
+
+            context["results"] = results
+            context["counts"] = counts
+
+        return render(request, "admin/django_forms_workflows/sync_import.html", context)
+
+    # ── Push/Pull admin actions & views ───────────────────────────────────────
+
+    @admin.action(description="Push selected forms to a remote instance")
+    def push_forms_to_remote(self, request, queryset):
+        """Admin action: redirect to the push view with selected form PKs."""
+        pks = ",".join(str(pk) for pk in queryset.values_list("pk", flat=True))
+        push_url = reverse("admin:formdefinition_sync_push")
+        return HttpResponseRedirect(f"{push_url}?pks={pks}")
+
+    def sync_pull_admin_view(self, request):
+        """Multi-step admin page for pulling form definitions from a remote instance.
+
+        Step 0 (GET)  – show remote picker (configured remotes + manual URL/token)
+        Step 1 (POST) – fetch available forms from the remote, show checkbox list
+        Step 2 (POST) – import selected forms, show results
+        """
+        from .sync_api import fetch_remote_payload, get_sync_remotes, import_payload
+
+        context = dict(self.admin_site.each_context(request))
+        context["title"] = "Pull Forms from Remote"
+        context["opts"] = self.model._meta
+        context["remotes"] = get_sync_remotes()
+        context["step"] = 0
+
+        if request.method == "POST":
+            step = request.POST.get("step", "1")
+
+            # ── Step 1: fetch remote form list ──────────────────────────────
+            if step == "1":
+                remote_idx = request.POST.get("remote_idx", "")
+                manual_url = request.POST.get("manual_url", "").strip()
+                manual_token = request.POST.get("manual_token", "").strip()
+
+                if remote_idx != "":
+                    try:
+                        remote = context["remotes"][int(remote_idx)]
+                        remote_url = remote["url"]
+                        remote_token = remote["token"]
+                        remote_name = remote.get("name", remote_url)
+                    except (IndexError, KeyError, ValueError):
+                        context["error"] = "Invalid remote selection."
+                        return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+                elif manual_url and manual_token:
+                    remote_url = manual_url
+                    remote_token = manual_token
+                    remote_name = manual_url
+                else:
+                    context["error"] = "Please select a configured remote or enter a URL and token."
+                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+                try:
+                    payload = fetch_remote_payload(remote_url, remote_token)
+                except Exception as exc:
+                    context["error"] = f"Could not connect to remote: {exc}"
+                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+                remote_forms = payload.get("forms", [])
+                context["step"] = 1
+                context["remote_url"] = remote_url
+                context["remote_token"] = remote_token
+                context["remote_name"] = remote_name
+                context["remote_forms"] = remote_forms
+                return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+            # ── Step 2: import selected forms ───────────────────────────────
+            if step == "2":
+                remote_url = request.POST.get("remote_url", "").strip()
+                remote_token = request.POST.get("remote_token", "").strip()
+                selected_slugs = request.POST.getlist("slugs")
+                conflict = request.POST.get("conflict", "update")
+
+                if not selected_slugs:
+                    context["error"] = "No forms selected."
+                    context["step"] = 0
+                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+                try:
+                    payload = fetch_remote_payload(remote_url, remote_token, slugs=selected_slugs)
+                except Exception as exc:
+                    context["error"] = f"Could not fetch selected forms: {exc}"
+                    context["step"] = 0
+                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+                try:
+                    results = import_payload(payload, conflict=conflict)
+                except Exception as exc:
+                    context["error"] = f"Import failed: {exc}"
+                    context["step"] = 0
+                    return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+                counts = {"created": 0, "updated": 0, "skipped": 0}
+                for _, action in results:
+                    counts[action] = counts.get(action, 0) + 1
+
+                context["step"] = 2
+                context["results"] = results
+                context["counts"] = counts
+                return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+        return render(request, "admin/django_forms_workflows/sync_pull.html", context)
+
+    def sync_push_admin_view(self, request):
+        """Admin page for pushing local form definitions to a remote instance.
+
+        Arrives with ``?pks=1,2,3`` (selected from the changelist action) or
+        without PKs (push all forms).
+
+        Step 0 (GET)  – show forms to be pushed + remote picker
+        Step 1 (POST) – execute push, show results
+        """
+        from .sync_api import get_sync_remotes, push_to_remote
+
+        context = dict(self.admin_site.each_context(request))
+        context["title"] = "Push Forms to Remote"
+        context["opts"] = self.model._meta
+        context["remotes"] = get_sync_remotes()
+        context["step"] = 0
+
+        # Resolve form queryset from ?pks= query param or POST field
+        pks_raw = request.GET.get("pks") or request.POST.get("pks", "")
+        if pks_raw:
+            try:
+                pk_list = [int(p) for p in pks_raw.split(",") if p.strip().isdigit()]
+            except ValueError:
+                pk_list = []
+            queryset = self.model.objects.filter(pk__in=pk_list)
+        else:
+            queryset = self.model.objects.all()
+
+        context["forms_to_push"] = queryset
+        context["pks"] = pks_raw
+
+        if request.method == "POST":
+            step = request.POST.get("step", "push")
+            if step == "push":
+                remote_idx = request.POST.get("remote_idx", "")
+                manual_url = request.POST.get("manual_url", "").strip()
+                manual_token = request.POST.get("manual_token", "").strip()
+                conflict = request.POST.get("conflict", "update")
+
+                if remote_idx != "":
+                    try:
+                        remote = context["remotes"][int(remote_idx)]
+                        remote_url = remote["url"]
+                        remote_token = remote["token"]
+                        remote_name = remote.get("name", remote_url)
+                    except (IndexError, KeyError, ValueError):
+                        context["error"] = "Invalid remote selection."
+                        return render(request, "admin/django_forms_workflows/sync_push.html", context)
+                elif manual_url and manual_token:
+                    remote_url = manual_url
+                    remote_token = manual_token
+                    remote_name = manual_url
+                else:
+                    context["error"] = "Please select a configured remote or enter a URL and token."
+                    return render(request, "admin/django_forms_workflows/sync_push.html", context)
+
+                try:
+                    result = push_to_remote(remote_url, remote_token, queryset, conflict=conflict)
+                except Exception as exc:
+                    context["error"] = f"Push failed: {exc}"
+                    return render(request, "admin/django_forms_workflows/sync_push.html", context)
+
+                context["step"] = 1
+                context["remote_name"] = remote_name
+                context["push_result"] = result
+                return render(request, "admin/django_forms_workflows/sync_push.html", context)
+
+        return render(request, "admin/django_forms_workflows/sync_push.html", context)
+
     def get_urls(self):
         """Add custom URLs for the form builder and workflow builder"""
         urls = super().get_urls()
@@ -473,6 +710,22 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                     workflow_builder_views.workflow_builder_save
                 ),
                 name="workflow_builder_save",
+            ),
+            # Sync URLs
+            path(
+                "sync-import/",
+                self.admin_site.admin_view(self.sync_import_admin_view),
+                name="formdefinition_sync_import",
+            ),
+            path(
+                "sync-pull/",
+                self.admin_site.admin_view(self.sync_pull_admin_view),
+                name="formdefinition_sync_pull",
+            ),
+            path(
+                "sync-push/",
+                self.admin_site.admin_view(self.sync_push_admin_view),
+                name="formdefinition_sync_push",
             ),
         ]
         return custom_urls + urls

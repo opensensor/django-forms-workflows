@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Import Form Definitions | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo;
+    <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_label|capfirst }}</a>
+    &rsaquo;
+    <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}">Form Definitions</a>
+    &rsaquo;
+    Import Form Definitions
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Import Form Definitions</h1>
+<p>
+    Upload a JSON file exported from another instance, or paste the JSON directly below.
+    Use <strong>Conflict mode</strong> to control what happens when a form with the same slug already exists.
+</p>
+<p>
+    Want to import directly from a live remote instance?
+    <a href="{% url 'admin:formdefinition_sync_pull' %}">↓ Pull from Remote</a>
+</p>
+
+{% if error %}
+<p class="errornote">{{ error }}</p>
+{% endif %}
+
+{% if results %}
+<h2>Import Results</h2>
+<p>
+    Created: <strong>{{ counts.created }}</strong> &nbsp;|&nbsp;
+    Updated: <strong>{{ counts.updated }}</strong> &nbsp;|&nbsp;
+    Skipped: <strong>{{ counts.skipped }}</strong>
+</p>
+<table>
+    <thead>
+        <tr>
+            <th>Slug</th>
+            <th>Name</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for form_obj, action in results %}
+        <tr>
+            <td>
+                <a href="{% url 'admin:django_forms_workflows_formdefinition_change' form_obj.pk %}">
+                    {{ form_obj.slug }}
+                </a>
+            </td>
+            <td>{{ form_obj.name }}</td>
+            <td>
+                {% if action == "created" %}
+                    <span style="color: #28a745; font-weight: bold;">✓ Created</span>
+                {% elif action == "updated" %}
+                    <span style="color: #ffc107; font-weight: bold;">↻ Updated</span>
+                {% else %}
+                    <span style="color: #6c757d;">— Skipped</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<br>
+<a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button">
+    ← Back to Form Definitions
+</a>
+{% else %}
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+        <div class="form-row">
+            <div>
+                <label for="id_json_file"><strong>JSON File:</strong></label>
+                <input type="file" id="id_json_file" name="json_file" accept=".json">
+                <p class="help">Upload a <code>.json</code> file exported from another instance.</p>
+            </div>
+        </div>
+        <div class="form-row">
+            <div>
+                <label for="id_json_text"><strong>Or paste JSON:</strong></label>
+                <textarea id="id_json_text" name="json_text" rows="12"
+                    style="width: 100%; font-family: monospace; font-size: 12px;"
+                    placeholder='{ "schema_version": 1, "forms": [ ... ] }'></textarea>
+            </div>
+        </div>
+        <div class="form-row">
+            <div>
+                <label for="id_conflict"><strong>Conflict mode:</strong></label>
+                <select id="id_conflict" name="conflict">
+                    <option value="update">update — overwrite existing forms</option>
+                    <option value="skip">skip — leave existing forms untouched</option>
+                    <option value="new_slug">new_slug — create a copy with _imported suffix</option>
+                </select>
+                <p class="help">Controls what happens when a form with the same slug already exists locally.</p>
+            </div>
+        </div>
+    </fieldset>
+    <div class="submit-row">
+        <input type="submit" value="Import" class="default">
+        <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button cancel-link">
+            Cancel
+        </a>
+    </div>
+</form>
+{% endif %}
+{% endblock %}
+

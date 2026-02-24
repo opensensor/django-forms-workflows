@@ -1,0 +1,127 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Push Forms to Remote | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo;
+    <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_label|capfirst }}</a>
+    &rsaquo;
+    <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}">Form Definitions</a>
+    &rsaquo;
+    Push Forms to Remote
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Push Forms to Remote</h1>
+
+{% if error %}
+<p class="errornote">{{ error }}</p>
+{% endif %}
+
+{# ── Step 1: Results ───────────────────────────────────────────────────── #}
+{% if step == 1 %}
+<p>Forms pushed successfully to <strong>{{ remote_name }}</strong>.</p>
+{% with r=push_result %}
+<p>
+    Created: <strong>{{ r.created }}</strong> &nbsp;|&nbsp;
+    Updated: <strong>{{ r.updated }}</strong> &nbsp;|&nbsp;
+    Skipped: <strong>{{ r.skipped }}</strong>
+</p>
+{% if r.results %}
+<table>
+    <thead>
+        <tr><th>Slug</th><th>Name</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+        {% for row in r.results %}
+        <tr>
+            <td><code>{{ row.slug }}</code></td>
+            <td>{{ row.name }}</td>
+            <td>
+                {% if row.action == "created" %}<span style="color:#28a745;font-weight:bold;">✓ Created</span>
+                {% elif row.action == "updated" %}<span style="color:#ffc107;font-weight:bold;">↻ Updated</span>
+                {% else %}<span style="color:#6c757d;">— Skipped</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endwith %}
+<br>
+<a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button">
+    ← Back to Form Definitions
+</a>
+
+{# ── Step 0: Confirm + pick remote ────────────────────────────────────── #}
+{% else %}
+<h2>Forms to be pushed</h2>
+{% if forms_to_push %}
+<table>
+    <thead>
+        <tr><th>Slug</th><th>Name</th><th>Category</th></tr>
+    </thead>
+    <tbody>
+        {% for form in forms_to_push %}
+        <tr>
+            <td><code>{{ form.slug }}</code></td>
+            <td>{{ form.name }}</td>
+            <td>{{ form.category|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No forms selected. All forms will be pushed.</p>
+{% endif %}
+
+<h2>Destination</h2>
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="step" value="push">
+    <input type="hidden" name="pks" value="{{ pks }}">
+    <fieldset class="module aligned">
+        {% if remotes %}
+        <div class="form-row">
+            <label for="id_remote_idx"><strong>Remote instance:</strong></label>
+            <select id="id_remote_idx" name="remote_idx">
+                <option value="">— enter manually below —</option>
+                {% for remote in remotes %}
+                <option value="{{ forloop.counter0 }}">{{ remote.name }} ({{ remote.url }})</option>
+                {% endfor %}
+            </select>
+            <p class="help">Configured via <code>FORMS_SYNC_REMOTES</code> in Django settings.</p>
+        </div>
+        <div class="form-row"><hr style="border-color:#ddd;"></div>
+        {% endif %}
+        <div class="form-row">
+            <label for="id_manual_url"><strong>Or enter URL manually:</strong></label>
+            <input type="url" id="id_manual_url" name="manual_url" style="width:50%;" placeholder="https://prod.example.com">
+        </div>
+        <div class="form-row">
+            <label for="id_manual_token"><strong>API token:</strong></label>
+            <input type="password" id="id_manual_token" name="manual_token" style="width:50%;">
+        </div>
+        <div class="form-row">
+            <label for="id_conflict"><strong>Conflict mode:</strong></label>
+            <select id="id_conflict" name="conflict">
+                <option value="update">update — overwrite existing forms</option>
+                <option value="skip">skip — leave existing forms untouched</option>
+                <option value="new_slug">new_slug — create a copy with _imported suffix</option>
+            </select>
+            <p class="help">Controls what happens when a form with the same slug already exists on the remote.</p>
+        </div>
+    </fieldset>
+    <div class="submit-row">
+        <input type="submit" value="Push Forms →" class="default"
+            onclick="return confirm('Push {{ forms_to_push.count }} form(s) to the selected remote?')">
+        <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+</form>
+{% endif %}
+{% endblock %}
+

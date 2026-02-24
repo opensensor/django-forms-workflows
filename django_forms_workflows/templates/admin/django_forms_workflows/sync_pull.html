@@ -1,0 +1,152 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Pull Forms from Remote | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo;
+    <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_label|capfirst }}</a>
+    &rsaquo;
+    <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}">Form Definitions</a>
+    &rsaquo;
+    Pull Forms from Remote
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Pull Forms from Remote</h1>
+
+{% if error %}
+<p class="errornote">{{ error }}</p>
+{% endif %}
+
+{# ── Step 2: Results ──────────────────────────────────────────────────── #}
+{% if step == 2 %}
+<h2>Import Results</h2>
+<p>
+    Created: <strong>{{ counts.created }}</strong> &nbsp;|&nbsp;
+    Updated: <strong>{{ counts.updated }}</strong> &nbsp;|&nbsp;
+    Skipped: <strong>{{ counts.skipped }}</strong>
+</p>
+<table>
+    <thead>
+        <tr><th>Slug</th><th>Name</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+        {% for form_obj, action in results %}
+        <tr>
+            <td>
+                <a href="{% url 'admin:django_forms_workflows_formdefinition_change' form_obj.pk %}">
+                    {{ form_obj.slug }}
+                </a>
+            </td>
+            <td>{{ form_obj.name }}</td>
+            <td>
+                {% if action == "created" %}<span style="color:#28a745;font-weight:bold;">✓ Created</span>
+                {% elif action == "updated" %}<span style="color:#ffc107;font-weight:bold;">↻ Updated</span>
+                {% else %}<span style="color:#6c757d;">— Skipped</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<br>
+<a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button">
+    ← Back to Form Definitions
+</a>
+
+{# ── Step 1: Choose forms to import ──────────────────────────────────── #}
+{% elif step == 1 %}
+<p>Connected to <strong>{{ remote_name }}</strong>. Select the forms you want to import:</p>
+{% if remote_forms %}
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="step" value="2">
+    <input type="hidden" name="remote_url" value="{{ remote_url }}">
+    <input type="hidden" name="remote_token" value="{{ remote_token }}">
+    <fieldset class="module aligned">
+        <div class="form-row">
+            <table>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="select-all" title="Select all"></th>
+                        <th>Slug</th>
+                        <th>Name</th>
+                        <th>Category</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in remote_forms %}
+                    <tr>
+                        <td><input type="checkbox" name="slugs" value="{{ form.slug }}" checked></td>
+                        <td><code>{{ form.slug }}</code></td>
+                        <td>{{ form.name }}</td>
+                        <td>{{ form.category|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="form-row">
+            <label for="id_conflict"><strong>Conflict mode:</strong></label>
+            <select id="id_conflict" name="conflict">
+                <option value="update">update — overwrite existing forms</option>
+                <option value="skip">skip — leave existing forms untouched</option>
+                <option value="new_slug">new_slug — create a copy with _imported suffix</option>
+            </select>
+        </div>
+    </fieldset>
+    <div class="submit-row">
+        <input type="submit" value="Import Selected" class="default">
+        <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+</form>
+<script>
+document.getElementById('select-all').addEventListener('change', function() {
+    document.querySelectorAll('input[name="slugs"]').forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% else %}
+<p>No forms found on the remote instance.</p>
+<a href="{% url 'admin:formdefinition_sync_pull' %}" class="button">← Try another remote</a>
+{% endif %}
+
+{# ── Step 0: Remote picker ────────────────────────────────────────────── #}
+{% else %}
+<p>Choose a configured remote instance or enter a URL and token manually.</p>
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="step" value="1">
+    <fieldset class="module aligned">
+        {% if remotes %}
+        <div class="form-row">
+            <label for="id_remote_idx"><strong>Remote instance:</strong></label>
+            <select id="id_remote_idx" name="remote_idx">
+                <option value="">— enter manually below —</option>
+                {% for remote in remotes %}
+                <option value="{{ forloop.counter0 }}">{{ remote.name }} ({{ remote.url }})</option>
+                {% endfor %}
+            </select>
+            <p class="help">Configured via <code>FORMS_SYNC_REMOTES</code> in Django settings.</p>
+        </div>
+        <div class="form-row"><hr style="border-color:#ddd;"></div>
+        {% endif %}
+        <div class="form-row">
+            <label for="id_manual_url"><strong>Or enter URL manually:</strong></label>
+            <input type="url" id="id_manual_url" name="manual_url" style="width:50%;" placeholder="https://test.example.com">
+        </div>
+        <div class="form-row">
+            <label for="id_manual_token"><strong>API token:</strong></label>
+            <input type="password" id="id_manual_token" name="manual_token" style="width:50%;">
+        </div>
+    </fieldset>
+    <div class="submit-row">
+        <input type="submit" value="Connect &amp; List Forms →" class="default">
+        <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+</form>
+{% endif %}
+{% endblock %}
+

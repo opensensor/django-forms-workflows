@@ -80,10 +80,10 @@
                 <tbody>
                     {% for form in remote_forms %}
                     <tr>
-                        <td><input type="checkbox" name="slugs" value="{{ form.slug }}" checked></td>
-                        <td><code>{{ form.slug }}</code></td>
-                        <td>{{ form.name }}</td>
-                        <td>{{ form.category|default:"—" }}</td>
+                        <td><input type="checkbox" name="slugs" value="{{ form.form.slug }}" checked></td>
+                        <td><code>{{ form.form.slug }}</code></td>
+                        <td>{{ form.form.name }}</td>
+                        <td>{{ form.category.name|default:"—" }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

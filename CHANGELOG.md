@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.11] - 2026-02-24
+
+### Fixed
+- **Pull from Remote admin UI** — the form-selection table (Step 1) was showing blank Name, Slug, and Category columns for all remote forms. The template was reading `form.slug` / `form.name` / `form.category` directly from the serialized payload dict, but those fields are nested one level deeper at `form.form.slug`, `form.form.name`, and `form.category.name` respectively. The checkbox `value` attribute was also sending an empty string instead of the slug, so confirming the import would have silently imported nothing. All four references corrected in `sync_pull.html`.
+
 ### Added
 - **Cross-instance form sync (push/pull)** — export and import `FormDefinition` records (including all fields, workflow, prefill sources, and post-submission actions) between multiple Django instances without shell access.
   - `sync_api.py` — serialization/deserialization core; forms are keyed by slug, groups by name for portability across instances.

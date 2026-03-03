@@ -1490,7 +1490,9 @@ def bulk_export_submissions(request):
     wb.remove(wb.active)
 
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_fill = PatternFill(
+        start_color="4472C4", end_color="4472C4", fill_type="solid"
+    )
 
     for group in by_form.values():
         fd = group["form_def"]
@@ -1501,14 +1503,18 @@ def bulk_export_submissions(request):
         ws = wb.create_sheet(title=sheet_name)
 
         # Determine columns from form field definitions
-        fields = list(
-            fd.fields.exclude(field_type="section").order_by("order")
-        )
+        fields = list(fd.fields.exclude(field_type="section").order_by("order"))
         field_names = [f.field_name for f in fields]
         field_labels = [f.field_label for f in fields]
 
         # Build headers: metadata columns + form field columns
-        headers = ["Submission ID", "Submitter", "Status", "Submitted At", "Completed At"]
+        headers = [
+            "Submission ID",
+            "Submitter",
+            "Status",
+            "Submitted At",
+            "Completed At",
+        ]
         headers.extend(field_labels)
 
         for col_idx, header in enumerate(headers, start=1):
@@ -1529,12 +1535,16 @@ def bulk_export_submissions(request):
             ws.cell(
                 row=row_idx,
                 column=4,
-                value=sub.submitted_at.strftime("%Y-%m-%d %H:%M") if sub.submitted_at else "",
+                value=sub.submitted_at.strftime("%Y-%m-%d %H:%M")
+                if sub.submitted_at
+                else "",
             )
             ws.cell(
                 row=row_idx,
                 column=5,
-                value=sub.completed_at.strftime("%Y-%m-%d %H:%M") if sub.completed_at else "",
+                value=sub.completed_at.strftime("%Y-%m-%d %H:%M")
+                if sub.completed_at
+                else "",
             )
 
             form_data = sub.form_data or {}
@@ -1546,7 +1556,9 @@ def bulk_export_submissions(request):
                 # Handle lists (multiselect, checkboxes)
                 elif isinstance(value, list):
                     value = ", ".join(str(v) for v in value)
-                ws.cell(row=row_idx, column=field_col, value=str(value) if value else "")
+                ws.cell(
+                    row=row_idx, column=field_col, value=str(value) if value else ""
+                )
 
         # Auto-size columns (approximate)
         for col_idx in range(1, len(headers) + 1):
@@ -1555,9 +1567,9 @@ def bulk_export_submissions(request):
                 cell_len = len(str(ws.cell(row=row_idx, column=col_idx).value or ""))
                 if cell_len > max_len:
                     max_len = cell_len
-            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = min(
-                max_len + 4, 50
-            )
+            ws.column_dimensions[
+                ws.cell(row=1, column=col_idx).column_letter
+            ].width = min(max_len + 4, 50)
 
     # Serialize workbook to response
     from io import BytesIO

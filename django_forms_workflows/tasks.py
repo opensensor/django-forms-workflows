@@ -14,7 +14,8 @@ import logging
 from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime, time as dt_time, timedelta
+from datetime import datetime, timedelta
+from datetime import time as dt_time
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives

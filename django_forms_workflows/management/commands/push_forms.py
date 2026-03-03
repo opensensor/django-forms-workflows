@@ -13,8 +13,6 @@ Usage
         [--conflict update|skip|new_slug]
 """
 
-import sys
-
 import requests
 from django.core.management.base import BaseCommand, CommandError
 
@@ -112,7 +110,7 @@ class Command(BaseCommand):
         except requests.exceptions.ConnectionError as exc:
             raise CommandError(f"Could not connect to {dest_url}: {exc}") from exc
         except requests.exceptions.Timeout:
-            raise CommandError(f"Request timed out after {timeout}s.")
+            raise CommandError(f"Request timed out after {timeout}s.") from None
 
         if response.status_code == 401:
             raise CommandError("Authentication failed — check your --token value.")

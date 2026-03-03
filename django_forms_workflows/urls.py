@@ -28,6 +28,12 @@ urlpatterns = [
         views.submission_pdf,
         name="submission_pdf",
     ),
+    # Bulk export
+    path(
+        "submissions/bulk-export/",
+        views.bulk_export_submissions,
+        name="bulk_export_submissions",
+    ),
     # Sync API
     path("forms-sync/export/", sync_export_view, name="sync_export"),
     path("forms-sync/import/", sync_import_view, name="sync_import"),

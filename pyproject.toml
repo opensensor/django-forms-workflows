@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-forms-workflows"
-version = "0.13.11"
+version = "0.14.0"
 description = "Enterprise-grade, database-driven form builder with approval workflows and external data integration"
 license = "LGPL-3.0-only"
 readme = "README.md"
@@ -53,6 +53,9 @@ google-api-python-client = { version = ">=2.100", optional = true }
 # Optional PDF generation
 xhtml2pdf = { version = ">=0.2.11", optional = true }
 
+# Optional Excel export
+openpyxl = { version = ">=3.1", optional = true }
+
 # Optional documentation
 sphinx = { version = ">=7.0", optional = true }
 sphinx-rtd-theme = { version = ">=2.0", optional = true }
@@ -67,6 +70,7 @@ postgresql = ["psycopg2-binary"]
 mysql = ["mysqlclient"]
 gmail = ["google-auth", "google-api-python-client"]
 pdf = ["xhtml2pdf"]
+excel = ["openpyxl"]
 docs = ["sphinx", "sphinx-rtd-theme", "sphinx-autodoc-typehints"]
 all = [
   "django-auth-ldap", "python-ldap",
@@ -74,7 +78,8 @@ all = [
   "mssql-django", "pyodbc",
   "psycopg2-binary", "mysqlclient",
   "google-auth", "google-api-python-client",
-  "xhtml2pdf"
+  "xhtml2pdf",
+  "openpyxl"
 ]
 
 [tool.poetry.group.dev.dependencies]

@@ -702,6 +702,15 @@ class WorkflowDefinition(models.Model):
         help_text="Visual workflow builder layout (nodes and connections)",
     )
 
+    # Bulk Export
+    allow_bulk_export = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow users to select and bulk-export submissions for this form "
+            "into an Excel spreadsheet from the approval and submissions list views."
+        ),
+    )
+
     class Meta:
         verbose_name = "Workflow Definition"
         verbose_name_plural = "Workflow Definitions"

@@ -180,12 +180,25 @@
       <div id="searchContainer"></div>
     </div>
 
+    {# ── Bulk export form (wraps the table) ── #}
+    {% if any_exportable %}
+    <form id="bulkExportForm" method="post" action="{% url 'forms_workflows:bulk_export_submissions' %}">
+      {% csrf_token %}
+      <div class="mb-2 d-flex align-items-center gap-2">
+        <button type="submit" class="btn btn-sm btn-success" id="exportBtn" disabled>
+          <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Selected to Excel
+        </button>
+        <span class="text-muted small" id="selectedCount"></span>
+      </div>
+    {% endif %}
+
     {# ── Submissions table ── #}
     {% if submissions %}
       <div class="table-responsive">
         <table class="table table-hover" id="completedTable">
           <thead>
             <tr>
+              {% if any_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
               {% if not category_slug %}<th>Category</th>{% endif %}
               <th>Form</th>
               <th>Submitter</th>
@@ -198,6 +211,13 @@
           <tbody>
             {% for submission in submissions %}
             <tr>
+              {% if any_exportable %}
+              <td class="text-center">
+                {% if submission.form_definition.workflow and submission.form_definition.workflow.allow_bulk_export %}
+                  <input type="checkbox" name="submission_ids" value="{{ submission.id }}" class="export-check">
+                {% endif %}
+              </td>
+              {% endif %}
               {% if not category_slug %}
               <td>
                 {% with cat=submission.form_definition.category %}
@@ -256,6 +276,10 @@
       </div>
     {% endif %}
 
+    {% if any_exportable %}
+    </form>
+    {% endif %}
+
   </div>
 </div>
 {% endblock %}
@@ -267,9 +291,14 @@
 <script>
 $(document).ready(function() {
     if ($('#completedTable').length) {
+        var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
+        var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
         var table = $('#completedTable').DataTable({
-            order: [[{% if not category_slug %}4{% else %}3{% endif %}, 'desc']],
-            columnDefs: [{ orderable: false, targets: -1 }],
+            order: [[exportOffset + catOffset + 3, 'desc']],
+            columnDefs: [
+                { orderable: false, targets: -1 }{% if any_exportable %},
+                { orderable: false, targets: 0 }{% endif %}
+            ],
             pageLength: 25,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
@@ -320,6 +349,34 @@ $(document).ready(function() {
 
         $('.dataTables_info').parent().prepend(lengthSelect);
     }
+
+    // Bulk export checkbox handling
+    {% if any_exportable %}
+    function updateExportBtn() {
+        var checked = $('.export-check:checked').length;
+        $('#exportBtn').prop('disabled', checked === 0);
+        $('#selectedCount').text(checked > 0 ? checked + ' selected' : '');
+    }
+
+    $('#selectAll').on('change', function() {
+        var checked = $(this).prop('checked');
+        // Only check visible rows (current DataTables page)
+        if (table) {
+            table.$('.export-check').prop('checked', checked);
+        } else {
+            $('.export-check').prop('checked', checked);
+        }
+        updateExportBtn();
+    });
+
+    $(document).on('change', '.export-check', function() {
+        updateExportBtn();
+        // Uncheck "select all" if any row is unchecked
+        if (!$(this).prop('checked')) {
+            $('#selectAll').prop('checked', false);
+        }
+    });
+    {% endif %}
 });
 </script>
 {% endblock %}

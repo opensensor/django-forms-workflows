@@ -472,9 +472,15 @@ def my_submissions(request):
             submissions = submissions.filter(form_definition__slug=form_slug)
             active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
 
-    submissions = submissions.select_related("form_definition__category").order_by(
-        "-created_at"
-    )
+    submissions = submissions.select_related(
+        "form_definition__category",
+        "form_definition__workflow",
+    ).order_by("-created_at")
+
+    # Check if any currently-displayed submissions support bulk export
+    any_exportable = submissions.filter(
+        form_definition__workflow__allow_bulk_export=True
+    ).exists()
 
     return render(
         request,
@@ -488,6 +494,7 @@ def my_submissions(request):
             "form_counts": form_counts,
             "form_slug": form_slug,
             "active_form": active_form,
+            "any_exportable": any_exportable,
         },
     )
 
@@ -1071,8 +1078,14 @@ def completed_approvals(request):
 
     display_submissions = display_submissions.select_related(
         "form_definition__category",
+        "form_definition__workflow",
         "submitter",
     ).order_by("-completed_at", "-submitted_at")
+
+    # Check if any currently-displayed submissions support bulk export
+    any_exportable = display_submissions.filter(
+        form_definition__workflow__allow_bulk_export=True
+    ).exists()
 
     return render(
         request,
@@ -1088,6 +1101,7 @@ def completed_approvals(request):
             "form_slug": form_slug,
             "active_form": active_form,
             "status_filter": status_filter,
+            "any_exportable": any_exportable,
         },
     )
 
@@ -1395,6 +1409,169 @@ def get_client_ip(request):
     else:
         ip = request.META.get("REMOTE_ADDR")
     return ip
+
+
+@login_required
+@require_http_methods(["POST"])
+def bulk_export_submissions(request):
+    """Export selected submissions to an Excel spreadsheet.
+
+    Expects a POST body with a JSON list of submission IDs.
+    Only submissions whose WorkflowDefinition has ``allow_bulk_export=True``
+    are included.  The user must have view permission on each submission
+    (same rules as ``submission_detail``).
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+    except ImportError:
+        return HttpResponse(
+            "Excel export requires the openpyxl package. "
+            "Install it with: pip install openpyxl",
+            status=501,
+        )
+
+    # Parse submission IDs from form data
+    submission_ids_raw = request.POST.getlist("submission_ids")
+    if not submission_ids_raw:
+        # Also accept JSON body
+        try:
+            body = json.loads(request.body)
+            submission_ids_raw = body.get("submission_ids", [])
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    try:
+        submission_ids = [int(sid) for sid in submission_ids_raw]
+    except (ValueError, TypeError):
+        return HttpResponse("Invalid submission IDs.", status=400)
+
+    if not submission_ids:
+        return HttpResponse("No submissions selected.", status=400)
+
+    # Fetch submissions that are bulk-exportable
+    submissions = (
+        FormSubmission.objects.filter(id__in=submission_ids)
+        .filter(form_definition__workflow__allow_bulk_export=True)
+        .select_related("form_definition", "submitter")
+        .order_by("form_definition__name", "-submitted_at")
+    )
+
+    # Permission check — only include submissions the user may view
+    allowed = []
+    for sub in submissions:
+        can_view = (
+            sub.submitter == request.user
+            or request.user.is_superuser
+            or user_can_approve(request.user, sub)
+            or request.user.groups.filter(
+                id__in=sub.form_definition.admin_groups.all()
+            ).exists()
+        )
+        if can_view:
+            allowed.append(sub)
+
+    if not allowed:
+        return HttpResponse("No exportable submissions found.", status=404)
+
+    # Group submissions by form definition
+    from collections import OrderedDict
+
+    by_form: OrderedDict = OrderedDict()
+    for sub in allowed:
+        fd = sub.form_definition
+        if fd.id not in by_form:
+            by_form[fd.id] = {"form_def": fd, "submissions": []}
+        by_form[fd.id]["submissions"].append(sub)
+
+    # Build workbook — one sheet per form type
+    wb = Workbook()
+    # Remove default sheet
+    wb.remove(wb.active)
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+
+    for group in by_form.values():
+        fd = group["form_def"]
+        subs = group["submissions"]
+
+        # Sheet name (max 31 chars for Excel)
+        sheet_name = fd.name[:31]
+        ws = wb.create_sheet(title=sheet_name)
+
+        # Determine columns from form field definitions
+        fields = list(
+            fd.fields.exclude(field_type="section").order_by("order")
+        )
+        field_names = [f.field_name for f in fields]
+        field_labels = [f.field_label for f in fields]
+
+        # Build headers: metadata columns + form field columns
+        headers = ["Submission ID", "Submitter", "Status", "Submitted At", "Completed At"]
+        headers.extend(field_labels)
+
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+
+        # Write data rows
+        for row_idx, sub in enumerate(subs, start=2):
+            ws.cell(row=row_idx, column=1, value=sub.id)
+            ws.cell(
+                row=row_idx,
+                column=2,
+                value=sub.submitter.get_full_name() or sub.submitter.username,
+            )
+            ws.cell(row=row_idx, column=3, value=sub.get_status_display())
+            ws.cell(
+                row=row_idx,
+                column=4,
+                value=sub.submitted_at.strftime("%Y-%m-%d %H:%M") if sub.submitted_at else "",
+            )
+            ws.cell(
+                row=row_idx,
+                column=5,
+                value=sub.completed_at.strftime("%Y-%m-%d %H:%M") if sub.completed_at else "",
+            )
+
+            form_data = sub.form_data or {}
+            for field_col, fname in enumerate(field_names, start=6):
+                value = form_data.get(fname, "")
+                # Handle file upload dicts — just output filename
+                if isinstance(value, dict) and "filename" in value:
+                    value = value["filename"]
+                # Handle lists (multiselect, checkboxes)
+                elif isinstance(value, list):
+                    value = ", ".join(str(v) for v in value)
+                ws.cell(row=row_idx, column=field_col, value=str(value) if value else "")
+
+        # Auto-size columns (approximate)
+        for col_idx in range(1, len(headers) + 1):
+            max_len = len(str(ws.cell(row=1, column=col_idx).value or ""))
+            for row_idx in range(2, len(subs) + 2):
+                cell_len = len(str(ws.cell(row=row_idx, column=col_idx).value or ""))
+                if cell_len > max_len:
+                    max_len = cell_len
+            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = min(
+                max_len + 4, 50
+            )
+
+    # Serialize workbook to response
+    from io import BytesIO
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = 'attachment; filename="submissions_export.xlsx"'
+    return response
 
 
 def create_approval_tasks(submission):

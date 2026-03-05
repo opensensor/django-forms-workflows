@@ -51,39 +51,74 @@ class DynamicForm(forms.Form):
 
         # Build layout - exclude approval step fields
         layout_fields = []
-        for field in form_definition.fields.filter(approval_step__isnull=True).order_by(
-            "order"
-        ):
+        fields = list(
+            form_definition.fields.filter(approval_step__isnull=True).order_by("order")
+        )
+        i = 0
+        while i < len(fields):
+            field = fields[i]
             if field.field_type == "section":
                 layout_fields.append(
                     HTML(f'<h3 class="mt-4 mb-3">{field.field_label}</h3>')
                 )
-            else:
-                # Wrap field in a div with field-wrapper class for multi-step support
-                field_wrapper_class = f"field-wrapper field-{field.field_name}"
-
-                if field.width == "half":
+                i += 1
+            elif field.width == "half":
+                # Pair consecutive half-width fields into one row (FROM / TO columns)
+                next_field = fields[i + 1] if i + 1 < len(fields) else None
+                if (
+                    next_field
+                    and next_field.width == "half"
+                    and next_field.field_type != "section"
+                ):
                     layout_fields.append(
-                        Div(
-                            Row(
-                                Column(Field(field.field_name), css_class="col-md-6"),
+                        Row(
+                            Div(
+                                Field(field.field_name),
+                                css_class=f"col-md-6 field-wrapper field-{field.field_name}",
                             ),
-                            css_class=field_wrapper_class,
+                            Div(
+                                Field(next_field.field_name),
+                                css_class=f"col-md-6 field-wrapper field-{next_field.field_name}",
+                            ),
                         )
                     )
-                elif field.width == "third":
-                    layout_fields.append(
-                        Div(
-                            Row(
-                                Column(Field(field.field_name), css_class="col-md-4"),
-                            ),
-                            css_class=field_wrapper_class,
-                        )
-                    )
+                    i += 2
                 else:
                     layout_fields.append(
-                        Div(Field(field.field_name), css_class=field_wrapper_class)
+                        Div(
+                            Row(Column(Field(field.field_name), css_class="col-md-6")),
+                            css_class=f"field-wrapper field-{field.field_name}",
+                        )
                     )
+                    i += 1
+            elif field.width == "third":
+                layout_fields.append(
+                    Div(
+                        Row(
+                            Column(Field(field.field_name), css_class="col-md-4"),
+                        ),
+                        css_class=f"field-wrapper field-{field.field_name}",
+                    )
+                )
+                i += 1
+            elif field.width == "fourth":
+                layout_fields.append(
+                    Div(
+                        Row(
+                            Column(Field(field.field_name), css_class="col-md-3"),
+                        ),
+                        css_class=f"field-wrapper field-{field.field_name}",
+                    )
+                )
+                i += 1
+            else:
+                layout_fields.append(
+                    Div(
+                        Field(field.field_name),
+                        css_class=f"field-wrapper field-{field.field_name}",
+                    )
+                )
+                i += 1
 
         # Add submit buttons
         buttons = [Submit("submit", "Submit", css_class="btn btn-primary")]

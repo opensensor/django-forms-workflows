@@ -435,6 +435,7 @@ class FormField(models.Model):
             ("full", "Full Width"),
             ("half", "Half Width"),
             ("third", "One Third"),
+            ("fourth", "One Quarter"),
         ],
     )
 

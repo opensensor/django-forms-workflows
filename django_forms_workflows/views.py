@@ -560,6 +560,15 @@ def submission_detail(request, submission_id):
     form_data = _resolve_form_data_urls(submission.form_data)
     form_data_ordered = _build_ordered_form_data(submission, form_data)
 
+    # Elevated viewers (approvers / admins / superusers) may download PDFs of
+    # post_approval forms even before the submission is fully approved.
+    form_def = submission.form_definition
+    can_approve_pdf = (
+        request.user.is_superuser
+        or user_can_approve(request.user, submission)
+        or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+    )
+
     return render(
         request,
         "django_forms_workflows/submission_detail.html",
@@ -569,6 +578,7 @@ def submission_detail(request, submission_id):
             "stage_groups": stage_groups,
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
+            "can_approve_pdf": can_approve_pdf,
         },
     )
 
@@ -1239,9 +1249,17 @@ def submission_pdf(request, submission_id):
         return HttpResponseForbidden("PDF generation is not enabled for this form.")
 
     if pdf_setting == "post_approval" and submission.status != "approved":
-        return HttpResponseForbidden(
-            "PDF is only available after the submission has been approved."
+        # Approvers, admins, and superusers may download pending submissions.
+        # Only the submitter themselves must wait until the form is approved.
+        is_elevated = (
+            request.user.is_superuser
+            or user_can_approve(request.user, submission)
+            or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
         )
+        if not is_elevated:
+            return HttpResponseForbidden(
+                "PDF is only available after the submission has been approved."
+            )
 
     # --- build width-aware row groups for PDF layout ---
     pdf_rows = _build_pdf_rows(submission)

@@ -235,6 +235,10 @@
                     <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" data-download-spinner="Generating PDF…">
                         <i class="bi bi-file-earmark-pdf"></i> Download PDF
                     </a>
+                {% elif pdf == 'post_approval' and can_approve_pdf and submission.status != 'draft' %}
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-secondary" data-download-spinner="Generating PDF…">
+                        <i class="bi bi-file-earmark-pdf"></i> Download PDF (Pending)
+                    </a>
                 {% endif %}
             {% endwith %}
         </div>

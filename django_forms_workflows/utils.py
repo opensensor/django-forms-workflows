@@ -16,28 +16,60 @@ from .models import FormDefinition, FormSubmission
 logger = logging.getLogger(__name__)
 
 
+def user_can_access_category(user, category) -> bool:
+    """Return True if the user satisfies every allowed_groups restriction in the
+    category's ancestor chain.
+
+    Mirrors the hierarchy logic in ``_get_accessible_category_pks`` (views.py):
+    a category with no ``allowed_groups`` of its own inherits its parent's
+    restriction; a root category with no groups is open to all authenticated users.
+    """
+    cat = category
+    while cat is not None:
+        try:
+            allowed = cat.allowed_groups.all()
+            if allowed.exists():
+                if not user.groups.filter(id__in=allowed).exists():
+                    return False
+        except Exception:
+            pass
+        cat = cat.parent if getattr(cat, "parent_id", None) else None
+    return True
+
+
 def user_can_submit_form(user: User, form_def: FormDefinition) -> bool:
     """Return True if the user is allowed to submit the given form.
 
-    Rules:
-    - Superusers can submit any active form
-    - If the form has no submit_groups specified, any authenticated user may submit
-    - Otherwise, the user must belong to at least one of the submit_groups
+    Rules (applied in order):
+    1. Superusers and staff bypass all restrictions.
+    2. The user must satisfy the form-level ``submit_groups`` restriction (if any).
+    3. The user must satisfy the category-level ``allowed_groups`` restriction for
+       every ancestor of the form's category (same hierarchy logic as the form
+       list view).  This prevents bypassing category gates by knowing the URL.
     """
-    if getattr(user, "is_superuser", False):
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
         return True
 
-    # If no groups specified, treat as open to all authenticated users
+    # --- form-level: submit_groups ---
     try:
         has_groups = form_def.submit_groups.exists()
     except Exception:
         has_groups = False
 
-    if not has_groups:
-        return True
+    if has_groups:
+        user_group_ids = user.groups.values_list("id", flat=True)
+        if not form_def.submit_groups.filter(id__in=user_group_ids).exists():
+            return False
 
-    user_group_ids = user.groups.values_list("id", flat=True)
-    return form_def.submit_groups.filter(id__in=user_group_ids).exists()
+    # --- category-level: allowed_groups hierarchy ---
+    if getattr(form_def, "category_id", None):
+        try:
+            if not user_can_access_category(user, form_def.category):
+                return False
+        except Exception:
+            pass
+
+    return True
 
 
 def user_can_approve(user: User, submission: FormSubmission) -> bool:

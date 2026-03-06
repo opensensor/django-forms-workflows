@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-03-06
+
+### Fixed
+- **Security: form submission bypassed category permissions** — `user_can_submit_form` now enforces the full category `allowed_groups` ancestor-chain check (matching the `form_list` view logic). Previously, any authenticated user who knew a form's URL slug could submit it even if the form's category restricted access to specific groups. Both `form_submit` and `form_auto_save` benefit automatically since they both call `user_can_submit_form`.
+- Added `user_can_access_category` helper to `utils.py` for reusable, hierarchy-aware category access checks.
+
 ## [0.14.3] - 2026-03-06
 
 ### Added

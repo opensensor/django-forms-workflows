@@ -1211,8 +1211,8 @@ def submission_pdf(request, submission_id):
             "PDF is only available after the submission has been approved."
         )
 
-    # --- build ordered data (no presigned URLs needed for PDF) ---
-    form_data_ordered = _build_ordered_form_data(submission, submission.form_data or {})
+    # --- build width-aware row groups for PDF layout ---
+    pdf_rows = _build_pdf_rows(submission)
 
     # --- render HTML template to a string ---
     from django.template.loader import render_to_string
@@ -1222,7 +1222,7 @@ def submission_pdf(request, submission_id):
         {
             "submission": submission,
             "form_def": form_def,
-            "form_data_ordered": form_data_ordered,
+            "pdf_rows": pdf_rows,
             "request": request,
         },
     )
@@ -1394,6 +1394,113 @@ def _build_ordered_form_data(submission, form_data):
             )
 
     return ordered
+
+
+def _build_pdf_rows(submission):
+    """Return form fields grouped into display rows for PDF rendering.
+
+    Unlike :func:`_build_ordered_form_data`, this helper:
+    * includes ``section`` fields so section headers appear in the PDF.
+    * groups consecutive half-width fields into side-by-side *pair* rows.
+    * groups consecutive third-width fields into side-by-side *triple* rows.
+
+    Each row is a dict with one of the following shapes:
+
+    ``{'type': 'section',  'label': str}``
+        A section header row spanning the full table width.
+
+    ``{'type': 'full',  'fields': [entry]}``
+        A single field rendered across the full row width.
+
+    ``{'type': 'pair',  'fields': [entry, entry]}``
+        Two half-width fields rendered side-by-side.
+
+    ``{'type': 'triple',  'fields': [entry, entry, entry]}``
+        Three third-width fields rendered side-by-side.
+
+    Where ``entry`` is ``{'label', 'key', 'value', 'width'}``.
+    """
+    form_data = submission.form_data or {}
+    rows = []
+    pending_half: list = []
+    pending_third: list = []
+
+    def flush_half():
+        if len(pending_half) == 2:
+            rows.append({"type": "pair", "fields": list(pending_half)})
+        elif len(pending_half) == 1:
+            rows.append({"type": "full", "fields": list(pending_half)})
+        pending_half.clear()
+
+    def flush_third():
+        while len(pending_third) >= 3:
+            rows.append({"type": "triple", "fields": pending_third[:3]})
+            del pending_third[:3]
+        # 1 or 2 leftover thirds → fall back to full-width rows
+        for fd in pending_third:
+            rows.append({"type": "full", "fields": [fd]})
+        pending_third.clear()
+
+    seen_keys: set = set()
+
+    for field in submission.form_definition.fields.order_by("order"):
+        if field.field_type == "section":
+            flush_half()
+            flush_third()
+            rows.append({"type": "section", "label": field.field_label})
+            continue
+
+        key = field.field_name
+        if key not in form_data:
+            continue
+
+        seen_keys.add(key)
+        fd = {
+            "label": field.field_label,
+            "key": key,
+            "value": form_data[key],
+            "width": field.width,
+        }
+
+        if field.width == "half":
+            flush_third()
+            pending_half.append(fd)
+            if len(pending_half) == 2:
+                rows.append({"type": "pair", "fields": list(pending_half)})
+                pending_half.clear()
+        elif field.width == "third":
+            flush_half()
+            pending_third.append(fd)
+            if len(pending_third) == 3:
+                rows.append({"type": "triple", "fields": list(pending_third)})
+                pending_third.clear()
+        else:
+            flush_half()
+            flush_third()
+            rows.append({"type": "full", "fields": [fd]})
+
+    flush_half()
+    flush_third()
+
+    # Append any form_data keys not covered by field definitions (approval-step
+    # fields, legacy entries, etc.) so nothing is silently dropped.
+    for key, value in form_data.items():
+        if key not in seen_keys:
+            rows.append(
+                {
+                    "type": "full",
+                    "fields": [
+                        {
+                            "label": key.replace("_", " ").title(),
+                            "key": key,
+                            "value": value,
+                            "width": "full",
+                        }
+                    ],
+                }
+            )
+
+    return rows
 
 
 def _resolve_form_data_urls(form_data):

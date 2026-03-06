@@ -74,20 +74,26 @@
         .status-default   { color: #555;    font-weight: bold; text-transform: uppercase; }
 
         /* ── Data table ── */
+
+        /* Section header rows */
         .section-row td {
             background-color: #e8f0f7;
             color: #1a3a52;
             font-weight: bold;
             font-size: 8pt;
-            padding: 2pt 5pt;
+            padding: 3pt 5pt;
             border: 1px solid #b8ccd8;
             letter-spacing: 0.3pt;
             text-transform: uppercase;
         }
+
+        /* Main data table – 4 implicit columns */
         .data-table {
             width: 100%;
             border-collapse: collapse;
         }
+
+        /* Label cells (th) */
         .data-table th {
             background-color: #f5f5f5;
             font-weight: bold;
@@ -97,18 +103,28 @@
             padding: 2pt 5pt;
             text-align: left;
             vertical-align: top;
-            width: 30%;
         }
+
+        /* Value cells (td) */
         .data-table td {
             font-size: 8pt;
             border: 1px solid #d0d0d0;
             padding: 2pt 5pt;
             vertical-align: top;
         }
-        .data-table .alt td,
-        .data-table .alt th {
+
+        /* Alternating row tint */
+        .data-table .alt th,
+        .data-table .alt td {
             background-color: #fafafa;
         }
+
+        /* Full-width label column (single-field rows) */
+        .lbl-full  { width: 22%; }
+        /* Half-pair label columns */
+        .lbl-half  { width: 13%; }
+        /* Third-triple label columns */
+        .lbl-third { width: 9%;  }
 
         /* ── Footer ── */
         .footer-table {
@@ -170,20 +186,57 @@
 
     <!-- Form data -->
     <table class="data-table">
-        {% for entry in form_data_ordered %}
+        {% for row in pdf_rows %}
+
+        {% if row.type == 'section' %}
+        {# ── Section header ─────────────────────────────────────────────── #}
+        <tr class="section-row">
+            <td colspan="6">{{ row.label }}</td>
+        </tr>
+
+        {% elif row.type == 'pair' %}
+        {# ── Two half-width fields side by side ──────────────────────────── #}
         <tr class="{% cycle '' 'alt' %}">
-            <th>{{ entry.label }}</th>
-            <td>
-                {% if entry.value.filename %}
-                    {{ entry.value.filename }}{% if entry.value.size %} ({{ entry.value.size|filesizeformat }}){% endif %}
-                {% else %}
-                    {{ entry.value }}
-                {% endif %}
+            <th class="lbl-half">{{ row.fields.0.label }}</th>
+            <td style="width:37%">
+                {% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
+            </td>
+            <th class="lbl-half">{{ row.fields.1.label }}</th>
+            <td style="width:37%">
+                {% with v=row.fields.1.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
             </td>
         </tr>
+
+        {% elif row.type == 'triple' %}
+        {# ── Three third-width fields side by side ───────────────────────── #}
+        <tr class="{% cycle '' 'alt' %}">
+            <th class="lbl-third">{{ row.fields.0.label }}</th>
+            <td style="width:24%">
+                {% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
+            </td>
+            <th class="lbl-third">{{ row.fields.1.label }}</th>
+            <td style="width:24%">
+                {% with v=row.fields.1.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
+            </td>
+            <th class="lbl-third">{{ row.fields.2.label }}</th>
+            <td style="width:25%">
+                {% with v=row.fields.2.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
+            </td>
+        </tr>
+
+        {% else %}
+        {# ── Full-width field ────────────────────────────────────────────── #}
+        <tr class="{% cycle '' 'alt' %}">
+            <th class="lbl-full" colspan="1">{{ row.fields.0.label }}</th>
+            <td colspan="5">
+                {% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
+            </td>
+        </tr>
+        {% endif %}
+
         {% empty %}
         <tr>
-            <td colspan="2">No form data available.</td>
+            <td colspan="6">No form data available.</td>
         </tr>
         {% endfor %}
     </table>

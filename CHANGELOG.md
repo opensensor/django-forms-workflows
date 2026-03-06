@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.8] - 2026-03-06
+
+### Added
+- **PDF field-width layout** — Generated PDFs now respect the `width` setting configured on each `FormField`:
+  - `half` — consecutive half-width fields are grouped into side-by-side pairs within a single table row, matching the two-column layout seen on screen.
+  - `third` — consecutive third-width fields (groups of three) are rendered side-by-side in a three-column row.
+  - `full` — rendered as a standard single-field row spanning the full table width (unchanged behaviour).
+  - Lone half or partial third groups (odd-count sequences) fall back gracefully to full-width rows.
+- **PDF section headers** — `section` type fields now appear as bold dark-blue header rows in the PDF (they were previously omitted entirely).
+
+### Changed
+- `_build_pdf_rows()` helper added to `views.py` — walks all form fields (including sections) and groups them by width into structured row dicts passed to `submission_pdf.html`.
+- `submission_pdf.html` — replaced the flat two-column table with a flexible six-column table that handles `section`, `full`, `pair`, and `triple` row types.
+
 ## [0.14.7] - 2026-03-06
 
 ### Fixed

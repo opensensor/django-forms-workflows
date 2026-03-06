@@ -1093,7 +1093,7 @@ def completed_approvals(request):
 
     # --- Status filter (optional) ---
     status_filter = request.GET.get("status", "").strip()
-    if status_filter in ["approved", "rejected", "withdrawn"]:
+    if status_filter in ["approved", "rejected", "withdrawn", "pending_approval"]:
         display_submissions = display_submissions.filter(status=status_filter)
 
     display_submissions = display_submissions.select_related(
@@ -1106,6 +1106,20 @@ def completed_approvals(request):
     any_exportable = display_submissions.filter(
         form_definition__workflow__allow_bulk_export=True
     ).exists()
+
+    # --- Form fields for column picker (when a specific form is filtered) ---
+    form_fields = []
+    if form_slug and active_form:
+        try:
+            form_def_obj = FormDefinition.objects.get(slug=form_slug)
+            form_fields = list(
+                FormField.objects.filter(form_definition=form_def_obj)
+                .exclude(field_type__in=["section", "file"])
+                .order_by("order")
+                .values("field_name", "field_label")
+            )
+        except FormDefinition.DoesNotExist:
+            pass
 
     return render(
         request,
@@ -1122,6 +1136,7 @@ def completed_approvals(request):
             "active_form": active_form,
             "status_filter": status_filter,
             "any_exportable": any_exportable,
+            "form_fields": form_fields,
         },
     )
 

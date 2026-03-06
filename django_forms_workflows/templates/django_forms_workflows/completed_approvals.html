@@ -1,4 +1,5 @@
 {% extends 'django_forms_workflows/base.html' %}
+{% load forms_workflows_tags %}
 
 {% block title %}Approval History - {{ site_name }}{% endblock %}
 
@@ -57,6 +58,10 @@
     border-color: #86b7fe;
     box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
   }
+
+  /* Column picker */
+  #colPickerDropdown .dropdown-menu { max-height: 340px; overflow-y: auto; }
+  #colPickerDropdown .form-check { white-space: nowrap; }
 </style>
 {% endblock %}
 
@@ -176,6 +181,10 @@
            class="btn btn-sm {% if status_filter == 'withdrawn' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
           <i class="bi bi-dash-circle me-1"></i>Withdrawn
         </a>
+        <a href="?{% if category_slug %}category={{ category_slug }}&{% endif %}{% if form_slug %}form={{ form_slug }}&{% endif %}status=pending_approval"
+           class="btn btn-sm {% if status_filter == 'pending_approval' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}">
+          <i class="bi bi-hourglass-split me-1"></i>Pending Approval
+        </a>
       </div>
       <div id="searchContainer"></div>
     </div>
@@ -205,6 +214,7 @@
               <th>Status</th>
               <th>Submitted</th>
               <th>Completed</th>
+              {% for field in form_fields %}<th class="extra-form-col" data-field="{{ field.field_name }}">{{ field.field_label }}</th>{% endfor %}
               <th>Actions</th>
             </tr>
           </thead>
@@ -253,6 +263,7 @@
                   <span class="text-muted">—</span>
                 {% endif %}
               </td>
+              {% for field in form_fields %}<td class="extra-form-col">{{ submission.form_data|get_item:field.field_name|default:"—" }}</td>{% endfor %}
               <td>
                 <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-secondary">
                   <i class="bi bi-eye"></i> View
@@ -284,6 +295,34 @@
 
   </div>
 </div>
+
+{% if form_fields %}
+{# Column picker dropdown – hidden in-place; JS moves it next to the search box #}
+<div class="dropdown d-none" id="colPickerDropdown">
+  <button class="btn btn-sm btn-outline-secondary" type="button"
+          data-bs-toggle="dropdown" data-bs-auto-close="outside"
+          aria-expanded="false" title="Customize columns">
+    <i class="bi bi-gear-fill"></i>
+  </button>
+  <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 220px;">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <span class="fw-semibold small text-muted">Additional columns</span>
+      <button type="button" class="btn btn-link btn-sm p-0 small text-decoration-none" id="colToggleAll">Select all</button>
+    </div>
+    <hr class="my-1">
+    {% for field in form_fields %}
+    <div class="form-check">
+      <input class="form-check-input col-toggle-chk" type="checkbox"
+             id="col_chk_{{ field.field_name }}"
+             data-field="{{ field.field_name }}">
+      <label class="form-check-label small" for="col_chk_{{ field.field_name }}">
+        {{ field.field_label }}
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -295,12 +334,25 @@ $(document).ready(function() {
     if ($('#completedTable').length) {
         var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
         var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
+
+        // Compute extra-column DOM indices before DataTables init so they can
+        // be declared hidden from the start — preventing blank-space allocation.
+        var extraColTargets = [];
+        $('#completedTable thead th.extra-form-col').each(function() {
+            extraColTargets.push($(this).index());
+        });
+
+        var colDefs = [
+            { orderable: false, targets: -1 }{% if any_exportable %},
+            { orderable: false, targets: 0 }{% endif %}
+        ];
+        if (extraColTargets.length) {
+            colDefs.push({ visible: false, targets: extraColTargets });
+        }
+
         var table = $('#completedTable').DataTable({
             order: [[exportOffset + catOffset + 3, 'desc']],
-            columnDefs: [
-                { orderable: false, targets: -1 }{% if any_exportable %},
-                { orderable: false, targets: 0 }{% endif %}
-            ],
+            columnDefs: colDefs,
             pageLength: 25,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
@@ -320,7 +372,7 @@ $(document).ready(function() {
             }
         });
 
-        // Move search box to the filter row
+        // Build search box
         var searchBox = $('<div class="input-group input-group-sm" style="max-width: 300px;">' +
             '<span class="input-group-text bg-white"><i class="bi bi-search"></i></span>' +
             '<input type="search" class="form-control form-control-sm" placeholder="Search submissions..." aria-label="Search">' +
@@ -330,7 +382,77 @@ $(document).ready(function() {
             table.search(this.value).draw();
         });
 
+        {% if form_fields %}
+        // ── Column picker ──────────────────────────────────────────────────
+        var LS_KEY = 'completed_col_prefs_{{ form_slug }}';
+        var $picker = $('#colPickerDropdown').removeClass('d-none');
+
+        // Place search + gear together in the search container
+        var $controls = $('<div class="d-flex align-items-center gap-2"></div>');
+        $controls.append(searchBox).append($picker);
+        $('#searchContainer').append($controls);
+
+        // Build a stable fieldName → DataTables integer column-index map.
+        var colIndexMap = {};
+        $('th.extra-form-col').each(function() {
+            colIndexMap[$(this).data('field')] = table.column(this).index();
+        });
+
+        // Extra columns are already hidden via columnDefs at init time.
+
+        // Restore saved column preferences from localStorage
+        var savedCols = [];
+        try {
+            var stored = localStorage.getItem(LS_KEY);
+            if (stored) savedCols = JSON.parse(stored);
+        } catch(e) { savedCols = []; }
+
+        savedCols.forEach(function(fieldName) {
+            if (colIndexMap[fieldName] !== undefined) {
+                table.column(colIndexMap[fieldName]).visible(true);
+                $('#col_chk_' + fieldName).prop('checked', true);
+            }
+        });
+
+        // Update the Select all / Deselect all link label
+        function updateToggleAllLabel() {
+            var total = $('.col-toggle-chk').length;
+            var checked = $('.col-toggle-chk:checked').length;
+            $('#colToggleAll').text(checked === total ? 'Deselect all' : 'Select all');
+        }
+        updateToggleAllLabel();
+
+        // Select all / Deselect all
+        $('#colToggleAll').on('click', function() {
+            var allChecked = $('.col-toggle-chk:checked').length === $('.col-toggle-chk').length;
+            $('.col-toggle-chk').each(function() {
+                var fieldName = $(this).data('field');
+                if (colIndexMap[fieldName] !== undefined) {
+                    $(this).prop('checked', !allChecked);
+                    table.column(colIndexMap[fieldName]).visible(!allChecked);
+                }
+            });
+            var visible = !allChecked
+                ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get()
+                : [];
+            try { localStorage.setItem(LS_KEY, JSON.stringify(visible)); } catch(e) {}
+            updateToggleAllLabel();
+        });
+
+        // Toggle individual column visibility and persist preference
+        $(document).on('change', '.col-toggle-chk', function() {
+            var fieldName = $(this).data('field');
+            if (colIndexMap[fieldName] !== undefined) {
+                table.column(colIndexMap[fieldName]).visible(this.checked);
+            }
+            var visible = [];
+            $('.col-toggle-chk:checked').each(function() { visible.push($(this).data('field')); });
+            try { localStorage.setItem(LS_KEY, JSON.stringify(visible)); } catch(e) {}
+            updateToggleAllLabel();
+        });
+        {% else %}
         $('#searchContainer').append(searchBox);
+        {% endif %}
 
         // Add page length selector to bottom with improved styling
         var lengthSelect = $('<div class="d-flex align-items-center gap-2 mb-2">' +

@@ -705,6 +705,10 @@ def approval_inbox(request):
         except FormDefinition.DoesNotExist:
             pass
 
+    any_exportable = display_tasks.filter(
+        submission__form_definition__workflow__allow_bulk_export=True
+    ).exists()
+
     return render(
         request,
         "django_forms_workflows/approval_inbox.html",
@@ -719,6 +723,7 @@ def approval_inbox(request):
             "form_slug": form_slug,
             "active_form": active_form,
             "form_fields": form_fields,
+            "any_exportable": any_exportable,
         },
     )
 

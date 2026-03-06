@@ -172,12 +172,25 @@
     </div>
     {% endif %}
 
+    {# ── Bulk export form ── #}
+    {% if any_exportable %}
+    <form id="bulkExportForm" method="post" action="{% url 'forms_workflows:bulk_export_submissions' %}" data-download-spinner="Generating Excel…">
+      {% csrf_token %}
+      <div class="mb-2 d-flex align-items-center gap-2">
+        <button type="submit" class="btn btn-sm btn-success" id="exportBtn" disabled>
+          <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Selected to Excel
+        </button>
+        <span class="text-muted small" id="selectedCount"></span>
+      </div>
+    {% endif %}
+
     {# ── Task table ── #}
     {% if tasks %}
       <div class="table-responsive">
         <table class="table table-hover" id="approvalsTable">
           <thead>
             <tr>
+              {% if any_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
               {% if not category_slug %}<th>Category</th>{% endif %}
               <th>Actions</th>
               <th>Form</th>
@@ -190,6 +203,13 @@
           <tbody>
             {% for task in tasks %}
             <tr>
+              {% if any_exportable %}
+              <td class="text-center">
+                {% if task.submission.form_definition.workflow and task.submission.form_definition.workflow.allow_bulk_export %}
+                  <input type="checkbox" name="submission_ids" value="{{ task.submission.id }}" class="export-check">
+                {% endif %}
+              </td>
+              {% endif %}
               {% if not category_slug %}
               <td>
                 {% with cat=task.submission.form_definition.category %}
@@ -231,6 +251,10 @@
           You have no pending approvals at this time.
         {% endif %}
       </div>
+    {% endif %}
+
+    {% if any_exportable %}
+    </form>
     {% endif %}
 
   </div>
@@ -283,13 +307,16 @@ $(document).ready(function() {
             colIndexMap[$(this).data('field')] = idx;
         });
 
-        var colDefs = [{ orderable: false, targets: {% if not category_slug %}1{% else %}0{% endif %} }];
+        var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
+        var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
+        var colDefs = [{ orderable: false, targets: exportOffset + catOffset }];
+        {% if any_exportable %}colDefs.push({ orderable: false, targets: 0 });{% endif %}
         if (extraColTargets.length) {
             colDefs.push({ visible: false, targets: extraColTargets });
         }
 
         var table = $('#approvalsTable').DataTable({
-            order: [[{% if not category_slug %}5{% else %}4{% endif %}, 'desc']],
+            order: [[exportOffset + catOffset + 4, 'desc']],
             columnDefs: colDefs,
             pageLength: 25,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
@@ -408,6 +435,32 @@ $(document).ready(function() {
         });
         $('.dataTables_info').parent().prepend(lengthSelect);
     }
+
+    // ── Bulk export checkbox handling ──
+    {% if any_exportable %}
+    function updateExportBtn() {
+        var checked = $('.export-check:checked').length;
+        $('#exportBtn').prop('disabled', checked === 0);
+        $('#selectedCount').text(checked > 0 ? checked + ' selected' : '');
+    }
+
+    $('#selectAll').on('change', function() {
+        var checked = $(this).prop('checked');
+        if (typeof table !== 'undefined') {
+            table.$('.export-check').prop('checked', checked);
+        } else {
+            $('.export-check').prop('checked', checked);
+        }
+        $('.export-check').trigger('change');
+    });
+
+    $(document).on('change', '.export-check', function() {
+        updateExportBtn();
+        if (!$(this).prop('checked')) {
+            $('#selectAll').prop('checked', false);
+        }
+    });
+    {% endif %}
 });
 </script>
 {% endblock %}

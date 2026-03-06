@@ -228,11 +228,11 @@
             {% endif %}
             {% with pdf=submission.form_definition.pdf_generation %}
                 {% if pdf == 'anytime' and submission.status != 'draft' %}
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary">
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" data-download-spinner="Generating PDF…">
                         <i class="bi bi-file-earmark-pdf"></i> Download PDF
                     </a>
                 {% elif pdf == 'post_approval' and submission.status == 'approved' %}
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary">
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" data-download-spinner="Generating PDF…">
                         <i class="bi bi-file-earmark-pdf"></i> Download PDF
                     </a>
                 {% endif %}

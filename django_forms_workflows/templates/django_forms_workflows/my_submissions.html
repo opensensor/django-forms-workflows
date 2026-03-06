@@ -154,7 +154,7 @@
 
     {# ── Bulk export form (wraps the table) ── #}
     {% if any_exportable %}
-    <form id="bulkExportForm" method="post" action="{% url 'forms_workflows:bulk_export_submissions' %}" data-no-spinner data-loading-message="Generating Excel…">
+    <form id="bulkExportForm" method="post" action="{% url 'forms_workflows:bulk_export_submissions' %}" data-download-spinner="Generating Excel…">
       {% csrf_token %}
       <div class="mb-2 d-flex align-items-center gap-2">
         <button type="submit" class="btn btn-sm btn-success" id="exportBtn" disabled>

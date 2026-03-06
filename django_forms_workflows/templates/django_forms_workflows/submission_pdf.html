@@ -7,7 +7,7 @@
         /* ── Page setup ── */
         @page {
             size: letter;
-            margin: 1.5cm 1.5cm 2cm 1.5cm;
+            margin: 1.5cm 1cm 2cm 1cm;
             @bottom-left {
                 content: "{{ form_def.name }} — Submission #{{ submission.id }}";
                 font-family: Helvetica, Arial, sans-serif;
@@ -97,6 +97,12 @@
             border: 1px solid #d0d0d0;
             padding: 3pt 6pt;
             vertical-align: top;
+        }
+
+        /* Prevent rows from being sliced across page boundaries */
+        .data-table tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         /* Alternating row tint — WeasyPrint supports :nth-child fully */

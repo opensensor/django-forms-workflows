@@ -1133,6 +1133,12 @@ def completed_approvals(request):
         "submitter",
     ).order_by("-completed_at", "-submitted_at")
 
+    # Defer the form_data JSONB column (avg ~1.3 KB per row) unless the column
+    # picker is active — it's only needed when extra form-specific columns are
+    # being rendered (i.e. a specific form slug is selected).
+    if not form_slug:
+        display_submissions = display_submissions.defer("form_data")
+
     # Check if any currently-displayed submissions support bulk export
     any_exportable = display_submissions.filter(
         form_definition__workflow__allow_bulk_export=True

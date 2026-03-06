@@ -1,4 +1,5 @@
 {% extends 'django_forms_workflows/base.html' %}
+{% load forms_workflows_tags %}
 
 {% block title %}Approval Inbox - {{ site_name }}{% endblock %}
 
@@ -57,6 +58,10 @@
     border-color: #86b7fe;
     box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
   }
+
+  /* Column picker */
+  #colPickerDropdown .dropdown-menu { max-height: 340px; overflow-y: auto; }
+  #colPickerDropdown .form-check { white-space: nowrap; }
 </style>
 {% endblock %}
 
@@ -178,6 +183,7 @@
               <th>Submitter</th>
               <th>Step</th>
               <th>Submitted</th>
+              {% for field in form_fields %}<th class="extra-form-col" data-field="{{ field.field_name }}">{{ field.field_label }}</th>{% endfor %}
               <th>Actions</th>
             </tr>
           </thead>
@@ -200,6 +206,7 @@
               <td>{{ task.submission.submitter.get_full_name|default:task.submission.submitter.username }}</td>
               <td>{{ task.step_name }}</td>
               <td>{{ task.submission.submitted_at|date:"Y-m-d H:i" }}</td>
+              {% for field in form_fields %}<td class="extra-form-col">{{ task.submission.form_data|get_item:field.field_name|default:"—" }}</td>{% endfor %}
               <td>
                 <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-sm btn-primary">
                   <i class="bi bi-check-circle"></i> Review
@@ -228,6 +235,30 @@
 
   </div>
 </div>
+
+{% if form_fields %}
+{# Column picker dropdown – hidden in-place; JS moves it next to the search box #}
+<div class="dropdown d-none" id="colPickerDropdown">
+  <button class="btn btn-sm btn-outline-secondary" type="button"
+          data-bs-toggle="dropdown" data-bs-auto-close="outside"
+          aria-expanded="false" title="Customize columns">
+    <i class="bi bi-gear-fill"></i>
+  </button>
+  <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 220px;">
+    <p class="fw-semibold small mb-2 text-muted">Additional columns</p>
+    {% for field in form_fields %}
+    <div class="form-check">
+      <input class="form-check-input col-toggle-chk" type="checkbox"
+             id="col_chk_{{ field.field_name }}"
+             data-field="{{ field.field_name }}">
+      <label class="form-check-label small" for="col_chk_{{ field.field_name }}">
+        {{ field.field_label }}
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -239,7 +270,10 @@ $(document).ready(function() {
     if ($('#approvalsTable').length) {
         var table = $('#approvalsTable').DataTable({
             order: [[{% if not category_slug %}4{% else %}3{% endif %}, 'desc']],
-            columnDefs: [{ orderable: false, targets: -1 }],
+            columnDefs: [
+                { orderable: false, targets: -1 },
+                {% if form_fields %}{ visible: false, targets: '.extra-form-col' }{% endif %}
+            ],
             pageLength: 25,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
@@ -259,17 +293,52 @@ $(document).ready(function() {
             }
         });
 
-        // Move search box to the filter row
+        // Build search box
         var searchBox = $('<div class="input-group input-group-sm" style="max-width: 300px;">' +
             '<span class="input-group-text bg-white"><i class="bi bi-search"></i></span>' +
             '<input type="search" class="form-control form-control-sm" placeholder="Search approvals..." aria-label="Search">' +
             '</div>');
-
         searchBox.find('input').on('keyup change', function() {
             table.search(this.value).draw();
         });
 
+        {% if form_fields %}
+        // ── Column picker ──────────────────────────────────────────────────
+        var LS_KEY = 'approvals_col_prefs_{{ form_slug }}';
+        var $picker = $('#colPickerDropdown').removeClass('d-none');
+
+        // Place search + gear together in the search container
+        var $controls = $('<div class="d-flex align-items-center gap-2"></div>');
+        $controls.append(searchBox).append($picker);
+        $('#searchContainer').append($controls);
+
+        // Restore saved column preferences from localStorage
+        var savedCols = [];
+        try {
+            var stored = localStorage.getItem(LS_KEY);
+            if (stored) savedCols = JSON.parse(stored);
+        } catch(e) { savedCols = []; }
+
+        savedCols.forEach(function(fieldName) {
+            var $th = $('th.extra-form-col[data-field="' + fieldName + '"]');
+            if ($th.length) {
+                table.column($th).visible(true);
+                $('#col_chk_' + fieldName).prop('checked', true);
+            }
+        });
+
+        // Toggle column visibility and persist preference
+        $(document).on('change', '.col-toggle-chk', function() {
+            var fieldName = $(this).data('field');
+            var $th = $('th.extra-form-col[data-field="' + fieldName + '"]');
+            table.column($th).visible(this.checked);
+            var visible = [];
+            $('.col-toggle-chk:checked').each(function() { visible.push($(this).data('field')); });
+            try { localStorage.setItem(LS_KEY, JSON.stringify(visible)); } catch(e) {}
+        });
+        {% else %}
         $('#searchContainer').append(searchBox);
+        {% endif %}
 
         // Add page length selector to bottom with improved styling
         var lengthSelect = $('<div class="d-flex align-items-center gap-2 mb-2">' +
@@ -283,11 +352,9 @@ $(document).ready(function() {
             '</select>' +
             '<span class="text-muted small">entries</span>' +
             '</div>');
-
         lengthSelect.find('select').on('change', function() {
             table.page.len($(this).val()).draw();
         });
-
         $('.dataTables_info').parent().prepend(lengthSelect);
     }
 });

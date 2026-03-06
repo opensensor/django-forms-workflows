@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-03-06
+
+### Added
+- **Approval inbox column picker** — when the approvals queue is filtered down to a specific form, a gear icon (⚙) appears next to the search box. Clicking it opens a dropdown listing every field from that form's definition (sections and file-upload fields excluded). Checking a field adds it as a column to the table; unchecking removes it. Selected columns are remembered per-form in `localStorage` (`approvals_col_prefs_<form-slug>`) so preferences survive page reloads.
+
 ## [0.13.11] - 2026-02-24
 
 ### Fixed

@@ -20,7 +20,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .forms import DynamicForm
-from .models import ApprovalTask, AuditLog, FormDefinition, FormSubmission
+from .models import ApprovalTask, AuditLog, FormDefinition, FormField, FormSubmission
 from .utils import user_can_approve, user_can_submit_form
 
 logger = logging.getLogger(__name__)
@@ -691,6 +691,20 @@ def approval_inbox(request):
         "submission__submitter",
     ).order_by("-created_at")
 
+    # --- Form fields for the column picker (only when a specific form is active) ---
+    form_fields = []
+    if form_slug and active_form:
+        try:
+            form_def_obj = FormDefinition.objects.get(slug=form_slug)
+            form_fields = list(
+                FormField.objects.filter(form_definition=form_def_obj)
+                .exclude(field_type__in=["section", "file"])
+                .order_by("order")
+                .values("field_name", "field_label")
+            )
+        except FormDefinition.DoesNotExist:
+            pass
+
     return render(
         request,
         "django_forms_workflows/approval_inbox.html",
@@ -704,6 +718,7 @@ def approval_inbox(request):
             "form_counts": form_counts,
             "form_slug": form_slug,
             "active_form": active_form,
+            "form_fields": form_fields,
         },
     )
 

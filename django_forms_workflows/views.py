@@ -1989,9 +1989,14 @@ def completed_approvals_ajax(request):
             pass
 
     # --- Page slice ---
-    page_qs = qs.select_related(
+    base_qs = qs.select_related(
         "form_definition__category", "form_definition__workflow", "submitter"
-    ).defer("form_data" if not form_slug else None)[start : start + length]
+    )
+    # Only defer form_data when we don't need it (no per-form column expansion).
+    # .defer(None) is invalid Django — conditionally apply instead.
+    if not form_slug:
+        base_qs = base_qs.defer("form_data")
+    page_qs = base_qs[start : start + length]
 
     # --- Serialise rows ---
     data = []

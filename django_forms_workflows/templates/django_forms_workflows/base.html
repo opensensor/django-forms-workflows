@@ -65,11 +65,13 @@
                                 <i class="bi bi-file-earmark-check"></i> My Submissions
                             </a>
                         </li>
+                        {% if user_is_approver %}
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'forms_workflows:approval_inbox' %}">
                                 <i class="bi bi-inbox"></i> Approvals
                             </a>
                         </li>
+                        {% endif %}
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">

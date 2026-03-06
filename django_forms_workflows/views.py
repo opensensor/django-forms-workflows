@@ -987,16 +987,21 @@ def completed_approvals(request):
         )
     else:
         user_groups = request.user.groups.all()
-        base_submissions = (
-            FormSubmission.objects.filter(
-                status__in=["approved", "rejected", "withdrawn"]
+        # Filter on the ApprovalTask status rather than the FormSubmission status
+        # so that a user who approved/rejected their step on a multi-stage workflow
+        # can see that submission here even while later steps are still pending.
+        # Both conditions (assigned + action taken) must apply to the SAME task
+        # row, so we use a single filter() call with compound Q expressions.
+        completed_task_sub_ids = (
+            ApprovalTask.objects.filter(
+                models.Q(assigned_to=request.user)
+                | models.Q(assigned_group__in=user_groups),
+                status__in=["approved", "rejected"],
             )
-            .filter(
-                models.Q(approval_tasks__assigned_to=request.user)
-                | models.Q(approval_tasks__assigned_group__in=user_groups)
-            )
+            .values_list("submission_id", flat=True)
             .distinct()
         )
+        base_submissions = FormSubmission.objects.filter(id__in=completed_task_sub_ids)
 
     # --- Category counts (for the filter bar) ---
     raw_counts = (

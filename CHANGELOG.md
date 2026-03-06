@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-03-06
+
+### Fixed
+- **Approvals nav link visibility** — the *Approvals* link in the navbar is now only rendered for users who have an approver role (i.e. they or one of their groups has ever been assigned an `ApprovalTask`). Staff and superusers always see it. A new `user_is_approver` boolean is added to the template context via the `forms_workflows` context processor.
+- **Completed approvals missing mid-workflow steps** — `completed_approvals` previously filtered on `FormSubmission.status IN ('approved','rejected','withdrawn')`, which hid submissions that were still in progress (e.g. waiting for a later approval stage). The view now filters on `ApprovalTask.status IN ('approved','rejected')` scoped to the requesting user/groups, so an approver can see every submission where they have already taken action — even if subsequent stages are still pending.
+
 ## [0.14.4] - 2026-03-06
 
 ### Fixed

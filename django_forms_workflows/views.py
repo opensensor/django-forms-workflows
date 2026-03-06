@@ -718,6 +718,9 @@ def approval_inbox(request):
     any_exportable = display_tasks.filter(
         submission__form_definition__workflow__allow_bulk_export=True
     ).exists()
+    any_pdf_exportable = display_tasks.filter(
+        submission__form_definition__workflow__allow_bulk_pdf_export=True
+    ).exists()
 
     return render(
         request,
@@ -734,6 +737,7 @@ def approval_inbox(request):
             "active_form": active_form,
             "form_fields": form_fields,
             "any_exportable": any_exportable,
+            "any_pdf_exportable": any_pdf_exportable,
         },
     )
 
@@ -1751,6 +1755,105 @@ def bulk_export_submissions(request):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     response["Content-Disposition"] = 'attachment; filename="submissions_export.xlsx"'
+    return response
+
+
+@login_required
+@require_http_methods(["POST"])
+def bulk_export_submissions_pdf(request):
+    """Export selected submissions to a single merged PDF.
+
+    Renders each submission using the same field layout as the individual PDF
+    view, then concatenates all of them into one document via WeasyPrint
+    (one HTML render → one PDF, separated by CSS page-breaks).
+
+    Only submissions whose WorkflowDefinition has ``allow_bulk_pdf_export=True``
+    are included.  The user must have view permission on each submission.
+    """
+    try:
+        from weasyprint import HTML as WeasyPrintHTML  # noqa: N811
+    except ImportError:
+        return HttpResponse(
+            "PDF generation requires the weasyprint package. "
+            "Install it with: pip install weasyprint",
+            status=501,
+        )
+
+    # Parse submission IDs from form data (same pattern as Excel export)
+    submission_ids_raw = request.POST.getlist("submission_ids")
+    if not submission_ids_raw:
+        try:
+            body = json.loads(request.body)
+            submission_ids_raw = body.get("submission_ids", [])
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    try:
+        submission_ids = [int(sid) for sid in submission_ids_raw]
+    except (ValueError, TypeError):
+        return HttpResponse("Invalid submission IDs.", status=400)
+
+    if not submission_ids:
+        return HttpResponse("No submissions selected.", status=400)
+
+    # Fetch only bulk-pdf-exportable submissions
+    submissions = (
+        FormSubmission.objects.filter(id__in=submission_ids)
+        .filter(form_definition__workflow__allow_bulk_pdf_export=True)
+        .select_related("form_definition", "submitter")
+        .order_by("form_definition__name", "-submitted_at")
+    )
+
+    # Permission check — only include submissions the user may view
+    allowed = []
+    for sub in submissions:
+        can_view = (
+            sub.submitter == request.user
+            or request.user.is_superuser
+            or user_can_approve(request.user, sub)
+            or request.user.groups.filter(
+                id__in=sub.form_definition.admin_groups.all()
+            ).exists()
+        )
+        if can_view:
+            allowed.append(sub)
+
+    if not allowed:
+        return HttpResponse("No exportable submissions found.", status=404)
+
+    # Build per-submission context items
+    submission_items = []
+    for sub in allowed:
+        submission_items.append(
+            {
+                "submission": sub,
+                "form_def": sub.form_definition,
+                "pdf_rows": _build_pdf_rows(sub),
+            }
+        )
+
+    # Render all submissions into one HTML document
+    from django.template.loader import render_to_string
+
+    html_string = render_to_string(
+        "django_forms_workflows/submission_bulk_pdf.html",
+        {
+            "submissions": submission_items,
+            "form_def": allowed[0].form_definition,
+            "request": request,
+        },
+    )
+
+    try:
+        base_url = request.build_absolute_uri("/")
+        pdf_bytes = WeasyPrintHTML(string=html_string, base_url=base_url).write_pdf()
+    except Exception as exc:
+        logger.error("WeasyPrint bulk PDF error: %s", exc)
+        return HttpResponse("An error occurred while generating the PDF.", status=500)
+
+    filename = f"submissions_bulk_export_{len(allowed)}.pdf"
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 
 

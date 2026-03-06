@@ -34,6 +34,11 @@ urlpatterns = [
         views.bulk_export_submissions,
         name="bulk_export_submissions",
     ),
+    path(
+        "submissions/bulk-export-pdf/",
+        views.bulk_export_submissions_pdf,
+        name="bulk_export_submissions_pdf",
+    ),
     # Sync API
     path("forms-sync/export/", sync_export_view, name="sync_export"),
     path("forms-sync/import/", sync_import_view, name="sync_import"),

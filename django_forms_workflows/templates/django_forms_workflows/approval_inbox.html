@@ -172,14 +172,29 @@
     </div>
     {% endif %}
 
-    {# ── Bulk export form ── #}
-    {% if any_exportable %}
+    {# ── Hidden PDF bulk export form (populated by JS before submit) ── #}
+    {% if any_pdf_exportable %}
+    <form id="bulkPdfExportForm" method="post" action="{% url 'forms_workflows:bulk_export_submissions_pdf' %}" data-download-spinner="Generating PDF…" class="d-none">
+      {% csrf_token %}
+      <div id="pdfSubmissionIds"></div>
+    </form>
+    {% endif %}
+
+    {# ── Bulk export form (Excel + PDF buttons) ── #}
+    {% if any_exportable or any_pdf_exportable %}
     <form id="bulkExportForm" method="post" action="{% url 'forms_workflows:bulk_export_submissions' %}" data-download-spinner="Generating Excel…">
       {% csrf_token %}
       <div class="mb-2 d-flex align-items-center gap-2">
+        {% if any_exportable %}
         <button type="submit" class="btn btn-sm btn-success" id="exportBtn" disabled>
           <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Selected to Excel
         </button>
+        {% endif %}
+        {% if any_pdf_exportable %}
+        <button type="button" class="btn btn-sm btn-danger" id="pdfExportBtn" disabled onclick="submitBulkPdf()">
+          <i class="bi bi-file-earmark-pdf me-1"></i>Export Selected to PDF
+        </button>
+        {% endif %}
         <span class="text-muted small" id="selectedCount"></span>
       </div>
     {% endif %}
@@ -190,7 +205,7 @@
         <table class="table table-hover" id="approvalsTable">
           <thead>
             <tr>
-              {% if any_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
+              {% if any_exportable or any_pdf_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
               {% if not category_slug %}<th>Category</th>{% endif %}
               <th>Actions</th>
               <th>Form</th>
@@ -203,11 +218,13 @@
           <tbody>
             {% for task in tasks %}
             <tr>
-              {% if any_exportable %}
+              {% if any_exportable or any_pdf_exportable %}
               <td class="text-center">
-                {% if task.submission.form_definition.workflow and task.submission.form_definition.workflow.allow_bulk_export %}
+                {% with wf=task.submission.form_definition.workflow %}
+                {% if wf and wf.allow_bulk_export or wf and wf.allow_bulk_pdf_export %}
                   <input type="checkbox" name="submission_ids" value="{{ task.submission.id }}" class="export-check">
                 {% endif %}
+                {% endwith %}
               </td>
               {% endif %}
               {% if not category_slug %}
@@ -253,7 +270,7 @@
       </div>
     {% endif %}
 
-    {% if any_exportable %}
+    {% if any_exportable or any_pdf_exportable %}
     </form>
     {% endif %}
 
@@ -307,10 +324,10 @@ $(document).ready(function() {
             colIndexMap[$(this).data('field')] = idx;
         });
 
-        var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
+        var exportOffset = {% if any_exportable or any_pdf_exportable %}1{% else %}0{% endif %};
         var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
         var colDefs = [{ orderable: false, targets: exportOffset + catOffset }];
-        {% if any_exportable %}colDefs.push({ orderable: false, targets: 0 });{% endif %}
+        {% if any_exportable or any_pdf_exportable %}colDefs.push({ orderable: false, targets: 0 });{% endif %}
         if (extraColTargets.length) {
             colDefs.push({ visible: false, targets: extraColTargets });
         }
@@ -437,10 +454,11 @@ $(document).ready(function() {
     }
 
     // ── Bulk export checkbox handling ──
-    {% if any_exportable %}
+    {% if any_exportable or any_pdf_exportable %}
     function updateExportBtn() {
         var checked = $('.export-check:checked').length;
         $('#exportBtn').prop('disabled', checked === 0);
+        $('#pdfExportBtn').prop('disabled', checked === 0);
         $('#selectedCount').text(checked > 0 ? checked + ' selected' : '');
     }
 
@@ -460,6 +478,23 @@ $(document).ready(function() {
             $('#selectAll').prop('checked', false);
         }
     });
+    {% endif %}
+
+    // ── Bulk PDF export: populate hidden form then trigger its submit handler ──
+    {% if any_pdf_exportable %}
+    function submitBulkPdf() {
+        var pdfForm = document.getElementById('bulkPdfExportForm');
+        var container = document.getElementById('pdfSubmissionIds');
+        container.innerHTML = '';
+        document.querySelectorAll('.export-check:checked').forEach(function(cb) {
+            var inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'submission_ids';
+            inp.value = cb.value;
+            container.appendChild(inp);
+        });
+        pdfForm.requestSubmit();
+    }
     {% endif %}
 });
 </script>

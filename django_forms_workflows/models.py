@@ -711,6 +711,13 @@ class WorkflowDefinition(models.Model):
             "into an Excel spreadsheet from the approval and submissions list views."
         ),
     )
+    allow_bulk_pdf_export = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow users to select and bulk-export submissions for this form "
+            "into a single merged PDF from the approval and submissions list views."
+        ),
+    )
 
     class Meta:
         verbose_name = "Workflow Definition"

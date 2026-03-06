@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ form_def.name }} — Bulk Export ({{ submissions|length }} submissions)</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 1.5cm 1cm 2cm 1cm;
+            @bottom-left {
+                content: string(form-name) " — Submission #" string(sub-id);
+                font-family: Helvetica, Arial, sans-serif;
+                font-size: 7pt;
+                color: #888;
+                border-top: 1px solid #65bc7b;
+                padding-top: 4pt;
+            }
+            @bottom-right {
+                content: "Page " counter(page) " of " counter(pages);
+                font-family: Helvetica, Arial, sans-serif;
+                font-size: 7pt;
+                color: #888;
+                border-top: 1px solid #65bc7b;
+                padding-top: 4pt;
+            }
+        }
+        body { font-family: Helvetica, Arial, sans-serif; font-size: 9pt; color: #1a1a1a; line-height: 1.3; }
+
+        .submission-block { page-break-before: always; break-before: page; }
+        .submission-block:first-child { page-break-before: avoid; break-before: avoid; }
+
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6pt; }
+        .header-left { background-color: #1a3a52; color: #fff; padding: 8pt 12pt; vertical-align: middle; width: 70%; }
+        .header-left .form-title { font-size: 14pt; font-weight: bold; }
+        .header-right { background-color: #65bc7b; color: #fff; padding: 8pt 10pt; vertical-align: middle; text-align: right; font-size: 7.5pt; line-height: 1.6; }
+        .header-right .org-name { font-size: 8.5pt; font-weight: bold; }
+
+        .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 8pt; table-layout: fixed; }
+        .meta-table td { padding: 3pt 6pt; border: 1px solid #d0d0d0; vertical-align: top; }
+        .meta-label { font-weight: bold; color: #444; background-color: #f2f2f2; width: 13%; }
+        .meta-value { width: 37%; }
+        .status-approved  { color: #2a7a3b; font-weight: bold; text-transform: uppercase; }
+        .status-rejected  { color: #b00020; font-weight: bold; text-transform: uppercase; }
+        .status-submitted { color: #1a5fa8; font-weight: bold; text-transform: uppercase; }
+        .status-default   { color: #555;    font-weight: bold; text-transform: uppercase; }
+
+        .data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .col-label { width: 22%; }
+        .col-value  { width: 28%; }
+        .data-table th { background-color: #f0f0f0; font-weight: bold; font-size: 8pt; color: #333; border: 1px solid #d0d0d0; padding: 3pt 6pt; text-align: left; vertical-align: top; }
+        .data-table td { font-size: 9pt; border: 1px solid #d0d0d0; padding: 3pt 6pt; vertical-align: top; }
+        .data-table tr { page-break-inside: avoid; break-inside: avoid; }
+        .data-table tr:nth-child(even) th,
+        .data-table tr:nth-child(even) td { background-color: #f9f9f9; }
+        .section-row td { background-color: #e8f0f7 !important; color: #1a3a52; font-weight: bold; font-size: 8pt; letter-spacing: 0.3pt; text-transform: uppercase; padding: 4pt 6pt; border: 1px solid #b8ccd8; }
+    </style>
+</head>
+<body>
+{% for item in submissions %}
+<div class="submission-block">
+
+<table class="header-table">
+    <tr>
+        <td class="header-left"><span class="form-title">{{ item.form_def.name }}</span></td>
+        <td class="header-right">
+            <span class="org-name">Saint Joseph's College of Maine</span><br>
+            Submission #{{ item.submission.id }}
+        </td>
+    </tr>
+</table>
+
+<table class="meta-table">
+    <colgroup>
+        <col style="width:13%"><col style="width:37%">
+        <col style="width:13%"><col style="width:37%">
+    </colgroup>
+    <tr>
+        <td class="meta-label">Submitted by</td>
+        <td class="meta-value">{{ item.submission.submitter.get_full_name|default:item.submission.submitter.username }}</td>
+        <td class="meta-label">Date</td>
+        <td class="meta-value">{{ item.submission.submitted_at|date:"N j, Y \a\t g:i a" }}</td>
+    </tr>
+    <tr>
+        <td class="meta-label">Status</td>
+        <td class="meta-value">
+            {% if item.submission.status == "approved" %}<span class="status-approved">{{ item.submission.get_status_display }}</span>
+            {% elif item.submission.status == "rejected" %}<span class="status-rejected">{{ item.submission.get_status_display }}</span>
+            {% elif item.submission.status == "submitted" %}<span class="status-submitted">{{ item.submission.get_status_display }}</span>
+            {% else %}<span class="status-default">{{ item.submission.get_status_display }}</span>{% endif %}
+        </td>
+        <td class="meta-label">Completed</td>
+        <td class="meta-value">{% if item.submission.completed_at %}{{ item.submission.completed_at|date:"N j, Y \a\t g:i a" }}{% else %}&mdash;{% endif %}</td>
+    </tr>
+</table>
+
+<table class="data-table">
+    <colgroup>
+        <col class="col-label"><col class="col-value">
+        <col class="col-label"><col class="col-value">
+    </colgroup>
+    <tbody>
+    {% for row in item.pdf_rows %}
+    {% if row.type == 'section' %}
+    <tr class="section-row"><td colspan="4">{{ row.label }}</td></tr>
+    {% elif row.type == 'pair' %}
+    <tr>
+        <th>{{ row.fields.0.label }}</th>
+        <td>{% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+        <th>{{ row.fields.1.label }}</th>
+        <td>{% with v=row.fields.1.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+    </tr>
+    {% elif row.type == 'triple' %}
+    {% for field in row.fields %}
+    <tr>
+        <th>{{ field.label }}</th>
+        <td colspan="3">{% with v=field.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+    </tr>
+    {% endfor %}
+    {% else %}
+    <tr>
+        <th>{{ row.fields.0.label }}</th>
+        <td colspan="3">{% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+    </tr>
+    {% endif %}
+    {% empty %}
+    <tr><td colspan="4">No form data available.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+</div>
+{% endfor %}
+</body>
+</html>
+

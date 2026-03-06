@@ -803,12 +803,14 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
         "approval_logic",
         "requires_manager_approval",
         "allow_bulk_export",
+        "allow_bulk_pdf_export",
     )
     list_filter = (
         "requires_approval",
         "approval_logic",
         "requires_manager_approval",
         "allow_bulk_export",
+        "allow_bulk_pdf_export",
     )
     search_fields = ("form_definition__name",)
     filter_horizontal = ("approval_groups", "escalation_groups")
@@ -894,10 +896,10 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
         (
             "Bulk Export",
             {
-                "fields": ("allow_bulk_export",),
+                "fields": ("allow_bulk_export", "allow_bulk_pdf_export"),
                 "description": (
                     "When enabled, users can select multiple submissions from the "
-                    "approval and submissions list views and export them to Excel."
+                    "approval and submissions list views and export them to Excel or PDF."
                 ),
             },
         ),

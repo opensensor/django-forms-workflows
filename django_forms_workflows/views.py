@@ -750,9 +750,13 @@ def approve_submission(request, task_id):
         messages.warning(request, "This task has already been processed.")
         return redirect("forms_workflows:approval_inbox")
 
-    # Check if this form has approval step fields for the current step
+    # Check if this form has approval step fields for the current step.
+    # For staged workflows task.step_number is None; fall back to stage_number.
+    _effective_step = (
+        task.step_number if task.step_number is not None else (task.stage_number or 1)
+    )
     has_approval_step_fields = form_def.fields.filter(
-        approval_step=task.step_number
+        approval_step=_effective_step
     ).exists()
     approval_step_form = None
 
@@ -888,6 +892,14 @@ def approve_submission(request, task_id):
                         "total_count": len(stage_tasks),
                     }
                 )
+
+            # Collect all approval-step field names so the template can exclude
+            # them from the read-only "Submission Data" table.
+            all_approval_field_names = list(
+                form_def.fields.filter(approval_step__isnull=False).values_list(
+                    "field_name", flat=True
+                )
+            )
 
         elif workflow.approval_logic == "sequence":
             # -------- legacy sequential --------

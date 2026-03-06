@@ -93,13 +93,11 @@
     <div class="d-flex align-items-center justify-content-end mb-3">
       <span class="text-muted small">
         {% if active_form %}
-          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
-          <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
+          Filtered to <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
           &mdash;
           <a href="?category={{ category_slug }}" class="text-decoration-none">clear form filter</a>
         {% elif active_category %}
-          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
-          <strong>{{ active_category.name }}</strong>
+          Filtered to <strong>{{ active_category.name }}</strong>
           &mdash;
           <a href="?" class="text-decoration-none">clear filter</a>
         {% else %}
@@ -216,95 +214,25 @@
       </div>
     {% endif %}
 
-    {# ── Submissions table ── #}
-    {% if submissions %}
-      <div class="table-responsive">
-        <table class="table table-hover" id="completedTable">
-          <thead>
-            <tr>
-              {% if any_exportable or any_pdf_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
-              <th>Actions</th>
-              {% if not category_slug %}<th>Category</th>{% endif %}
-              <th>Form</th>
-              <th>Submitter</th>
-              <th>Status</th>
-              <th>Submitted</th>
-              <th>Completed</th>
-              {% for field in form_fields %}<th class="extra-form-col" data-field="{{ field.field_name }}">{{ field.field_label }}</th>{% endfor %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for submission in submissions %}
-            <tr>
-              {% if any_exportable or any_pdf_exportable %}
-              <td class="text-center">
-                {% with wf=submission.form_definition.workflow %}
-                {% if wf and wf.allow_bulk_export or wf and wf.allow_bulk_pdf_export %}
-                  <input type="checkbox" name="submission_ids" value="{{ submission.id }}" class="export-check">
-                {% endif %}
-                {% endwith %}
-              </td>
-              {% endif %}
-              <td>
-                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-secondary">
-                  <i class="bi bi-eye"></i> View
-                </a>
-              </td>
-              {% if not category_slug %}
-              <td>
-                {% with cat=submission.form_definition.category %}
-                {% if cat %}
-                  {% if cat.icon %}<i class="bi {{ cat.icon }} me-1 text-muted"></i>{% endif %}
-                  {{ cat.name }}
-                {% else %}
-                  <span class="text-muted">—</span>
-                {% endif %}
-                {% endwith %}
-              </td>
-              {% endif %}
-              <td>{{ submission.form_definition.name }}</td>
-              <td>{{ submission.submitter.get_full_name|default:submission.submitter.username }}</td>
-              <td>
-                {% if submission.status == 'approved' %}
-                  <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Approved</span>
-                {% elif submission.status == 'rejected' %}
-                  <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>
-                {% elif submission.status == 'withdrawn' %}
-                  <span class="badge bg-secondary"><i class="bi bi-dash-circle me-1"></i>Withdrawn</span>
-                {% elif submission.status == 'pending_approval' %}
-                  <span class="badge bg-warning text-dark" title="You have approved your step — waiting on other approvers"><i class="bi bi-hourglass-split me-1"></i>Awaiting Co-Approver</span>
-                {% else %}
-                  <span class="badge bg-light text-dark">{{ submission.status }}</span>
-                {% endif %}
-              </td>
-              <td>{{ submission.submitted_at|date:"Y-m-d H:i" }}</td>
-              <td>
-                {% if submission.completed_at %}
-                  {{ submission.completed_at|date:"Y-m-d H:i" }}
-                {% else %}
-                  <span class="text-muted">—</span>
-                {% endif %}
-              </td>
-              {% for field in form_fields %}<td class="extra-form-col">{{ submission.form_data|get_item:field.field_name|default:"—" }}</td>{% endfor %}
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i>
-        {% if active_form %}
-          No completed submissions for <strong>{{ active_form.name }}</strong> in <strong>{{ active_category.name }}</strong>.
-        {% elif active_category %}
-          No completed submissions in <strong>{{ active_category.name }}</strong>.
-        {% elif status_filter %}
-          No <strong>{{ status_filter }}</strong> submissions found.
-        {% else %}
-          No completed submissions found in your workflow history.
-        {% endif %}
-      </div>
-    {% endif %}
+    {# ── Submissions table — body populated via server-side AJAX ── #}
+    <div class="table-responsive">
+      <table class="table table-hover" id="completedTable">
+        <thead>
+          <tr>
+            {% if any_exportable or any_pdf_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all on page"></th>{% endif %}
+            <th>Actions</th>
+            {% if not category_slug %}<th>Category</th>{% endif %}
+            <th>Form</th>
+            <th>Submitter</th>
+            <th>Status</th>
+            <th>Submitted</th>
+            <th>Completed</th>
+            {% for field in form_fields %}<th class="extra-form-col" data-field="{{ field.field_name }}">{{ field.field_label }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
 
     {% if any_exportable or any_pdf_exportable %}
     </form>
@@ -349,12 +277,11 @@
 <script>
 $(document).ready(function() {
     if ($('#completedTable').length) {
-        var exportOffset = {% if any_exportable or any_pdf_exportable %}1{% else %}0{% endif %};
-        var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
+        var LS_PAGE_KEY = 'completed_page_len';
+        var savedPageLen = parseInt(localStorage.getItem(LS_PAGE_KEY)) || 25;
 
-        // Build colIndexMap BEFORE DataTables init — once DataTables hides
-        // columns the <th> elements are removed from the DOM and jQuery
-        // selectors can no longer find them.
+        // Build colIndexMap BEFORE DataTables init so the column picker can
+        // reference extra-column indices (thead <th> indices stay stable).
         var colIndexMap = {};
         var extraColTargets = [];
         $('#completedTable thead th.extra-form-col').each(function() {
@@ -364,18 +291,39 @@ $(document).ready(function() {
         });
 
         var colDefs = [
-            { orderable: false, targets: exportOffset }{% if any_exportable or any_pdf_exportable %},
-            { orderable: false, targets: 0 }{% endif %}
+            { orderable: false, targets: {% if any_exportable or any_pdf_exportable %}1{% else %}0{% endif %} }
+            {% if any_exportable or any_pdf_exportable %}, { orderable: false, targets: 0 }{% endif %}
+            , { orderable: false, targets: [4] }  {# status #}
         ];
         if (extraColTargets.length) {
-            colDefs.push({ visible: false, targets: extraColTargets });
+            colDefs.push({ visible: false, targets: extraColTargets, orderable: false });
         }
 
         var table = $('#completedTable').DataTable({
-            order: [[exportOffset + catOffset + 4, 'desc']],
+            serverSide: true,
+            processing: true,
+            ajax: {
+                url: '{% url "forms_workflows:completed_approvals_ajax" %}',
+                data: function(d) {
+                    {% if category_slug %}d.category = '{{ category_slug|escapejs }}';{% endif %}
+                    {% if form_slug %}d.form = '{{ form_slug|escapejs }}';{% endif %}
+                    {% if status_filter %}d.status = '{{ status_filter|escapejs }}';{% endif %}
+                }
+            },
+            columns: [
+                {% if any_exportable or any_pdf_exportable %}{ data: 'checkbox', name: '', orderable: false, className: 'text-center' },{% endif %}
+                { data: 'actions', name: '', orderable: false },
+                {% if not category_slug %}{ data: 'category', name: 'form_definition__category__name' },{% endif %}
+                { data: 'form', name: 'form_definition__name' },
+                { data: 'submitter', name: 'submitter__last_name' },
+                { data: 'status', name: 'status', orderable: false },
+                { data: 'submitted_at', name: 'submitted_at' },
+                { data: 'completed_at', name: 'completed_at' },
+                {% for field in form_fields %}{ data: '{{ field.field_name }}', name: '', orderable: false },{% endfor %}
+            ],
+            order: [[{{ default_sort_col }}, 'desc']],
             columnDefs: colDefs,
             pageLength: savedPageLen,
-            deferRender: true,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
                 search: '',
@@ -385,6 +333,7 @@ $(document).ready(function() {
                 info: 'Showing _START_ to _END_ of _TOTAL_ submissions',
                 infoEmpty: 'Showing 0 to 0 of 0 submissions',
                 infoFiltered: '(filtered from _MAX_ total submissions)',
+                processing: '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div> Loading…</div>',
                 paginate: {
                     first: '&laquo;',
                     last: '&raquo;',
@@ -407,8 +356,6 @@ $(document).ready(function() {
         {% if form_fields %}
         // ── Column picker ──────────────────────────────────────────────────
         var LS_KEY = 'completed_col_prefs_{{ form_slug }}';
-        var LS_PAGE_KEY = 'completed_page_len';
-        var savedPageLen = parseInt(localStorage.getItem(LS_PAGE_KEY)) || 25;
         var $picker = $('#colPickerDropdown');
 
         // Place search + gear together in the search container, then

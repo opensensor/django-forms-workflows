@@ -50,6 +50,14 @@ urlpatterns = [
         views.approve_submission,
         name="approve_submission",
     ),
+    # Server-side DataTables AJAX endpoints
+    path("my-submissions/data/", views.my_submissions_ajax, name="my_submissions_ajax"),
+    path("approvals/data/", views.approval_inbox_ajax, name="approval_inbox_ajax"),
+    path(
+        "approvals/completed/data/",
+        views.completed_approvals_ajax,
+        name="completed_approvals_ajax",
+    ),
 ]
 
 # Conditionally include SSO URLs if SSO dependencies are available

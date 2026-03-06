@@ -16,7 +16,9 @@ from django.core.files.storage import default_storage
 from django.db import models
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import escape
 from django.views.decorators.http import require_http_methods
 
 from .forms import DynamicForm
@@ -472,21 +474,21 @@ def my_submissions(request):
             submissions = submissions.filter(form_definition__slug=form_slug)
             active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
 
-    submissions = submissions.select_related(
-        "form_definition__category",
-        "form_definition__workflow",
-    ).order_by("-created_at")
-
-    # Check if any currently-displayed submissions support bulk export
-    any_exportable = submissions.filter(
+    # Check if any submissions support bulk export (fast EXISTS)
+    any_exportable = base_submissions.filter(
         form_definition__workflow__allow_bulk_export=True
     ).exists()
+
+    # Compute default sort column index for DataTables (submitted_at)
+    _exp_off = 1 if any_exportable else 0
+    _cat_off = 0 if category_slug else 1
+    # columns: [checkbox?] id actions [category?] form status submitted_at
+    default_sort_col = _exp_off + 2 + _cat_off + 2  # index of submitted_at
 
     return render(
         request,
         "django_forms_workflows/my_submissions.html",
         {
-            "submissions": submissions,
             "category_counts": category_counts,
             "active_category": active_category,
             "category_slug": category_slug,
@@ -495,6 +497,7 @@ def my_submissions(request):
             "form_slug": form_slug,
             "active_form": active_form,
             "any_exportable": any_exportable,
+            "default_sort_col": default_sort_col,
         },
     )
 
@@ -696,11 +699,6 @@ def approval_inbox(request):
             )
             active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
 
-    display_tasks = display_tasks.select_related(
-        "submission__form_definition__category",
-        "submission__submitter",
-    ).order_by("-created_at")
-
     # --- Form fields for the column picker (only when a specific form is active) ---
     form_fields = []
     if form_slug and active_form:
@@ -715,18 +713,23 @@ def approval_inbox(request):
         except FormDefinition.DoesNotExist:
             pass
 
-    any_exportable = display_tasks.filter(
+    any_exportable = base_tasks.filter(
         submission__form_definition__workflow__allow_bulk_export=True
     ).exists()
-    any_pdf_exportable = display_tasks.filter(
+    any_pdf_exportable = base_tasks.filter(
         submission__form_definition__workflow__allow_bulk_pdf_export=True
     ).exists()
+
+    # Compute default sort column index for DataTables (submitted_at)
+    _exp_off = 1 if (any_exportable or any_pdf_exportable) else 0
+    _cat_off = 0 if category_slug else 1
+    # columns: [checkbox?] [category?] actions form submitter step submitted_at
+    default_sort_col = _exp_off + _cat_off + 1 + 3  # index of submitted_at
 
     return render(
         request,
         "django_forms_workflows/approval_inbox.html",
         {
-            "tasks": display_tasks,
             "category_counts": category_counts,
             "active_category": active_category,
             "category_slug": category_slug,
@@ -738,6 +741,7 @@ def approval_inbox(request):
             "form_fields": form_fields,
             "any_exportable": any_exportable,
             "any_pdf_exportable": any_pdf_exportable,
+            "default_sort_col": default_sort_col,
         },
     )
 
@@ -1082,16 +1086,15 @@ def completed_approvals(request):
     # --- Apply optional category filter ---
     category_slug = request.GET.get("category", "").strip()
     active_category = None
+    filtered_submissions = base_submissions
 
     if category_slug:
-        display_submissions = base_submissions.filter(
+        filtered_submissions = base_submissions.filter(
             form_definition__category__slug=category_slug
         )
         active_category = next(
             (c for c in category_counts if c["slug"] == category_slug), None
         )
-    else:
-        display_submissions = base_submissions
 
     # --- Form counts within the active category (for the form-level filter bar) ---
     form_slug = request.GET.get("form", "").strip()
@@ -1100,7 +1103,7 @@ def completed_approvals(request):
 
     if category_slug:
         raw_form_counts = (
-            display_submissions.values(
+            filtered_submissions.values(
                 "form_definition__pk",
                 "form_definition__name",
                 "form_definition__slug",
@@ -1118,38 +1121,17 @@ def completed_approvals(request):
             if r["form_definition__slug"]
         ]
         if form_slug:
-            display_submissions = display_submissions.filter(
-                form_definition__slug=form_slug
-            )
             active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
 
-    # --- Status filter (optional) ---
     status_filter = request.GET.get("status", "").strip()
-    if status_filter in ["approved", "rejected", "withdrawn", "pending_approval"]:
-        display_submissions = display_submissions.filter(status=status_filter)
 
-    display_submissions = display_submissions.select_related(
-        "form_definition__category",
-        "form_definition__workflow",
-        "submitter",
-    ).order_by("-completed_at", "-submitted_at")
-
-    # Defer the form_data JSONB column (avg ~1.3 KB/row) unless the column picker
-    # is active — it's only needed when extra form-specific columns are rendered.
-    if not form_slug:
-        display_submissions = display_submissions.defer("form_data")
-
-    # Force queryset evaluation once and cache it, then derive the bulk-export
-    # flags in the same Python pass — eliminates two separate EXISTS DB queries.
-    display_submissions = list(display_submissions)
-    any_exportable = any_pdf_exportable = False
-    for sub in display_submissions:
-        wf = getattr(sub.form_definition, "workflow", None)
-        if wf:
-            any_exportable = any_exportable or wf.allow_bulk_export
-            any_pdf_exportable = any_pdf_exportable or wf.allow_bulk_pdf_export
-        if any_exportable and any_pdf_exportable:
-            break  # short-circuit as soon as both flags confirmed
+    # --- Bulk export flags (fast EXISTS — no full queryset fetch needed) ---
+    any_exportable = base_submissions.filter(
+        form_definition__workflow__allow_bulk_export=True
+    ).exists()
+    any_pdf_exportable = base_submissions.filter(
+        form_definition__workflow__allow_bulk_pdf_export=True
+    ).exists()
 
     # --- Form fields for column picker (when a specific form is filtered) ---
     form_fields = []
@@ -1165,11 +1147,16 @@ def completed_approvals(request):
         except FormDefinition.DoesNotExist:
             pass
 
+    # Compute default sort column index for DataTables (completed_at)
+    _exp_off = 1 if (any_exportable or any_pdf_exportable) else 0
+    _cat_off = 0 if category_slug else 1
+    # columns: [checkbox?] actions [category?] form submitter status submitted_at completed_at
+    default_sort_col = _exp_off + 1 + _cat_off + 4  # index of completed_at
+
     return render(
         request,
         "django_forms_workflows/completed_approvals.html",
         {
-            "submissions": display_submissions,
             "category_counts": category_counts,
             "active_category": active_category,
             "category_slug": category_slug,
@@ -1182,6 +1169,7 @@ def completed_approvals(request):
             "any_exportable": any_exportable,
             "any_pdf_exportable": any_pdf_exportable,
             "form_fields": form_fields,
+            "default_sort_col": default_sort_col,
         },
     )
 
@@ -1869,6 +1857,405 @@ def bulk_export_submissions_pdf(request):
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for server-side DataTables AJAX endpoints
+# ---------------------------------------------------------------------------
+
+_STATUS_BADGE = {
+    "approved": '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Approved</span>',
+    "rejected": '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>',
+    "withdrawn": '<span class="badge bg-secondary"><i class="bi bi-dash-circle me-1"></i>Withdrawn</span>',
+    "pending_approval": '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Awaiting Co-Approver</span>',
+    "submitted": '<span class="badge bg-info">Submitted</span>',
+    "draft": '<span class="badge bg-secondary">Draft</span>',
+}
+
+# Columns the AJAX endpoints are allowed to sort by (whitelist prevents injection)
+_COMPLETED_SORTABLE = {
+    "form_definition__category__name",
+    "form_definition__name",
+    "submitter__last_name",
+    "status",
+    "submitted_at",
+    "completed_at",
+}
+_INBOX_SORTABLE = {
+    "submission__form_definition__category__name",
+    "submission__form_definition__name",
+    "submission__submitter__last_name",
+    "step_name",
+    "submission__submitted_at",
+}
+_MY_SUB_SORTABLE = {
+    "form_definition__category__name",
+    "form_definition__name",
+    "status",
+    "submitted_at",
+}
+
+
+def _dt_params(request):
+    """Extract common DataTables server-side request parameters."""
+    draw = int(request.GET.get("draw", 1))
+    start = max(int(request.GET.get("start", 0)), 0)
+    length = min(max(int(request.GET.get("length", 25)), 1), 1000)
+    search = request.GET.get("search[value]", "").strip()
+    order_col = int(request.GET.get("order[0][column]", 0))
+    order_dir = request.GET.get("order[0][dir]", "desc")
+    col_name = request.GET.get(f"columns[{order_col}][name]", "")
+    return draw, start, length, search, col_name, order_dir
+
+
+def _cat_html(cat):
+    if not cat:
+        return '<span class="text-muted">—</span>'
+    icon = f'<i class="bi {escape(cat.icon)} me-1 text-muted"></i>' if cat.icon else ""
+    return f"{icon}{escape(cat.name)}"
+
+
+# ---------------------------------------------------------------------------
+# AJAX: completed_approvals
+# ---------------------------------------------------------------------------
+
+
+@login_required
+def completed_approvals_ajax(request):
+    """Server-side DataTables JSON for the approval history view."""
+    draw, start, length, search, col_name, order_dir = _dt_params(request)
+    category_slug = request.GET.get("category", "").strip()
+    form_slug = request.GET.get("form", "").strip()
+    status_filter = request.GET.get("status", "").strip()
+
+    # --- Base queryset (mirrors permission logic of completed_approvals view) ---
+    if request.user.is_superuser:
+        qs = FormSubmission.objects.filter(
+            status__in=["approved", "rejected", "withdrawn"]
+        )
+    else:
+        user_groups = request.user.groups.all()
+        sub_ids = (
+            ApprovalTask.objects.filter(
+                models.Q(assigned_to=request.user)
+                | models.Q(assigned_group__in=user_groups),
+                status__in=["approved", "rejected"],
+            )
+            .values_list("submission_id", flat=True)
+            .distinct()
+        )
+        qs = FormSubmission.objects.filter(id__in=sub_ids)
+
+    records_total = qs.count()
+
+    # --- URL-level filters ---
+    if category_slug:
+        qs = qs.filter(form_definition__category__slug=category_slug)
+    if form_slug:
+        qs = qs.filter(form_definition__slug=form_slug)
+    if status_filter in ("approved", "rejected", "withdrawn", "pending_approval"):
+        qs = qs.filter(status=status_filter)
+
+    # --- Search ---
+    if search:
+        qs = qs.filter(
+            models.Q(form_definition__name__icontains=search)
+            | models.Q(submitter__first_name__icontains=search)
+            | models.Q(submitter__last_name__icontains=search)
+            | models.Q(submitter__username__icontains=search)
+            | models.Q(status__icontains=search)
+        )
+
+    records_filtered = qs.count()
+
+    # --- Ordering ---
+    if col_name not in _COMPLETED_SORTABLE:
+        col_name = "completed_at"
+    prefix = "" if order_dir == "asc" else "-"
+    qs = qs.order_by(f"{prefix}{col_name}")
+
+    # --- Extra form-field columns ---
+    extra_fields = []
+    if form_slug:
+        try:
+            fd = FormDefinition.objects.get(slug=form_slug)
+            extra_fields = list(
+                FormField.objects.filter(form_definition=fd)
+                .exclude(field_type__in=["section", "file"])
+                .order_by("order")
+                .values("field_name")
+            )
+        except FormDefinition.DoesNotExist:
+            pass
+
+    # --- Page slice ---
+    page_qs = qs.select_related(
+        "form_definition__category", "form_definition__workflow", "submitter"
+    ).defer("form_data" if not form_slug else None)[start : start + length]
+
+    # --- Serialise rows ---
+    data = []
+    for sub in page_qs:
+        wf = getattr(sub.form_definition, "workflow", None)
+        can_exp = wf and (wf.allow_bulk_export or wf.allow_bulk_pdf_export)
+        det_url = reverse("forms_workflows:submission_detail", args=[sub.id])
+        row = {
+            "DT_RowId": f"row_{sub.id}",
+            "checkbox": (
+                f'<input type="checkbox" name="submission_ids" value="{sub.id}" class="export-check">'
+                if can_exp
+                else ""
+            ),
+            "actions": (
+                f'<a href="{det_url}" class="btn btn-sm btn-outline-secondary">'
+                f'<i class="bi bi-eye"></i> View</a>'
+            ),
+            "category": _cat_html(getattr(sub.form_definition, "category", None)),
+            "form": escape(sub.form_definition.name),
+            "submitter": escape(
+                sub.submitter.get_full_name() or sub.submitter.username
+            ),
+            "status": _STATUS_BADGE.get(
+                sub.status,
+                f'<span class="badge bg-light text-dark">{escape(sub.status)}</span>',
+            ),
+            "submitted_at": sub.submitted_at.strftime("%Y-%m-%d %H:%M")
+            if sub.submitted_at
+            else "—",
+            "completed_at": sub.completed_at.strftime("%Y-%m-%d %H:%M")
+            if sub.completed_at
+            else '<span class="text-muted">—</span>',
+        }
+        if extra_fields and sub.form_data:
+            for ef in extra_fields:
+                fn = ef["field_name"]
+                row[fn] = escape(str(sub.form_data.get(fn, "") or "")) or "—"
+        data.append(row)
+
+    return JsonResponse(
+        {
+            "draw": draw,
+            "recordsTotal": records_total,
+            "recordsFiltered": records_filtered,
+            "data": data,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# AJAX: approval_inbox
+# ---------------------------------------------------------------------------
+
+
+@login_required
+def approval_inbox_ajax(request):
+    """Server-side DataTables JSON for the pending approval inbox."""
+    draw, start, length, search, col_name, order_dir = _dt_params(request)
+    category_slug = request.GET.get("category", "").strip()
+    form_slug = request.GET.get("form", "").strip()
+
+    # --- Base queryset ---
+    if request.user.is_superuser:
+        qs = ApprovalTask.objects.filter(status="pending")
+    else:
+        user_groups = request.user.groups.all()
+        qs = ApprovalTask.objects.filter(status="pending").filter(
+            models.Q(assigned_to=request.user)
+            | models.Q(assigned_group__in=user_groups)
+        )
+
+    records_total = qs.count()
+
+    # --- URL filters ---
+    if category_slug:
+        qs = qs.filter(submission__form_definition__category__slug=category_slug)
+    if form_slug:
+        qs = qs.filter(submission__form_definition__slug=form_slug)
+
+    # --- Search ---
+    if search:
+        qs = qs.filter(
+            models.Q(submission__form_definition__name__icontains=search)
+            | models.Q(submission__submitter__first_name__icontains=search)
+            | models.Q(submission__submitter__last_name__icontains=search)
+            | models.Q(submission__submitter__username__icontains=search)
+            | models.Q(step_name__icontains=search)
+        )
+
+    records_filtered = qs.count()
+
+    # --- Ordering ---
+    if col_name not in _INBOX_SORTABLE:
+        col_name = "submission__submitted_at"
+    prefix = "" if order_dir == "asc" else "-"
+    qs = qs.order_by(f"{prefix}{col_name}")
+
+    # --- Extra fields ---
+    extra_fields = []
+    if form_slug:
+        try:
+            fd = FormDefinition.objects.get(slug=form_slug)
+            extra_fields = list(
+                FormField.objects.filter(form_definition=fd)
+                .exclude(field_type__in=["section", "file"])
+                .order_by("order")
+                .values("field_name")
+            )
+        except FormDefinition.DoesNotExist:
+            pass
+
+    # --- Page slice ---
+    page_qs = qs.select_related(
+        "submission__form_definition__category",
+        "submission__form_definition__workflow",
+        "submission__submitter",
+    )[start : start + length]
+
+    # --- Serialise ---
+    data = []
+    for task in page_qs:
+        sub = task.submission
+        wf = getattr(sub.form_definition, "workflow", None)
+        can_exp = wf and (wf.allow_bulk_export or wf.allow_bulk_pdf_export)
+        approve_url = reverse("forms_workflows:approve_submission", args=[task.id])
+        det_url = reverse("forms_workflows:submission_detail", args=[sub.id])
+        row = {
+            "DT_RowId": f"row_{task.id}",
+            "checkbox": (
+                f'<input type="checkbox" name="submission_ids" value="{sub.id}" class="export-check">'
+                if can_exp
+                else ""
+            ),
+            "category": _cat_html(getattr(sub.form_definition, "category", None)),
+            "actions": (
+                f'<a href="{approve_url}" class="btn btn-sm btn-primary">'
+                f'<i class="bi bi-check-circle"></i> Review</a> '
+                f'<a href="{det_url}" class="btn btn-sm btn-outline-secondary">'
+                f'<i class="bi bi-eye"></i> View</a>'
+            ),
+            "form": escape(sub.form_definition.name),
+            "submitter": escape(
+                sub.submitter.get_full_name() or sub.submitter.username
+            ),
+            "step": escape(task.step_name or ""),
+            "submitted_at": sub.submitted_at.strftime("%Y-%m-%d %H:%M")
+            if sub.submitted_at
+            else "—",
+        }
+        if extra_fields and sub.form_data:
+            for ef in extra_fields:
+                fn = ef["field_name"]
+                row[fn] = escape(str(sub.form_data.get(fn, "") or "")) or "—"
+        data.append(row)
+
+    return JsonResponse(
+        {
+            "draw": draw,
+            "recordsTotal": records_total,
+            "recordsFiltered": records_filtered,
+            "data": data,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# AJAX: my_submissions
+# ---------------------------------------------------------------------------
+
+
+@login_required
+def my_submissions_ajax(request):
+    """Server-side DataTables JSON for the user's own submissions."""
+    draw, start, length, search, col_name, order_dir = _dt_params(request)
+    category_slug = request.GET.get("category", "").strip()
+    form_slug = request.GET.get("form", "").strip()
+
+    qs = FormSubmission.objects.filter(submitter=request.user)
+    records_total = qs.count()
+
+    if category_slug:
+        qs = qs.filter(form_definition__category__slug=category_slug)
+    if form_slug:
+        qs = qs.filter(form_definition__slug=form_slug)
+
+    if search:
+        qs = qs.filter(
+            models.Q(form_definition__name__icontains=search)
+            | models.Q(status__icontains=search)
+        )
+
+    records_filtered = qs.count()
+
+    if col_name not in _MY_SUB_SORTABLE:
+        col_name = "submitted_at"
+    prefix = "" if order_dir == "asc" else "-"
+    qs = qs.order_by(f"{prefix}{col_name}")
+
+    page_qs = qs.select_related(
+        "form_definition__category", "form_definition__workflow"
+    )[start : start + length]
+
+    data = []
+    for sub in page_qs:
+        wf = getattr(sub.form_definition, "workflow", None)
+        can_exp = wf and wf.allow_bulk_export
+        det_url = reverse("forms_workflows:submission_detail", args=[sub.id])
+        cat = getattr(sub.form_definition, "category", None)
+
+        actions_parts = [
+            f'<a href="{det_url}" class="btn btn-sm btn-outline-primary">'
+            f'<i class="bi bi-eye"></i> View</a>'
+        ]
+        if sub.status == "draft":
+            submit_url = reverse(
+                "forms_workflows:form_submit", args=[sub.form_definition.slug]
+            )
+            actions_parts.append(
+                f'<a href="{submit_url}" class="btn btn-sm btn-outline-secondary">'
+                f'<i class="bi bi-pencil"></i> Continue</a>'
+            )
+        if (
+            sub.status in ("submitted", "pending_approval")
+            and sub.form_definition.allow_withdrawal
+        ):
+            withdraw_url = reverse("forms_workflows:withdraw_submission", args=[sub.id])
+            actions_parts.append(
+                f'<a href="{withdraw_url}" class="btn btn-sm btn-outline-danger">'
+                f'<i class="bi bi-x-circle"></i> Withdraw</a>'
+            )
+
+        submitted_html = (
+            sub.submitted_at.strftime("%Y-%m-%d %H:%M")
+            if sub.submitted_at
+            else '<em class="text-muted">Not submitted</em>'
+        )
+        row = {
+            "DT_RowId": f"row_{sub.id}",
+            "checkbox": (
+                f'<input type="checkbox" name="submission_ids" value="{sub.id}" class="export-check">'
+                if can_exp
+                else ""
+            ),
+            "id": str(sub.id),
+            "actions": " ".join(actions_parts),
+            "category": _cat_html(cat),
+            "form": escape(sub.form_definition.name),
+            "status": _STATUS_BADGE.get(
+                sub.status,
+                f'<span class="badge bg-light text-dark">{escape(sub.status)}</span>',
+            ),
+            "submitted_at": submitted_html,
+        }
+        data.append(row)
+
+    return JsonResponse(
+        {
+            "draw": draw,
+            "recordsTotal": records_total,
+            "recordsFiltered": records_filtered,
+            "data": data,
+        }
+    )
 
 
 def create_approval_tasks(submission):

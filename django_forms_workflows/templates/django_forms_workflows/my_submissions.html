@@ -69,13 +69,11 @@
       <h1 class="mb-0"><i class="bi bi-file-earmark-check"></i> My Submissions</h1>
       <span class="text-muted small">
         {% if active_form %}
-          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
-          <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
+          Filtered to <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
           &mdash;
           <a href="?category={{ category_slug }}" class="text-decoration-none">clear form filter</a>
         {% elif active_category %}
-          Showing {{ submissions|length }} submission{{ submissions|length|pluralize }} in
-          <strong>{{ active_category.name }}</strong>
+          Filtered to <strong>{{ active_category.name }}</strong>
           &mdash;
           <a href="?" class="text-decoration-none">clear filter</a>
         {% else %}
@@ -164,102 +162,23 @@
       </div>
     {% endif %}
 
-    {# ── Submissions table ── #}
-    {% if submissions %}
-      <div class="table-responsive">
-        <table class="table table-hover" id="submissionsTable">
-          <thead>
-            <tr>
-              {% if any_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
-              <th>ID</th>
-              <th>Actions</th>
-              {% if not category_slug %}<th>Category</th>{% endif %}
-              <th>Form</th>
-              <th>Status</th>
-              <th>Submitted</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for submission in submissions %}
-            <tr>
-              {% if any_exportable %}
-              <td class="text-center">
-                {% if submission.form_definition.workflow and submission.form_definition.workflow.allow_bulk_export %}
-                  <input type="checkbox" name="submission_ids" value="{{ submission.id }}" class="export-check">
-                {% endif %}
-              </td>
-              {% endif %}
-              <td>{{ submission.id }}</td>
-              <td>
-                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-primary">
-                  <i class="bi bi-eye"></i> View
-                </a>
-                {% if submission.status == 'draft' %}
-                  <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-pencil"></i> Continue
-                  </a>
-                {% endif %}
-                {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
-                  {% if submission.form_definition.allow_withdrawal %}
-                    <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
-                      <i class="bi bi-x-circle"></i> Withdraw
-                    </a>
-                  {% endif %}
-                {% endif %}
-              </td>
-              {% if not category_slug %}
-              <td>
-                {% with cat=submission.form_definition.category %}
-                {% if cat %}
-                  {% if cat.icon %}<i class="bi {{ cat.icon }} me-1 text-muted"></i>{% endif %}
-                  {{ cat.name }}
-                {% else %}
-                  <span class="text-muted">—</span>
-                {% endif %}
-                {% endwith %}
-              </td>
-              {% endif %}
-              <td>{{ submission.form_definition.name }}</td>
-              <td>
-                {% if submission.status == 'draft' %}
-                  <span class="badge bg-secondary">Draft</span>
-                {% elif submission.status == 'submitted' %}
-                  <span class="badge bg-info">Submitted</span>
-                {% elif submission.status == 'pending_approval' %}
-                  <span class="badge bg-warning text-dark">Pending Approval</span>
-                {% elif submission.status == 'approved' %}
-                  <span class="badge bg-success">Approved</span>
-                {% elif submission.status == 'rejected' %}
-                  <span class="badge bg-danger">Rejected</span>
-                {% elif submission.status == 'withdrawn' %}
-                  <span class="badge bg-secondary">Withdrawn</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if submission.submitted_at %}
-                  {{ submission.submitted_at|date:"Y-m-d H:i" }}
-                {% else %}
-                  <em class="text-muted">Not submitted</em>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i>
-        {% if active_form %}
-          No submissions found for <strong>{{ active_form.name }}</strong> in <strong>{{ active_category.name }}</strong>.
-        {% elif active_category %}
-          No submissions found in <strong>{{ active_category.name }}</strong>.
-        {% else %}
-          You haven't submitted any forms yet.
-          <a href="{% url 'forms_workflows:form_list' %}" class="alert-link">Browse available forms</a>.
-        {% endif %}
-      </div>
-    {% endif %}
+    {# ── Submissions table — body populated via server-side AJAX ── #}
+    <div class="table-responsive">
+      <table class="table table-hover" id="submissionsTable">
+        <thead>
+          <tr>
+            {% if any_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all on page"></th>{% endif %}
+            <th>ID</th>
+            <th>Actions</th>
+            {% if not category_slug %}<th>Category</th>{% endif %}
+            <th>Form</th>
+            <th>Status</th>
+            <th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
 
     {% if any_exportable %}
     </form>
@@ -276,15 +195,31 @@
 <script>
 $(document).ready(function() {
     if ($('#submissionsTable').length) {
-        var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
-        var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
         var LS_PAGE_KEY = 'submissions_page_len';
         var savedPageLen = parseInt(localStorage.getItem(LS_PAGE_KEY)) || 25;
+
         var table = $('#submissionsTable').DataTable({
-            order: [[exportOffset + catOffset + 4, 'desc']],
+            serverSide: true,
+            processing: true,
+            ajax: {
+                url: '{% url "forms_workflows:my_submissions_ajax" %}',
+                data: function(d) {
+                    {% if category_slug %}d.category = '{{ category_slug|escapejs }}';{% endif %}
+                    {% if form_slug %}d.form = '{{ form_slug|escapejs }}';{% endif %}
+                }
+            },
+            columns: [
+                {% if any_exportable %}{ data: 'checkbox', name: '', orderable: false, className: 'text-center' },{% endif %}
+                { data: 'id', name: '', orderable: false },
+                { data: 'actions', name: '', orderable: false },
+                {% if not category_slug %}{ data: 'category', name: 'form_definition__category__name' },{% endif %}
+                { data: 'form', name: 'form_definition__name' },
+                { data: 'status', name: 'status', orderable: false },
+                { data: 'submitted_at', name: 'submitted_at' },
+            ],
+            order: [[{{ default_sort_col }}, 'desc']],
             columnDefs: [
-                { orderable: false, targets: exportOffset + 1 }{% if any_exportable %},
-                { orderable: false, targets: 0 }{% endif %}
+                {% if any_exportable %}{ orderable: false, targets: 0 },{% endif %}
             ],
             pageLength: savedPageLen,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
@@ -296,6 +231,7 @@ $(document).ready(function() {
                 info: 'Showing _START_ to _END_ of _TOTAL_ submissions',
                 infoEmpty: 'Showing 0 to 0 of 0 submissions',
                 infoFiltered: '(filtered from _MAX_ total submissions)',
+                processing: '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div> Loading…</div>',
                 paginate: {
                     first: '&laquo;',
                     last: '&raquo;',
@@ -305,7 +241,7 @@ $(document).ready(function() {
             }
         });
 
-        // Move search box to the filter row
+        // Search box
         var searchBox = $('<div class="input-group input-group-sm" style="max-width: 300px;">' +
             '<span class="input-group-text bg-white"><i class="bi bi-search"></i></span>' +
             '<input type="search" class="form-control form-control-sm" placeholder="Search submissions..." aria-label="Search">' +

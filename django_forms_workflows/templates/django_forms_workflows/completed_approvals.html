@@ -485,13 +485,14 @@ $(document).ready(function() {
 
     $('#selectAll').on('change', function() {
         var checked = $(this).prop('checked');
-        // Only check visible rows (current DataTables page)
         if (table) {
             table.$('.export-check').prop('checked', checked);
         } else {
             $('.export-check').prop('checked', checked);
         }
-        updateExportBtn();
+        // Trigger change on visible checkboxes so the delegated handler fires
+        // consistently with individual checkbox behaviour (updates count, button, layout).
+        $('.export-check').trigger('change');
     });
 
     $(document).on('change', '.export-check', function() {

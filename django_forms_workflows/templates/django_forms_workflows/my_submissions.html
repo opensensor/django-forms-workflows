@@ -350,7 +350,9 @@ $(document).ready(function() {
         } else {
             $('.export-check').prop('checked', checked);
         }
-        updateExportBtn();
+        // Trigger change on visible checkboxes so the delegated handler fires
+        // consistently with individual checkbox behaviour (updates count, button, layout).
+        $('.export-check').trigger('change');
     });
 
     $(document).on('change', '.export-check', function() {

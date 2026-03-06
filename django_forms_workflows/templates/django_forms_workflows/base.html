@@ -140,6 +140,11 @@
         document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('form[method="post"]').forEach(function(form) {
                 form.addEventListener('submit', function() {
+                    // Skip the overlay for forms that trigger a file download.
+                    // File-download responses don't navigate the page, so the
+                    // overlay would never be dismissed.  Add data-no-spinner to
+                    // any form whose response is a file rather than a page load.
+                    if (form.dataset.noSpinner) return;
                     var overlay = document.getElementById('loadingOverlay');
                     var msg = document.getElementById('loadingMessage');
                     if (overlay) {

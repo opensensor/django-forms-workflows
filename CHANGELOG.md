@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.9] - 2026-03-06
+
+### Fixed
+- **Approval inbox column picker — columns not toggling / table layout broken** — `DataTables.column(jQueryObject)` does not reliably resolve column indices once columns have been hidden or shown. Replaced the jQuery-wrapper approach with a `colIndexMap` dictionary built at DataTable init time using `table.column(rawDOMNode).index()`. All subsequent visibility calls now use the stable integer index, fixing both the picker not working and the resulting spaced-out table.
+- **Bulk export spinner never dismissed** — the base template's `form[method="post"]` submit handler unconditionally activated the loading overlay, but file-download responses do not navigate the page so the overlay was never cleared. Added a `data-no-spinner` attribute check: forms that carry this attribute skip the overlay entirely. Both `#bulkExportForm` instances (`completed_approvals.html`, `my_submissions.html`) now include `data-no-spinner`.
+
+### Notes
+- Multi-form-type bulk export already produces one Excel sheet per form definition (server-side grouping by `form_definition` was in place from the initial implementation). No change needed.
+
 ## [0.14.8] - 2026-03-06
 
 ### Added

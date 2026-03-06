@@ -315,11 +315,18 @@ $(document).ready(function() {
         $controls.append(searchBox).append($picker);
         $('#searchContainer').append($controls);
 
-        // Hide all extra columns by default.
-        // NOTE: DataTables columnDefs.targets does NOT accept CSS class selectors,
-        // so we must hide programmatically after initialisation.
+        // Build a stable fieldName → DataTables integer column-index map.
+        // table.column(rawDOMNode).index() is the only reliable selector when
+        // columns will be hidden/shown dynamically; jQuery wrappers are not
+        // guaranteed to resolve correctly after visibility changes.
+        var colIndexMap = {};
         $('th.extra-form-col').each(function() {
-            table.column($(this)).visible(false);
+            colIndexMap[$(this).data('field')] = table.column(this).index();
+        });
+
+        // Hide all extra columns by default
+        $.each(colIndexMap, function(fieldName, colIdx) {
+            table.column(colIdx).visible(false);
         });
 
         // Restore saved column preferences from localStorage
@@ -330,9 +337,8 @@ $(document).ready(function() {
         } catch(e) { savedCols = []; }
 
         savedCols.forEach(function(fieldName) {
-            var $th = $('th.extra-form-col[data-field="' + fieldName + '"]');
-            if ($th.length) {
-                table.column($th).visible(true);
+            if (colIndexMap[fieldName] !== undefined) {
+                table.column(colIndexMap[fieldName]).visible(true);
                 $('#col_chk_' + fieldName).prop('checked', true);
             }
         });
@@ -350,11 +356,14 @@ $(document).ready(function() {
             var allChecked = $('.col-toggle-chk:checked').length === $('.col-toggle-chk').length;
             $('.col-toggle-chk').each(function() {
                 var fieldName = $(this).data('field');
-                var $th = $('th.extra-form-col[data-field="' + fieldName + '"]');
-                $(this).prop('checked', !allChecked);
-                table.column($th).visible(!allChecked);
+                if (colIndexMap[fieldName] !== undefined) {
+                    $(this).prop('checked', !allChecked);
+                    table.column(colIndexMap[fieldName]).visible(!allChecked);
+                }
             });
-            var visible = !allChecked ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get() : [];
+            var visible = !allChecked
+                ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get()
+                : [];
             try { localStorage.setItem(LS_KEY, JSON.stringify(visible)); } catch(e) {}
             updateToggleAllLabel();
         });
@@ -362,8 +371,9 @@ $(document).ready(function() {
         // Toggle individual column visibility and persist preference
         $(document).on('change', '.col-toggle-chk', function() {
             var fieldName = $(this).data('field');
-            var $th = $('th.extra-form-col[data-field="' + fieldName + '"]');
-            table.column($th).visible(this.checked);
+            if (colIndexMap[fieldName] !== undefined) {
+                table.column(colIndexMap[fieldName]).visible(this.checked);
+            }
             var visible = [];
             $('.col-toggle-chk:checked').each(function() { visible.push($(this).data('field')); });
             try { localStorage.setItem(LS_KEY, JSON.stringify(visible)); } catch(e) {}

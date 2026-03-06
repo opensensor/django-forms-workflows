@@ -208,6 +208,7 @@
           <thead>
             <tr>
               {% if any_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
+              <th>Actions</th>
               {% if not category_slug %}<th>Category</th>{% endif %}
               <th>Form</th>
               <th>Submitter</th>
@@ -215,7 +216,6 @@
               <th>Submitted</th>
               <th>Completed</th>
               {% for field in form_fields %}<th class="extra-form-col" data-field="{{ field.field_name }}">{{ field.field_label }}</th>{% endfor %}
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -228,6 +228,11 @@
                 {% endif %}
               </td>
               {% endif %}
+              <td>
+                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-secondary">
+                  <i class="bi bi-eye"></i> View
+                </a>
+              </td>
               {% if not category_slug %}
               <td>
                 {% with cat=submission.form_definition.category %}
@@ -264,11 +269,6 @@
                 {% endif %}
               </td>
               {% for field in form_fields %}<td class="extra-form-col">{{ submission.form_data|get_item:field.field_name|default:"—" }}</td>{% endfor %}
-              <td>
-                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-secondary">
-                  <i class="bi bi-eye"></i> View
-                </a>
-              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -347,7 +347,7 @@ $(document).ready(function() {
         });
 
         var colDefs = [
-            { orderable: false, targets: -1 }{% if any_exportable %},
+            { orderable: false, targets: exportOffset }{% if any_exportable %},
             { orderable: false, targets: 0 }{% endif %}
         ];
         if (extraColTargets.length) {
@@ -355,7 +355,7 @@ $(document).ready(function() {
         }
 
         var table = $('#completedTable').DataTable({
-            order: [[exportOffset + catOffset + 3, 'desc']],
+            order: [[exportOffset + catOffset + 4, 'desc']],
             columnDefs: colDefs,
             pageLength: 25,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',

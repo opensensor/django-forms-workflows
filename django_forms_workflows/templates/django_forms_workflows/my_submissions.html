@@ -172,11 +172,11 @@
             <tr>
               {% if any_exportable %}<th class="text-center" style="width:40px;"><input type="checkbox" id="selectAll" title="Select all exportable"></th>{% endif %}
               <th>ID</th>
+              <th>Actions</th>
               {% if not category_slug %}<th>Category</th>{% endif %}
               <th>Form</th>
               <th>Status</th>
               <th>Submitted</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -190,6 +190,23 @@
               </td>
               {% endif %}
               <td>{{ submission.id }}</td>
+              <td>
+                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-eye"></i> View
+                </a>
+                {% if submission.status == 'draft' %}
+                  <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-pencil"></i> Continue
+                  </a>
+                {% endif %}
+                {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
+                  {% if submission.form_definition.allow_withdrawal %}
+                    <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-x-circle"></i> Withdraw
+                    </a>
+                  {% endif %}
+                {% endif %}
+              </td>
               {% if not category_slug %}
               <td>
                 {% with cat=submission.form_definition.category %}
@@ -223,23 +240,6 @@
                   {{ submission.submitted_at|date:"Y-m-d H:i" }}
                 {% else %}
                   <em class="text-muted">Not submitted</em>
-                {% endif %}
-              </td>
-              <td>
-                <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-sm btn-outline-primary">
-                  <i class="bi bi-eye"></i> View
-                </a>
-                {% if submission.status == 'draft' %}
-                  <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-pencil"></i> Continue
-                  </a>
-                {% endif %}
-                {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
-                  {% if submission.form_definition.allow_withdrawal %}
-                    <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-sm btn-outline-danger">
-                      <i class="bi bi-x-circle"></i> Withdraw
-                    </a>
-                  {% endif %}
                 {% endif %}
               </td>
             </tr>
@@ -279,9 +279,9 @@ $(document).ready(function() {
         var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
         var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
         var table = $('#submissionsTable').DataTable({
-            order: [[exportOffset + catOffset + 3, 'desc']],
+            order: [[exportOffset + catOffset + 4, 'desc']],
             columnDefs: [
-                { orderable: false, targets: -1 }{% if any_exportable %},
+                { orderable: false, targets: exportOffset + 1 }{% if any_exportable %},
                 { orderable: false, targets: 0 }{% endif %}
             ],
             pageLength: 25,

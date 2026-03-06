@@ -2,6 +2,10 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
+    # CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
+    # Setting atomic=False tells Django not to wrap this migration in BEGIN/COMMIT.
+    atomic = False
+
     """
     Adds four performance indexes identified through EXPLAIN ANALYZE
     on the approval history and inbox views.

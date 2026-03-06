@@ -272,11 +272,15 @@
 <script>
 $(document).ready(function() {
     if ($('#approvalsTable').length) {
-        // Compute extra-column DOM indices before DataTables init so they can
-        // be declared hidden from the start — preventing blank-space allocation.
+        // Build colIndexMap BEFORE DataTables init — once DataTables hides
+        // columns the <th> elements are removed from the DOM and jQuery
+        // selectors can no longer find them.
+        var colIndexMap = {};
         var extraColTargets = [];
         $('#approvalsTable thead th.extra-form-col').each(function() {
-            extraColTargets.push($(this).index());
+            var idx = $(this).index();
+            extraColTargets.push(idx);
+            colIndexMap[$(this).data('field')] = idx;
         });
 
         var colDefs = [{ orderable: false, targets: -1 }];
@@ -318,23 +322,17 @@ $(document).ready(function() {
         {% if form_fields %}
         // ── Column picker ──────────────────────────────────────────────────
         var LS_KEY = 'approvals_col_prefs_{{ form_slug }}';
-        var $picker = $('#colPickerDropdown').removeClass('d-none');
+        var $picker = $('#colPickerDropdown');
 
-        // Place search + gear together in the search container
+        // Place search + gear together in the search container, then
+        // reveal the picker (d-none removed AFTER move to avoid layout
+        // flash / horizontal scrollbar from the out-of-grid element).
         var $controls = $('<div class="d-flex align-items-center gap-2"></div>');
         $controls.append(searchBox).append($picker);
         $('#searchContainer').append($controls);
+        $picker.removeClass('d-none');
 
-        // Build a stable fieldName → DataTables integer column-index map.
-        // table.column(rawDOMNode).index() is the only reliable selector when
-        // columns will be hidden/shown dynamically; jQuery wrappers are not
-        // guaranteed to resolve correctly after visibility changes.
-        var colIndexMap = {};
-        $('th.extra-form-col').each(function() {
-            colIndexMap[$(this).data('field')] = table.column(this).index();
-        });
-
-        // Extra columns are already hidden via columnDefs at init time.
+        // colIndexMap was built above BEFORE DataTables init.
 
         // Restore saved column preferences from localStorage
         var savedCols = [];

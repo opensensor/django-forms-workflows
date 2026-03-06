@@ -335,11 +335,15 @@ $(document).ready(function() {
         var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
         var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
 
-        // Compute extra-column DOM indices before DataTables init so they can
-        // be declared hidden from the start — preventing blank-space allocation.
+        // Build colIndexMap BEFORE DataTables init — once DataTables hides
+        // columns the <th> elements are removed from the DOM and jQuery
+        // selectors can no longer find them.
+        var colIndexMap = {};
         var extraColTargets = [];
         $('#completedTable thead th.extra-form-col').each(function() {
-            extraColTargets.push($(this).index());
+            var idx = $(this).index();
+            extraColTargets.push(idx);
+            colIndexMap[$(this).data('field')] = idx;
         });
 
         var colDefs = [
@@ -385,20 +389,17 @@ $(document).ready(function() {
         {% if form_fields %}
         // ── Column picker ──────────────────────────────────────────────────
         var LS_KEY = 'completed_col_prefs_{{ form_slug }}';
-        var $picker = $('#colPickerDropdown').removeClass('d-none');
+        var $picker = $('#colPickerDropdown');
 
-        // Place search + gear together in the search container
+        // Place search + gear together in the search container, then
+        // reveal the picker (d-none removed AFTER move to avoid layout
+        // flash / horizontal scrollbar from the out-of-grid element).
         var $controls = $('<div class="d-flex align-items-center gap-2"></div>');
         $controls.append(searchBox).append($picker);
         $('#searchContainer').append($controls);
+        $picker.removeClass('d-none');
 
-        // Build a stable fieldName → DataTables integer column-index map.
-        var colIndexMap = {};
-        $('th.extra-form-col').each(function() {
-            colIndexMap[$(this).data('field')] = table.column(this).index();
-        });
-
-        // Extra columns are already hidden via columnDefs at init time.
+        // colIndexMap was built above BEFORE DataTables init.
 
         // Restore saved column preferences from localStorage
         var savedCols = [];

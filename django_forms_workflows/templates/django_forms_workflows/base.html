@@ -144,7 +144,7 @@
                     // File-download responses don't navigate the page, so the
                     // overlay would never be dismissed.  Add data-no-spinner to
                     // any form whose response is a file rather than a page load.
-                    if (form.dataset.noSpinner) return;
+                    if (form.hasAttribute('data-no-spinner')) return;
                     var overlay = document.getElementById('loadingOverlay');
                     var msg = document.getElementById('loadingMessage');
                     if (overlay) {

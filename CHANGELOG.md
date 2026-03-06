@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.12] - 2026-03-06
+
+### Fixed
+- **Column picker (cog wheel) completely broken on approval inbox & approval history** — v0.14.9 moved column hiding to `columnDefs` at DataTables init time, but `colIndexMap` was still built AFTER init by querying `$('th.extra-form-col')`. DataTables removes hidden `<th>` elements from the DOM, so the selector found nothing and `colIndexMap` was empty — making select/deselect all and individual checkbox toggles no-ops. Fixed by building `colIndexMap` BEFORE DataTables init.
+- **Horizontal scrollbar caused by column picker dropdown** — the `d-none` class was removed from the out-of-grid `#colPickerDropdown` element before it was moved into `#searchContainer`, causing a brief layout overflow. Now `d-none` is removed only after the element is repositioned.
+- **XLSX export spinner stays forever (project base.html)** — the project's `templates/base.html` override was missing the `data-no-spinner` check added to the package base in v0.14.9. Added `form.hasAttribute('data-no-spinner')` guard.
+- **Package base.html `data-no-spinner` check was ineffective** — `form.dataset.noSpinner` returns `""` (empty string, falsy) for a valueless attribute. Changed to `form.hasAttribute('data-no-spinner')` which correctly returns `true`.
+
 ## [0.14.10] - 2026-03-06
 
 ### Changed

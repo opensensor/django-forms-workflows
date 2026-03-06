@@ -1063,7 +1063,8 @@ def completed_approvals(request):
                 }
             )
 
-    total_count = base_submissions.count()
+    # Derive from the aggregation we already ran — saves a redundant COUNT(*) query
+    total_count = sum(c["count"] for c in category_counts)
 
     # --- Pending tasks count for cross-tab badge ---
     if request.user.is_superuser:
@@ -1133,16 +1134,22 @@ def completed_approvals(request):
         "submitter",
     ).order_by("-completed_at", "-submitted_at")
 
-    # Defer the form_data JSONB column (avg ~1.3 KB per row) unless the column
-    # picker is active — it's only needed when extra form-specific columns are
-    # being rendered (i.e. a specific form slug is selected).
+    # Defer the form_data JSONB column (avg ~1.3 KB/row) unless the column picker
+    # is active — it's only needed when extra form-specific columns are rendered.
     if not form_slug:
         display_submissions = display_submissions.defer("form_data")
 
-    # Check if any currently-displayed submissions support bulk export
-    any_exportable = display_submissions.filter(
-        form_definition__workflow__allow_bulk_export=True
-    ).exists()
+    # Force queryset evaluation once and cache it, then derive the bulk-export
+    # flags in the same Python pass — eliminates two separate EXISTS DB queries.
+    display_submissions = list(display_submissions)
+    any_exportable = any_pdf_exportable = False
+    for sub in display_submissions:
+        wf = getattr(sub.form_definition, "workflow", None)
+        if wf:
+            any_exportable = any_exportable or wf.allow_bulk_export
+            any_pdf_exportable = any_pdf_exportable or wf.allow_bulk_pdf_export
+        if any_exportable and any_pdf_exportable:
+            break  # short-circuit as soon as both flags confirmed
 
     # --- Form fields for column picker (when a specific form is filtered) ---
     form_fields = []
@@ -1173,6 +1180,7 @@ def completed_approvals(request):
             "active_form": active_form,
             "status_filter": status_filter,
             "any_exportable": any_exportable,
+            "any_pdf_exportable": any_pdf_exportable,
             "form_fields": form_fields,
         },
     )

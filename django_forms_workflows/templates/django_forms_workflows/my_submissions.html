@@ -278,13 +278,15 @@ $(document).ready(function() {
     if ($('#submissionsTable').length) {
         var exportOffset = {% if any_exportable %}1{% else %}0{% endif %};
         var catOffset = {% if not category_slug %}1{% else %}0{% endif %};
+        var LS_PAGE_KEY = 'submissions_page_len';
+        var savedPageLen = parseInt(localStorage.getItem(LS_PAGE_KEY)) || 25;
         var table = $('#submissionsTable').DataTable({
             order: [[exportOffset + catOffset + 4, 'desc']],
             columnDefs: [
                 { orderable: false, targets: exportOffset + 1 }{% if any_exportable %},
                 { orderable: false, targets: 0 }{% endif %}
             ],
-            pageLength: 25,
+            pageLength: savedPageLen,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
                 search: '',
@@ -320,16 +322,23 @@ $(document).ready(function() {
             '<label class="mb-0 text-muted small">Show:</label>' +
             '<select class="form-select form-select-sm" style="width: auto;">' +
             '<option value="10">10</option>' +
-            '<option value="25" selected>25</option>' +
+            '<option value="25">25</option>' +
             '<option value="50">50</option>' +
             '<option value="100">100</option>' +
+            '<option value="250">250</option>' +
+            '<option value="500">500</option>' +
             '<option value="1000">1000</option>' +
             '</select>' +
             '<span class="text-muted small">entries</span>' +
             '</div>');
 
+        // Sync dropdown to the restored page length (localStorage or default)
+        lengthSelect.find('select').val(savedPageLen);
+
         lengthSelect.find('select').on('change', function() {
-            table.page.len($(this).val()).draw();
+            var len = parseInt($(this).val());
+            table.page.len(len).draw();
+            try { localStorage.setItem(LS_PAGE_KEY, len); } catch(e) {}
         });
 
         $('.dataTables_info').parent().prepend(lengthSelect);

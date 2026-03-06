@@ -335,7 +335,7 @@ $(document).ready(function() {
         var table = $('#approvalsTable').DataTable({
             order: [[exportOffset + catOffset + 4, 'desc']],
             columnDefs: colDefs,
-            pageLength: 25,
+            pageLength: savedPageLen,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
                 search: '',
@@ -366,6 +366,8 @@ $(document).ready(function() {
         {% if form_fields %}
         // ── Column picker ──────────────────────────────────────────────────
         var LS_KEY = 'approvals_col_prefs_{{ form_slug }}';
+        var LS_PAGE_KEY = 'approvals_page_len';
+        var savedPageLen = parseInt(localStorage.getItem(LS_PAGE_KEY)) || 25;
         var $picker = $('#colPickerDropdown');
 
         // Place search + gear together in the search container, then
@@ -440,15 +442,23 @@ $(document).ready(function() {
             '<label class="mb-0 text-muted small">Show:</label>' +
             '<select class="form-select form-select-sm" style="width: auto;">' +
             '<option value="10">10</option>' +
-            '<option value="25" selected>25</option>' +
+            '<option value="25">25</option>' +
             '<option value="50">50</option>' +
             '<option value="100">100</option>' +
+            '<option value="250">250</option>' +
+            '<option value="500">500</option>' +
             '<option value="1000">1000</option>' +
             '</select>' +
             '<span class="text-muted small">entries</span>' +
             '</div>');
+
+        // Sync dropdown to the restored page length (localStorage or default)
+        lengthSelect.find('select').val(savedPageLen);
+
         lengthSelect.find('select').on('change', function() {
-            table.page.len($(this).val()).draw();
+            var len = parseInt($(this).val());
+            table.page.len(len).draw();
+            try { localStorage.setItem(LS_PAGE_KEY, len); } catch(e) {}
         });
         $('.dataTables_info').parent().prepend(lengthSelect);
     }

@@ -179,12 +179,12 @@
           <thead>
             <tr>
               {% if not category_slug %}<th>Category</th>{% endif %}
+              <th>Actions</th>
               <th>Form</th>
               <th>Submitter</th>
               <th>Step</th>
               <th>Submitted</th>
               {% for field in form_fields %}<th class="extra-form-col" data-field="{{ field.field_name }}">{{ field.field_label }}</th>{% endfor %}
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -202,11 +202,6 @@
                 {% endwith %}
               </td>
               {% endif %}
-              <td>{{ task.submission.form_definition.name }}</td>
-              <td>{{ task.submission.submitter.get_full_name|default:task.submission.submitter.username }}</td>
-              <td>{{ task.step_name }}</td>
-              <td>{{ task.submission.submitted_at|date:"Y-m-d H:i" }}</td>
-              {% for field in form_fields %}<td class="extra-form-col">{{ task.submission.form_data|get_item:field.field_name|default:"—" }}</td>{% endfor %}
               <td>
                 <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-sm btn-primary">
                   <i class="bi bi-check-circle"></i> Review
@@ -215,6 +210,11 @@
                   <i class="bi bi-eye"></i> View
                 </a>
               </td>
+              <td>{{ task.submission.form_definition.name }}</td>
+              <td>{{ task.submission.submitter.get_full_name|default:task.submission.submitter.username }}</td>
+              <td>{{ task.step_name }}</td>
+              <td>{{ task.submission.submitted_at|date:"Y-m-d H:i" }}</td>
+              {% for field in form_fields %}<td class="extra-form-col">{{ task.submission.form_data|get_item:field.field_name|default:"—" }}</td>{% endfor %}
             </tr>
             {% endfor %}
           </tbody>
@@ -283,13 +283,13 @@ $(document).ready(function() {
             colIndexMap[$(this).data('field')] = idx;
         });
 
-        var colDefs = [{ orderable: false, targets: -1 }];
+        var colDefs = [{ orderable: false, targets: {% if not category_slug %}1{% else %}0{% endif %} }];
         if (extraColTargets.length) {
             colDefs.push({ visible: false, targets: extraColTargets });
         }
 
         var table = $('#approvalsTable').DataTable({
-            order: [[{% if not category_slug %}4{% else %}3{% endif %}, 'desc']],
+            order: [[{% if not category_slug %}5{% else %}4{% endif %}, 'desc']],
             columnDefs: colDefs,
             pageLength: 25,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
@@ -366,6 +366,9 @@ $(document).ready(function() {
                     table.column(colIndexMap[fieldName]).visible(!allChecked);
                 }
             });
+            // Recalculate column widths after batch show/hide so the table
+            // resizes consistently with individual column toggles.
+            table.columns.adjust();
             var visible = !allChecked
                 ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get()
                 : [];

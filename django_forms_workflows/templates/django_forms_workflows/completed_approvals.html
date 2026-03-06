@@ -1,6 +1,6 @@
 {% extends 'django_forms_workflows/base.html' %}
 
-{% block title %}Completed Forms - {{ site_name }}{% endblock %}
+{% block title %}Approval History - {{ site_name }}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
@@ -79,7 +79,7 @@
       </li>
       <li class="nav-item">
         <a class="nav-link active" href="{% url 'forms_workflows:completed_approvals' %}">
-          <i class="bi bi-archive me-1"></i>Completed Forms
+          <i class="bi bi-archive me-1"></i>Approval History
           <span class="badge bg-secondary ms-1">{{ total_count }}</span>
         </a>
       </li>
@@ -239,6 +239,8 @@
                   <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>
                 {% elif submission.status == 'withdrawn' %}
                   <span class="badge bg-secondary"><i class="bi bi-dash-circle me-1"></i>Withdrawn</span>
+                {% elif submission.status == 'pending_approval' %}
+                  <span class="badge bg-warning text-dark" title="You have approved your step — waiting on other approvers"><i class="bi bi-hourglass-split me-1"></i>Awaiting Co-Approver</span>
                 {% else %}
                   <span class="badge bg-light text-dark">{{ submission.status }}</span>
                 {% endif %}

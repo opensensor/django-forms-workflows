@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.7] - 2026-03-06
+
+### Fixed
+- **Approval History — "Awaiting Co-Approver" badge** — submissions that are still `pending_approval` (waiting on a second approver) but where the current user has already completed their step now show a clear yellow "Awaiting Co-Approver" badge instead of falling through to the raw `pending_approval` string.
+- **Tab label renamed** — "Completed Forms" tab renamed to "Approval History" in both `approval_inbox.html` and `completed_approvals.html` to accurately reflect that the page shows all forms the user has acted on, including those still awaiting other approvers.
+
 ## [0.14.6] - 2026-03-06
 
 ### Fixed

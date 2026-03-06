@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-03-06
+
+### Fixed
+- **Approval inbox column picker — columns visible by default** — `DataTables` `columnDefs.targets` does not accept CSS class selectors, so the `{ visible: false, targets: '.extra-form-col' }` entry was silently ignored and all extra columns rendered visible on load. Extra columns are now hidden explicitly via `table.column().visible(false)` immediately after DataTables initialisation, before saved preferences are restored.
+- **Column picker — added Select all / Deselect all** — a toggle link in the column-picker dropdown checks or unchecks all field checkboxes at once, shows/hides the corresponding DataTables columns, persists the result to `localStorage`, and updates its own label to reflect the current state.
+
 ## [0.14.5] - 2026-03-06
 
 ### Fixed

@@ -245,7 +245,11 @@
     <i class="bi bi-gear-fill"></i>
   </button>
   <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 220px;">
-    <p class="fw-semibold small mb-2 text-muted">Additional columns</p>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <span class="fw-semibold small text-muted">Additional columns</span>
+      <button type="button" class="btn btn-link btn-sm p-0 small text-decoration-none" id="colToggleAll">Select all</button>
+    </div>
+    <hr class="my-1">
     {% for field in form_fields %}
     <div class="form-check">
       <input class="form-check-input col-toggle-chk" type="checkbox"
@@ -272,7 +276,6 @@ $(document).ready(function() {
             order: [[{% if not category_slug %}4{% else %}3{% endif %}, 'desc']],
             columnDefs: [
                 { orderable: false, targets: -1 },
-                {% if form_fields %}{ visible: false, targets: '.extra-form-col' }{% endif %}
             ],
             pageLength: 25,
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
@@ -312,6 +315,13 @@ $(document).ready(function() {
         $controls.append(searchBox).append($picker);
         $('#searchContainer').append($controls);
 
+        // Hide all extra columns by default.
+        // NOTE: DataTables columnDefs.targets does NOT accept CSS class selectors,
+        // so we must hide programmatically after initialisation.
+        $('th.extra-form-col').each(function() {
+            table.column($(this)).visible(false);
+        });
+
         // Restore saved column preferences from localStorage
         var savedCols = [];
         try {
@@ -327,7 +337,29 @@ $(document).ready(function() {
             }
         });
 
-        // Toggle column visibility and persist preference
+        // Update the Select all / Deselect all link label to reflect current state
+        function updateToggleAllLabel() {
+            var total = $('.col-toggle-chk').length;
+            var checked = $('.col-toggle-chk:checked').length;
+            $('#colToggleAll').text(checked === total ? 'Deselect all' : 'Select all');
+        }
+        updateToggleAllLabel();
+
+        // Select all / Deselect all
+        $('#colToggleAll').on('click', function() {
+            var allChecked = $('.col-toggle-chk:checked').length === $('.col-toggle-chk').length;
+            $('.col-toggle-chk').each(function() {
+                var fieldName = $(this).data('field');
+                var $th = $('th.extra-form-col[data-field="' + fieldName + '"]');
+                $(this).prop('checked', !allChecked);
+                table.column($th).visible(!allChecked);
+            });
+            var visible = !allChecked ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get() : [];
+            try { localStorage.setItem(LS_KEY, JSON.stringify(visible)); } catch(e) {}
+            updateToggleAllLabel();
+        });
+
+        // Toggle individual column visibility and persist preference
         $(document).on('change', '.col-toggle-chk', function() {
             var fieldName = $(this).data('field');
             var $th = $('th.extra-form-col[data-field="' + fieldName + '"]');
@@ -335,6 +367,7 @@ $(document).ready(function() {
             var visible = [];
             $('.col-toggle-chk:checked').each(function() { visible.push($(this).data('field')); });
             try { localStorage.setItem(LS_KEY, JSON.stringify(visible)); } catch(e) {}
+            updateToggleAllLabel();
         });
         {% else %}
         $('#searchContainer').append(searchBox);

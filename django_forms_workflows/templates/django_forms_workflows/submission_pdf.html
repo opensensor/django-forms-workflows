@@ -4,251 +4,202 @@
     <meta charset="utf-8">
     <title>Submission #{{ submission.id }} – {{ form_def.name }}</title>
     <style>
+        /* ── Page setup ── */
         @page {
             size: letter;
-            margin: 0.7cm 0.9cm 0.8cm 0.9cm;
+            margin: 1.5cm 1.5cm 2cm 1.5cm;
+            @bottom-left {
+                content: "{{ form_def.name }} — Submission #{{ submission.id }}";
+                font-family: Helvetica, Arial, sans-serif;
+                font-size: 7pt;
+                color: #888;
+                border-top: 1px solid #65bc7b;
+                padding-top: 4pt;
+            }
+            @bottom-right {
+                content: "Page " counter(page) " of " counter(pages) " · Generated {% now "N j, Y" %}";
+                font-family: Helvetica, Arial, sans-serif;
+                font-size: 7pt;
+                color: #888;
+                border-top: 1px solid #65bc7b;
+                padding-top: 4pt;
+            }
         }
+
         body {
             font-family: Helvetica, Arial, sans-serif;
-            font-size: 8.5pt;
+            font-size: 9pt;
             color: #1a1a1a;
-            line-height: 1.25;
+            line-height: 1.3;
         }
 
         /* ── Header ── */
-        .header-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 5pt;
-        }
+        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 6pt; }
         .header-left {
             background-color: #1a3a52;
-            color: #ffffff;
-            padding: 7pt 10pt 6pt 10pt;
+            color: #fff;
+            padding: 8pt 12pt;
             vertical-align: middle;
-            width: 72%;
+            width: 70%;
         }
-        .header-left .form-title {
-            font-size: 13pt;
-            font-weight: bold;
-            line-height: 1.15;
-        }
+        .header-left .form-title { font-size: 14pt; font-weight: bold; }
         .header-right {
             background-color: #65bc7b;
-            color: #ffffff;
-            padding: 6pt 8pt;
+            color: #fff;
+            padding: 8pt 10pt;
             vertical-align: middle;
             text-align: right;
-            font-size: 7pt;
-            line-height: 1.5;
+            font-size: 7.5pt;
+            line-height: 1.6;
         }
-        .header-right .org-name {
-            font-size: 8pt;
-            font-weight: bold;
-        }
+        .header-right .org-name { font-size: 8.5pt; font-weight: bold; }
 
         /* ── Meta strip ── */
         .meta-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 5pt;
-            font-size: 8pt;
+            margin-bottom: 8pt;
+            table-layout: fixed;
         }
-        .meta-table td {
-            padding: 2pt 5pt;
-            border: 1px solid #d0d0d0;
-            vertical-align: top;
-        }
-        .meta-label {
-            font-weight: bold;
-            color: #444;
-            background-color: #f2f2f2;
-            width: 11%;
-        }
-        .meta-value {
-            width: 39%;
-        }
+        .meta-table td { padding: 3pt 6pt; border: 1px solid #d0d0d0; vertical-align: top; }
+        .meta-label { font-weight: bold; color: #444; background-color: #f2f2f2; width: 13%; }
+        .meta-value { width: 37%; }
         .status-approved  { color: #2a7a3b; font-weight: bold; text-transform: uppercase; }
         .status-rejected  { color: #b00020; font-weight: bold; text-transform: uppercase; }
         .status-submitted { color: #1a5fa8; font-weight: bold; text-transform: uppercase; }
         .status-default   { color: #555;    font-weight: bold; text-transform: uppercase; }
 
-        /* ── Data table ── */
-
-        /* Section header rows */
-        .section-row td {
-            background-color: #e8f0f7;
-            color: #1a3a52;
-            font-weight: bold;
-            font-size: 8pt;
-            padding: 3pt 5pt;
-            border: 1px solid #b8ccd8;
-            letter-spacing: 0.3pt;
-            text-transform: uppercase;
-        }
-
-        /* Main data table – 4 implicit columns */
+        /* ── Data table ──
+           Fixed 4-column grid:  label(22%) | value(28%) | label(22%) | value(28%)
+           All row types use the same 4 columns with colspan as needed.
+           WeasyPrint respects table-layout:fixed + colgroup widths correctly.
+        ── */
         .data-table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
+        .col-label { width: 22%; }
+        .col-value  { width: 28%; }
 
-        /* Label cells (th) */
         .data-table th {
-            background-color: #f5f5f5;
+            background-color: #f0f0f0;
             font-weight: bold;
             font-size: 8pt;
             color: #333;
             border: 1px solid #d0d0d0;
-            padding: 2pt 5pt;
+            padding: 3pt 6pt;
             text-align: left;
             vertical-align: top;
         }
-
-        /* Value cells (td) */
         .data-table td {
-            font-size: 8pt;
+            font-size: 9pt;
             border: 1px solid #d0d0d0;
-            padding: 2pt 5pt;
+            padding: 3pt 6pt;
             vertical-align: top;
         }
 
-        /* Alternating row tint */
-        .data-table .alt th,
-        .data-table .alt td {
-            background-color: #fafafa;
-        }
+        /* Alternating row tint — WeasyPrint supports :nth-child fully */
+        .data-table tr:nth-child(even) th,
+        .data-table tr:nth-child(even) td { background-color: #f9f9f9; }
 
-        /* Full-width label column (single-field rows) */
-        .lbl-full  { width: 22%; }
-        /* Half-pair label columns */
-        .lbl-half  { width: 13%; }
-        /* Third-triple label columns */
-        .lbl-third { width: 9%;  }
-
-        /* ── Footer ── */
-        .footer-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 5pt;
-            border-top: 1.5px solid #65bc7b;
-        }
-        .footer-table td {
-            font-size: 7pt;
-            color: #777;
-            padding-top: 3pt;
-        }
-        .footer-right {
-            text-align: right;
+        /* Section rows always keep their own colour regardless of position */
+        .section-row td {
+            background-color: #e8f0f7 !important;
+            color: #1a3a52;
+            font-weight: bold;
+            font-size: 8pt;
+            letter-spacing: 0.3pt;
+            text-transform: uppercase;
+            padding: 4pt 6pt;
+            border: 1px solid #b8ccd8;
         }
     </style>
 </head>
 <body>
 
-    <!-- Header -->
-    <table class="header-table">
-        <tr>
-            <td class="header-left">
-                <div class="form-title">{{ form_def.name }}</div>
-            </td>
-            <td class="header-right">
-                <b class="org-name">Saint Joseph's College of Maine</b><br/>
-                Submission #{{ submission.id }}
-            </td>
-        </tr>
-    </table>
+<!-- Header -->
+<table class="header-table">
+    <tr>
+        <td class="header-left"><span class="form-title">{{ form_def.name }}</span></td>
+        <td class="header-right">
+            <span class="org-name">Saint Joseph's College of Maine</span><br>
+            Submission #{{ submission.id }}
+        </td>
+    </tr>
+</table>
 
-    <!-- Meta strip -->
-    <table class="meta-table">
-        <tr>
-            <td class="meta-label">Submitted by</td>
-            <td class="meta-value">{{ submission.submitter.get_full_name|default:submission.submitter.username }}</td>
-            <td class="meta-label">Date</td>
-            <td class="meta-value">{{ submission.submitted_at|date:"N j, Y \a\t g:i a" }}</td>
-        </tr>
-        <tr>
-            <td class="meta-label">Status</td>
-            <td class="meta-value">
-                {% if submission.status == "approved" %}
-                    <span class="status-approved">{{ submission.get_status_display }}</span>
-                {% elif submission.status == "rejected" %}
-                    <span class="status-rejected">{{ submission.get_status_display }}</span>
-                {% elif submission.status == "submitted" %}
-                    <span class="status-submitted">{{ submission.get_status_display }}</span>
-                {% else %}
-                    <span class="status-default">{{ submission.get_status_display }}</span>
-                {% endif %}
-            </td>
-            <td class="meta-label">Completed</td>
-            <td class="meta-value">{% if submission.completed_at %}{{ submission.completed_at|date:"N j, Y \a\t g:i a" }}{% else %}&mdash;{% endif %}</td>
-        </tr>
-    </table>
+<!-- Meta strip -->
+<table class="meta-table">
+    <colgroup>
+        <col class="meta-label" style="width:13%">
+        <col class="meta-value" style="width:37%">
+        <col class="meta-label" style="width:13%">
+        <col class="meta-value" style="width:37%">
+    </colgroup>
+    <tr>
+        <td class="meta-label">Submitted by</td>
+        <td class="meta-value">{{ submission.submitter.get_full_name|default:submission.submitter.username }}</td>
+        <td class="meta-label">Date</td>
+        <td class="meta-value">{{ submission.submitted_at|date:"N j, Y \a\t g:i a" }}</td>
+    </tr>
+    <tr>
+        <td class="meta-label">Status</td>
+        <td class="meta-value">
+            {% if submission.status == "approved" %}<span class="status-approved">{{ submission.get_status_display }}</span>
+            {% elif submission.status == "rejected" %}<span class="status-rejected">{{ submission.get_status_display }}</span>
+            {% elif submission.status == "submitted" %}<span class="status-submitted">{{ submission.get_status_display }}</span>
+            {% else %}<span class="status-default">{{ submission.get_status_display }}</span>{% endif %}
+        </td>
+        <td class="meta-label">Completed</td>
+        <td class="meta-value">{% if submission.completed_at %}{{ submission.completed_at|date:"N j, Y \a\t g:i a" }}{% else %}&mdash;{% endif %}</td>
+    </tr>
+</table>
 
-    <!-- Form data -->
-    <table class="data-table">
-        {% for row in pdf_rows %}
+<!-- Form data -->
+<table class="data-table">
+    <colgroup>
+        <col class="col-label">
+        <col class="col-value">
+        <col class="col-label">
+        <col class="col-value">
+    </colgroup>
+    <tbody>
+    {% for row in pdf_rows %}
 
-        {% if row.type == 'section' %}
-        {# ── Section header ─────────────────────────────────────────────── #}
-        <tr class="section-row">
-            <td colspan="6">{{ row.label }}</td>
-        </tr>
+    {% if row.type == 'section' %}
+    <tr class="section-row">
+        <td colspan="4">{{ row.label }}</td>
+    </tr>
 
-        {% elif row.type == 'pair' %}
-        {# ── Two half-width fields side by side ──────────────────────────── #}
-        <tr class="{% cycle '' 'alt' %}">
-            <th class="lbl-half">{{ row.fields.0.label }}</th>
-            <td style="width:37%">
-                {% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
-            </td>
-            <th class="lbl-half">{{ row.fields.1.label }}</th>
-            <td style="width:37%">
-                {% with v=row.fields.1.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
-            </td>
-        </tr>
+    {% elif row.type == 'pair' %}
+    <tr>
+        <th>{{ row.fields.0.label }}</th>
+        <td>{% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+        <th>{{ row.fields.1.label }}</th>
+        <td>{% with v=row.fields.1.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+    </tr>
 
-        {% elif row.type == 'triple' %}
-        {# ── Three third-width fields side by side ───────────────────────── #}
-        <tr class="{% cycle '' 'alt' %}">
-            <th class="lbl-third">{{ row.fields.0.label }}</th>
-            <td style="width:24%">
-                {% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
-            </td>
-            <th class="lbl-third">{{ row.fields.1.label }}</th>
-            <td style="width:24%">
-                {% with v=row.fields.1.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
-            </td>
-            <th class="lbl-third">{{ row.fields.2.label }}</th>
-            <td style="width:25%">
-                {% with v=row.fields.2.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
-            </td>
-        </tr>
+    {% elif row.type == 'triple' %}
+    {% for field in row.fields %}
+    <tr>
+        <th>{{ field.label }}</th>
+        <td colspan="3">{% with v=field.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+    </tr>
+    {% endfor %}
 
-        {% else %}
-        {# ── Full-width field ────────────────────────────────────────────── #}
-        <tr class="{% cycle '' 'alt' %}">
-            <th class="lbl-full" colspan="1">{{ row.fields.0.label }}</th>
-            <td colspan="5">
-                {% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}
-            </td>
-        </tr>
-        {% endif %}
+    {% else %}
+    <tr>
+        <th>{{ row.fields.0.label }}</th>
+        <td colspan="3">{% with v=row.fields.0.value %}{% if v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+    </tr>
+    {% endif %}
 
-        {% empty %}
-        <tr>
-            <td colspan="6">No form data available.</td>
-        </tr>
-        {% endfor %}
-    </table>
-
-    <!-- Footer -->
-    <table class="footer-table">
-        <tr>
-            <td>{{ form_def.name }} &mdash; Submission #{{ submission.id }}</td>
-            <td class="footer-right">Generated {% now "N j, Y \a\t g:i a" %}</td>
-        </tr>
-    </table>
+    {% empty %}
+    <tr><td colspan="4">No form data available.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
 
 </body>
 </html>
-

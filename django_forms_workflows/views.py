@@ -1227,30 +1227,21 @@ def submission_pdf(request, submission_id):
         },
     )
 
-    # --- convert HTML to PDF using xhtml2pdf ---
+    # --- convert HTML to PDF using WeasyPrint ---
     try:
-        from io import BytesIO
+        from weasyprint import HTML
 
-        from xhtml2pdf import pisa
-
-        buffer = BytesIO()
-        pisa_status = pisa.CreatePDF(html_string, dest=buffer)
-        if pisa_status.err:
-            logger.error(
-                "xhtml2pdf error for submission %s: %s",
-                submission_id,
-                pisa_status.err,
-            )
-            return HttpResponse(
-                "An error occurred while generating the PDF.", status=500
-            )
-        pdf_bytes = buffer.getvalue()
+        base_url = request.build_absolute_uri("/")
+        pdf_bytes = HTML(string=html_string, base_url=base_url).write_pdf()
     except ImportError:
         return HttpResponse(
-            "PDF generation requires the xhtml2pdf package. "
-            "Please install it with: pip install xhtml2pdf",
+            "PDF generation requires the weasyprint package. "
+            "Please install it with: pip install weasyprint",
             status=501,
         )
+    except Exception as exc:
+        logger.error("WeasyPrint error for submission %s: %s", submission_id, exc)
+        return HttpResponse("An error occurred while generating the PDF.", status=500)
 
     filename = f"submission_{submission_id}.pdf"
     response = HttpResponse(pdf_bytes, content_type="application/pdf")

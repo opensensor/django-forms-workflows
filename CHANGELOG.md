@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.10] - 2026-03-06
+
+### Changed
+- **PDF engine switched from xhtml2pdf to WeasyPrint** — WeasyPrint has full CSS3 support (including `table-layout: fixed`, `colgroup` column widths, `:nth-child` selectors, and CSS Paged Media `@page` margin boxes) making multi-column form layouts render correctly without colspan hacks.
+  - `pyproject.toml` / `requirements.txt`: `xhtml2pdf>=0.2.11` → `weasyprint>=60.0`
+  - `Dockerfile`: added `libpango-1.0-0`, `libpangoft2-1.0-0`, `libgdk-pixbuf2.0-0`, `libffi-dev`, `shared-mime-info` (WeasyPrint OS-level dependencies; `libcairo2-dev` was already present)
+  - `views.py`: `pisa.CreatePDF()` replaced with `HTML(string=..., base_url=...).write_pdf()`
+  - `submission_pdf.html`: completely rewritten — 4-column `<colgroup>` (`col-label 22%` / `col-value 28%` × 2) with `table-layout: fixed`; all row types (section, full, pair, triple) use the same 4-column grid via `colspan`; alternating row tint via `tr:nth-child(even)`; running page footer (`Page N of M · date`) via `@page @bottom-left/@bottom-right` — no more HTML footer table
+
 ## [0.14.9] - 2026-03-06
 
 ### Fixed

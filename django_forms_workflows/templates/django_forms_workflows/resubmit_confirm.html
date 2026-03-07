@@ -1,0 +1,73 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Resubmit – {{ submission.form_definition.name }} - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6 mx-auto">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-arrow-repeat"></i> Resubmit Form
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>
+                    Would you like to start a new submission for
+                    <strong>{{ submission.form_definition.name }}</strong>
+                    pre-filled with the data from your previous
+                    {% if submission.status == 'rejected' %}
+                        <span class="badge bg-danger">Rejected</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Withdrawn</span>
+                    {% endif %}
+                    submission?
+                </p>
+
+                <div class="alert alert-secondary">
+                    <strong>Original submission:</strong> #{{ submission.id }}<br>
+                    {% if submission.submitted_at %}
+                        <strong>Submitted:</strong> {{ submission.submitted_at|date:"Y-m-d H:i" }}<br>
+                    {% endif %}
+                    <strong>Status:</strong> {{ submission.get_status_display }}
+                </div>
+
+                {% if existing_draft %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    <strong>Heads up:</strong> You already have a draft in progress for this
+                    form. Confirming will <strong>replace that draft</strong> with the data
+                    from submission #{{ submission.id }}.
+                </div>
+                {% endif %}
+
+                <p class="text-muted small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Your previous answers will be pre-filled so you only need to correct
+                    what was wrong. File attachments are not carried over and must be
+                    re-uploaded. You can still edit any field before submitting.
+                </p>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2 d-md-block">
+                        <button type="submit" class="btn btn-info text-white">
+                            <i class="bi bi-arrow-repeat"></i>
+                            {% if existing_draft %}
+                                Yes, Replace Draft &amp; Pre-fill
+                            {% else %}
+                                Yes, Create Pre-filled Draft
+                            {% endif %}
+                        </button>
+                        <a href="{% url 'forms_workflows:submission_detail' submission.id %}"
+                           class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

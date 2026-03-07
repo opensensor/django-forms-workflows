@@ -263,6 +263,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 "fields": (
                     "allow_save_draft",
                     "allow_withdrawal",
+                    "allow_resubmit",
                 ),
             },
         ),

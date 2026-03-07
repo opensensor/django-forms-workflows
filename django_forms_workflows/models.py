@@ -154,6 +154,13 @@ class FormDefinition(models.Model):
     allow_withdrawal = models.BooleanField(
         default=True, help_text="Users can withdraw submitted forms before approval"
     )
+    allow_resubmit = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow submitters to start a new pre-filled submission from a rejected "
+            "or withdrawn submission"
+        ),
+    )
     requires_login = models.BooleanField(
         default=True, help_text="Form requires authentication"
     )

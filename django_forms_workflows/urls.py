@@ -24,6 +24,11 @@ urlpatterns = [
         name="withdraw_submission",
     ),
     path(
+        "submissions/<int:submission_id>/resubmit/",
+        views.resubmit_submission,
+        name="resubmit_submission",
+    ),
+    path(
         "submissions/<int:submission_id>/pdf/",
         views.submission_pdf,
         name="submission_pdf",

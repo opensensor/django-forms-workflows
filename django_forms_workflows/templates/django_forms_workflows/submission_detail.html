@@ -226,6 +226,13 @@
                     </a>
                 {% endif %}
             {% endif %}
+            {% if submission.status == 'rejected' or submission.status == 'withdrawn' %}
+                {% if submission.form_definition.allow_resubmit and submission.submitter == user %}
+                    <a href="{% url 'forms_workflows:resubmit_submission' submission.id %}" class="btn btn-outline-info">
+                        <i class="bi bi-arrow-repeat"></i> Resubmit
+                    </a>
+                {% endif %}
+            {% endif %}
             {% with pdf=submission.form_definition.pdf_generation %}
                 {% if pdf == 'anytime' and submission.status != 'draft' %}
                     <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" data-download-spinner="Generating PDF…">

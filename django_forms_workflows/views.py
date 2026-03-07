@@ -1226,6 +1226,109 @@ def withdraw_submission(request, submission_id):
 
 
 @login_required
+def resubmit_submission(request, submission_id):
+    """Create a new draft pre-filled with data from a rejected or withdrawn submission.
+
+    When ``allow_resubmit`` is enabled on the form definition, the original
+    submitter can initiate a new submission that starts with the old form data
+    already populated so they only need to correct whatever caused the rejection
+    or withdrawal, rather than re-entering everything from scratch.
+
+    GET  – display a confirmation page.
+    POST – create (or overwrite) a draft submission with the old form data, then
+           redirect to the form submission page where the user can review and edit
+           before submitting.
+    """
+    submission = get_object_or_404(FormSubmission, id=submission_id)
+    form_def = submission.form_definition
+
+    # Only the original submitter may resubmit
+    if submission.submitter != request.user:
+        return HttpResponseForbidden("You can only resubmit your own submissions.")
+
+    # Check the form is configured to allow resubmission
+    if not form_def.allow_resubmit:
+        messages.error(request, "This form does not allow resubmission.")
+        return redirect(
+            "forms_workflows:submission_detail", submission_id=submission_id
+        )
+
+    # Only rejected or withdrawn submissions can be resubmitted
+    if submission.status not in ("rejected", "withdrawn"):
+        messages.error(
+            request, "Only rejected or withdrawn submissions can be resubmitted."
+        )
+        return redirect(
+            "forms_workflows:submission_detail", submission_id=submission_id
+        )
+
+    # Check if the user already has an existing draft for this form
+    existing_draft = FormSubmission.objects.filter(
+        form_definition=form_def, submitter=request.user, status="draft"
+    ).first()
+
+    if request.method == "POST":
+        # Strip file-upload entries from the prefill data — browsers cannot
+        # pre-populate file inputs, so carrying forward stale file metadata
+        # would only confuse the DynamicForm validation on re-submission.
+        prefill_data = {
+            k: v
+            for k, v in (submission.form_data or {}).items()
+            if not (isinstance(v, dict) and "path" in v)
+        }
+
+        if existing_draft:
+            # Overwrite the existing draft with the old submission's data
+            existing_draft.form_data = prefill_data
+            existing_draft.save()
+            draft = existing_draft
+            messages.info(
+                request,
+                "Your existing draft has been replaced with data from your previous "
+                f"submission #{submission.id}. Please review all fields before submitting.",
+            )
+        else:
+            draft = FormSubmission.objects.create(
+                form_definition=form_def,
+                submitter=request.user,
+                status="draft",
+                form_data=prefill_data,
+                submission_ip=get_client_ip(request),
+                user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            )
+            messages.success(
+                request,
+                f"A draft has been created from your previous submission #{submission.id}. "
+                "Please review and update the fields before submitting.",
+            )
+
+        # Audit log
+        AuditLog.objects.create(
+            action="create",
+            object_type="FormSubmission",
+            object_id=draft.id,
+            user=request.user,
+            user_ip=get_client_ip(request),
+            changes={"resubmit_from": submission.id},
+            comments=(
+                f"Draft created from {submission.get_status_display().lower()} "
+                f"submission #{submission.id}"
+            ),
+        )
+
+        return redirect("forms_workflows:form_submit", slug=form_def.slug)
+
+    return render(
+        request,
+        "django_forms_workflows/resubmit_confirm.html",
+        {
+            "submission": submission,
+            "existing_draft": existing_draft,
+        },
+    )
+
+
+@login_required
 def submission_pdf(request, submission_id):
     """Generate and serve a PDF of a form submission.
 
@@ -2227,6 +2330,15 @@ def my_submissions_ajax(request):
             actions_parts.append(
                 f'<a href="{withdraw_url}" class="btn btn-sm btn-outline-danger">'
                 f'<i class="bi bi-x-circle"></i> Withdraw</a>'
+            )
+        if (
+            sub.status in ("rejected", "withdrawn")
+            and sub.form_definition.allow_resubmit
+        ):
+            resubmit_url = reverse("forms_workflows:resubmit_submission", args=[sub.id])
+            actions_parts.append(
+                f'<a href="{resubmit_url}" class="btn btn-sm btn-outline-info">'
+                f'<i class="bi bi-arrow-repeat"></i> Resubmit</a>'
             )
 
         submitted_html = (

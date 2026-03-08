@@ -178,6 +178,49 @@
       {% csrf_token %}
       <div id="pdfSubmissionIds"></div>
     </form>
+
+    {# ── PDF export mode selection modal ── #}
+    <div class="modal fade" id="bulkPdfModeModal" tabindex="-1" aria-labelledby="bulkPdfModeModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold" id="bulkPdfModeModalLabel">
+              <i class="bi bi-file-earmark-pdf text-danger me-2"></i>Choose PDF Export Format
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body pt-2 pb-4">
+            <p class="text-muted mb-4">Select how you'd like to download the selected submissions as PDF files:</p>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <button type="button" class="btn btn-outline-danger w-100 h-100 p-4 text-start rounded-3 border-2"
+                        onclick="submitBulkPdfMerged()" data-bs-dismiss="modal">
+                  <div class="d-flex align-items-start gap-3">
+                    <i class="bi bi-file-earmark-pdf fs-2 text-danger flex-shrink-0 mt-1"></i>
+                    <div>
+                      <div class="fw-bold fs-6 mb-1">Single Merged PDF</div>
+                      <small class="text-muted">All selected submissions combined into one PDF document, separated by page breaks. Great for printing or sharing as one file.</small>
+                    </div>
+                  </div>
+                </button>
+              </div>
+              <div class="col-md-6">
+                <button type="button" class="btn btn-outline-primary w-100 h-100 p-4 text-start rounded-3 border-2"
+                        onclick="submitBulkPdfSequential()" data-bs-dismiss="modal">
+                  <div class="d-flex align-items-start gap-3">
+                    <i class="bi bi-files fs-2 text-primary flex-shrink-0 mt-1"></i>
+                    <div>
+                      <div class="fw-bold fs-6 mb-1">Individual PDFs</div>
+                      <small class="text-muted">Each submission downloaded as its own separate PDF file. Ideal when you need individual files for archiving or distribution.</small>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     {% endif %}
 
     {# ── Bulk export form (Excel + PDF buttons) ── #}
@@ -191,7 +234,8 @@
         </button>
         {% endif %}
         {% if any_pdf_exportable %}
-        <button type="button" class="btn btn-sm btn-danger" id="pdfExportBtn" disabled onclick="submitBulkPdf()">
+        <button type="button" class="btn btn-sm btn-danger" id="pdfExportBtn" disabled
+                data-bs-toggle="modal" data-bs-target="#bulkPdfModeModal">
           <i class="bi bi-file-earmark-pdf me-1"></i>Export Selected to PDF
         </button>
         {% endif %}
@@ -459,9 +503,12 @@ $(document).ready(function() {
 
 });
 
-// ── Bulk PDF export: global so inline onclick can reach it ──
+// ── Bulk PDF export helpers (called from the mode-selection modal) ──
 {% if any_pdf_exportable %}
-function submitBulkPdf() {
+var _bulkPdfSingleUrl = "{% url 'forms_workflows:submission_pdf' 0 %}";
+
+function submitBulkPdfMerged() {
+    // Existing behaviour: all submissions combined into one PDF.
     var pdfForm = document.getElementById('bulkPdfExportForm');
     var container = document.getElementById('pdfSubmissionIds');
     container.innerHTML = '';
@@ -473,6 +520,55 @@ function submitBulkPdf() {
         container.appendChild(inp);
     });
     pdfForm.requestSubmit();
+}
+
+function submitBulkPdfSequential() {
+    // New behaviour: download each submission as its own PDF file, one at a time.
+    var ids = [];
+    document.querySelectorAll('.export-check:checked').forEach(function(cb) {
+        ids.push(cb.value);
+    });
+    if (!ids.length) return;
+
+    var total = ids.length;
+    var index = 0;
+    var overlay = document.getElementById('loadingOverlay');
+    var msg = document.getElementById('loadingMessage');
+    if (overlay) overlay.classList.add('active');
+
+    function downloadNext() {
+        if (index >= ids.length) {
+            if (overlay) overlay.classList.remove('active');
+            return;
+        }
+        var id = ids[index++];
+        if (msg) msg.textContent = 'Downloading PDF ' + index + ' of ' + total + '\u2026';
+        var url = _bulkPdfSingleUrl.replace('/0/', '/' + id + '/');
+        fetch(url)
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                var cd = resp.headers.get('Content-Disposition') || '';
+                var m = cd.match(/filename[^;=\n]*=["']?([^"';\n]+)["']?/i);
+                var filename = (m && m[1]) ? m[1].trim() : ('submission_' + id + '.pdf');
+                return resp.blob().then(function(blob) { return { blob: blob, name: filename }; });
+            })
+            .then(function(data) {
+                var blobUrl = URL.createObjectURL(data.blob);
+                var a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = data.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 10000);
+                setTimeout(downloadNext, 800);
+            })
+            .catch(function(err) {
+                console.error('PDF download failed for submission ' + id + ':', err);
+                setTimeout(downloadNext, 800);
+            });
+    }
+    downloadNext();
 }
 {% endif %}
 </script>

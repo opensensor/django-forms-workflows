@@ -563,6 +563,15 @@ def submission_detail(request, submission_id):
     form_data = _resolve_form_data_urls(submission.form_data)
     form_data_ordered = _build_ordered_form_data(submission, form_data)
 
+    # Collect approval-step field names so the template can exclude them from
+    # the main "Form Data" table and render them in their own sections.
+    approval_field_names = list(
+        submission.form_definition.fields.filter(
+            approval_step__isnull=False
+        ).values_list("field_name", flat=True)
+    )
+    approval_step_sections = _build_approval_step_sections(submission)
+
     # Elevated viewers (approvers / admins / superusers) may download PDFs of
     # post_approval forms even before the submission is fully approved.
     form_def = submission.form_definition
@@ -581,6 +590,8 @@ def submission_detail(request, submission_id):
             "stage_groups": stage_groups,
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
+            "approval_field_names": approval_field_names,
+            "approval_step_sections": approval_step_sections,
             "can_approve_pdf": can_approve_pdf,
         },
     )
@@ -977,6 +988,13 @@ def approve_submission(request, task_id):
     form_data = _resolve_form_data_urls(submission.form_data)
     form_data_ordered = _build_ordered_form_data(submission, form_data)
 
+    # Resolve the custom approve-button label from the stage (if any).
+    approve_label = (
+        task.workflow_stage.approve_label
+        if task.workflow_stage and task.workflow_stage.approve_label
+        else ""
+    )
+
     return render(
         request,
         "django_forms_workflows/approve.html",
@@ -1000,6 +1018,8 @@ def approve_submission(request, task_id):
             "workflow_mode": workflow_mode,
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
+            # custom button label
+            "approve_label": approve_label,
         },
     )
 
@@ -1372,6 +1392,7 @@ def submission_pdf(request, submission_id):
 
     # --- build width-aware row groups for PDF layout ---
     pdf_rows = _build_pdf_rows(submission)
+    approval_step_sections = _build_approval_step_sections(submission)
 
     # --- render HTML template to a string ---
     from django.template.loader import render_to_string
@@ -1382,6 +1403,7 @@ def submission_pdf(request, submission_id):
             "submission": submission,
             "form_def": form_def,
             "pdf_rows": pdf_rows,
+            "approval_step_sections": approval_step_sections,
             "request": request,
         },
     )
@@ -1601,6 +1623,14 @@ def _build_pdf_rows(submission):
             continue
 
         key = field.field_name
+
+        # Approval-step fields are rendered in their own section (below the
+        # main data table) so they must NOT appear here.  Mark as seen so the
+        # fallback loop below cannot accidentally include them either.
+        if field.approval_step is not None:
+            seen_keys.add(key)
+            continue
+
         if key not in form_data:
             continue
 
@@ -1651,6 +1681,85 @@ def _build_pdf_rows(submission):
             )
 
     return rows
+
+
+def _build_approval_step_sections(submission):
+    """Return per-approval-step field data for display in detail and PDF views.
+
+    Approval-step fields (FormField.approval_step is not None) are stored
+    inside submission.form_data alongside the regular submission data.  This
+    helper extracts them into clearly labelled sections so they can be
+    rendered separately from the original submission fields.
+
+    Each returned dict has the shape::
+
+        {
+            "step_number":  int,
+            "step_name":    str,
+            "completed_by": str | None,
+            "completed_at": datetime | None,
+            "comments":     str,
+            "fields": [{"label": str, "key": str, "value": any}, ...],
+        }
+
+    Returns an empty list when the form has no approval-step fields or none
+    have been filled in yet.
+    """
+    from collections import defaultdict
+
+    form_data = _resolve_form_data_urls(submission.form_data or {})
+
+    # Group approval-step fields by their step number.
+    step_fields: dict = defaultdict(list)
+    for field in submission.form_definition.fields.filter(
+        approval_step__isnull=False
+    ).order_by("approval_step", "order"):
+        key = field.field_name
+        if key in form_data:
+            step_fields[field.approval_step].append(
+                {"label": field.field_label, "key": key, "value": form_data[key]}
+            )
+
+    if not step_fields:
+        return []
+
+    # Build a lookup of the task that completed each effective step.
+    # For sequential workflows task.step_number matches approval_step;
+    # for staged workflows task.stage_number matches approval_step.
+    task_by_step: dict = {}
+    for task in (
+        submission.approval_tasks.filter(status="approved")
+        .select_related("completed_by")
+        .order_by("completed_at")
+    ):
+        effective = (
+            task.step_number
+            if task.step_number is not None
+            else (task.stage_number or 1)
+        )
+        if effective not in task_by_step:
+            task_by_step[effective] = task
+
+    sections = []
+    for step_num in sorted(step_fields.keys()):
+        task = task_by_step.get(step_num)
+        completed_by = None
+        if task and task.completed_by:
+            completed_by = (
+                task.completed_by.get_full_name() or task.completed_by.username
+            )
+        sections.append(
+            {
+                "step_number": step_num,
+                "step_name": task.step_name if task else f"Step {step_num}",
+                "completed_by": completed_by,
+                "completed_at": task.completed_at if task else None,
+                "comments": task.comments if task else "",
+                "fields": step_fields[step_num],
+            }
+        )
+
+    return sections
 
 
 def _resolve_form_data_urls(form_data):
@@ -1934,6 +2043,7 @@ def bulk_export_submissions_pdf(request):
                 "submission": sub,
                 "form_def": sub.form_definition,
                 "pdf_rows": _build_pdf_rows(sub),
+                "approval_step_sections": _build_approval_step_sections(sub),
             }
         )
 

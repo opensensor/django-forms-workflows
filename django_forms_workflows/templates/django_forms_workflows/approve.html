@@ -227,7 +227,7 @@
                     </div>
                     <div class="d-grid gap-2 d-md-block">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
-                            <i class="bi bi-check-circle"></i> Approve
+                            <i class="bi bi-check-circle"></i> {{ approve_label|default:"Approve" }}
                         </button>
                         <button type="submit" name="decision" value="reject" class="btn btn-danger btn-lg">
                             <i class="bi bi-x-circle"></i> Reject
@@ -309,7 +309,7 @@
                     </div>
                     <div class="d-grid gap-2 d-md-block">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
-                            <i class="bi bi-check-circle"></i> Approve
+                            <i class="bi bi-check-circle"></i> {{ approve_label|default:"Approve" }}
                         </button>
                         <button type="submit" name="decision" value="reject" class="btn btn-danger btn-lg">
                             <i class="bi bi-x-circle"></i> Reject

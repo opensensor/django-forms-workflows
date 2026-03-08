@@ -780,6 +780,15 @@ class WorkflowStage(models.Model):
         default=False,
         help_text="Also require submitter's manager approval in this stage (requires LDAP)",
     )
+    approve_label = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "Custom label for the approve/complete button shown to the approver "
+            '(e.g. "Complete", "Confirm", "Sign Off"). Defaults to "Approve" when blank.'
+        ),
+    )
 
     class Meta:
         ordering = ["order"]

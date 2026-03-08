@@ -47,7 +47,7 @@
             </div>
         </div>
 
-        <!-- Form Data -->
+        <!-- Form Data (original submission fields only — approval-step fields rendered separately below) -->
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0">Form Data</h5>
@@ -55,6 +55,7 @@
             <div class="card-body">
                 <table class="table table-bordered">
                     {% for entry in form_data_ordered %}
+                        {% if entry.key not in approval_field_names %}
                         <tr>
                             <th style="width: 30%;">{{ entry.label }}</th>
                             <td>
@@ -80,10 +81,49 @@
                                 {% endif %}
                             </td>
                         </tr>
+                        {% endif %}{# /approval_field_names check #}
                     {% endfor %}
                 </table>
             </div>
         </div>
+
+        <!-- Approval Step Responses (fields filled in by each approver, separate from original submission) -->
+        {% if approval_step_sections %}
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Approval Step Responses</h5>
+            </div>
+            <div class="card-body p-0">
+                {% for section in approval_step_sections %}
+                <div {% if not forloop.last %}class="border-bottom"{% endif %}>
+                    <div class="px-3 pt-3 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <h6 class="mb-0 fw-bold">{{ section.step_name }}</h6>
+                            {% if section.completed_by %}
+                            <small class="text-muted">
+                                Completed by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} on {{ section.completed_at|date:"Y-m-d H:i" }}{% endif %}
+                            </small>
+                            {% endif %}
+                            {% if section.comments %}
+                            <p class="mb-0 mt-1"><small class="text-muted fst-italic">Comment: {{ section.comments }}</small></p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="px-3 pb-3">
+                        <table class="table table-bordered table-sm mb-0">
+                            {% for field in section.fields %}
+                            <tr>
+                                <th style="width: 30%;">{{ field.label }}</th>
+                                <td>{{ field.value }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Approval History -->
         {% if approval_tasks %}

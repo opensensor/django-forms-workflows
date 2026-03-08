@@ -120,6 +120,18 @@
             padding: 4pt 6pt;
             border: 1px solid #b8ccd8;
         }
+
+        /* Approval-step section header */
+        .step-section-header {
+            background-color: #1a3a52;
+            color: #fff;
+            font-weight: bold;
+            font-size: 9pt;
+            padding: 4pt 6pt;
+            margin-top: 10pt;
+            border: 1px solid #0f2538;
+        }
+        .step-meta { font-size: 7.5pt; color: #555; margin: 2pt 0 4pt 0; }
     </style>
 </head>
 <body>
@@ -206,6 +218,28 @@
     {% endfor %}
     </tbody>
 </table>
+
+{% for section in approval_step_sections %}
+<div class="step-section-header">{{ section.step_name }}</div>
+<p class="step-meta">
+    {% if section.completed_by %}Completed by {{ section.completed_by }}{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}{% endif %}
+    {% if section.comments %}&nbsp;&nbsp;Comment: {{ section.comments }}{% endif %}
+</p>
+<table class="data-table">
+    <colgroup>
+        <col class="col-label"><col class="col-value">
+        <col class="col-label"><col class="col-value">
+    </colgroup>
+    <tbody>
+    {% for field in section.fields %}
+    <tr>
+        <th>{{ field.label }}</th>
+        <td colspan="3">{% with v=field.value %}{% if v.filename %}{{ v.filename }}{% else %}{{ v }}{% endif %}{% endwith %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endfor %}
 
 </body>
 </html>

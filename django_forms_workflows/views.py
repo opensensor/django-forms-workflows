@@ -1778,8 +1778,10 @@ def _build_approval_step_sections(submission):
         )
 
     # All completed tasks ordered by step then completion time.
+    # Include "rejected" tasks so that rejected submissions still show the
+    # approval step data filled in by the rejecting approver.
     completed_tasks = list(
-        submission.approval_tasks.filter(status="approved")
+        submission.approval_tasks.filter(status__in=("approved", "rejected"))
         .select_related("completed_by", "assigned_group", "workflow_stage")
         .order_by("stage_number", "step_number", "completed_at")
     )

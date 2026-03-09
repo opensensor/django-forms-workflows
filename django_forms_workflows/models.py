@@ -6,6 +6,7 @@ Database-driven form definitions with approval workflows and external data integ
 
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
 
@@ -1259,6 +1260,10 @@ class FormSubmission(models.Model):
         indexes = [
             models.Index(fields=["status", "submitter"]),
             models.Index(fields=["form_definition", "status"]),
+            GinIndex(
+                fields=["form_data"],
+                name="dfwf_formsubmission_form_data_gin",
+            ),
         ]
         verbose_name = "Form Submission"
         verbose_name_plural = "Form Submissions"

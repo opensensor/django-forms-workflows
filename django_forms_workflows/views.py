@@ -1432,6 +1432,40 @@ def submission_pdf(request, submission_id):
 
 # Helper functions
 
+# Field types where free-text search makes no sense (binary / structural)
+_NONSEARCHABLE_FIELD_TYPES = frozenset({"section", "file", "hidden", "checkbox"})
+
+
+def _form_data_search_q(form_slug, search, field_prefix="form_data"):
+    """Return a Q() that icontains-searches every text-like key in form_data.
+
+    Only meaningful when a specific form is already selected (``form_slug`` is
+    set), so the queryset is scoped to one form_definition and the row count is
+    small.  The GIN index on form_data covers @> containment; for icontains the
+    index reduces the pages PostgreSQL must scan when extracting individual keys
+    via ->>.
+
+    ``field_prefix`` controls the ORM traversal path:
+
+    * ``"form_data"``             – direct FormSubmission querysets
+    * ``"submission__form_data"`` – ApprovalTask querysets (inbox view)
+    """
+    if not form_slug or not search:
+        return models.Q()
+    try:
+        fd = FormDefinition.objects.get(slug=form_slug)
+    except FormDefinition.DoesNotExist:
+        return models.Q()
+    field_names = (
+        FormField.objects.filter(form_definition=fd)
+        .exclude(field_type__in=_NONSEARCHABLE_FIELD_TYPES)
+        .values_list("field_name", flat=True)
+    )
+    q = models.Q()
+    for fn in field_names:
+        q |= models.Q(**{f"{field_prefix}__{fn}__icontains": search})
+    return q
+
 
 def serialize_form_data(data, submission_id=None):
     """
@@ -2198,6 +2232,7 @@ def completed_approvals_ajax(request):
             | models.Q(submitter__last_name__icontains=search)
             | models.Q(submitter__username__icontains=search)
             | models.Q(status__icontains=search)
+            | _form_data_search_q(form_slug, search, field_prefix="form_data")
         )
 
     records_filtered = qs.count()
@@ -2321,6 +2356,9 @@ def approval_inbox_ajax(request):
             | models.Q(submission__submitter__last_name__icontains=search)
             | models.Q(submission__submitter__username__icontains=search)
             | models.Q(step_name__icontains=search)
+            | _form_data_search_q(
+                form_slug, search, field_prefix="submission__form_data"
+            )
         )
 
     records_filtered = qs.count()
@@ -2425,6 +2463,7 @@ def my_submissions_ajax(request):
         qs = qs.filter(
             models.Q(form_definition__name__icontains=search)
             | models.Q(status__icontains=search)
+            | _form_data_search_q(form_slug, search, field_prefix="form_data")
         )
 
     records_filtered = qs.count()

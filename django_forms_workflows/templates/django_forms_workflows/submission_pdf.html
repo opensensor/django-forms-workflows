@@ -127,11 +127,42 @@
             color: #fff;
             font-weight: bold;
             font-size: 9pt;
-            padding: 4pt 6pt;
-            margin-top: 10pt;
+            padding: 5pt 8pt;
+            margin-top: 12pt;
             border: 1px solid #0f2538;
+            display: table;
+            width: 100%;
+            box-sizing: border-box;
         }
-        .step-meta { font-size: 7.5pt; color: #555; margin: 2pt 0 4pt 0; }
+        .step-section-header .step-name-cell { display: table-cell; vertical-align: middle; }
+        .step-section-header .step-badge-cell {
+            display: table-cell;
+            vertical-align: middle;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .step-badge {
+            display: inline-block;
+            padding: 2pt 7pt;
+            border-radius: 3pt;
+            font-size: 7.5pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.4pt;
+        }
+        .step-badge-approved { background-color: #2a7a3b; color: #fff; }
+        .step-badge-rejected { background-color: #b00020; color: #fff; }
+        .step-meta {
+            font-size: 8pt;
+            color: #333;
+            margin: 3pt 0 5pt 0;
+            padding: 3pt 8pt;
+            background-color: #f5f5f5;
+            border: 1px solid #d0d0d0;
+            border-top: none;
+        }
+        .step-meta-by { font-weight: bold; }
+        .step-meta-comment { font-style: italic; margin-top: 2pt; }
     </style>
 </head>
 <body>
@@ -220,10 +251,19 @@
 </table>
 
 {% for section in approval_step_sections %}
-<div class="step-section-header">{{ section.step_name }}</div>
+<div class="step-section-header">
+    <span class="step-name-cell">{{ section.step_name }}</span>
+    <span class="step-badge-cell">
+        {% if section.status == "approved" %}
+        <span class="step-badge step-badge-approved">&#10003; Approved</span>
+        {% elif section.status == "rejected" %}
+        <span class="step-badge step-badge-rejected">&#10007; Rejected</span>
+        {% endif %}
+    </span>
+</div>
 <p class="step-meta">
-    {% if section.completed_by %}Completed by {{ section.completed_by }}{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}{% endif %}
-    {% if section.comments %}&nbsp;&nbsp;Comment: {{ section.comments }}{% endif %}
+    {% if section.completed_by %}<span class="step-meta-by">{{ section.completed_by }}</span>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}{% endif %}
+    {% if section.comments %}<br><span class="step-meta-comment">&#8220;{{ section.comments }}&#8221;</span>{% endif %}
 </p>
 {% if section.fields %}
 <table class="data-table">

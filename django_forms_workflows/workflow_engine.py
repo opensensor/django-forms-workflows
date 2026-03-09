@@ -208,15 +208,18 @@ def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
 def _create_stage_tasks(
     submission: FormSubmission,
     stage: WorkflowStage,
-    stage_number: int,
     due_date,
 ) -> None:
     """Create approval tasks for a single workflow stage.
+
+    Uses ``stage.order`` as the display stage number so that parallel stages
+    sharing the same order appear under the same step label.
 
     Handles manager-first ordering within the stage: if ``requires_manager_approval``
     is True, only the manager task is created; group tasks are created later when
     ``handle_approval`` processes that manager task.
     """
+    stage_num = stage.order
     groups = list(stage.approval_groups.all().order_by("id"))
 
     manager_task_created = False
@@ -231,8 +234,8 @@ def _create_stage_tasks(
                 submission=submission,
                 assigned_to=manager,
                 workflow_stage=stage,
-                stage_number=stage_number,
-                step_name=f"Stage {stage_number}: Manager Approval",
+                stage_number=stage_num,
+                step_name=f"Stage {stage_num}: Manager Approval",
                 status="pending",
                 due_date=due_date,
             )
@@ -242,7 +245,7 @@ def _create_stage_tasks(
             logger.info(
                 "Manager approval required but manager not found for user %s (stage %d)",
                 submission.submitter,
-                stage_number,
+                stage_num,
             )
 
     # Manager task gates group tasks — create groups later via handle_approval
@@ -258,22 +261,23 @@ def _create_stage_tasks(
             submission=submission,
             assigned_group=g,
             workflow_stage=stage,
-            stage_number=stage_number,
-            step_name=f"Stage {stage_number}: {g.name} (Step 1 of {len(groups)})",
+            stage_number=stage_num,
+            step_name=f"Stage {stage_num}: {g.name} (Step 1 of {len(groups)})",
             step_number=1,
             status="pending",
             due_date=due_date,
         )
         _notify_task_request(task)
     else:
-        # "all" or "any" → parallel tasks for every group
+        # "all" or "any" → parallel tasks for every group in this stage
         for g in groups:
+            label = stage.approve_label or "Approval"
             task = ApprovalTask.objects.create(
                 submission=submission,
                 assigned_group=g,
                 workflow_stage=stage,
-                stage_number=stage_number,
-                step_name=f"Stage {stage_number}: {g.name} Approval",
+                stage_number=stage_num,
+                step_name=f"Stage {stage_num}: {g.name} {label}",
                 status="pending",
                 due_date=due_date,
             )
@@ -284,23 +288,34 @@ def _advance_to_next_stage(
     submission: FormSubmission,
     workflow: WorkflowDefinition,
     stages: list,
-    current_stage_number: int,
+    current_order: int,
     due_date,
 ) -> None:
-    """Create tasks for the next stage, or finalize if this was the last stage.
+    """Advance to the next order-level of stages, or finalize if none remain.
 
-    ``stages`` must be ordered by ``order``; ``current_stage_number`` is 1-indexed.
+    Stages sharing the same ``order`` value run in parallel.  This function
+    first checks that every sibling stage at ``current_order`` has no pending
+    tasks before moving forward — ensuring all parallel branches complete
+    before the workflow advances.
+
+    ``stages`` must be pre-sorted by ``order`` (ascending).
     """
-    if current_stage_number < len(stages):
-        next_stage = stages[current_stage_number]  # 0-indexed = current_stage_number
-        _create_stage_tasks(
-            submission,
-            next_stage,
-            stage_number=current_stage_number + 1,
-            due_date=due_date,
-        )
-    else:
+    # Wait until ALL parallel stages at the current order are complete.
+    for sibling in (s for s in stages if s.order == current_order):
+        if submission.approval_tasks.filter(
+            workflow_stage=sibling, status="pending"
+        ).exists():
+            return  # A parallel branch is still in progress
+
+    # Find stages at the next order level.
+    future_stages = [s for s in stages if s.order > current_order]
+    if not future_stages:
         _finalize_submission(submission)
+        return
+
+    next_order = future_stages[0].order
+    for stage in (s for s in future_stages if s.order == next_order):
+        _create_stage_tasks(submission, stage, due_date=due_date)
 
 
 # --- Public API -------------------------------------------------------------
@@ -339,15 +354,20 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
     due_date = _due_date_for(workflow)
 
     # --- Staged mode ---
-    stages = list(workflow.stages.order_by("order"))
+    # Stages sharing the same ``order`` value are parallel — start them all.
+    stages = list(workflow.stages.order_by("order", "id"))
     if stages:
-        first_stage = stages[0]
-        groups = list(first_stage.approval_groups.all())
-        if not first_stage.requires_manager_approval and not groups:
-            # Stage has no reviewers configured — finalize immediately
+        first_order = stages[0].order
+        first_order_stages = [s for s in stages if s.order == first_order]
+        any_created = False
+        for stage in first_order_stages:
+            groups = list(stage.approval_groups.all())
+            if not stage.requires_manager_approval and not groups:
+                continue  # empty stage — skip
+            _create_stage_tasks(submission, stage, due_date=due_date)
+            any_created = True
+        if not any_created:
             _finalize_submission(submission)
-            return
-        _create_stage_tasks(submission, first_stage, stage_number=1, due_date=due_date)
         return
 
     # --- Legacy flat mode ---
@@ -423,8 +443,7 @@ def handle_approval(
     # ------------------------------------------------------------------ staged
     if task.workflow_stage:
         stage = task.workflow_stage
-        stage_number = task.stage_number or 1
-        stages = list(workflow.stages.order_by("order"))
+        stages = list(workflow.stages.order_by("order", "id"))
 
         is_manager_task = (
             task.assigned_to_id is not None and "manager" in task.step_name.lower()
@@ -435,7 +454,7 @@ def handle_approval(
             groups = list(stage.approval_groups.all().order_by("id"))
             if not groups:
                 _advance_to_next_stage(
-                    submission, workflow, stages, stage_number, due_date
+                    submission, workflow, stages, stage.order, due_date
                 )
                 return
             if stage.approval_logic == "sequence":
@@ -444,8 +463,8 @@ def handle_approval(
                     submission=submission,
                     assigned_group=g,
                     workflow_stage=stage,
-                    stage_number=stage_number,
-                    step_name=f"Stage {stage_number}: {g.name} (Step 1 of {len(groups)})",
+                    stage_number=stage.order,
+                    step_name=f"Stage {stage.order}: {g.name} (Step 1 of {len(groups)})",
                     step_number=1,
                     status="pending",
                     due_date=due_date,
@@ -453,12 +472,13 @@ def handle_approval(
                 _notify_task_request(new_task)
             else:
                 for g in groups:
+                    label = stage.approve_label or "Approval"
                     new_task = ApprovalTask.objects.create(
                         submission=submission,
                         assigned_group=g,
                         workflow_stage=stage,
-                        stage_number=stage_number,
-                        step_name=f"Stage {stage_number}: {g.name} Approval",
+                        stage_number=stage.order,
+                        step_name=f"Stage {stage.order}: {g.name} {label}",
                         status="pending",
                         due_date=due_date,
                     )
@@ -472,17 +492,18 @@ def handle_approval(
             submission.approval_tasks.filter(
                 workflow_stage=stage, status="pending"
             ).exclude(id=task.id).update(status="skipped")
-            _advance_to_next_stage(submission, workflow, stages, stage_number, due_date)
+            _advance_to_next_stage(submission, workflow, stages, stage.order, due_date)
 
         elif logic == "all":
-            # Advance only when all group tasks in this stage are done
+            # Advance only when all group tasks in this stage are done;
+            # _advance_to_next_stage will also check parallel sibling stages.
             if not submission.approval_tasks.filter(
                 workflow_stage=stage,
                 status="pending",
                 assigned_group__isnull=False,
             ).exists():
                 _advance_to_next_stage(
-                    submission, workflow, stages, stage_number, due_date
+                    submission, workflow, stages, stage.order, due_date
                 )
 
         elif logic == "sequence":
@@ -499,9 +520,9 @@ def handle_approval(
                     submission=submission,
                     assigned_group=next_group,
                     workflow_stage=stage,
-                    stage_number=stage_number,
+                    stage_number=stage.order,
                     step_name=(
-                        f"Stage {stage_number}: {next_group.name}"
+                        f"Stage {stage.order}: {next_group.name}"
                         f" (Step {idx + 2} of {len(groups)})"
                     ),
                     step_number=idx + 2,
@@ -511,7 +532,7 @@ def handle_approval(
                 _notify_task_request(new_task)
             else:
                 _advance_to_next_stage(
-                    submission, workflow, stages, stage_number, due_date
+                    submission, workflow, stages, stage.order, due_date
                 )
 
         return

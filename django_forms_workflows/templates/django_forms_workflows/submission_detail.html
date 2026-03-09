@@ -98,14 +98,21 @@
                 <div {% if not forloop.last %}class="border-bottom"{% endif %}>
                     <div class="px-3 pt-3 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
-                            <h6 class="mb-0 fw-bold">{{ section.step_name }}</h6>
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <h6 class="mb-0 fw-bold">{{ section.step_name }}</h6>
+                                {% if section.status == "approved" %}
+                                <span class="badge bg-success">&#10003; Approved</span>
+                                {% elif section.status == "rejected" %}
+                                <span class="badge bg-danger">&#10007; Rejected</span>
+                                {% endif %}
+                            </div>
                             {% if section.completed_by %}
-                            <small class="text-muted">
-                                Completed by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} on {{ section.completed_at|date:"Y-m-d H:i" }}{% endif %}
-                            </small>
+                            <div class="text-muted small">
+                                by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
+                            </div>
                             {% endif %}
                             {% if section.comments %}
-                            <p class="mb-0 mt-1"><small class="text-muted fst-italic">Comment: {{ section.comments }}</small></p>
+                            <p class="mb-0 mt-1 small fst-italic text-secondary">&#8220;{{ section.comments }}&#8221;</p>
                             {% endif %}
                         </div>
                     </div>

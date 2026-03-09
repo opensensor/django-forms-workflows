@@ -607,7 +607,6 @@ class ApprovalStepForm(forms.Form):
         submission,
         approval_task,
         user=None,
-        hidden_fields=None,
         *args,
         **kwargs,
     ):
@@ -622,8 +621,6 @@ class ApprovalStepForm(forms.Form):
             if approval_task.step_number is not None
             else (approval_task.stage_number or 1)
         )
-        # field_names that should not be shown/saved for this group
-        self.hidden_fields = set(hidden_fields or [])
 
         # Get existing form data
         self.form_data = submission.form_data or {}
@@ -635,13 +632,28 @@ class ApprovalStepForm(forms.Form):
         self._setup_layout()
 
     def _build_fields(self):
-        """Build only fields for the current approval step, excluding hidden ones."""
-        for field_def in (
-            self.form_definition.fields.exclude(field_type="section")
-            .filter(approval_step=self.current_step)
-            .exclude(field_name__in=self.hidden_fields)
-            .order_by("order")
-        ):
+        """Build fields for this approval task.
+
+        For staged workflows the task carries a ``workflow_stage`` FK that
+        precisely identifies which FormFields belong to it.  For legacy
+        sequential workflows the integer ``approval_step`` is matched against
+        ``current_step`` as before.
+        """
+        if self.approval_task.workflow_stage_id:
+            # Staged mode: FK-based — each stage owns its fields directly.
+            qs = (
+                self.form_definition.fields.exclude(field_type="section")
+                .filter(workflow_stage_id=self.approval_task.workflow_stage_id)
+                .order_by("order")
+            )
+        else:
+            # Legacy sequential mode: integer-based approval_step matching.
+            qs = (
+                self.form_definition.fields.exclude(field_type="section")
+                .filter(approval_step=self.current_step)
+                .order_by("order")
+            )
+        for field_def in qs:
             self._add_field(field_def)
 
     def _add_field(self, field_def):

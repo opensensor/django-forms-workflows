@@ -191,6 +191,27 @@ class DynamicForm(forms.Form):
                 **field_args,
             )
 
+        elif field_def.field_type == "phone":
+            widget_attrs.update(
+                {
+                    "type": "tel",
+                    "inputmode": "tel",
+                    "pattern": r"[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}",
+                }
+            )
+            field = forms.CharField(
+                max_length=20,
+                widget=forms.TextInput(attrs=widget_attrs),
+                **field_args,
+            )
+            field.validators.append(
+                RegexValidator(
+                    regex=r"^\+?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$",
+                    message="Enter a valid phone number (e.g. 555-555-5555 or +1 555 555 5555).",
+                )
+            )
+            self.fields[field_def.field_name] = field
+
         elif field_def.field_type == "textarea":
             widget_attrs["rows"] = 4
             self.fields[field_def.field_name] = forms.CharField(
@@ -728,6 +749,27 @@ class ApprovalStepForm(forms.Form):
                 max_length=field_def.max_length or 255,
                 **field_args,
             )
+
+        elif field_def.field_type == "phone":
+            widget_attrs.update(
+                {
+                    "type": "tel",
+                    "inputmode": "tel",
+                    "pattern": r"[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}",
+                }
+            )
+            field = forms.CharField(
+                max_length=20,
+                widget=forms.TextInput(attrs=widget_attrs),
+                **field_args,
+            )
+            field.validators.append(
+                RegexValidator(
+                    regex=r"^\+?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$",
+                    message="Enter a valid phone number (e.g. 555-555-5555 or +1 555 555 5555).",
+                )
+            )
+            self.fields[field_def.field_name] = field
 
         elif field_def.field_type == "textarea":
             widget_attrs["rows"] = 4

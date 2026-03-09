@@ -379,6 +379,7 @@ class FormField(models.Model):
 
     FIELD_TYPES = [
         ("text", "Single Line Text"),
+        ("phone", "Phone Number"),
         ("textarea", "Multi-line Text"),
         ("number", "Whole Number"),
         ("decimal", "Decimal/Currency"),

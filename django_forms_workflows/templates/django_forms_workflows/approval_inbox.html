@@ -402,6 +402,11 @@ $(document).ready(function() {
         } catch(e) { savedCols = []; }
 
         // Restore visibility without triggering a separate AJAX redraw per column.
+        function adjustTable() {
+            table.table().node().style.width = '';
+            table.columns.adjust().draw(false);
+        }
+
         var anyRestored = false;
         savedCols.forEach(function(fieldName) {
             if (colIndexMap[fieldName] !== undefined) {
@@ -411,7 +416,7 @@ $(document).ready(function() {
             }
         });
         if (anyRestored) {
-            table.columns.adjust().draw(false);
+            adjustTable();
         }
 
         // Update the Select all / Deselect all link label to reflect current state
@@ -432,8 +437,7 @@ $(document).ready(function() {
                     table.column(colIndexMap[fieldName]).visible(!allChecked, false);
                 }
             });
-            // Single redraw + width recalculation after all visibility changes.
-            table.columns.adjust().draw(false);
+            adjustTable();
             var visible = !allChecked
                 ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get()
                 : [];
@@ -445,7 +449,8 @@ $(document).ready(function() {
         $(document).on('change', '.col-toggle-chk', function() {
             var fieldName = $(this).data('field');
             if (colIndexMap[fieldName] !== undefined) {
-                table.column(colIndexMap[fieldName]).visible(this.checked);
+                table.column(colIndexMap[fieldName]).visible(this.checked, false);
+                adjustTable();
             }
             var visible = [];
             $('.col-toggle-chk:checked').each(function() { visible.push($(this).data('field')); });

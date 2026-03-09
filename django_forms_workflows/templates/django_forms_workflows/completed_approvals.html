@@ -447,6 +447,15 @@ $(document).ready(function() {
         // Restore visibility without triggering a separate AJAX redraw per column.
         // Passing false as the second argument to visible() suppresses the redraw;
         // we do a single columns.adjust().draw() at the end instead.
+        // Reset the table node's cached inline width then recalculate.
+        // Without clearing style.width first, DataTables keeps the wider
+        // measurement from when extra columns were visible, leaving the
+        // table spaced out after columns are hidden.
+        function adjustTable() {
+            table.table().node().style.width = '';
+            table.columns.adjust().draw(false);
+        }
+
         var anyRestored = false;
         savedCols.forEach(function(fieldName) {
             if (colIndexMap[fieldName] !== undefined) {
@@ -456,7 +465,7 @@ $(document).ready(function() {
             }
         });
         if (anyRestored) {
-            table.columns.adjust().draw(false);
+            adjustTable();
         }
 
         // Update the Select all / Deselect all link label
@@ -477,7 +486,7 @@ $(document).ready(function() {
                     table.column(colIndexMap[fieldName]).visible(!allChecked, false);
                 }
             });
-            table.columns.adjust().draw(false);
+            adjustTable();
             var visible = !allChecked
                 ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get()
                 : [];
@@ -489,7 +498,8 @@ $(document).ready(function() {
         $(document).on('change', '.col-toggle-chk', function() {
             var fieldName = $(this).data('field');
             if (colIndexMap[fieldName] !== undefined) {
-                table.column(colIndexMap[fieldName]).visible(this.checked);
+                table.column(colIndexMap[fieldName]).visible(this.checked, false);
+                adjustTable();
             }
             var visible = [];
             $('.col-toggle-chk:checked').each(function() { visible.push($(this).data('field')); });

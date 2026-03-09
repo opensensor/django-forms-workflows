@@ -368,6 +368,7 @@ $(document).ready(function() {
         var table = $('#completedTable').DataTable({
             serverSide: true,
             processing: true,
+            searchDelay: 400,
             ajax: {
                 url: '{% url "forms_workflows:completed_approvals_ajax" %}',
                 type: 'POST',

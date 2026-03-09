@@ -201,6 +201,7 @@ $(document).ready(function() {
         var table = $('#submissionsTable').DataTable({
             serverSide: true,
             processing: true,
+            searchDelay: 400,
             ajax: {
                 url: '{% url "forms_workflows:my_submissions_ajax" %}',
                 type: 'POST',

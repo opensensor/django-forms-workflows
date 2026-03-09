@@ -328,6 +328,7 @@ $(document).ready(function() {
         var table = $('#approvalsTable').DataTable({
             serverSide: true,
             processing: true,
+            searchDelay: 400,
             ajax: {
                 url: '{% url "forms_workflows:approval_inbox_ajax" %}',
                 type: 'POST',

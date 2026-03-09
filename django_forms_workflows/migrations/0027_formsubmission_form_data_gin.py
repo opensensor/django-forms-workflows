@@ -1,36 +1,48 @@
-from django.contrib.postgres.indexes import GinIndex
-from django.db import migrations
+from django.db import connection, migrations
+
+_INDEX = "dfwf_sub_form_data_gin"
+_TABLE = "django_forms_workflows_formsubmission"
+
+
+def _add_gin_index(apps, schema_editor):
+    """Only run on PostgreSQL – GIN is a postgres-specific index type."""
+    if connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_INDEX} "
+        f"ON {_TABLE} USING GIN (form_data);"
+    )
+
+
+def _drop_gin_index(apps, schema_editor):
+    if connection.vendor != "postgresql":
+        return
+    schema_editor.execute(f"DROP INDEX IF EXISTS {_INDEX};")
 
 
 class Migration(migrations.Migration):
     """
-    Add a GIN index on FormSubmission.form_data (jsonb).
+    Add a GIN index on FormSubmission.form_data (jsonb) for PostgreSQL only.
 
     Benefits
     --------
-    * Accelerates @> (containment) queries, e.g.
-      FormSubmission.objects.filter(form_data__contains={"key": "value"})
-    * Accelerates ? (key-existence) checks used by Django's JSONField has_key
-      lookups and some ORM introspection paths.
-    * Lays the groundwork for per-form-field icontains search: when the
-      queryset is already scoped to one form_definition the filtered row
-      count is small, and the GIN index further reduces the pages PostgreSQL
-      must examine when extracting individual keys via ->>.
-    * Zero write overhead on idle-read tables; marginal on write-heavy ones
-      because GIN updates are deferred and batched by PostgreSQL.
+    * Accelerates @> (containment) and ? (key-existence) operators.
+    * Reduces page scans when PostgreSQL extracts individual keys via ->>
+      for icontains lookups on a form-scoped queryset.
+    * CONCURRENTLY means the table is not locked during index build.
+    * No-ops silently on SQLite / MySQL so the package stays db-agnostic.
+
+    Raw SQL + RunPython is used instead of GinIndex() so that
+    django.contrib.postgres does not need to be in INSTALLED_APPS.
     """
+
+    atomic = False  # required for CREATE INDEX CONCURRENTLY
 
     dependencies = [
         ("django_forms_workflows", "0026_alter_formfield_width"),
     ]
 
     operations = [
-        migrations.AddIndex(
-            model_name="formsubmission",
-            index=GinIndex(
-                fields=["form_data"],
-                name="dfwf_formsubmission_form_data_gin",
-            ),
-        ),
+        migrations.RunPython(_add_gin_index, reverse_code=_drop_gin_index),
     ]
 

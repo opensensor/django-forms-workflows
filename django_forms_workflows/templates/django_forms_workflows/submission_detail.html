@@ -109,6 +109,7 @@
                             {% endif %}
                         </div>
                     </div>
+                    {% if section.fields %}
                     <div class="px-3 pb-3">
                         <table class="table table-bordered table-sm mb-0">
                             {% for field in section.fields %}
@@ -119,6 +120,7 @@
                             {% endfor %}
                         </table>
                     </div>
+                {% endif %}
                 </div>
                 {% endfor %}
             </div>

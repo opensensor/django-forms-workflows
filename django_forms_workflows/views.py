@@ -784,9 +784,22 @@ def approve_submission(request, task_id):
     _effective_step = (
         task.step_number if task.step_number is not None else (task.stage_number or 1)
     )
-    has_approval_step_fields = form_def.fields.filter(
-        approval_step=_effective_step
-    ).exists()
+
+    # Resolve per-group overrides from WorkflowStageGroupConfig (if any).
+    from .models import WorkflowStageGroupConfig
+
+    _group_config = None
+    if task.workflow_stage and task.assigned_group:
+        _group_config = WorkflowStageGroupConfig.objects.filter(
+            stage=task.workflow_stage, group=task.assigned_group
+        ).first()
+    _hidden_fields: list = (_group_config.hidden_fields or []) if _group_config else []
+
+    has_approval_step_fields = (
+        form_def.fields.filter(approval_step=_effective_step)
+        .exclude(field_name__in=_hidden_fields)
+        .exists()
+    )
     approval_step_form = None
 
     if request.method == "POST":
@@ -806,6 +819,7 @@ def approve_submission(request, task_id):
                 submission=submission,
                 approval_task=task,
                 user=request.user,
+                hidden_fields=_hidden_fields,
                 data=request.POST,
             )
 
@@ -874,6 +888,7 @@ def approve_submission(request, task_id):
             submission=submission,
             approval_task=task,
             user=request.user,
+            hidden_fields=_hidden_fields,
         )
 
     # Build approval progress context — staged, sequential, or parallel
@@ -988,12 +1003,14 @@ def approve_submission(request, task_id):
     form_data = _resolve_form_data_urls(submission.form_data)
     form_data_ordered = _build_ordered_form_data(submission, form_data)
 
-    # Resolve the custom approve-button label from the stage (if any).
+    # Resolve the approve-button label: group config overrides stage default.
     approve_label = (
         task.workflow_stage.approve_label
         if task.workflow_stage and task.workflow_stage.approve_label
         else ""
     )
+    if _group_config and _group_config.approve_label:
+        approve_label = _group_config.approve_label
 
     return render(
         request,
@@ -1718,7 +1735,7 @@ def _build_pdf_rows(submission):
 
 
 def _build_approval_step_sections(submission):
-    """Return per-approval-step field data for display in detail and PDF views.
+    """Return one section per completed approval task for display in detail and PDF.
 
     Approval-step fields (FormField.approval_step is not None) are stored
     inside submission.form_data alongside the regular submission data.  This
@@ -1730,66 +1747,94 @@ def _build_approval_step_sections(submission):
         {
             "step_number":  int,
             "step_name":    str,
+            "group_name":   str | None,
             "completed_by": str | None,
             "completed_at": datetime | None,
             "comments":     str,
             "fields": [{"label": str, "key": str, "value": any}, ...],
         }
 
-    Returns an empty list when the form has no approval-step fields or none
-    have been filled in yet.
+    Parallel stages (approval_logic="all") produce one section *per task*
+    rather than one per step number, so both HR and Payroll responses are
+    shown independently.  Per-group ``hidden_fields`` from
+    ``WorkflowStageGroupConfig`` are excluded from each group's section.
+
+    Returns an empty list when the form has no approval-step fields and no
+    completed tasks have comments.
     """
     from collections import defaultdict
 
+    from .models import WorkflowStageGroupConfig
+
     form_data = _resolve_form_data_urls(submission.form_data or {})
 
-    # Group approval-step fields by their step number.
-    step_fields: dict = defaultdict(list)
+    # All approval-step fields grouped by step number, preserving label order.
+    all_step_fields: dict = defaultdict(list)
     for field in submission.form_definition.fields.filter(
         approval_step__isnull=False
     ).order_by("approval_step", "order"):
-        key = field.field_name
-        if key in form_data:
-            step_fields[field.approval_step].append(
-                {"label": field.field_label, "key": key, "value": form_data[key]}
-            )
+        all_step_fields[field.approval_step].append(
+            {"label": field.field_label, "key": field.field_name}
+        )
 
-    if not step_fields:
+    # All completed tasks ordered by step then completion time.
+    completed_tasks = list(
+        submission.approval_tasks.filter(status="approved")
+        .select_related("completed_by", "assigned_group", "workflow_stage")
+        .order_by("stage_number", "step_number", "completed_at")
+    )
+
+    if not completed_tasks and not all_step_fields:
         return []
 
-    # Build a lookup of the task that completed each effective step.
-    # For sequential workflows task.step_number matches approval_step;
-    # for staged workflows task.stage_number matches approval_step.
-    task_by_step: dict = {}
-    for task in (
-        submission.approval_tasks.filter(status="approved")
-        .select_related("completed_by")
-        .order_by("completed_at")
-    ):
+    # Pre-fetch WorkflowStageGroupConfigs for all stages referenced by tasks.
+    stage_ids = {t.workflow_stage_id for t in completed_tasks if t.workflow_stage_id}
+    group_configs: dict = {}
+    if stage_ids:
+        for cfg in WorkflowStageGroupConfig.objects.filter(
+            stage_id__in=stage_ids
+        ).select_related("group"):
+            group_configs[(cfg.stage_id, cfg.group_id)] = cfg
+
+    sections = []
+    for task in completed_tasks:
         effective = (
             task.step_number
             if task.step_number is not None
             else (task.stage_number or 1)
         )
-        if effective not in task_by_step:
-            task_by_step[effective] = task
 
-    sections = []
-    for step_num in sorted(step_fields.keys()):
-        task = task_by_step.get(step_num)
+        # Determine which fields this group should NOT show.
+        hidden: set = set()
+        if task.workflow_stage_id and task.assigned_group_id:
+            cfg = group_configs.get((task.workflow_stage_id, task.assigned_group_id))
+            if cfg and cfg.hidden_fields:
+                hidden = set(cfg.hidden_fields)
+
+        # Build the visible field list: must be in form_data and not hidden.
+        visible_fields = [
+            {"label": f["label"], "key": f["key"], "value": form_data[f["key"]]}
+            for f in all_step_fields.get(effective, [])
+            if f["key"] not in hidden and f["key"] in form_data
+        ]
+
         completed_by = None
-        if task and task.completed_by:
+        if task.completed_by:
             completed_by = (
                 task.completed_by.get_full_name() or task.completed_by.username
             )
+
         sections.append(
             {
-                "step_number": step_num,
-                "step_name": task.step_name if task else f"Step {step_num}",
+                "step_number": effective,
+                "step_name": task.step_name or f"Step {effective}",
+                "group_name": (
+                    task.assigned_group.name if task.assigned_group else None
+                ),
                 "completed_by": completed_by,
-                "completed_at": task.completed_at if task else None,
-                "comments": task.comments if task else "",
-                "fields": step_fields[step_num],
+                "completed_at": task.completed_at,
+                "comments": task.comments or "",
+                "fields": visible_fields,
             }
         )
 

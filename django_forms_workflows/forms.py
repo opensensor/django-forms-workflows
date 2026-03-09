@@ -607,6 +607,7 @@ class ApprovalStepForm(forms.Form):
         submission,
         approval_task,
         user=None,
+        hidden_fields=None,
         *args,
         **kwargs,
     ):
@@ -615,7 +616,14 @@ class ApprovalStepForm(forms.Form):
         self.submission = submission
         self.approval_task = approval_task
         self.user = user
-        self.current_step = approval_task.step_number or 1
+        # For staged workflows task.step_number is None; fall back to stage_number.
+        self.current_step = (
+            approval_task.step_number
+            if approval_task.step_number is not None
+            else (approval_task.stage_number or 1)
+        )
+        # field_names that should not be shown/saved for this group
+        self.hidden_fields = set(hidden_fields or [])
 
         # Get existing form data
         self.form_data = submission.form_data or {}
@@ -627,10 +635,11 @@ class ApprovalStepForm(forms.Form):
         self._setup_layout()
 
     def _build_fields(self):
-        """Build only fields for the current approval step."""
+        """Build only fields for the current approval step, excluding hidden ones."""
         for field_def in (
             self.form_definition.fields.exclude(field_type="section")
             .filter(approval_step=self.current_step)
+            .exclude(field_name__in=self.hidden_fields)
             .order_by("order")
         ):
             self._add_field(field_def)

@@ -34,6 +34,7 @@ from .models import (
     UserProfile,
     WorkflowDefinition,
     WorkflowStage,
+    WorkflowStageGroupConfig,
 )
 
 
@@ -780,6 +781,40 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
 
+class WorkflowStageGroupConfigInline(admin.TabularInline):
+    """Per-group overrides (button label + hidden fields) on a WorkflowStage."""
+
+    model = WorkflowStageGroupConfig
+    extra = 0
+    fields = ("group", "approve_label", "hidden_fields")
+    verbose_name = "Group Config Override"
+    verbose_name_plural = "Group Config Overrides"
+
+
+@admin.register(WorkflowStage)
+class WorkflowStageAdmin(admin.ModelAdmin):
+    """Standalone admin for WorkflowStage with per-group config inline.
+
+    Stages are also editable via the WorkflowDefinition admin inline, but
+    the group config overrides require this dedicated view because Django
+    does not support nested inlines natively.
+    """
+
+    inlines = [WorkflowStageGroupConfigInline]
+    list_display = ("__str__", "workflow", "order", "approval_logic", "approve_label")
+    list_select_related = ("workflow", "workflow__form_definition")
+    ordering = ("workflow", "order")
+    filter_horizontal = ("approval_groups",)
+    fields = (
+        "workflow",
+        ("order", "name"),
+        "approval_logic",
+        "approval_groups",
+        "approve_label",
+        "requires_manager_approval",
+    )
+
+
 class WorkflowStageInline(admin.StackedInline):
     """Inline for defining ordered stages on a WorkflowDefinition."""
 
@@ -791,6 +826,7 @@ class WorkflowStageInline(admin.StackedInline):
         ("order", "name"),
         "approval_logic",
         "approval_groups",
+        "approve_label",
         "requires_manager_approval",
     )
 

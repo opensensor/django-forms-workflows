@@ -225,6 +225,7 @@
     {% if section.completed_by %}Completed by {{ section.completed_by }}{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}{% endif %}
     {% if section.comments %}&nbsp;&nbsp;Comment: {{ section.comments }}{% endif %}
 </p>
+{% if section.fields %}
 <table class="data-table">
     <colgroup>
         <col class="col-label"><col class="col-value">
@@ -239,6 +240,7 @@
     {% endfor %}
     </tbody>
 </table>
+{% endif %}
 {% endfor %}
 
 </body>

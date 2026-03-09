@@ -799,6 +799,59 @@ class WorkflowStage(models.Model):
         return f"Stage {self.order}: {self.name}"
 
 
+class WorkflowStageGroupConfig(models.Model):
+    """
+    Per-group overrides for a workflow stage.
+
+    Allows a single stage with multiple approval groups (parallel/all logic)
+    to present different approve-button labels and hide specific approval-step
+    fields from specific groups.  A missing row means "use stage defaults".
+
+    Example use-case:
+      Stage "HR & Payroll Review" has two groups:
+        - HR      → default label "Approve", sees ``hr_completion_date``
+        - Payroll → label "Complete", ``hr_completion_date`` hidden
+    """
+
+    stage = models.ForeignKey(
+        WorkflowStage,
+        on_delete=models.CASCADE,
+        related_name="group_configs",
+    )
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="workflow_stage_configs",
+    )
+    approve_label = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            'Custom approve button label for this group only (e.g. "Complete"). '
+            "Overrides the stage's approve_label when set."
+        ),
+    )
+    hidden_fields = models.JSONField(
+        null=True,
+        blank=True,
+        default=list,
+        help_text=(
+            "List of field_names to hide from this group during approval "
+            '(e.g. ["hr_completion_date"]). Hidden fields are not shown, '
+            "not required, and not saved by this group."
+        ),
+    )
+
+    class Meta:
+        unique_together = [("stage", "group")]
+        verbose_name = "Stage Group Config"
+        verbose_name_plural = "Stage Group Configs"
+
+    def __str__(self) -> str:
+        return f"{self.stage} – {self.group.name}"
+
+
 class PendingNotification(models.Model):
     """
     Queue of notifications waiting to be sent as part of a batch digest.

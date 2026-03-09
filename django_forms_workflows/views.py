@@ -2110,14 +2110,33 @@ _MY_SUB_SORTABLE = {
 
 
 def _dt_params(request):
-    """Extract common DataTables server-side request parameters."""
-    draw = int(request.GET.get("draw", 1))
-    start = max(int(request.GET.get("start", 0)), 0)
-    length = min(max(int(request.GET.get("length", 25)), 1), 1000)
-    search = request.GET.get("search[value]", "").strip()
-    order_col = int(request.GET.get("order[0][column]", 0))
-    order_dir = request.GET.get("order[0][dir]", "desc")
-    col_name = request.GET.get(f"columns[{order_col}][name]", "")
+    """Extract common DataTables server-side request parameters.
+
+    DataTables AJAX calls are sent as POST to keep the column metadata out of
+    the request line (GET query-strings with many columns can exceed gunicorn's
+    4094-byte limit and return HTTP 400).  Falls back to GET for backwards
+    compatibility.
+    """
+    params = request.POST if request.method == "POST" else request.GET
+    try:
+        draw = int(params.get("draw", 1))
+    except (ValueError, TypeError):
+        draw = 1
+    try:
+        start = max(int(params.get("start", 0)), 0)
+    except (ValueError, TypeError):
+        start = 0
+    try:
+        length = min(max(int(params.get("length", 25)), 1), 1000)
+    except (ValueError, TypeError):
+        length = 25
+    search = params.get("search[value]", "").strip()
+    try:
+        order_col = int(params.get("order[0][column]", 0))
+    except (ValueError, TypeError):
+        order_col = 0
+    order_dir = params.get("order[0][dir]", "desc")
+    col_name = params.get(f"columns[{order_col}][name]", "")
     return draw, start, length, search, col_name, order_dir
 
 
@@ -2134,12 +2153,14 @@ def _cat_html(cat):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
 def completed_approvals_ajax(request):
     """Server-side DataTables JSON for the approval history view."""
     draw, start, length, search, col_name, order_dir = _dt_params(request)
-    category_slug = request.GET.get("category", "").strip()
-    form_slug = request.GET.get("form", "").strip()
-    status_filter = request.GET.get("status", "").strip()
+    params = request.POST if request.method == "POST" else request.GET
+    category_slug = params.get("category", "").strip()
+    form_slug = params.get("form", "").strip()
+    status_filter = params.get("status", "").strip()
 
     # --- Base queryset (mirrors permission logic of completed_approvals view) ---
     if request.user.is_superuser:
@@ -2266,11 +2287,13 @@ def completed_approvals_ajax(request):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
 def approval_inbox_ajax(request):
     """Server-side DataTables JSON for the pending approval inbox."""
     draw, start, length, search, col_name, order_dir = _dt_params(request)
-    category_slug = request.GET.get("category", "").strip()
-    form_slug = request.GET.get("form", "").strip()
+    params = request.POST if request.method == "POST" else request.GET
+    category_slug = params.get("category", "").strip()
+    form_slug = params.get("form", "").strip()
 
     # --- Base queryset ---
     if request.user.is_superuser:
@@ -2382,11 +2405,13 @@ def approval_inbox_ajax(request):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
 def my_submissions_ajax(request):
     """Server-side DataTables JSON for the user's own submissions."""
     draw, start, length, search, col_name, order_dir = _dt_params(request)
-    category_slug = request.GET.get("category", "").strip()
-    form_slug = request.GET.get("form", "").strip()
+    params = request.POST if request.method == "POST" else request.GET
+    category_slug = params.get("category", "").strip()
+    form_slug = params.get("form", "").strip()
 
     qs = FormSubmission.objects.filter(submitter=request.user)
     records_total = qs.count()

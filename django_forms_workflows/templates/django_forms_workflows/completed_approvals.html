@@ -348,7 +348,9 @@ $(document).ready(function() {
             processing: true,
             ajax: {
                 url: '{% url "forms_workflows:completed_approvals_ajax" %}',
+                type: 'POST',
                 data: function(d) {
+                    d.csrfmiddlewaretoken = '{{ csrf_token }}';
                     {% if category_slug %}d.category = '{{ category_slug|escapejs }}';{% endif %}
                     {% if form_slug %}d.form = '{{ form_slug|escapejs }}';{% endif %}
                     {% if status_filter %}d.status = '{{ status_filter|escapejs }}';{% endif %}

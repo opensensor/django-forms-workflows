@@ -1824,10 +1824,29 @@ def _build_approval_step_sections(submission):
                 task.completed_by.get_full_name() or task.completed_by.username
             )
 
+        # Resolve the action label for the section header, in priority order:
+        #   1. Per-group config override (e.g. "Complete" for Payroll)
+        #   2. Stage-level approve_label
+        #   3. Fallback: "Approval"
+        _action_label = "Approval"
+        if cfg and cfg.approve_label:
+            _action_label = cfg.approve_label
+        elif task.workflow_stage and task.workflow_stage.approve_label:
+            _action_label = task.workflow_stage.approve_label
+
+        # Replace the trailing action word in the stored step_name so the PDF
+        # header reflects the configured label (e.g. "Stage 1: Payroll Complete"
+        # instead of "Stage 1: Payroll Approval").
+        raw_step_name = task.step_name or f"Step {effective}"
+        if raw_step_name.endswith("Approval") and _action_label != "Approval":
+            display_step_name = raw_step_name[: -len("Approval")] + _action_label
+        else:
+            display_step_name = raw_step_name
+
         sections.append(
             {
                 "step_number": effective,
-                "step_name": task.step_name or f"Step {effective}",
+                "step_name": display_step_name,
                 "group_name": (
                     task.assigned_group.name if task.assigned_group else None
                 ),

@@ -337,7 +337,7 @@ $(document).ready(function() {
         var colDefs = [
             { orderable: false, targets: {% if any_exportable or any_pdf_exportable %}1{% else %}0{% endif %} }
             {% if any_exportable or any_pdf_exportable %}, { orderable: false, targets: 0 }{% endif %}
-            , { orderable: false, targets: [4] }  {# status #}
+            {# status already has orderable:false in the columns[] definition — no colDef needed #}
         ];
         if (extraColTargets.length) {
             colDefs.push({ visible: false, targets: extraColTargets, orderable: false });
@@ -419,12 +419,20 @@ $(document).ready(function() {
             if (stored) savedCols = JSON.parse(stored);
         } catch(e) { savedCols = []; }
 
+        // Restore visibility without triggering a separate AJAX redraw per column.
+        // Passing false as the second argument to visible() suppresses the redraw;
+        // we do a single columns.adjust().draw() at the end instead.
+        var anyRestored = false;
         savedCols.forEach(function(fieldName) {
             if (colIndexMap[fieldName] !== undefined) {
-                table.column(colIndexMap[fieldName]).visible(true);
+                table.column(colIndexMap[fieldName]).visible(true, false);
                 $('#col_chk_' + fieldName).prop('checked', true);
+                anyRestored = true;
             }
         });
+        if (anyRestored) {
+            table.columns.adjust().draw(false);
+        }
 
         // Update the Select all / Deselect all link label
         function updateToggleAllLabel() {
@@ -434,16 +442,17 @@ $(document).ready(function() {
         }
         updateToggleAllLabel();
 
-        // Select all / Deselect all
+        // Select all / Deselect all – suppress per-column redraws; do one at the end.
         $('#colToggleAll').on('click', function() {
             var allChecked = $('.col-toggle-chk:checked').length === $('.col-toggle-chk').length;
             $('.col-toggle-chk').each(function() {
                 var fieldName = $(this).data('field');
                 if (colIndexMap[fieldName] !== undefined) {
                     $(this).prop('checked', !allChecked);
-                    table.column(colIndexMap[fieldName]).visible(!allChecked);
+                    table.column(colIndexMap[fieldName]).visible(!allChecked, false);
                 }
             });
+            table.columns.adjust().draw(false);
             var visible = !allChecked
                 ? $('.col-toggle-chk').map(function() { return $(this).data('field'); }).get()
                 : [];

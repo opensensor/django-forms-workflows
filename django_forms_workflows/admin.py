@@ -29,6 +29,7 @@ from .models import (
     FormTemplate,
     LDAPGroupProfile,
     ManagedFile,
+    NotificationLog,
     PostSubmissionAction,
     PrefillSource,
     SubWorkflowDefinition,
@@ -1689,3 +1690,33 @@ class SubWorkflowInstanceAdmin(admin.ModelAdmin):
     search_fields = ("label", "parent_submission__id")
     readonly_fields = ("created_at", "updated_at", "completed_at")
     raw_id_fields = ("parent_submission", "definition")
+
+
+@admin.register(NotificationLog)
+class NotificationLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "notification_type",
+        "status",
+        "recipient_email",
+        "subject",
+        "submission",
+    )
+    list_filter = ("notification_type", "status")
+    search_fields = ("recipient_email", "subject", "submission__id")
+    readonly_fields = (
+        "notification_type",
+        "submission",
+        "recipient_email",
+        "subject",
+        "status",
+        "error_message",
+        "created_at",
+    )
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

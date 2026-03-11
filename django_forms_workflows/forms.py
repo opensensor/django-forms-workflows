@@ -682,8 +682,13 @@ class ApprovalStepForm(forms.Form):
 
     def _add_field(self, field_def):
         """Add a single field to the form."""
-        # Determine if this field is editable for the current approval step
-        is_editable = field_def.approval_step == self.current_step
+        # Staged workflow fields (scoped via workflow_stage FK) are always editable —
+        # they were already filtered to the active stage in _build_fields.
+        # Legacy sequential fields are editable only when approval_step matches current_step.
+        if self.approval_task.workflow_stage_id:
+            is_editable = True
+        else:
+            is_editable = field_def.approval_step == self.current_step
 
         # Get current value from form data
         current_value = self.form_data.get(field_def.field_name, "")

@@ -7,19 +7,45 @@
     <div class="col-lg-10 mx-auto">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Submission #{{ submission.id }}</h1>
-            {% if submission.status == 'draft' %}
-                <span class="badge bg-secondary">Draft</span>
-            {% elif submission.status == 'submitted' %}
-                <span class="badge bg-info">Submitted</span>
-            {% elif submission.status == 'pending_approval' %}
-                <span class="badge bg-warning text-dark">Pending Approval</span>
-            {% elif submission.status == 'approved' %}
-                <span class="badge bg-success">Approved</span>
-            {% elif submission.status == 'rejected' %}
-                <span class="badge bg-danger">Rejected</span>
-            {% elif submission.status == 'withdrawn' %}
-                <span class="badge bg-secondary">Withdrawn</span>
-            {% endif %}
+            <div class="d-flex align-items-center gap-2">
+                {% if submission.status == 'draft' %}
+                    <span class="badge bg-secondary">Draft</span>
+                {% elif submission.status == 'submitted' %}
+                    <span class="badge bg-info">Submitted</span>
+                {% elif submission.status == 'pending_approval' %}
+                    <span class="badge bg-warning text-dark">Pending Approval</span>
+                {% elif submission.status == 'approved' %}
+                    <span class="badge bg-success">Approved</span>
+                {% elif submission.status == 'rejected' %}
+                    <span class="badge bg-danger">Rejected</span>
+                {% elif submission.status == 'withdrawn' %}
+                    <span class="badge bg-secondary">Withdrawn</span>
+                {% endif %}
+                {% with pdf=submission.form_definition.pdf_generation %}
+                    {% if pdf == 'anytime' and submission.status != 'draft' %}
+                        <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-sm btn-outline-primary" target="_blank">
+                            <i class="bi bi-file-earmark-pdf"></i> View PDF
+                        </a>
+                        <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-sm btn-outline-primary" download data-download-spinner="Generating PDF…">
+                            <i class="bi bi-download"></i> Download PDF
+                        </a>
+                    {% elif pdf == 'post_approval' and submission.status == 'approved' %}
+                        <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-sm btn-outline-primary" target="_blank">
+                            <i class="bi bi-file-earmark-pdf"></i> View PDF
+                        </a>
+                        <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-sm btn-outline-primary" download data-download-spinner="Generating PDF…">
+                            <i class="bi bi-download"></i> Download PDF
+                        </a>
+                    {% elif pdf == 'post_approval' and can_approve_pdf and submission.status != 'draft' %}
+                        <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-sm btn-outline-secondary" target="_blank">
+                            <i class="bi bi-file-earmark-pdf"></i> View PDF (Pending)
+                        </a>
+                        <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-sm btn-outline-secondary" download data-download-spinner="Generating PDF…">
+                            <i class="bi bi-download"></i> Download PDF (Pending)
+                        </a>
+                    {% endif %}
+                {% endwith %}
+            </div>
         </div>
 
         <!-- Submission Info -->
@@ -331,30 +357,7 @@
                     </a>
                 {% endif %}
             {% endif %}
-            {% with pdf=submission.form_definition.pdf_generation %}
-                {% if pdf == 'anytime' and submission.status != 'draft' %}
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" target="_blank">
-                        <i class="bi bi-file-earmark-pdf"></i> View PDF
-                    </a>
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" download data-download-spinner="Generating PDF…">
-                        <i class="bi bi-download"></i> Download PDF
-                    </a>
-                {% elif pdf == 'post_approval' and submission.status == 'approved' %}
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" target="_blank">
-                        <i class="bi bi-file-earmark-pdf"></i> View PDF
-                    </a>
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" download data-download-spinner="Generating PDF…">
-                        <i class="bi bi-download"></i> Download PDF
-                    </a>
-                {% elif pdf == 'post_approval' and can_approve_pdf and submission.status != 'draft' %}
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-secondary" target="_blank">
-                        <i class="bi bi-file-earmark-pdf"></i> View PDF (Pending)
-                    </a>
-                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-secondary" download data-download-spinner="Generating PDF…">
-                        <i class="bi bi-download"></i> Download PDF (Pending)
-                    </a>
-                {% endif %}
-            {% endwith %}
+
         </div>
     </div>
 </div>

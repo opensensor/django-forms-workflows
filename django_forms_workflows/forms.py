@@ -649,6 +649,15 @@ class ApprovalStepForm(forms.Form):
         # Get existing form data
         self.form_data = submission.form_data or {}
 
+        # Cache sub-workflow instance index so _add_field can resolve indexed keys
+        # (e.g. payment_dept_code_1) without a per-field DB query.
+        self._swi_index = (
+            approval_task.sub_workflow_instance.index
+            if approval_task.sub_workflow_instance_id
+            and approval_task.sub_workflow_instance
+            else None
+        )
+
         # Build form fields from definition
         self._build_fields()
 
@@ -690,8 +699,20 @@ class ApprovalStepForm(forms.Form):
         else:
             is_editable = field_def.approval_step == self.current_step
 
-        # Get current value from form data
-        current_value = self.form_data.get(field_def.field_name, "")
+        # Get current value from form data.
+        # Sub-workflow fields are stored with an index suffix (e.g. payment_dept_code_1);
+        # try the indexed key first, then fall back to the bare field name.
+        if self._swi_index is not None:
+            indexed_key = f"{field_def.field_name}_{self._swi_index}"
+            current_value = self.form_data.get(indexed_key) or self.form_data.get(
+                field_def.field_name, ""
+            )
+        else:
+            current_value = self.form_data.get(field_def.field_name, "")
+
+        # Fall back to the field's configured default value when the slot is still empty.
+        if not current_value and field_def.default_value:
+            current_value = field_def.default_value
 
         # Auto-fill approver name from current user
         if is_editable and self._is_approver_name_field(field_def):

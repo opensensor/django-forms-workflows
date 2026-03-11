@@ -764,6 +764,16 @@ def approve_submission(request, task_id):
     submission = task.submission
     form_def = submission.form_definition
 
+    # For sub-workflow tasks, approval step fields belong to the sub-workflow's
+    # form definition, not the parent form.  Use field_form_def for all field
+    # lookups and ApprovalStepForm construction; keep form_def for everything else.
+    if task.sub_workflow_instance_id:
+        field_form_def = (
+            task.sub_workflow_instance.definition.sub_workflow.form_definition
+        )
+    else:
+        field_form_def = form_def
+
     # Check permission
     can_approve = (
         task.assigned_to == request.user
@@ -788,12 +798,12 @@ def approve_submission(request, task_id):
 
     if task.workflow_stage_id:
         has_approval_step_fields = (
-            form_def.fields.filter(workflow_stage_id=task.workflow_stage_id)
+            field_form_def.fields.filter(workflow_stage_id=task.workflow_stage_id)
             .exclude(field_type="section")
             .exists()
         )
     else:
-        has_approval_step_fields = form_def.fields.filter(
+        has_approval_step_fields = field_form_def.fields.filter(
             approval_step=_effective_step
         ).exists()
 
@@ -812,7 +822,7 @@ def approve_submission(request, task_id):
             from .forms import ApprovalStepForm
 
             approval_step_form = ApprovalStepForm(
-                form_definition=form_def,
+                form_definition=field_form_def,
                 submission=submission,
                 approval_task=task,
                 user=request.user,
@@ -844,7 +854,7 @@ def approve_submission(request, task_id):
             if task.sub_workflow_instance_id:
                 idx = task.sub_workflow_instance.index
                 stage_field_names = set(
-                    form_def.fields.filter(
+                    field_form_def.fields.filter(
                         workflow_stage_id=task.workflow_stage_id
                     ).values_list("field_name", flat=True)
                 )
@@ -905,7 +915,7 @@ def approve_submission(request, task_id):
         from .forms import ApprovalStepForm
 
         approval_step_form = ApprovalStepForm(
-            form_definition=form_def,
+            form_definition=field_form_def,
             submission=submission,
             approval_task=task,
             user=request.user,

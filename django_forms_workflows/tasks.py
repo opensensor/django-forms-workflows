@@ -24,7 +24,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from .models import ApprovalTask, FormSubmission, PendingNotification
+from .models import ApprovalTask, FormSubmission, NotificationLog, PendingNotification
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +72,20 @@ def _send_html_email(
     template: str,
     context: dict,
     from_email: str | None = None,
+    *,
+    notification_type: str = "other",
+    submission_id: int | None = None,
 ) -> None:
     to_list = [e for e in to if e]
     if not to_list:
         logger.info("Skipping email '%s' (no recipients)", subject)
+        _write_notification_log(
+            notification_type=notification_type,
+            submission_id=submission_id,
+            recipient_email="(none)",
+            subject=subject,
+            status="skipped",
+        )
         return
 
     # Inject site_name so all email templates can reference {{ site_name }}
@@ -94,8 +104,48 @@ def _send_html_email(
     try:
         msg.send(fail_silently=False)
         logger.info("Sent email '%s' to %s", subject, to_list)
+        for recipient in to_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=recipient,
+                subject=subject,
+                status="sent",
+            )
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
+        for recipient in to_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=recipient,
+                subject=subject,
+                status="failed",
+                error_message=str(e),
+            )
+
+
+def _write_notification_log(
+    *,
+    notification_type: str,
+    submission_id: int | None,
+    recipient_email: str,
+    subject: str,
+    status: str,
+    error_message: str = "",
+) -> None:
+    """Write a NotificationLog row; never raises so it cannot break email delivery."""
+    try:
+        NotificationLog.objects.create(
+            notification_type=notification_type,
+            submission_id=submission_id,
+            recipient_email=recipient_email,
+            subject=subject,
+            status=status,
+            error_message=error_message,
+        )
+    except Exception:  # pragma: no cover
+        logger.exception("Failed to write NotificationLog (ignored)")
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +314,8 @@ def send_rejection_notification(submission_id: int) -> None:
         recipients,
         "django_forms_workflows/emails/rejection_notification.html",
         context,
+        notification_type="rejection_notification",
+        submission_id=submission_id,
     )
 
 
@@ -301,6 +353,8 @@ def send_approval_notification(submission_id: int) -> None:
         recipients,
         "django_forms_workflows/emails/approval_notification.html",
         context,
+        notification_type="approval_notification",
+        submission_id=submission_id,
     )
 
 
@@ -338,6 +392,8 @@ def send_submission_notification(submission_id: int) -> None:
         recipients,
         "django_forms_workflows/emails/submission_notification.html",
         context,
+        notification_type="submission_created",
+        submission_id=submission_id,
     )
 
 
@@ -402,6 +458,8 @@ def send_approval_request(task_id: int) -> None:
             [task.assigned_to.email],
             template,
             _build_context(task.assigned_to),
+            notification_type="approval_request",
+            submission_id=task.submission_id,
         )
         return
 
@@ -411,7 +469,14 @@ def send_approval_request(task_id: int) -> None:
             email = getattr(user, "email", None)
             if not email:
                 continue
-            _send_html_email(subject, [email], template, _build_context(user))
+            _send_html_email(
+                subject,
+                [email],
+                template,
+                _build_context(user),
+                notification_type="approval_request",
+                submission_id=task.submission_id,
+            )
             recipients.append(email)
         if not recipients:
             logger.info(
@@ -444,6 +509,8 @@ def send_approval_reminder(task_id: int) -> None:
         [task.assigned_to.email],
         "django_forms_workflows/emails/approval_reminder.html",
         context,
+        notification_type="approval_reminder",
+        submission_id=task.submission_id,
     )
 
 
@@ -566,6 +633,8 @@ def send_escalation_notification(task_id: int, to_email: str | None = None) -> N
         [recipient],
         "django_forms_workflows/emails/escalation_notification.html",
         context,
+        notification_type="escalation",
+        submission_id=task.submission_id,
     )
 
 
@@ -655,6 +724,7 @@ def _dispatch_submission_digest(recipient_email: str, notifications: list) -> No
         [recipient_email],
         "django_forms_workflows/emails/notification_digest.html",
         context,
+        notification_type="batched",
     )
 
 
@@ -695,4 +765,5 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> None
         [recipient_email],
         "django_forms_workflows/emails/notification_digest.html",
         context,
+        notification_type="batched",
     )

@@ -2321,3 +2321,58 @@ class SubWorkflowInstance(models.Model):
         return {
             k: v for k, v in fd.items() if k.startswith(prefix) and k.endswith(suffix)
         }
+
+
+class NotificationLog(models.Model):
+    """Audit trail of every notification email attempted by the package's Celery tasks."""
+
+    NOTIFICATION_TYPES = [
+        ("submission_created", "Submission Received"),
+        ("approval_request", "Approval Request"),
+        ("approval_notification", "Approved"),
+        ("rejection_notification", "Rejected"),
+        ("approval_reminder", "Approval Reminder"),
+        ("escalation", "Escalation"),
+        ("batched", "Batched Digest"),
+        ("other", "Other"),
+    ]
+    STATUS_CHOICES = [
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+        ("skipped", "Skipped"),
+    ]
+
+    notification_type = models.CharField(
+        max_length=50,
+        choices=NOTIFICATION_TYPES,
+        default="other",
+        db_index=True,
+    )
+    submission = models.ForeignKey(
+        "FormSubmission",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notification_logs",
+    )
+    recipient_email = models.EmailField(db_index=True)
+    subject = models.CharField(max_length=500)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="sent",
+        db_index=True,
+    )
+    error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Notification Log"
+        verbose_name_plural = "Notification Logs"
+
+    def __str__(self):
+        return (
+            f"[{self.get_status_display()}] {self.get_notification_type_display()} "
+            f"→ {self.recipient_email} ({self.created_at:%Y-%m-%d %H:%M})"
+        )

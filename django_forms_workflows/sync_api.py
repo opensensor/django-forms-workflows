@@ -31,6 +31,7 @@ from django.db import transaction
 from django.utils import timezone as django_tz
 
 from .models import (
+    ApprovalTask,
     FormCategory,
     FormDefinition,
     FormField,
@@ -545,10 +546,35 @@ def import_form(form_data, conflict="update", category_cache=None):
             [_get_or_create_group(n) for n in escalation_group_names]
         )
 
-        wf.stages.all().delete()
-        for stage_data in stages_data:
+        # Update stages in-place (matched by order) so that existing
+        # ApprovalTask records — which hold a PROTECT FK to WorkflowStage —
+        # are not broken.  Stages that no longer exist in the incoming data
+        # have their task references nullified before being deleted.
+        existing_by_order = {s.order: s for s in wf.stages.all()}
+        incoming_orders = {
+            sd.get("order", idx + 1) for idx, sd in enumerate(stages_data)
+        }
+
+        # Nullify task references then delete stages absent from incoming data
+        removed = [s for o, s in existing_by_order.items() if o not in incoming_orders]
+        if removed:
+            ApprovalTask.objects.filter(workflow_stage__in=removed).update(
+                workflow_stage=None
+            )
+            for s in removed:
+                s.delete()
+
+        for idx, stage_data in enumerate(stages_data):
             stage_group_names = stage_data.pop("approval_groups", [])
-            stage = WorkflowStage.objects.create(workflow=wf, **stage_data)
+            order = stage_data.get("order", idx + 1)
+            if order in existing_by_order:
+                # Update the existing stage record in-place (preserves its PK)
+                stage = existing_by_order[order]
+                for k, v in stage_data.items():
+                    setattr(stage, k, v)
+                stage.save()
+            else:
+                stage = WorkflowStage.objects.create(workflow=wf, **stage_data)
             stage.approval_groups.set(
                 [_get_or_create_group(n) for n in stage_group_names]
             )

@@ -2249,6 +2249,15 @@ class SubWorkflowDefinition(models.Model):
             "'Approved – Pending Completion' until all sub-workflow instances finish."
         ),
     )
+    reject_parent = models.BooleanField(
+        default=False,
+        help_text=(
+            "When True, rejecting any sub-workflow instance immediately rejects the "
+            "parent submission and cancels all other pending sub-workflows. "
+            "When False (default), a rejected sub-workflow is treated as complete and "
+            "the parent moves to 'Approved' once all instances are finished."
+        ),
+    )
 
     class Meta:
         verbose_name = "Sub-workflow Definition"

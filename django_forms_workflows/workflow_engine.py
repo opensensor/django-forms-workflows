@@ -822,11 +822,48 @@ def _finalize_sub_workflow(instance: SubWorkflowInstance) -> None:
 
 
 def _reject_sub_workflow(instance: SubWorkflowInstance) -> None:
-    """Mark a sub-workflow instance as rejected and cancel pending tasks."""
+    """Mark a sub-workflow instance as rejected and cancel its pending tasks.
+
+    If the sub-workflow config has reject_parent=True, immediately reject the
+    parent submission and cancel all sibling sub-workflow instances.
+    Otherwise, treat the rejection as a completion and promote the parent to
+    'approved' if all other instances are now finished.
+    """
     instance.status = "rejected"
     instance.completed_at = timezone.now()
     instance.save(update_fields=["status", "completed_at"])
     instance.approval_tasks.filter(status="pending").update(status="skipped")
+
+    submission = instance.parent_submission
+
+    try:
+        config = submission.form_definition.workflow.sub_workflow_config
+        reject_parent = config.reject_parent
+    except Exception:
+        reject_parent = False
+
+    if reject_parent:
+        # Cancel all sibling sub-workflow instances that are still running
+        siblings = submission.sub_workflows.exclude(pk=instance.pk).filter(
+            status__in=["pending", "in_progress"]
+        )
+        for sibling in siblings:
+            sibling.status = "rejected"
+            sibling.completed_at = timezone.now()
+            sibling.save(update_fields=["status", "completed_at"])
+            sibling.approval_tasks.filter(status="pending").update(status="skipped")
+
+        if submission.status in ("approved_pending", "approved"):
+            submission.status = "rejected"
+            submission.save(update_fields=["status"])
+            logger.info(
+                "Submission %s rejected — sub-workflow %s rejection propagated to parent.",
+                submission.id,
+                instance.id,
+            )
+    else:
+        # Rejection counts as completion — promote parent if nothing else is pending.
+        _promote_parent_if_complete(submission)
 
 
 def _create_sub_workflow_stage_tasks(

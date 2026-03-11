@@ -837,8 +837,22 @@ def approve_submission(request, task_id):
                     },
                 )
 
-            # Update submission form_data with approval step fields
-            submission.form_data = approval_step_form.get_updated_form_data()
+            # Update submission form_data with approval step fields.
+            # For sub-workflow tasks, remap generic field names to indexed names
+            # (e.g. payment_type → payment_type_1) so multiple payments don't overwrite each other.
+            updated_data = approval_step_form.get_updated_form_data()
+            if task.sub_workflow_instance_id:
+                idx = task.sub_workflow_instance.index
+                stage_field_names = set(
+                    form_def.fields.filter(
+                        workflow_stage_id=task.workflow_stage_id
+                    ).values_list("field_name", flat=True)
+                )
+                updated_data = {
+                    (f"{k}_{idx}" if k in stage_field_names else k): v
+                    for k, v in updated_data.items()
+                }
+            submission.form_data = updated_data
             submission.save()
 
         # Update task
@@ -1855,11 +1869,26 @@ def _build_approval_step_sections(submission):
         else:
             field_defs = legacy_step_fields.get(effective, [])
 
-        visible_fields = [
-            {"label": f["label"], "key": f["key"], "value": form_data[f["key"]]}
-            for f in field_defs
-            if f["key"] in form_data
-        ]
+        # For sub-workflow tasks the generic field names are stored with an index
+        # suffix (e.g. payment_type → payment_type_1).  Resolve the real key before
+        # looking up the value.
+        swi_index = (
+            task.sub_workflow_instance.index
+            if task.sub_workflow_instance_id and task.sub_workflow_instance
+            else None
+        )
+
+        visible_fields = []
+        for f in field_defs:
+            lookup_key = f"{f['key']}_{swi_index}" if swi_index else f["key"]
+            if lookup_key in form_data:
+                visible_fields.append(
+                    {
+                        "label": f["label"],
+                        "key": lookup_key,
+                        "value": form_data[lookup_key],
+                    }
+                )
 
         completed_by = None
         if task.completed_by:

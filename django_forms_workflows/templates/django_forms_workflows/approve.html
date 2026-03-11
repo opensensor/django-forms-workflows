@@ -226,7 +226,7 @@
             <!-- Current Step Fields Section with Decision inline -->
             <div class="card mb-4 border-primary">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Step {{ current_step_number }}: {{ task.step_name }}
+                    <h5 class="mb-0"><i class="bi bi-pencil-square"></i> {% if current_step_number %}Step {{ current_step_number }}: {% endif %}{{ task.step_name }}
                         <span class="badge bg-light text-primary float-end">Your Action Required</span>
                     </h5>
                 </div>

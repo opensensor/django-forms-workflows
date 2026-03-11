@@ -1122,7 +1122,7 @@ def completed_approvals(request):
     """
     if request.user.is_superuser:
         base_submissions = FormSubmission.objects.filter(
-            status__in=["approved", "rejected", "withdrawn"]
+            status__in=["approved", "approved_pending", "rejected", "withdrawn"]
         )
     else:
         user_groups = request.user.groups.all()
@@ -2244,6 +2244,14 @@ def bulk_export_submissions_pdf(request):
 
 _STATUS_BADGE = {
     "approved": '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Approved</span>',
+    "approved_pending": (
+        '<span class="d-inline-flex align-items-center">'
+        '<span class="badge bg-success rounded-end-0 border-end border-white">'
+        '<i class="bi bi-check-circle me-1"></i>Approved</span>'
+        '<span class="badge bg-warning text-dark rounded-start-0">'
+        '<i class="bi bi-hourglass-split me-1"></i>Pending Completion</span>'
+        "</span>"
+    ),
     "rejected": '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>',
     "withdrawn": '<span class="badge bg-secondary"><i class="bi bi-dash-circle me-1"></i>Withdrawn</span>',
     "pending_approval": '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Awaiting Co-Approver</span>',
@@ -2331,7 +2339,7 @@ def completed_approvals_ajax(request):
     # --- Base queryset (mirrors permission logic of completed_approvals view) ---
     if request.user.is_superuser:
         qs = FormSubmission.objects.filter(
-            status__in=["approved", "rejected", "withdrawn"]
+            status__in=["approved", "approved_pending", "rejected", "withdrawn"]
         )
     else:
         user_groups = request.user.groups.all()
@@ -2353,7 +2361,13 @@ def completed_approvals_ajax(request):
         qs = qs.filter(form_definition__category__slug=category_slug)
     if form_slug:
         qs = qs.filter(form_definition__slug=form_slug)
-    if status_filter in ("approved", "rejected", "withdrawn", "pending_approval"):
+    if status_filter in (
+        "approved",
+        "approved_pending",
+        "rejected",
+        "withdrawn",
+        "pending_approval",
+    ):
         qs = qs.filter(status=status_filter)
 
     # --- Search ---

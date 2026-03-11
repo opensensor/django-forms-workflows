@@ -1232,6 +1232,7 @@ class FormSubmission(models.Model):
         ("submitted", "Submitted"),
         ("pending_approval", "Pending Approval"),
         ("approved", "Approved"),
+        ("approved_pending", "Approved – Pending Completion"),
         ("rejected", "Rejected"),
         ("withdrawn", "Withdrawn"),
     ]
@@ -2239,6 +2240,14 @@ class SubWorkflowDefinition(models.Model):
         max_length=100,
         blank=True,
         help_text="Form field prefix to scope data per instance (e.g. 'payment' matches payment_type_1, payment_amount_1 …)",
+    )
+    detached = models.BooleanField(
+        default=False,
+        help_text=(
+            "When True, sub-workflows are spawned independently and do not affect the "
+            "parent submission status. When False (default), the parent moves to "
+            "'Approved – Pending Completion' until all sub-workflow instances finish."
+        ),
     )
 
     class Meta:

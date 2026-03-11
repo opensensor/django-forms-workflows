@@ -249,6 +249,7 @@ def _serialize_sub_workflow_config(swc):
         "label_template": swc.label_template,
         "trigger": swc.trigger,
         "data_prefix": swc.data_prefix,
+        "detached": swc.detached,
     }
 
 
@@ -601,6 +602,7 @@ def import_form(form_data, conflict="update", category_cache=None):
                         ),
                         "trigger": sub_wf_data.get("trigger", "on_approval"),
                         "data_prefix": sub_wf_data.get("data_prefix", ""),
+                        "detached": sub_wf_data.get("detached", False),
                     },
                 )
             else:

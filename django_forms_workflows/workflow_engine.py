@@ -177,6 +177,13 @@ def _finalize_submission(submission: FormSubmission) -> None:
     except Exception as e:
         logger.error("Error spawning sub-workflows on approval: %s", e, exc_info=True)
 
+    # If non-detached sub-workflow instances are now pending/in-progress,
+    # hold the parent at "approved_pending" until they all complete.
+    try:
+        _maybe_set_approved_pending(submission)
+    except Exception as e:
+        logger.error("Error setting approved_pending status: %s", e, exc_info=True)
+
 
 def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
     """Mark submission as rejected and execute rejection hooks."""
@@ -776,11 +783,42 @@ def execute_file_workflow_hooks(submission: FormSubmission, trigger: str) -> Non
 # ---------------------------------------------------------------------------
 
 
+def _maybe_set_approved_pending(submission: FormSubmission) -> None:
+    """Flip parent to approved_pending if non-detached sub-workflow instances are running."""
+    if submission.status != "approved":
+        return
+    try:
+        config = submission.form_definition.workflow.sub_workflow_config
+    except Exception:
+        return
+    if config.detached:
+        return
+    if submission.sub_workflows.filter(status__in=["pending", "in_progress"]).exists():
+        submission.status = "approved_pending"
+        submission.save(update_fields=["status"])
+
+
+def _promote_parent_if_complete(submission: FormSubmission) -> None:
+    """Promote parent from approved_pending to approved when all sub-workflows finish."""
+    if submission.status != "approved_pending":
+        return
+    if submission.sub_workflows.filter(status__in=["pending", "in_progress"]).exists():
+        return
+    submission.status = "approved"
+    submission.save(update_fields=["status"])
+    logger.info(
+        "Submission %s promoted to approved — all sub-workflows complete.",
+        submission.id,
+    )
+
+
 def _finalize_sub_workflow(instance: SubWorkflowInstance) -> None:
-    """Mark a sub-workflow instance as approved."""
+    """Mark a sub-workflow instance as approved, then promote parent if all complete."""
     instance.status = "approved"
     instance.completed_at = timezone.now()
     instance.save(update_fields=["status", "completed_at"])
+
+    _promote_parent_if_complete(instance.parent_submission)
 
 
 def _reject_sub_workflow(instance: SubWorkflowInstance) -> None:

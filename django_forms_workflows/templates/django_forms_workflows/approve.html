@@ -46,9 +46,9 @@
                         </div>
                         <div class="{% if stage.is_current %}fw-bold text-primary{% elif stage.is_pending %}text-muted{% endif %}">
                             <small>{{ stage.name }}</small><br>
-                            {% if stage.approval_logic == "all" %}<span class="badge bg-secondary" style="font-size:10px;">All must approve</span>
-                            {% elif stage.approval_logic == "any" %}<span class="badge bg-info text-dark" style="font-size:10px;">Any can approve</span>
-                            {% else %}<span class="badge bg-light text-muted border" style="font-size:10px;">Sequential</span>{% endif %}
+                            {% if stage.approval_logic == "all" %}<span class="badge bg-secondary" style="font-size:10px;">Requires all approvers</span>
+                            {% elif stage.approval_logic == "any" %}<span class="badge bg-info text-dark" style="font-size:10px;">One approver needed</span>
+                            {% else %}<span class="badge bg-light text-muted border" style="font-size:10px;">Sequential Step-by-step Approval</span>{% endif %}
                             {% if stage.total_count > 0 %}<br><small class="text-muted">{{ stage.approved_count }}/{{ stage.total_count }} approved</small>{% endif %}
                         </div>
                     </div>
@@ -246,7 +246,7 @@
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
                             <i class="bi bi-check-circle"></i> {{ approve_label|default:"Approve" }}
                         </button>
-                        <button type="submit" name="decision" value="reject" class="btn btn-danger btn-lg">
+                        <button type="submit" name="decision" value="reject" formnovalidate class="btn btn-danger btn-lg">
                             <i class="bi bi-x-circle"></i> Reject
                         </button>
                         <a href="{% url 'forms_workflows:approval_inbox' %}" class="btn btn-outline-secondary btn-lg">
@@ -328,7 +328,7 @@
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
                             <i class="bi bi-check-circle"></i> {{ approve_label|default:"Approve" }}
                         </button>
-                        <button type="submit" name="decision" value="reject" class="btn btn-danger btn-lg">
+                        <button type="submit" name="decision" value="reject" formnovalidate class="btn btn-danger btn-lg">
                             <i class="bi bi-x-circle"></i> Reject
                         </button>
                         <a href="{% url 'forms_workflows:approval_inbox' %}" class="btn btn-outline-secondary btn-lg">

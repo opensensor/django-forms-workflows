@@ -852,7 +852,18 @@ def approve_submission(request, task_id):
         # Update submission status
         workflow = form_def.workflow
 
-        if decision == "reject":
+        if task.sub_workflow_instance_id:
+            # Sub-workflow task — dispatch to sub-workflow engine
+            from .workflow_engine import (
+                handle_sub_workflow_approval,
+                handle_sub_workflow_rejection,
+            )
+
+            if decision == "reject":
+                handle_sub_workflow_rejection(task)
+            else:
+                handle_sub_workflow_approval(task)
+        elif decision == "reject":
             from .workflow_engine import handle_rejection
 
             handle_rejection(submission, task, workflow)
@@ -1031,6 +1042,44 @@ def approve_submission(request, task_id):
             "form_data_ordered": form_data_ordered,
             # custom button label
             "approve_label": approve_label,
+            # sub-workflow context (None for regular tasks)
+            "sub_workflow_instance": task.sub_workflow_instance,
+        },
+    )
+
+
+@login_required
+def sub_workflow_detail(request, instance_id):
+    """View details of a single sub-workflow instance (e.g. Payment 1)."""
+    from .models import SubWorkflowInstance
+
+    instance = get_object_or_404(SubWorkflowInstance, id=instance_id)
+    submission = instance.parent_submission
+
+    can_view = (
+        submission.submitter == request.user
+        or request.user.is_superuser
+        or user_can_approve(request.user, submission)
+        or request.user.groups.filter(
+            id__in=submission.form_definition.admin_groups.all()
+        ).exists()
+    )
+    if not can_view:
+        messages.error(request, "You don't have permission to view this.")
+        return redirect("forms_workflows:my_submissions")
+
+    tasks = instance.approval_tasks.select_related(
+        "assigned_to", "assigned_group", "completed_by", "workflow_stage"
+    ).order_by("created_at")
+
+    return render(
+        request,
+        "django_forms_workflows/sub_workflow_detail.html",
+        {
+            "instance": instance,
+            "submission": submission,
+            "tasks": tasks,
+            "form_data_slice": instance.form_data_slice,
         },
     )
 

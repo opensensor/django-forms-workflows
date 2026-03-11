@@ -31,6 +31,8 @@ from .models import (
     ManagedFile,
     PostSubmissionAction,
     PrefillSource,
+    SubWorkflowDefinition,
+    SubWorkflowInstance,
     UserProfile,
     WorkflowDefinition,
     WorkflowStage,
@@ -1651,3 +1653,39 @@ class CustomGroupAdmin(GroupAdmin):
         return obj.user_set.count()
 
     user_count.short_description = "Users"
+
+
+class SubWorkflowInstanceInline(admin.TabularInline):
+    model = SubWorkflowInstance
+    extra = 0
+    readonly_fields = ("index", "label", "status", "created_at", "completed_at")
+    can_delete = False
+
+
+@admin.register(SubWorkflowDefinition)
+class SubWorkflowDefinitionAdmin(admin.ModelAdmin):
+    list_display = (
+        "parent_workflow",
+        "sub_workflow",
+        "count_field",
+        "trigger",
+        "label_template",
+    )
+    list_filter = ("trigger",)
+    raw_id_fields = ("parent_workflow", "sub_workflow")
+
+
+@admin.register(SubWorkflowInstance)
+class SubWorkflowInstanceAdmin(admin.ModelAdmin):
+    list_display = (
+        "label",
+        "parent_submission",
+        "index",
+        "status",
+        "created_at",
+        "completed_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("label", "parent_submission__id")
+    readonly_fields = ("created_at", "updated_at", "completed_at")
+    raw_id_fields = ("parent_submission", "definition")

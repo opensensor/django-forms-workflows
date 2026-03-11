@@ -1,0 +1,111 @@
+{% extends 'django_forms_workflows/base.html' %}
+{% block title %}{{ instance.label }} – Submission #{{ submission.id }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-9 mx-auto">
+
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'forms_workflows:my_submissions' %}">My Submissions</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'forms_workflows:submission_detail' submission.id %}">Submission #{{ submission.id }}</a></li>
+                <li class="breadcrumb-item active">{{ instance.label }}</li>
+            </ol>
+        </nav>
+
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <h1 class="mb-0">{{ instance.label }}</h1>
+            {% if instance.status == 'approved' %}
+                <span class="badge bg-success fs-6">Approved</span>
+            {% elif instance.status == 'rejected' %}
+                <span class="badge bg-danger fs-6">Rejected</span>
+            {% elif instance.status == 'in_progress' %}
+                <span class="badge bg-primary fs-6">In Progress</span>
+            {% else %}
+                <span class="badge bg-secondary fs-6">Pending</span>
+            {% endif %}
+        </div>
+
+        <!-- Payment data -->
+        {% if form_data_slice %}
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-cash-coin"></i> Payment Details</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    {% for key, value in form_data_slice.items %}
+                    <dt class="col-sm-4 text-muted small text-uppercase">{{ key|cut:"_"|title }}</dt>
+                    <dd class="col-sm-8">{{ value|default:"—" }}</dd>
+                    {% endfor %}
+                </dl>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Approval tasks -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Approval Tasks</h5>
+            </div>
+            {% if tasks %}
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Step</th>
+                            <th>Assigned To</th>
+                            <th>Status</th>
+                            <th>Completed By</th>
+                            <th>Decision</th>
+                            <th>Comments</th>
+                            <th>Date</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                        <tr>
+                            <td class="small">{{ task.step_name }}</td>
+                            <td>
+                                {% if task.assigned_to %}
+                                    {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
+                                {% elif task.assigned_group %}
+                                    <span class="badge bg-secondary">{{ task.assigned_group.name }}</span>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>
+                                {% if task.status == 'approved' %}<span class="badge bg-success">Approved</span>
+                                {% elif task.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+                                {% elif task.status == 'skipped' %}<span class="badge bg-light text-muted">Skipped</span>
+                                {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+                            </td>
+                            <td>{{ task.completed_by.get_full_name|default:"—" }}</td>
+                            <td>{{ task.decision|default:"—" }}</td>
+                            <td>{{ task.comments|default:"—" }}</td>
+                            <td class="small text-muted">{{ task.completed_at|date:"M d, Y"|default:"—" }}</td>
+                            <td>
+                                {% if task.status == 'pending' %}
+                                <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-sm btn-outline-primary">
+                                    Review
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted">No approval tasks yet.</div>
+            {% endif %}
+        </div>
+
+        <a href="{% url 'forms_workflows:submission_detail' submission.id %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Submission
+        </a>
+
+    </div>
+</div>
+{% endblock %}
+

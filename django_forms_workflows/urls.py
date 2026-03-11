@@ -47,6 +47,12 @@ urlpatterns = [
     # Sync API
     path("forms-sync/export/", sync_export_view, name="sync_export"),
     path("forms-sync/import/", sync_import_view, name="sync_import"),
+    # Sub-workflow instances
+    path(
+        "sub-workflows/<int:instance_id>/",
+        views.sub_workflow_detail,
+        name="sub_workflow_detail",
+    ),
     # Approvals
     path("approvals/", views.approval_inbox, name="approval_inbox"),
     path("approvals/completed/", views.completed_approvals, name="completed_approvals"),

@@ -1325,6 +1325,16 @@ class ApprovalTask(models.Model):
         blank=True,
         help_text="Stage this task belongs to (staged workflows only)",
     )
+
+    # Sub-workflow association (sub-workflow tasks only)
+    sub_workflow_instance = models.ForeignKey(
+        "SubWorkflowInstance",
+        related_name="approval_tasks",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        help_text="Sub-workflow instance this task belongs to (sub-workflow tasks only)",
+    )
     stage_number = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -2181,3 +2191,115 @@ class FormTemplate(models.Model):
         """Increment the usage counter when template is used"""
         self.usage_count += 1
         self.save(update_fields=["usage_count"])
+
+
+class SubWorkflowDefinition(models.Model):
+    """
+    Configuration for spawning sub-workflows from a parent workflow.
+
+    When a form has payment installments or other repeated sub-processes,
+    this config tells the engine how many sub-workflows to spawn (by reading
+    a numeric field from the form submission) and which WorkflowDefinition
+    to use for each instance.
+    """
+
+    TRIGGER_CHOICES = [
+        ("on_submission", "On Submission"),
+        ("on_approval", "After Parent Approval"),
+    ]
+
+    parent_workflow = models.OneToOneField(
+        WorkflowDefinition,
+        related_name="sub_workflow_config",
+        on_delete=models.CASCADE,
+        help_text="The parent workflow that spawns sub-workflows",
+    )
+    sub_workflow = models.ForeignKey(
+        WorkflowDefinition,
+        related_name="used_as_sub_workflow",
+        on_delete=models.PROTECT,
+        help_text="Workflow definition used for each sub-workflow instance",
+    )
+    count_field = models.CharField(
+        max_length=100,
+        help_text="Form field name whose integer value determines how many sub-workflows to spawn (e.g. 'number_of_payments')",
+    )
+    label_template = models.CharField(
+        max_length=100,
+        default="Sub-workflow {index}",
+        help_text="Label for each instance — use {index} as placeholder (e.g. 'Payment {index}')",
+    )
+    trigger = models.CharField(
+        max_length=20,
+        choices=TRIGGER_CHOICES,
+        default="on_approval",
+        help_text="When to spawn sub-workflow instances",
+    )
+    data_prefix = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Form field prefix to scope data per instance (e.g. 'payment' matches payment_type_1, payment_amount_1 …)",
+    )
+
+    class Meta:
+        verbose_name = "Sub-workflow Definition"
+        verbose_name_plural = "Sub-workflow Definitions"
+
+    def __str__(self):
+        return f"Sub-WF config for: {self.parent_workflow.form_definition}"
+
+
+class SubWorkflowInstance(models.Model):
+    """
+    A running instance of a sub-workflow tied to a parent form submission.
+
+    Created by the engine when the parent workflow is submitted or approved
+    (depending on SubWorkflowDefinition.trigger). Each instance tracks its
+    own approval stages independently using ApprovalTask rows that carry
+    a sub_workflow_instance FK.
+    """
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("in_progress", "In Progress"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
+
+    parent_submission = models.ForeignKey(
+        FormSubmission,
+        related_name="sub_workflows",
+        on_delete=models.CASCADE,
+    )
+    definition = models.ForeignKey(
+        SubWorkflowDefinition,
+        related_name="instances",
+        on_delete=models.PROTECT,
+    )
+    index = models.PositiveIntegerField(help_text="Which instance (1, 2, 3 …)")
+    label = models.CharField(max_length=200)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["index"]
+        unique_together = [["parent_submission", "definition", "index"]]
+        verbose_name = "Sub-workflow Instance"
+        verbose_name_plural = "Sub-workflow Instances"
+
+    def __str__(self):
+        return f"{self.label} (Submission #{self.parent_submission_id})"
+
+    @property
+    def form_data_slice(self) -> dict:
+        """Return only the form fields relevant to this sub-workflow instance."""
+        prefix = self.definition.data_prefix
+        fd = self.parent_submission.form_data
+        if not prefix:
+            return fd
+        suffix = f"_{self.index}"
+        return {
+            k: v for k, v in fd.items() if k.startswith(prefix) and k.endswith(suffix)
+        }

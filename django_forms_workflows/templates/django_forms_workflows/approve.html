@@ -9,6 +9,18 @@
     <div class="col-lg-10 mx-auto">
         <h1 class="mb-4">Review Submission</h1>
 
+        <!-- Sub-workflow banner -->
+        {% if sub_workflow_instance %}
+        <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
+            <i class="bi bi-diagram-2 fs-5"></i>
+            <div>
+                <strong>{{ sub_workflow_instance.label }}</strong> —
+                this is a payment approval request for
+                <a href="{% url 'forms_workflows:submission_detail' submission.id %}">Submission #{{ submission.id }}</a>.
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Approval Progress (staged / sequential / parallel) -->
         {% if workflow_mode != "none" %}
         <div class="card mb-4">

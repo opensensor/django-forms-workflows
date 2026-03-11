@@ -39,7 +39,14 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from .models import ApprovalTask, FormSubmission, WorkflowDefinition, WorkflowStage
+from .models import (
+    ApprovalTask,
+    FormSubmission,
+    SubWorkflowDefinition,
+    SubWorkflowInstance,
+    WorkflowDefinition,
+    WorkflowStage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +170,12 @@ def _finalize_submission(submission: FormSubmission) -> None:
         logger.error("Error in execute_file_workflow_hooks: %s", e, exc_info=True)
 
     _notify_final_approval(submission)
+
+    # Spawn any sub-workflows configured to fire after parent approval
+    try:
+        _spawn_sub_workflows_for_trigger(submission, "on_approval")
+    except Exception as e:
+        logger.error("Error spawning sub-workflows on approval: %s", e, exc_info=True)
 
 
 def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
@@ -342,6 +355,12 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
     # Execute on_submit actions
     execute_post_submission_actions(submission, "on_submit")
     execute_file_workflow_hooks(submission, "on_submit")
+
+    # Spawn any sub-workflows configured to fire immediately on submission
+    try:
+        _spawn_sub_workflows_for_trigger(submission, "on_submission")
+    except Exception as e:
+        logger.error("Error spawning sub-workflows on submission: %s", e, exc_info=True)
 
     if not workflow or not workflow.requires_approval:
         _finalize_submission(submission)
@@ -750,3 +769,281 @@ def execute_file_workflow_hooks(submission: FormSubmission, trigger: str) -> Non
             f"Error executing file workflow hooks for submission {submission.id}: {e}",
             exc_info=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Sub-workflow engine
+# ---------------------------------------------------------------------------
+
+
+def _finalize_sub_workflow(instance: SubWorkflowInstance) -> None:
+    """Mark a sub-workflow instance as approved."""
+    instance.status = "approved"
+    instance.completed_at = timezone.now()
+    instance.save(update_fields=["status", "completed_at"])
+
+
+def _reject_sub_workflow(instance: SubWorkflowInstance) -> None:
+    """Mark a sub-workflow instance as rejected and cancel pending tasks."""
+    instance.status = "rejected"
+    instance.completed_at = timezone.now()
+    instance.save(update_fields=["status", "completed_at"])
+    instance.approval_tasks.filter(status="pending").update(status="skipped")
+
+
+def _create_sub_workflow_stage_tasks(
+    instance: SubWorkflowInstance,
+    stage: WorkflowStage,
+    due_date,
+) -> None:
+    """Create ApprovalTask rows for one stage of a sub-workflow instance."""
+    submission = instance.parent_submission
+    stage_num = stage.order
+    groups = list(stage.approval_groups.all().order_by("id"))
+
+    manager_task_created = False
+    if stage.requires_manager_approval:
+        try:
+            from .ldap_backend import get_user_manager
+        except Exception:
+            get_user_manager = None  # type: ignore
+        manager = get_user_manager(submission.submitter) if get_user_manager else None
+        if manager:
+            task = ApprovalTask.objects.create(
+                submission=submission,
+                sub_workflow_instance=instance,
+                assigned_to=manager,
+                workflow_stage=stage,
+                stage_number=stage_num,
+                step_name=f"{instance.label} – Stage {stage_num}: Manager Approval",
+                status="pending",
+                due_date=due_date,
+            )
+            instance.status = "in_progress"
+            instance.save(update_fields=["status"])
+            manager_task_created = True
+            _notify_task_request(task)
+        else:
+            logger.info(
+                "Sub-workflow manager approval required but manager not found for user %s (stage %d)",
+                submission.submitter,
+                stage_num,
+            )
+
+    if manager_task_created:
+        return
+
+    if not groups:
+        return
+
+    instance.status = "in_progress"
+    instance.save(update_fields=["status"])
+
+    if stage.approval_logic == "sequence":
+        g = groups[0]
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            sub_workflow_instance=instance,
+            assigned_group=g,
+            workflow_stage=stage,
+            stage_number=stage_num,
+            step_name=f"{instance.label} – Stage {stage_num}: {g.name} (Step 1 of {len(groups)})",
+            step_number=1,
+            status="pending",
+            due_date=due_date,
+        )
+        _notify_task_request(task)
+    else:
+        for g in groups:
+            label = stage.approve_label or "Approval"
+            task = ApprovalTask.objects.create(
+                submission=submission,
+                sub_workflow_instance=instance,
+                assigned_group=g,
+                workflow_stage=stage,
+                stage_number=stage_num,
+                step_name=f"{instance.label} – Stage {stage_num}: {g.name} {label}",
+                status="pending",
+                due_date=due_date,
+            )
+            _notify_task_request(task)
+
+
+def _advance_sub_workflow(
+    instance: SubWorkflowInstance,
+    stages: list,
+    current_order: int,
+    due_date,
+) -> None:
+    """Advance to the next stage of a sub-workflow, or finalize if none remain."""
+    for sibling in (s for s in stages if s.order == current_order):
+        if instance.approval_tasks.filter(
+            workflow_stage=sibling, status="pending"
+        ).exists():
+            return
+
+    future = [s for s in stages if s.order > current_order]
+    if not future:
+        _finalize_sub_workflow(instance)
+        return
+
+    next_order = future[0].order
+    for stage in (s for s in future if s.order == next_order):
+        _create_sub_workflow_stage_tasks(instance, stage, due_date)
+
+
+def _spawn_sub_workflows_for_trigger(submission: FormSubmission, trigger: str) -> None:
+    """Spawn sub-workflow instances if a SubWorkflowDefinition exists with matching trigger."""
+    workflow = getattr(submission.form_definition, "workflow", None)
+    if not workflow:
+        return
+    try:
+        config = workflow.sub_workflow_config
+    except SubWorkflowDefinition.DoesNotExist:
+        return
+    if config.trigger != trigger:
+        return
+
+    raw = submission.form_data.get(config.count_field)
+    try:
+        count = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "SubWorkflow count_field '%s' value %r is not a valid integer for submission %s",
+            config.count_field,
+            raw,
+            submission.id,
+        )
+        return
+
+    sub_wf = config.sub_workflow
+    stages = list(sub_wf.stages.order_by("order", "id"))
+    due_date = _due_date_for(sub_wf)
+
+    for i in range(1, count + 1):
+        label = config.label_template.format(index=i)
+        instance, created = SubWorkflowInstance.objects.get_or_create(
+            parent_submission=submission,
+            definition=config,
+            index=i,
+            defaults={"label": label, "status": "pending"},
+        )
+        if not created:
+            continue  # already spawned (e.g. on resubmit)
+
+        if stages:
+            first_order = stages[0].order
+            for stage in (s for s in stages if s.order == first_order):
+                _create_sub_workflow_stage_tasks(instance, stage, due_date)
+        else:
+            _finalize_sub_workflow(instance)
+
+
+@transaction.atomic
+def handle_sub_workflow_approval(task: ApprovalTask) -> None:
+    """Advance a sub-workflow after an approval event on one of its tasks."""
+    instance = task.sub_workflow_instance
+    sub_wf = instance.definition.sub_workflow
+    stages = list(sub_wf.stages.order_by("order", "id"))
+    due_date = _due_date_for(sub_wf)
+    stage = task.workflow_stage
+
+    is_manager_task = (
+        task.assigned_to_id is not None and "manager" in task.step_name.lower()
+    )
+
+    if is_manager_task:
+        groups = list(stage.approval_groups.all().order_by("id"))
+        if not groups:
+            _advance_sub_workflow(instance, stages, stage.order, due_date)
+            return
+        if stage.approval_logic == "sequence":
+            g = groups[0]
+            new_task = ApprovalTask.objects.create(
+                submission=instance.parent_submission,
+                sub_workflow_instance=instance,
+                assigned_group=g,
+                workflow_stage=stage,
+                stage_number=stage.order,
+                step_name=f"{instance.label} – Stage {stage.order}: {g.name} (Step 1 of {len(groups)})",
+                step_number=1,
+                status="pending",
+                due_date=due_date,
+            )
+            _notify_task_request(new_task)
+        else:
+            for g in groups:
+                label = stage.approve_label or "Approval"
+                new_task = ApprovalTask.objects.create(
+                    submission=instance.parent_submission,
+                    sub_workflow_instance=instance,
+                    assigned_group=g,
+                    workflow_stage=stage,
+                    stage_number=stage.order,
+                    step_name=f"{instance.label} – Stage {stage.order}: {g.name} {label}",
+                    status="pending",
+                    due_date=due_date,
+                )
+                _notify_task_request(new_task)
+        return
+
+    logic = stage.approval_logic
+
+    if logic == "any":
+        instance.approval_tasks.filter(workflow_stage=stage, status="pending").exclude(
+            id=task.id
+        ).update(status="skipped")
+        _advance_sub_workflow(instance, stages, stage.order, due_date)
+
+    elif logic == "all":
+        if not instance.approval_tasks.filter(
+            workflow_stage=stage, status="pending", assigned_group__isnull=False
+        ).exists():
+            _advance_sub_workflow(instance, stages, stage.order, due_date)
+
+    elif logic == "sequence":
+        groups = list(stage.approval_groups.all().order_by("id"))
+        ids = [g.id for g in groups]
+        try:
+            idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]
+        except ValueError:
+            idx = len(ids) - 1
+
+        if idx + 1 < len(groups):
+            next_group = groups[idx + 1]
+            new_task = ApprovalTask.objects.create(
+                submission=instance.parent_submission,
+                sub_workflow_instance=instance,
+                assigned_group=next_group,
+                workflow_stage=stage,
+                stage_number=stage.order,
+                step_name=(
+                    f"{instance.label} – Stage {stage.order}: {next_group.name}"
+                    f" (Step {idx + 2} of {len(groups)})"
+                ),
+                step_number=idx + 2,
+                status="pending",
+                due_date=due_date,
+            )
+            _notify_task_request(new_task)
+        else:
+            _advance_sub_workflow(instance, stages, stage.order, due_date)
+
+
+@transaction.atomic
+def handle_sub_workflow_rejection(task: ApprovalTask) -> None:
+    """Handle rejection of a sub-workflow task."""
+    instance = task.sub_workflow_instance
+    stage = task.workflow_stage
+    logic = stage.approval_logic if stage else "any"
+    scope_qs = instance.approval_tasks.filter(workflow_stage=stage)
+
+    if logic == "any":
+        if scope_qs.filter(status="approved").exists():
+            return
+        if scope_qs.filter(status="pending").exists():
+            return
+        _reject_sub_workflow(instance)
+    else:
+        # "all" or "sequence" — one rejection vetoes immediately
+        _reject_sub_workflow(instance)

@@ -114,8 +114,8 @@
                 {% if pdf != 'none' %}
                 <a href="{% url 'forms_workflows:submission_pdf' submission.id %}"
                    class="btn btn-sm btn-outline-secondary"
-                   data-download-spinner="Generating PDF…">
-                    <i class="bi bi-file-earmark-pdf"></i> Download PDF
+                   target="_blank">
+                    <i class="bi bi-file-earmark-pdf"></i> View PDF
                 </a>
                 {% endif %}
                 {% endwith %}

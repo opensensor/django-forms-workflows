@@ -1437,7 +1437,7 @@ def submission_pdf(request, submission_id):
 
     filename = f"submission_{submission_id}.pdf"
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["Content-Disposition"] = f'inline; filename="{filename}"'
     return response
 
 

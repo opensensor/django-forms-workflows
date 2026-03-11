@@ -37,9 +37,10 @@ class DynamicForm(forms.Form):
 
         # Build form fields from definition
         # Exclude fields with approval_step set - those are for approvers only
+        # Also exclude fields scoped to a workflow stage - those are for approvers only
         for field in (
             form_definition.fields.exclude(field_type="section")
-            .filter(approval_step__isnull=True)
+            .filter(approval_step__isnull=True, workflow_stage__isnull=True)
             .order_by("order")
         ):
             self.add_field(field, initial_data)
@@ -49,10 +50,12 @@ class DynamicForm(forms.Form):
         self.helper.form_method = "post"
         self.helper.form_class = "needs-validation"
 
-        # Build layout - exclude approval step fields
+        # Build layout - exclude approval step fields and workflow stage fields
         layout_fields = []
         fields = list(
-            form_definition.fields.filter(approval_step__isnull=True).order_by("order")
+            form_definition.fields.filter(
+                approval_step__isnull=True, workflow_stage__isnull=True
+            ).order_by("order")
         )
         i = 0
         while i < len(fields):

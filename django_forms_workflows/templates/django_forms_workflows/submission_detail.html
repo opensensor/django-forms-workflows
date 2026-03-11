@@ -287,13 +287,22 @@
                     <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" target="_blank">
                         <i class="bi bi-file-earmark-pdf"></i> View PDF
                     </a>
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" download data-download-spinner="Generating PDF…">
+                        <i class="bi bi-download"></i> Download PDF
+                    </a>
                 {% elif pdf == 'post_approval' and submission.status == 'approved' %}
                     <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" target="_blank">
                         <i class="bi bi-file-earmark-pdf"></i> View PDF
                     </a>
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-primary" download data-download-spinner="Generating PDF…">
+                        <i class="bi bi-download"></i> Download PDF
+                    </a>
                 {% elif pdf == 'post_approval' and can_approve_pdf and submission.status != 'draft' %}
                     <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-secondary" target="_blank">
                         <i class="bi bi-file-earmark-pdf"></i> View PDF (Pending)
+                    </a>
+                    <a href="{% url 'forms_workflows:submission_pdf' submission.id %}" class="btn btn-outline-secondary" download data-download-spinner="Generating PDF…">
+                        <i class="bi bi-download"></i> Download PDF (Pending)
                     </a>
                 {% endif %}
             {% endwith %}

@@ -312,7 +312,7 @@ def send_rejection_notification(submission_id: int) -> None:
     _send_html_email(
         subject,
         recipients,
-        "django_forms_workflows/emails/rejection_notification.html",
+        "emails/rejection_notification.html",
         context,
         notification_type="rejection_notification",
         submission_id=submission_id,
@@ -351,7 +351,7 @@ def send_approval_notification(submission_id: int) -> None:
     _send_html_email(
         subject,
         recipients,
-        "django_forms_workflows/emails/approval_notification.html",
+        "emails/approval_notification.html",
         context,
         notification_type="approval_notification",
         submission_id=submission_id,
@@ -390,7 +390,7 @@ def send_submission_notification(submission_id: int) -> None:
     _send_html_email(
         subject,
         recipients,
-        "django_forms_workflows/emails/submission_notification.html",
+        "emails/submission_notification.html",
         context,
         notification_type="submission_created",
         submission_id=submission_id,
@@ -412,7 +412,7 @@ def send_approval_request(task_id: int) -> None:
     ).get(id=task_id)
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
     subject = f"Approval Request: {task.submission.form_definition.name} (ID {task.submission.id})"
-    template = "django_forms_workflows/emails/approval_request.html"
+    template = "emails/approval_request.html"
 
     # Build stage / parallel context so email templates can show progress info
     stage_context: dict = {}
@@ -507,7 +507,7 @@ def send_approval_reminder(task_id: int) -> None:
     _send_html_email(
         subject,
         [task.assigned_to.email],
-        "django_forms_workflows/emails/approval_reminder.html",
+        "emails/approval_reminder.html",
         context,
         notification_type="approval_reminder",
         submission_id=task.submission_id,
@@ -631,7 +631,7 @@ def send_escalation_notification(task_id: int, to_email: str | None = None) -> N
     _send_html_email(
         subject,
         [recipient],
-        "django_forms_workflows/emails/escalation_notification.html",
+        "emails/escalation_notification.html",
         context,
         notification_type="escalation",
         submission_id=task.submission_id,
@@ -722,7 +722,7 @@ def _dispatch_submission_digest(recipient_email: str, notifications: list) -> No
     _send_html_email(
         subject,
         [recipient_email],
-        "django_forms_workflows/emails/notification_digest.html",
+        "emails/notification_digest.html",
         context,
         notification_type="batched",
     )
@@ -763,7 +763,7 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> None
     _send_html_email(
         subject,
         [recipient_email],
-        "django_forms_workflows/emails/notification_digest.html",
+        "emails/notification_digest.html",
         context,
         notification_type="batched",
     )

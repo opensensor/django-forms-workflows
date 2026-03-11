@@ -37,6 +37,7 @@ from .models import (
     FormField,
     PostSubmissionAction,
     PrefillSource,
+    SubWorkflowDefinition,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -223,6 +224,9 @@ def _serialize_field(field):
         "approval_step": field.approval_step,
         "allowed_extensions": field.allowed_extensions,
         "max_file_size_mb": field.max_file_size_mb,
+        "workflow_stage_order": field.workflow_stage.order
+        if field.workflow_stage_id
+        else None,
     }
 
 
@@ -233,6 +237,18 @@ def _serialize_workflow_stage(stage):
         "approval_logic": stage.approval_logic,
         "approval_groups": _group_names(stage.approval_groups),
         "requires_manager_approval": stage.requires_manager_approval,
+    }
+
+
+def _serialize_sub_workflow_config(swc):
+    if swc is None:
+        return None
+    return {
+        "sub_workflow_form_slug": swc.sub_workflow.form_definition.slug,
+        "count_field": swc.count_field,
+        "label_template": swc.label_template,
+        "trigger": swc.trigger,
+        "data_prefix": swc.data_prefix,
     }
 
 
@@ -270,6 +286,9 @@ def _serialize_workflow(wf):
         "stages": [
             _serialize_workflow_stage(s) for s in wf.stages.all().order_by("order")
         ],
+        "sub_workflow_config": _serialize_sub_workflow_config(
+            getattr(wf, "sub_workflow_config", None)
+        ),
     }
 
 
@@ -357,11 +376,14 @@ def build_export_payload(queryset):
     qs = queryset.prefetch_related(
         "fields",
         "fields__prefill_source_config",
+        "fields__workflow_stage",
         "workflow",
         "workflow__stages",
         "workflow__stages__approval_groups",
         "workflow__approval_groups",
         "workflow__escalation_groups",
+        "workflow__sub_workflow_config",
+        "workflow__sub_workflow_config__sub_workflow__form_definition",
         "post_actions",
         "submit_groups",
         "view_groups",
@@ -502,33 +524,17 @@ def import_form(form_data, conflict="update", category_cache=None):
         [_get_or_create_group(n) for n in fd.get("admin_groups", [])]
     )
 
-    # ── Fields ─────────────────────────────────────────────────────────────────
-    # Delete existing fields so we get a clean ordered set
-    form_obj.fields.all().delete()
-    for field_data in form_data.get("fields", []):
-        ps_config = _get_or_create_prefill_source(
-            field_data.pop("prefill_source_config", None)
-        )
-        field_data_copy = dict(field_data)
-        field_data_copy.pop("prefill_source_config", None)
-        min_val = field_data_copy.pop("min_value", None)
-        max_val = field_data_copy.pop("max_value", None)
-        FormField.objects.create(
-            form_definition=form_obj,
-            prefill_source_config=ps_config,
-            min_value=Decimal(min_val) if min_val is not None else None,
-            max_value=Decimal(max_val) if max_val is not None else None,
-            **field_data_copy,
-        )
-
-    # ── Workflow ───────────────────────────────────────────────────────────────
+    # ── Workflow (created BEFORE fields so stage FKs can be resolved) ──────────
+    stage_order_map = {}  # order → WorkflowStage, used when creating fields
     wf_data = form_data.get("workflow")
     if wf_data is not None:
         from datetime import time as _time
 
+        wf_data = dict(wf_data)  # don't mutate caller's dict
         nc_time_str = wf_data.pop("notification_cadence_time", None)
         nc_time = _time.fromisoformat(nc_time_str) if nc_time_str else None
         stages_data = wf_data.pop("stages", [])
+        sub_wf_data = wf_data.pop("sub_workflow_config", None)
         esc_thresh = wf_data.pop("escalation_threshold", None)
         approval_group_names = wf_data.pop("approval_groups", [])
         escalation_group_names = wf_data.pop("escalation_groups", [])
@@ -565,10 +571,10 @@ def import_form(form_data, conflict="update", category_cache=None):
                 s.delete()
 
         for idx, stage_data in enumerate(stages_data):
+            stage_data = dict(stage_data)
             stage_group_names = stage_data.pop("approval_groups", [])
             order = stage_data.get("order", idx + 1)
             if order in existing_by_order:
-                # Update the existing stage record in-place (preserves its PK)
                 stage = existing_by_order[order]
                 for k, v in stage_data.items():
                     setattr(stage, k, v)
@@ -578,9 +584,61 @@ def import_form(form_data, conflict="update", category_cache=None):
             stage.approval_groups.set(
                 [_get_or_create_group(n) for n in stage_group_names]
             )
+            stage_order_map[order] = stage
+
+        # ── Sub-workflow config ─────────────────────────────────────────────
+        if sub_wf_data:
+            sub_form_slug = sub_wf_data.get("sub_workflow_form_slug")
+            sub_wf_form = FormDefinition.objects.filter(slug=sub_form_slug).first()
+            if sub_wf_form and hasattr(sub_wf_form, "workflow"):
+                SubWorkflowDefinition.objects.update_or_create(
+                    parent_workflow=wf,
+                    defaults={
+                        "sub_workflow": sub_wf_form.workflow,
+                        "count_field": sub_wf_data.get("count_field", ""),
+                        "label_template": sub_wf_data.get(
+                            "label_template", "Sub-workflow {index}"
+                        ),
+                        "trigger": sub_wf_data.get("trigger", "on_approval"),
+                        "data_prefix": sub_wf_data.get("data_prefix", ""),
+                    },
+                )
+            else:
+                logger.warning(
+                    "Sync import: sub-workflow form '%s' not found for form '%s';"
+                    " sub_workflow_config skipped.",
+                    sub_form_slug,
+                    slug,
+                )
+        else:
+            SubWorkflowDefinition.objects.filter(parent_workflow=wf).delete()
     else:
         # Remove workflow if source had none
         WorkflowDefinition.objects.filter(form_definition=form_obj).delete()
+
+    # ── Fields ─────────────────────────────────────────────────────────────────
+    # Delete existing fields so we get a clean ordered set
+    form_obj.fields.all().delete()
+    for field_data in form_data.get("fields", []):
+        field_data = dict(field_data)
+        ps_config = _get_or_create_prefill_source(
+            field_data.pop("prefill_source_config", None)
+        )
+        field_data.pop("prefill_source_config", None)
+        min_val = field_data.pop("min_value", None)
+        max_val = field_data.pop("max_value", None)
+        stage_order = field_data.pop("workflow_stage_order", None)
+        workflow_stage = (
+            stage_order_map.get(stage_order) if stage_order is not None else None
+        )
+        FormField.objects.create(
+            form_definition=form_obj,
+            prefill_source_config=ps_config,
+            min_value=Decimal(min_val) if min_val is not None else None,
+            max_value=Decimal(max_val) if max_val is not None else None,
+            workflow_stage=workflow_stage,
+            **field_data,
+        )
 
     # ── Post-submission actions ────────────────────────────────────────────────
     form_obj.post_actions.all().delete()

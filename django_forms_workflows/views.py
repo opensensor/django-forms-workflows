@@ -479,10 +479,24 @@ def my_submissions(request):
         form_definition__workflow__allow_bulk_export=True
     ).exists()
 
+    # Extra form-field columns (only when a specific form is selected)
+    form_fields = []
+    if form_slug:
+        try:
+            fd = FormDefinition.objects.get(slug=form_slug)
+            form_fields = list(
+                FormField.objects.filter(form_definition=fd)
+                .exclude(field_type__in=["section", "file"])
+                .order_by("order")
+                .values("field_name", "field_label")
+            )
+        except FormDefinition.DoesNotExist:
+            pass
+
     # Compute default sort column index for DataTables (submitted_at)
     _exp_off = 1 if any_exportable else 0
     _cat_off = 0 if category_slug else 1
-    # columns: [checkbox?] id actions [category?] form status submitted_at
+    # columns: [checkbox?] id actions [category?] form status submitted_at [extra…]
     default_sort_col = _exp_off + 2 + _cat_off + 2  # index of submitted_at
 
     return render(
@@ -497,6 +511,7 @@ def my_submissions(request):
             "form_slug": form_slug,
             "active_form": active_form,
             "any_exportable": any_exportable,
+            "form_fields": form_fields,
             "default_sort_col": default_sort_col,
         },
     )
@@ -2619,9 +2634,26 @@ def my_submissions_ajax(request):
     prefix = "" if order_dir == "asc" else "-"
     qs = qs.order_by(f"{prefix}{col_name}")
 
-    page_qs = qs.select_related(
+    # Extra form-field columns (only when a specific form is selected)
+    extra_fields = []
+    if form_slug:
+        try:
+            fd = FormDefinition.objects.get(slug=form_slug)
+            extra_fields = list(
+                FormField.objects.filter(form_definition=fd)
+                .exclude(field_type__in=["section", "file"])
+                .order_by("order")
+                .values("field_name")
+            )
+        except FormDefinition.DoesNotExist:
+            pass
+
+    base_qs = qs.select_related(
         "form_definition__category", "form_definition__workflow"
-    )[start : start + length]
+    )
+    if not form_slug:
+        base_qs = base_qs.defer("form_data")
+    page_qs = base_qs[start : start + length]
 
     data = []
     for sub in page_qs:
@@ -2683,6 +2715,11 @@ def my_submissions_ajax(request):
             ),
             "submitted_at": submitted_html,
         }
+        if extra_fields and sub.form_data:
+            for ef in extra_fields:
+                row[ef["field_name"]] = escape(
+                    str(sub.form_data.get(ef["field_name"], ""))
+                )
         data.append(row)
 
     return JsonResponse(

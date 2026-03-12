@@ -385,9 +385,11 @@ def form_auto_save(request, slug):
             }
         )
 
-    except Exception as e:
-        logger.error(f"Auto-save error for form {slug}: {e}")
-        return JsonResponse({"success": False, "error": str(e)}, status=500)
+    except Exception:
+        logger.error(f"Auto-save error for form {slug}", exc_info=True)
+        return JsonResponse(
+            {"success": False, "error": "An internal error occurred."}, status=500
+        )
 
 
 @login_required

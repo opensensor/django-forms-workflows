@@ -15,6 +15,7 @@ from django.contrib.auth import login
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.utils.decorators import method_decorator
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
@@ -91,9 +92,9 @@ class SAMLMetadataView(View):
             metadata = OneLogin_Saml2_Metadata.builder(saml_settings.get_sp_metadata())
 
             return HttpResponse(metadata, content_type="application/xml")
-        except Exception as e:
-            logger.error(f"Error generating SAML metadata: {e}")
-            return HttpResponseBadRequest(f"Error generating SAML metadata: {e}")
+        except Exception:
+            logger.error("Error generating SAML metadata", exc_info=True)
+            return HttpResponseBadRequest("Error generating SAML metadata.")
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -272,13 +273,19 @@ class SAMLACSView(View):
             login(request, user, backend="django.contrib.auth.backends.ModelBackend")
             logger.info(f"SAML login successful for: {user.username}")
 
-            # Redirect to target URL
-            relay_state = request.POST.get("RelayState", settings.LOGIN_REDIRECT_URL)
+            # Redirect to target URL — validate RelayState to prevent open redirect
+            relay_state = request.POST.get("RelayState", "")
+            if not url_has_allowed_host_and_scheme(
+                url=relay_state,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            ):
+                relay_state = settings.LOGIN_REDIRECT_URL
             return HttpResponseRedirect(relay_state)
 
-        except Exception as e:
-            logger.error(f"SAML ACS error: {e}")
-            return HttpResponseBadRequest(f"SAML authentication error: {e}")
+        except Exception:
+            logger.error("SAML ACS error", exc_info=True)
+            return HttpResponseBadRequest("SAML authentication error.")
 
 
 class SAMLLoginView(View):
@@ -316,9 +323,9 @@ class SAMLLoginView(View):
 
             return HttpResponseRedirect(redirect_url)
 
-        except Exception as e:
-            logger.error(f"SAML login error: {e}")
-            return HttpResponseBadRequest(f"SAML login error: {e}")
+        except Exception:
+            logger.error("SAML login error", exc_info=True)
+            return HttpResponseBadRequest("SAML login error.")
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -375,6 +382,6 @@ class SAMLSLSView(View):
 
             return redirect(settings.LOGOUT_REDIRECT_URL or "/")
 
-        except Exception as e:
-            logger.error(f"SAML SLS error: {e}")
-            return HttpResponseBadRequest(f"SAML logout error: {e}")
+        except Exception:
+            logger.error("SAML SLS error", exc_info=True)
+            return HttpResponseBadRequest("SAML logout error.")

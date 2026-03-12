@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+permissions: read-all
+
 jobs:
   test:
     name: Test on Python ${{ matrix.python-version }} / Django ${{ matrix.django-version }}

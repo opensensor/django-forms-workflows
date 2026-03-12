@@ -85,14 +85,14 @@ def sync_import_view(request):
 
     try:
         payload = json.loads(request.body)
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "Invalid JSON payload."}, status=400)
 
     try:
         results = import_payload(payload, conflict=conflict)
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         logger.exception("Sync import failed")
-        return JsonResponse({"error": str(exc)}, status=500)
+        return JsonResponse({"error": "An internal error occurred."}, status=500)
 
     summary = [
         {"slug": form_obj.slug, "action": action} for form_obj, action in results

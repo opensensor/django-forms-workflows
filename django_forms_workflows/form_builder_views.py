@@ -152,9 +152,11 @@ def form_builder_clone(request, form_id):
                 }
             )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Error cloning form")
-        return JsonResponse({"success": False, "error": str(e)}, status=500)
+        return JsonResponse(
+            {"success": False, "error": "An internal error occurred."}, status=500
+        )
 
 
 @staff_member_required
@@ -431,9 +433,11 @@ def form_builder_save(request):
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error saving form in builder")
-        return JsonResponse({"success": False, "error": str(e)}, status=500)
+        return JsonResponse(
+            {"success": False, "error": "An internal error occurred."}, status=500
+        )
 
 
 @staff_member_required
@@ -582,6 +586,8 @@ def form_builder_preview(request):
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error generating form preview")
-        return JsonResponse({"success": False, "error": str(e)}, status=500)
+        return JsonResponse(
+            {"success": False, "error": "An internal error occurred."}, status=500
+        )

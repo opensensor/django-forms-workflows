@@ -147,9 +147,11 @@ def workflow_builder_save(request):
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error saving workflow in builder")
-        return JsonResponse({"success": False, "error": str(e)}, status=500)
+        return JsonResponse(
+            {"success": False, "error": "An internal error occurred."}, status=500
+        )
 
 
 def convert_workflow_to_visual(workflow, form_definition):

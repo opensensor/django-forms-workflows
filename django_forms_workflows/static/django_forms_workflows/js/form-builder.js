@@ -113,7 +113,7 @@ class FormBuilder {
             ghostClass: 'sortable-ghost',
             dragClass: 'sortable-drag',
             handle: '.field-drag-handle',
-            draggable: '.canvas-field', // Only canvas-field elements are draggable/sortable
+            draggable: '.field-item', // Both .canvas-field and .canvas-section elements
             filter: '.canvas-drop-zone', // Exclude drop zone from sorting
             onStart: (evt) => {
                 // Add dragging class for enhanced visual feedback
@@ -415,32 +415,57 @@ class FormBuilder {
     
     createFieldElement(field, index) {
         const div = document.createElement('div');
-        div.className = 'canvas-field field-item';
         div.dataset.index = index;
         div.dataset.fieldIndex = index;
 
-        const requiredBadge = field.required ? '<span class="badge bg-danger ms-1" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;">REQ</span>' : '';
-        const fieldInfo = `<span class="text-muted" style="font-size: 0.75rem;">${field.field_name}</span>`;
+        if (field.field_type === 'section') {
+            // Section header — render as a prominent divider
+            div.className = 'canvas-section field-item';
+            div.innerHTML = `
+                <div class="field-header field-drag-handle" style="cursor: move;">
+                    <div>
+                        <i class="bi bi-grip-vertical me-2 text-muted"></i>
+                        <i class="bi bi-layout-text-sidebar me-1"></i>
+                        <span class="field-label">${this.escapeHtml(field.field_label)}</span>
+                    </div>
+                    <div class="field-actions">
+                        <span class="field-type-badge section-badge">section</span>
+                        <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})" title="Edit section">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger btn-field-action" onclick="formBuilder.deleteField(${index})" title="Delete section">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Regular field
+            div.className = 'canvas-field field-item';
+            const requiredBadge = field.required ? '<span class="badge bg-danger ms-1" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;">REQ</span>' : '';
+            const fieldInfo = `<span class="text-muted" style="font-size: 0.75rem;">${field.field_name}</span>`;
+            const widthBadge = field.width && field.width !== 'full' ? `<span class="badge bg-secondary ms-1" style="font-size: 0.6rem;">${field.width}</span>` : '';
 
-        div.innerHTML = `
-            <div class="field-header field-drag-handle" style="cursor: move;">
-                <div>
-                    <i class="bi bi-grip-vertical me-2 text-muted"></i>
-                    <span class="field-label">${this.escapeHtml(field.field_label)}</span>
-                    ${requiredBadge}
-                    <span class="ms-2">${fieldInfo}</span>
+            div.innerHTML = `
+                <div class="field-header field-drag-handle" style="cursor: move;">
+                    <div>
+                        <i class="bi bi-grip-vertical me-2 text-muted"></i>
+                        <span class="field-label">${this.escapeHtml(field.field_label)}</span>
+                        ${requiredBadge}${widthBadge}
+                        <span class="ms-2">${fieldInfo}</span>
+                    </div>
+                    <div class="field-actions">
+                        <span class="field-type-badge">${field.field_type}</span>
+                        <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})" title="Edit field">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger btn-field-action" onclick="formBuilder.deleteField(${index})" title="Delete field">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="field-actions">
-                    <span class="field-type-badge">${field.field_type}</span>
-                    <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})" title="Edit field">
-                        <i class="bi bi-pencil"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger btn-field-action" onclick="formBuilder.deleteField(${index})" title="Delete field">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
+            `;
+        }
 
         // Add context menu handler for multi-step mode
         div.addEventListener('contextmenu', (e) => {

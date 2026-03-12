@@ -20,6 +20,14 @@ class WorkflowBuilder {
         this.groups = [];
         this.forms = [];
 
+        // Pan & zoom state
+        this.panX = 0;
+        this.panY = 0;
+        this.zoom = 1;
+        this.isPanning = false;
+        this.minZoom = 0.25;
+        this.maxZoom = 2;
+
         this.init();
     }
 
@@ -57,19 +65,120 @@ class WorkflowBuilder {
             e.preventDefault();
             const nodeType = e.dataTransfer.getData('nodeType');
             if (nodeType) {
-                const rect = this.canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left + this.canvas.scrollLeft;
-                const y = e.clientY - rect.top + this.canvas.scrollTop;
+                const [x, y] = this.clientToCanvas(e.clientX, e.clientY);
                 this.createNode(nodeType, x, y);
             }
         });
 
-        // Click on canvas to deselect
+        // Click on canvas background to deselect
         this.canvas.addEventListener('click', (e) => {
-            if (e.target === this.canvas) {
+            if (e.target === this.canvas || e.target === this.svg) {
                 this.deselectAll();
             }
         });
+
+        // ── Pan (middle-click or Ctrl+left-click on background) ─────────
+        this.canvas.addEventListener('mousedown', (e) => {
+            const isBackground = e.target === this.canvas || e.target === this.svg
+                || e.target.tagName === 'svg' || e.target.closest('.connections-svg');
+            const shouldPan = isBackground && (e.button === 1 || (e.button === 0 && (e.ctrlKey || e.metaKey || e.shiftKey)));
+            if (!shouldPan) return;
+
+            e.preventDefault();
+            this.isPanning = true;
+            this.canvas.style.cursor = 'grabbing';
+            const startX = e.clientX, startY = e.clientY;
+            const startPanX = this.panX, startPanY = this.panY;
+
+            const onMove = (ev) => {
+                this.panX = startPanX + (ev.clientX - startX);
+                this.panY = startPanY + (ev.clientY - startY);
+                this.applyTransform();
+            };
+            const onUp = () => {
+                this.isPanning = false;
+                this.canvas.style.cursor = '';
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        // Prevent default middle-click scroll
+        this.canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+
+        // ── Zoom (mouse wheel) ──────────────────────────────────────────
+        this.canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = this.canvas.getBoundingClientRect();
+            // Cursor position relative to canvas element
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+
+            const oldZoom = this.zoom;
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            this.zoom = Math.min(this.maxZoom, Math.max(this.minZoom, this.zoom + delta));
+
+            // Adjust pan so zoom centres on cursor
+            const scale = this.zoom / oldZoom;
+            this.panX = cx - scale * (cx - this.panX);
+            this.panY = cy - scale * (cy - this.panY);
+
+            this.applyTransform();
+            this.updateZoomIndicator();
+        }, { passive: false });
+    }
+
+    /** Convert client (screen) coordinates to canvas (node) coordinates. */
+    clientToCanvas(clientX, clientY) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = (clientX - rect.left - this.panX) / this.zoom;
+        const y = (clientY - rect.top - this.panY) / this.zoom;
+        return [x, y];
+    }
+
+    /** Apply the current pan/zoom transform to nodes and SVG. */
+    applyTransform() {
+        const t = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
+        // Apply to every node
+        this.canvas.querySelectorAll('.workflow-node').forEach(el => {
+            el.style.transformOrigin = '0 0';
+            el.style.transform = t;
+        });
+        // Apply to SVG connections
+        if (this.svg) {
+            this.svg.style.transformOrigin = '0 0';
+            this.svg.style.transform = t;
+        }
+    }
+
+    /** Update the zoom percentage indicator. */
+    updateZoomIndicator() {
+        const el = document.getElementById('zoomLevel');
+        if (el) el.textContent = `${Math.round(this.zoom * 100)}%`;
+    }
+
+    /** Zoom to a specific level, centred on the canvas midpoint. */
+    setZoom(newZoom) {
+        const rect = this.canvas.getBoundingClientRect();
+        const cx = rect.width / 2, cy = rect.height / 2;
+        const oldZoom = this.zoom;
+        this.zoom = Math.min(this.maxZoom, Math.max(this.minZoom, newZoom));
+        const scale = this.zoom / oldZoom;
+        this.panX = cx - scale * (cx - this.panX);
+        this.panY = cy - scale * (cy - this.panY);
+        this.applyTransform();
+        this.updateZoomIndicator();
+    }
+
+    /** Reset pan/zoom to default. */
+    resetView() {
+        this.panX = 0;
+        this.panY = 0;
+        this.zoom = 1;
+        this.applyTransform();
+        this.updateZoomIndicator();
     }
 
     setupPalette() {
@@ -1087,6 +1196,7 @@ class WorkflowBuilder {
         console.log('Rendering workflow with', this.nodes.length, 'nodes and', this.connections.length, 'connections');
         this.renderNodes();
         this.renderConnections();
+        this.applyTransform();
     }
 
     renderNodes() {
@@ -1308,8 +1418,9 @@ class WorkflowBuilder {
         const nodeStartY = node.y;
 
         const onMouseMove = (e) => {
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
+            // Divide by zoom so node movement matches cursor speed
+            const dx = (e.clientX - startX) / this.zoom;
+            const dy = (e.clientY - startY) / this.zoom;
             node.x = nodeStartX + dx;
             node.y = nodeStartY + dy;
             this.render();
@@ -1356,9 +1467,7 @@ class WorkflowBuilder {
     }
 
     updateTempConnection(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left + this.canvas.scrollLeft;
-        const y = e.clientY - rect.top + this.canvas.scrollTop;
+        const [x, y] = this.clientToCanvas(e.clientX, e.clientY);
 
         const startNode = this.nodes.find(n => n.id === this.connectionStart.nodeId);
         if (!startNode) return;

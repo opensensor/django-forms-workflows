@@ -5,7 +5,7 @@
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![Django Version](https://img.shields.io/badge/django-5.1%2B-green)](https://www.djangoproject.com/)
-[![Version](https://img.shields.io/badge/version-0.15.0-orange)](https://github.com/opensensor/django-forms-workflows)
+[![Version](https://img.shields.io/badge/version-0.16.0-orange)](https://github.com/opensensor/django-forms-workflows)
 
 ## Overview
 

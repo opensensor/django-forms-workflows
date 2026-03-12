@@ -52,7 +52,7 @@ class FormFieldInline(admin.StackedInline):
             {
                 "fields": (
                     ("order", "field_label", "field_name", "field_type"),
-                    ("required", "readonly", "approval_step", "workflow_stage"),
+                    ("required", "readonly", "workflow_stage"),
                     ("help_text", "placeholder", "width", "css_class"),
                 )
             },
@@ -76,7 +76,6 @@ class FormFieldInline(admin.StackedInline):
                 "fields": (
                     "choices",
                     "prefill_source_config",
-                    "prefill_source",
                     "default_value",
                 ),
             },

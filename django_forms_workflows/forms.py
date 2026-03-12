@@ -36,11 +36,10 @@ class DynamicForm(forms.Form):
         self.user = user
 
         # Build form fields from definition
-        # Exclude fields with approval_step set - those are for approvers only
-        # Also exclude fields scoped to a workflow stage - those are for approvers only
+        # Exclude fields scoped to a workflow stage - those are for approvers only
         for field in (
             form_definition.fields.exclude(field_type="section")
-            .filter(approval_step__isnull=True, workflow_stage__isnull=True)
+            .filter(workflow_stage__isnull=True)
             .order_by("order")
         ):
             self.add_field(field, initial_data)
@@ -53,9 +52,7 @@ class DynamicForm(forms.Form):
         # Build layout - exclude approval step fields and workflow stage fields
         layout_fields = []
         fields = list(
-            form_definition.fields.filter(
-                approval_step__isnull=True, workflow_stage__isnull=True
-            ).order_by("order")
+            form_definition.fields.filter(workflow_stage__isnull=True).order_by("order")
         )
         i = 0
         while i < len(fields):
@@ -616,11 +613,11 @@ class DynamicForm(forms.Form):
 
 class ApprovalStepForm(forms.Form):
     """
-    Form for approvers to fill in fields specific to their approval step.
+    Form for approvers to fill in fields specific to their workflow stage.
 
     This form is used during the approval process to allow approvers to:
     - View all previously submitted/approved data as read-only
-    - Edit fields designated for their approval step (approval_step = current step)
+    - Edit fields designated for their workflow stage
     - Have approver name auto-filled from their user account
     - Have date fields auto-filled with the current date
     """
@@ -639,12 +636,6 @@ class ApprovalStepForm(forms.Form):
         self.submission = submission
         self.approval_task = approval_task
         self.user = user
-        # For staged workflows task.step_number is None; fall back to stage_number.
-        self.current_step = (
-            approval_task.step_number
-            if approval_task.step_number is not None
-            else (approval_task.stage_number or 1)
-        )
 
         # Get existing form data
         self.form_data = submission.form_data or {}
@@ -667,37 +658,24 @@ class ApprovalStepForm(forms.Form):
     def _build_fields(self):
         """Build fields for this approval task.
 
-        For staged workflows the task carries a ``workflow_stage`` FK that
-        precisely identifies which FormFields belong to it.  For legacy
-        sequential workflows the integer ``approval_step`` is matched against
-        ``current_step`` as before.
+        The task carries a ``workflow_stage`` FK that identifies which
+        FormFields belong to it.
         """
         if self.approval_task.workflow_stage_id:
-            # Staged mode: FK-based — each stage owns its fields directly.
             qs = (
                 self.form_definition.fields.exclude(field_type="section")
                 .filter(workflow_stage_id=self.approval_task.workflow_stage_id)
                 .order_by("order")
             )
         else:
-            # Legacy sequential mode: integer-based approval_step matching.
-            qs = (
-                self.form_definition.fields.exclude(field_type="section")
-                .filter(approval_step=self.current_step)
-                .order_by("order")
-            )
+            # Workflow with no stages — no stage-specific fields to show.
+            qs = self.form_definition.fields.none()
         for field_def in qs:
             self._add_field(field_def)
 
     def _add_field(self, field_def):
         """Add a single field to the form."""
-        # Staged workflow fields (scoped via workflow_stage FK) are always editable —
-        # they were already filtered to the active stage in _build_fields.
-        # Legacy sequential fields are editable only when approval_step matches current_step.
-        if self.approval_task.workflow_stage_id:
-            is_editable = True
-        else:
-            is_editable = field_def.approval_step == self.current_step
+        is_editable = True
 
         # Get current value from form data.
         # Sub-workflow fields are stored with an index suffix (e.g. payment_dept_code_1);
@@ -887,9 +865,10 @@ class ApprovalStepForm(forms.Form):
         self.helper.form_class = "needs-validation"
 
         layout_fields = []
+        stage_id = self.approval_task.workflow_stage_id
 
-        # Add fields organized by approval step
-        current_step_fields = []
+        # Add fields organized by workflow stage
+        current_stage_fields = []
         other_fields = []
 
         for field_def in self.form_definition.fields.order_by("order"):
@@ -897,8 +876,8 @@ class ApprovalStepForm(forms.Form):
                 section_html = HTML(
                     f'<h4 class="mt-4 mb-3">{field_def.field_label}</h4>'
                 )
-                if field_def.approval_step == self.current_step:
-                    current_step_fields.append(section_html)
+                if field_def.workflow_stage_id == stage_id:
+                    current_stage_fields.append(section_html)
                 else:
                     other_fields.append(section_html)
             else:
@@ -906,8 +885,8 @@ class ApprovalStepForm(forms.Form):
                     Field(field_def.field_name),
                     css_class=f"field-wrapper field-{field_def.field_name}",
                 )
-                if field_def.approval_step == self.current_step:
-                    current_step_fields.append(field_wrapper)
+                if field_def.workflow_stage_id == stage_id:
+                    current_stage_fields.append(field_wrapper)
                 else:
                     other_fields.append(field_wrapper)
 
@@ -918,14 +897,14 @@ class ApprovalStepForm(forms.Form):
             )
             layout_fields.extend(other_fields)
 
-        # Add current step fields section
-        if current_step_fields:
+        # Add current stage fields section
+        if current_stage_fields:
             layout_fields.append(HTML('<hr class="my-4">'))
-            step_name = self.approval_task.step_name or f"Step {self.current_step}"
+            step_name = self.approval_task.step_name or "Review"
             layout_fields.append(
                 HTML(f'<h3 class="mb-3">{step_name} - Your Input</h3>')
             )
-            layout_fields.extend(current_step_fields)
+            layout_fields.extend(current_stage_fields)
 
         self.helper.layout = Layout(*layout_fields)
         self.helper.form_id = f"approval_form_{self.submission.pk}"
@@ -933,7 +912,7 @@ class ApprovalStepForm(forms.Form):
     def get_updated_form_data(self):
         """
         Get the updated form data after validation.
-        Merges the approval step field values with existing form data.
+        Merges the stage field values with existing form data.
         """
         if not self.is_valid():
             return self.form_data
@@ -941,10 +920,10 @@ class ApprovalStepForm(forms.Form):
         # Start with existing form data
         updated_data = dict(self.form_data)
 
-        # Update only fields for the current approval step
-        for field_def in self.form_definition.fields.filter(
-            approval_step=self.current_step
-        ):
+        # Update only fields for the current workflow stage
+        stage_id = self.approval_task.workflow_stage_id
+        qs = self.form_definition.fields.filter(workflow_stage_id=stage_id)
+        for field_def in qs:
             field_name = field_def.field_name
             if field_name in self.cleaned_data:
                 value = self.cleaned_data[field_name]
@@ -958,9 +937,10 @@ class ApprovalStepForm(forms.Form):
         return updated_data
 
     def get_editable_field_names(self):
-        """Get list of field names that are editable for the current approval step."""
+        """Get list of field names that are editable for the current workflow stage."""
+        stage_id = self.approval_task.workflow_stage_id
         return list(
-            self.form_definition.fields.filter(
-                approval_step=self.current_step
-            ).values_list("field_name", flat=True)
+            self.form_definition.fields.filter(workflow_stage_id=stage_id).values_list(
+                "field_name", flat=True
+            )
         )

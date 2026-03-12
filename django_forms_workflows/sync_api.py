@@ -212,7 +212,6 @@ def _serialize_field(field):
         "regex_validation": field.regex_validation,
         "regex_error_message": field.regex_error_message,
         "choices": field.choices,
-        "prefill_source": field.prefill_source,
         "prefill_source_config": _serialize_prefill_source(field.prefill_source_config),
         "default_value": field.default_value,
         "show_if_field": field.show_if_field,
@@ -221,7 +220,6 @@ def _serialize_field(field):
         "validation_rules": field.validation_rules,
         "field_dependencies": field.field_dependencies,
         "step_number": field.step_number,
-        "approval_step": field.approval_step,
         "allowed_extensions": field.allowed_extensions,
         "max_file_size_mb": field.max_file_size_mb,
         "workflow_stage_order": field.workflow_stage.order
@@ -629,6 +627,9 @@ def import_form(form_data, conflict="update", category_cache=None):
             field_data.pop("prefill_source_config", None)
         )
         field_data.pop("prefill_source_config", None)
+        # Remove legacy fields no longer on the model (may exist in older payloads)
+        field_data.pop("prefill_source", None)
+        field_data.pop("approval_step", None)
         min_val = field_data.pop("min_value", None)
         max_val = field_data.pop("max_value", None)
         stage_order = field_data.pop("workflow_stage_order", None)

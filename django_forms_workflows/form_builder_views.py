@@ -232,7 +232,7 @@ def form_builder_load(request, form_id):
                 "show_if_field": field.show_if_field,
                 "show_if_value": field.show_if_value or "",
             },
-            "approval_step": field.approval_step,
+            "workflow_stage_id": field.workflow_stage_id,
         }
         fields_data.append(field_data)
 
@@ -394,14 +394,14 @@ def form_builder_save(request):
                     }
                 )
 
-                # Add approval step (for sequential approval workflows)
-                approval_step = field_data.get("approval_step")
-                if approval_step is not None:
-                    field_props["approval_step"] = (
-                        int(approval_step) if approval_step else None
+                # Add workflow stage FK (for staged approval workflows)
+                wf_stage_id = field_data.get("workflow_stage_id")
+                if wf_stage_id is not None:
+                    field_props["workflow_stage_id"] = (
+                        int(wf_stage_id) if wf_stage_id else None
                     )
                 else:
-                    field_props["approval_step"] = None
+                    field_props["workflow_stage_id"] = None
 
                 # Create or update field
                 if field_id and isinstance(field_id, int):

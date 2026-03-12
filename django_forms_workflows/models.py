@@ -398,25 +398,6 @@ class FormField(models.Model):
         ("section", "Section Header (not a field)"),
     ]
 
-    # Common prefill sources - can be extended via settings
-    PREFILL_SOURCES = [
-        ("", "No auto-fill"),
-        ("user.email", "Current User - Email"),
-        ("user.first_name", "Current User - First Name"),
-        ("user.last_name", "Current User - Last Name"),
-        ("user.full_name", "Current User - Full Name"),
-        ("user.username", "Current User - Username"),
-        ("ldap.department", "LDAP - Department"),
-        ("ldap.title", "LDAP - Job Title"),
-        ("ldap.manager", "LDAP - Manager Name"),
-        ("ldap.manager_email", "LDAP - Manager Email"),
-        ("ldap.phone", "LDAP - Phone Number"),
-        ("ldap.employee_id", "LDAP - Employee ID"),
-        ("last_submission", "Copy from Last Submission"),
-        ("current_date", "Today's Date"),
-        ("current_datetime", "Current Date & Time"),
-    ]
-
     # Relationship
     form_definition = models.ForeignKey(
         FormDefinition, related_name="fields", on_delete=models.CASCADE
@@ -488,11 +469,6 @@ class FormField(models.Model):
     )
 
     # Dynamic Behavior - Prefill from external sources
-    prefill_source = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="DEPRECATED: Use prefill_source_config instead. Legacy format: user.email, ldap.department, {{ db.schema.table.column }}, etc.",
-    )
     prefill_source_config = models.ForeignKey(
         PrefillSource,
         on_delete=models.SET_NULL,
@@ -504,13 +480,10 @@ class FormField(models.Model):
     default_value = models.TextField(blank=True)
 
     def get_prefill_source_key(self):
-        """
-        Get the prefill source key for this field.
-        Prioritizes prefill_source_config over legacy prefill_source.
-        """
+        """Return the prefill source identifier string for this field."""
         if self.prefill_source_config:
             return self.prefill_source_config.get_source_identifier()
-        return self.prefill_source or ""
+        return ""
 
     # Conditional Display
     show_if_field = models.SlugField(
@@ -548,24 +521,14 @@ class FormField(models.Model):
         help_text="Step number for multi-step forms (1, 2, 3, etc.)",
     )
 
-    # Approval Step Fields
-    approval_step = models.IntegerField(
-        null=True,
-        blank=True,
-        help_text="Legacy: approval step number this field belongs to (sequential workflows). "
-        "For staged workflows prefer 'workflow_stage' FK instead.",
-    )
+    # Approval Stage
     workflow_stage = models.ForeignKey(
         "WorkflowStage",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name="approval_fields",
-        help_text=(
-            "Stage this field appears in during approval. "
-            "When set, takes precedence over the 'approval_step' integer "
-            "and ties this field precisely to one stage."
-        ),
+        help_text="Stage this field appears in during approval.",
     )
 
     # File Upload Settings
@@ -614,7 +577,10 @@ class WorkflowDefinition(models.Model):
         Group,
         related_name="can_approve_workflows",
         blank=True,
-        help_text="Groups that can approve",
+        help_text=(
+            "DEPRECATED — use WorkflowStage.approval_groups instead. "
+            "Flat-mode groups are auto-migrated to stages in migration 0037."
+        ),
     )
     approval_logic = models.CharField(
         max_length=20, choices=APPROVAL_LOGIC, default="any"
@@ -801,6 +767,11 @@ class WorkflowStage(models.Model):
             "Custom label for the approve/complete button shown to the approver "
             '(e.g. "Complete", "Confirm", "Sign Off"). Defaults to "Approve" when blank.'
         ),
+    )
+    auto_created = models.BooleanField(
+        default=False,
+        editable=False,
+        help_text="True when this stage was auto-created by the legacy-to-staged data migration.",
     )
 
     class Meta:

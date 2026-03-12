@@ -9,6 +9,7 @@ from django_forms_workflows.forms import ApprovalStepForm, DynamicForm
 from django_forms_workflows.models import (
     ApprovalTask,
     FormField,
+    PrefillSource,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -44,7 +45,11 @@ class TestDynamicFormFieldGeneration:
         form = DynamicForm(form_with_fields, user=user)
         assert "notes" in form.fields
 
-    def test_excludes_approval_step_fields(self, form_definition, user):
+    def test_excludes_stage_scoped_fields(self, form_definition, user):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(workflow=wf, name="Review", order=1)
         FormField.objects.create(
             form_definition=form_definition,
             field_name="submitter_name",
@@ -58,7 +63,7 @@ class TestDynamicFormFieldGeneration:
             field_label="Approver Notes",
             field_type="text",
             order=2,
-            approval_step=1,
+            workflow_stage=stage,
         )
         form = DynamicForm(form_definition, user=user)
         assert "submitter_name" in form.fields
@@ -166,26 +171,19 @@ class TestDynamicFormPrefill:
         form = DynamicForm(form_definition, user=user)
         assert form.fields["email_pf"].initial == "test@example.com"
 
-    def test_legacy_prefill_source(self, form_definition, user):
-        FormField.objects.create(
-            form_definition=form_definition,
-            field_name="legacy_email",
-            field_label="Email",
-            field_type="email",
-            order=1,
-            prefill_source="user.email",
-        )
-        form = DynamicForm(form_definition, user=user)
-        assert form.fields["legacy_email"].initial == "test@example.com"
-
     def test_current_date_prefill(self, form_definition, user):
+        ps = PrefillSource.objects.create(
+            name="Current Date",
+            source_type="system",
+            source_key="current_date",
+        )
         FormField.objects.create(
             form_definition=form_definition,
             field_name="today",
             field_label="Today",
             field_type="date",
             order=1,
-            prefill_source="current_date",
+            prefill_source_config=ps,
         )
         form = DynamicForm(form_definition, user=user)
         assert form.fields["today"].initial == date.today()
@@ -323,87 +321,68 @@ class TestDynamicFormEnhancements:
 
 
 class TestApprovalStepForm:
-    def _make_approval_task(self, submission, group, step_number=1, stage=None):
-        return ApprovalTask.objects.create(
+    def _make_stage_and_task(self, form_definition, submission, group):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(workflow=wf, name="Review", order=1)
+        stage.approval_groups.add(group)
+        task = ApprovalTask.objects.create(
             submission=submission,
             assigned_group=group,
             step_name="Review",
             status="pending",
-            step_number=step_number,
             workflow_stage=stage,
         )
+        return stage, task
 
-    def test_legacy_step_fields(
-        self, form_definition, submission, approval_group, user
-    ):
+    def test_stage_fields(self, form_definition, submission, approval_group, user):
+        stage, task = self._make_stage_and_task(
+            form_definition, submission, approval_group
+        )
         FormField.objects.create(
             form_definition=form_definition,
             field_name="approver_name",
             field_label="Approver Name",
             field_type="text",
             order=100,
-            approval_step=1,
+            workflow_stage=stage,
         )
-        task = self._make_approval_task(submission, approval_group)
         form = ApprovalStepForm(form_definition, submission, task, user=user)
         assert "approver_name" in form.fields
         # Auto-fill approver name
         assert form.fields["approver_name"].initial == "Test User"
 
-    def test_staged_workflow_fields(
-        self, form_definition, submission, approval_group, user
-    ):
-        wf = WorkflowDefinition.objects.create(
-            form_definition=form_definition, requires_approval=True
-        )
-        stage = WorkflowStage.objects.create(
-            workflow=wf, name="Manager Review", order=1
-        )
-        stage.approval_groups.add(approval_group)
-        FormField.objects.create(
-            form_definition=form_definition,
-            field_name="stage_field",
-            field_label="Stage Field",
-            field_type="text",
-            order=100,
-            workflow_stage=stage,
-        )
-        task = ApprovalTask.objects.create(
-            submission=submission,
-            assigned_group=approval_group,
-            step_name="Manager Review",
-            status="pending",
-            workflow_stage=stage,
-        )
-        form = ApprovalStepForm(form_definition, submission, task, user=user)
-        assert "stage_field" in form.fields
-
     def test_date_auto_fill(self, form_definition, submission, approval_group, user):
+        stage, task = self._make_stage_and_task(
+            form_definition, submission, approval_group
+        )
         FormField.objects.create(
             form_definition=form_definition,
             field_name="approval_date",
             field_label="Approval Date",
             field_type="date",
             order=100,
-            approval_step=1,
+            workflow_stage=stage,
         )
-        task = self._make_approval_task(submission, approval_group)
         form = ApprovalStepForm(form_definition, submission, task, user=user)
         assert form.fields["approval_date"].initial == date.today()
 
     def test_get_updated_form_data(
         self, form_definition, submission, approval_group, user
     ):
+        stage, task = self._make_stage_and_task(
+            form_definition, submission, approval_group
+        )
         FormField.objects.create(
             form_definition=form_definition,
             field_name="reviewer_notes",
             field_label="Notes",
             field_type="text",
             order=100,
-            approval_step=1,
+            workflow_stage=stage,
             required=False,
         )
-        task = self._make_approval_task(submission, approval_group)
         form = ApprovalStepForm(
             form_definition,
             submission,

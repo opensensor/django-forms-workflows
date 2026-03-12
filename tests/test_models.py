@@ -186,27 +186,15 @@ class TestFormField:
                 field_type="text",
             )
 
-    def test_prefill_source_config_priority(self, form_definition, prefill_source):
+    def test_prefill_source_config(self, form_definition, prefill_source):
         field = FormField.objects.create(
             form_definition=form_definition,
             field_name="pf_test",
             field_label="PF Test",
             field_type="text",
-            prefill_source="user.first_name",
             prefill_source_config=prefill_source,
         )
-        # prefill_source_config takes priority over legacy prefill_source
         assert field.get_prefill_source_key() == "user.email"
-
-    def test_legacy_prefill_source(self, form_definition):
-        field = FormField.objects.create(
-            form_definition=form_definition,
-            field_name="legacy_pf",
-            field_label="Legacy PF",
-            field_type="text",
-            prefill_source="user.first_name",
-        )
-        assert field.get_prefill_source_key() == "user.first_name"
 
     def test_no_prefill(self, form_definition):
         field = FormField.objects.create(
@@ -217,17 +205,15 @@ class TestFormField:
         )
         assert field.get_prefill_source_key() == ""
 
-    def test_approval_step_and_workflow_stage(self, form_definition, staged_workflow):
+    def test_workflow_stage(self, form_definition, staged_workflow):
         stage = staged_workflow.stages.first()
         field = FormField.objects.create(
             form_definition=form_definition,
             field_name="approval_field",
             field_label="Approval Field",
             field_type="text",
-            approval_step=1,
             workflow_stage=stage,
         )
-        assert field.approval_step == 1
         assert field.workflow_stage == stage
 
     def test_validation_fields(self, form_definition):

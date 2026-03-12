@@ -580,11 +580,11 @@ def submission_detail(request, submission_id):
     form_data = _resolve_form_data_urls(submission.form_data)
     form_data_ordered = _build_ordered_form_data(submission, form_data)
 
-    # Collect approval-step field names so the template can exclude them from
+    # Collect stage-scoped field names so the template can exclude them from
     # the main "Form Data" table and render them in their own sections.
     approval_field_names = list(
         submission.form_definition.fields.filter(
-            approval_step__isnull=False
+            workflow_stage__isnull=False
         ).values_list("field_name", flat=True)
     )
     approval_step_sections = _build_approval_step_sections(submission)
@@ -806,23 +806,13 @@ def approve_submission(request, task_id):
         messages.warning(request, "This task has already been processed.")
         return redirect("forms_workflows:approval_inbox")
 
-    # Check if this form has approval step fields for the current task.
-    # Staged workflows: use workflow_stage FK for precise field scoping.
-    # Legacy sequential: fall back to the approval_step integer.
-    _effective_step = (
-        task.step_number if task.step_number is not None else (task.stage_number or 1)
+    # Check if this form has stage-scoped fields for the current task.
+    has_approval_step_fields = (
+        task.workflow_stage_id
+        and field_form_def.fields.filter(workflow_stage_id=task.workflow_stage_id)
+        .exclude(field_type="section")
+        .exists()
     )
-
-    if task.workflow_stage_id:
-        has_approval_step_fields = (
-            field_form_def.fields.filter(workflow_stage_id=task.workflow_stage_id)
-            .exclude(field_type="section")
-            .exists()
-        )
-    else:
-        has_approval_step_fields = field_form_def.fields.filter(
-            approval_step=_effective_step
-        ).exists()
 
     approval_step_form = None
 
@@ -938,9 +928,7 @@ def approve_submission(request, task_id):
             user=request.user,
         )
 
-    # Build approval progress context — staged, sequential, or parallel
-    approval_steps = []
-    approval_step_fields: dict = {}
+    # Build approval progress context from workflow stages
     all_approval_field_names: list = []
     approval_stages: list = []
     parallel_tasks: list = []
@@ -984,54 +972,16 @@ def approve_submission(request, task_id):
                     }
                 )
 
-            # Collect all approval-step field names so the template can exclude
+            # Collect stage-scoped field names so the template can exclude
             # them from the read-only "Submission Data" table.
             all_approval_field_names = list(
-                form_def.fields.filter(approval_step__isnull=False).values_list(
+                form_def.fields.filter(workflow_stage__isnull=False).values_list(
                     "field_name", flat=True
                 )
             )
 
-        elif workflow.approval_logic == "sequence":
-            # -------- legacy sequential --------
-            workflow_mode = "sequence"
-            approval_groups = list(workflow.approval_groups.all())
-            total_steps = len(approval_groups)
-            all_tasks = {t.step_number: t for t in submission.approval_tasks.all()}
-
-            for field in form_def.fields.filter(approval_step__isnull=False).order_by(
-                "approval_step", "order"
-            ):
-                step_num = field.approval_step
-                if step_num not in approval_step_fields:
-                    approval_step_fields[step_num] = []
-                approval_step_fields[step_num].append(
-                    {"field_name": field.field_name, "field_label": field.field_label}
-                )
-                all_approval_field_names.append(field.field_name)
-
-            for idx, group in enumerate(approval_groups, start=1):
-                step_task = all_tasks.get(idx)
-                approval_steps.append(
-                    {
-                        "number": idx,
-                        "total": total_steps,
-                        "group_name": group.name,
-                        "is_current": idx == task.step_number,
-                        "is_completed": step_task.status == "approved"
-                        if step_task
-                        else False,
-                        "is_rejected": step_task.status == "rejected"
-                        if step_task
-                        else False,
-                        "is_pending": idx > (task.step_number or 0),
-                        "task": step_task,
-                        "fields": approval_step_fields.get(idx, []),
-                    }
-                )
-
         elif workflow.approval_logic in ("all", "any"):
-            # -------- legacy parallel --------
+            # -------- parallel (single-stage) --------
             workflow_mode = workflow.approval_logic
             for t in submission.approval_tasks.filter(
                 assigned_group__isnull=False
@@ -1066,10 +1016,6 @@ def approve_submission(request, task_id):
             "submission": submission,
             "approval_step_form": approval_step_form,
             "has_approval_step_fields": has_approval_step_fields,
-            # sequential legacy
-            "approval_steps": approval_steps,
-            "current_step_number": task.step_number,
-            "total_steps": len(approval_steps) if approval_steps else 0,
             "approval_field_names": all_approval_field_names,
             # staged
             "approval_stages": approval_stages,
@@ -1759,10 +1705,10 @@ def _build_pdf_rows(submission):
 
         key = field.field_name
 
-        # Approval-step fields are rendered in their own section (below the
+        # Stage-scoped fields are rendered in their own section (below the
         # main data table) so they must NOT appear here.  Mark as seen so the
         # fallback loop below cannot accidentally include them either.
-        if field.approval_step is not None:
+        if field.workflow_stage_id is not None:
             seen_keys.add(key)
             continue
 
@@ -1834,9 +1780,7 @@ def _build_approval_step_sections(submission):
             "fields": [{"label": str, "key": str, "value": any}, ...],
         }
 
-    Field lookup priority:
-      1. Staged workflows: FormField.workflow_stage FK → scoped precisely to one stage.
-      2. Legacy sequential: FormField.approval_step integer → matched to stage/step number.
+    Fields are resolved via ``FormField.workflow_stage`` FK.
 
     Parallel stages (multiple WorkflowStage rows at the same ``order``) each
     produce their own section because each task carries its own workflow_stage FK.
@@ -1848,27 +1792,14 @@ def _build_approval_step_sections(submission):
 
     form_data = _resolve_form_data_urls(submission.form_data or {})
 
-    # FK-based fields: keyed by workflow_stage_id (staged workflows).
-    fk_fields_by_stage: dict = defaultdict(list)
+    # Fields keyed by workflow_stage_id.
+    fields_by_stage: dict = defaultdict(list)
     for field in (
         submission.form_definition.fields.filter(workflow_stage__isnull=False)
         .exclude(field_type="section")
         .order_by("order")
     ):
-        fk_fields_by_stage[field.workflow_stage_id].append(
-            {"label": field.field_label, "key": field.field_name}
-        )
-
-    # Integer-based fields: keyed by approval_step (legacy sequential workflows).
-    legacy_step_fields: dict = defaultdict(list)
-    for field in (
-        submission.form_definition.fields.filter(
-            approval_step__isnull=False, workflow_stage__isnull=True
-        )
-        .exclude(field_type="section")
-        .order_by("approval_step", "order")
-    ):
-        legacy_step_fields[field.approval_step].append(
+        fields_by_stage[field.workflow_stage_id].append(
             {"label": field.field_label, "key": field.field_name}
         )
 
@@ -1879,22 +1810,12 @@ def _build_approval_step_sections(submission):
         .order_by("stage_number", "step_number", "completed_at")
     )
 
-    if not completed_tasks and not fk_fields_by_stage and not legacy_step_fields:
+    if not completed_tasks and not fields_by_stage:
         return []
 
     sections = []
     for task in completed_tasks:
-        effective = (
-            task.step_number
-            if task.step_number is not None
-            else (task.stage_number or 1)
-        )
-
-        # Choose field source: FK-based for staged workflows, integer for legacy.
-        if task.workflow_stage_id and task.workflow_stage_id in fk_fields_by_stage:
-            field_defs = fk_fields_by_stage[task.workflow_stage_id]
-        else:
-            field_defs = legacy_step_fields.get(effective, [])
+        field_defs = fields_by_stage.get(task.workflow_stage_id, [])
 
         # For sub-workflow tasks the generic field names are stored with an index
         # suffix (e.g. payment_type → payment_type_1).  Resolve the real key before
@@ -1925,11 +1846,12 @@ def _build_approval_step_sections(submission):
 
         # Section header: use the stored step_name directly; it now bakes in
         # the stage's approve_label when tasks are created (workflow_engine.py).
-        step_name = task.step_name or f"Step {effective}"
+        stage_order = task.stage_number or task.step_number or 1
+        step_name = task.step_name or f"Step {stage_order}"
 
         sections.append(
             {
-                "step_number": effective,
+                "step_number": stage_order,
                 "step_name": step_name,
                 "status": task.status,
                 "group_name": (

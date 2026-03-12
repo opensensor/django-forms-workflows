@@ -241,6 +241,75 @@
         </div>
         {% endfor %}
 
+        {% if sub_workflow_groups %}
+        {# ---- Sub-workflow tasks (detached child workflow stages) ---- #}
+        <h5 class="mb-3 mt-4"><i class="bi bi-diagram-2"></i> Sub-Workflow Approvals</h5>
+        {% for stage in sub_workflow_groups %}
+        <div class="card mb-3
+            {% if stage.rejected_count > 0 %}border-danger
+            {% elif stage.approved_count == stage.total_count and stage.total_count > 0 %}border-success
+            {% elif stage.approved_count > 0 %}border-primary
+            {% else %}border-secondary{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center
+                {% if stage.rejected_count > 0 %}bg-danger text-white
+                {% elif stage.approved_count == stage.total_count and stage.total_count > 0 %}bg-success text-white
+                {% elif stage.approved_count > 0 %}bg-primary text-white
+                {% else %}bg-light text-muted{% endif %}">
+                <span>
+                    <strong>{{ stage.name }}</strong>
+                    {% if stage.approval_logic == "all" %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">All must approve</span>
+                    {% elif stage.approval_logic == "any" %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">Any can approve</span>
+                    {% elif stage.approval_logic == "sequence" %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">Sequential</span>
+                    {% endif %}
+                </span>
+                <span class="badge bg-light text-dark">{{ stage.approved_count }}/{{ stage.total_count }} approved</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Assigned To</th>
+                                <th>Status</th>
+                                <th>Completed By</th>
+                                <th>Completed At</th>
+                                <th>Comments</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in stage.tasks %}
+                            <tr>
+                                <td>
+                                    {% if task.assigned_to %}
+                                        {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
+                                    {% elif task.assigned_group %}
+                                        {{ task.assigned_group.name }} <span class="text-muted">(Group)</span>
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td>
+                                    {% if task.status == 'pending' %}<span class="badge bg-warning text-dark">Pending</span>
+                                    {% elif task.status == 'approved' %}<span class="badge bg-success">Approved</span>
+                                    {% elif task.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+                                    {% elif task.status == 'expired' %}<span class="badge bg-secondary">Expired</span>
+                                    {% elif task.status == 'skipped' %}<span class="badge bg-secondary">Skipped</span>
+                                    {% endif %}
+                                </td>
+                                <td>{% if task.completed_by %}{{ task.completed_by.get_full_name|default:task.completed_by.username }}{% else %}-{% endif %}</td>
+                                <td>{% if task.completed_at %}{{ task.completed_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td>
+                                <td>{{ task.comments|default:"-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
         {% else %}
         {# ---- Legacy flat workflow ---- #}
         <div class="card mb-4">

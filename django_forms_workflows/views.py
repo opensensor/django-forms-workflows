@@ -544,23 +544,37 @@ def submission_detail(request, submission_id):
         "workflow_stage", "assigned_to", "assigned_group", "completed_by"
     ).order_by("stage_number", "-created_at")
 
-    # Build stage groups if any tasks are linked to a workflow stage
+    # Build stage groups if any tasks are linked to a workflow stage.
+    # Separate parent-workflow tasks from sub-workflow tasks so they
+    # render in distinct sections.
     stage_groups = None
+    sub_workflow_groups = None
     if approval_tasks.filter(workflow_stage__isnull=False).exists():
-        groups: dict = {}
+        # Determine which stage IDs belong to the parent workflow
+        workflow = getattr(submission.form_definition, "workflow", None)
+        parent_stage_ids = set()
+        if workflow:
+            parent_stage_ids = set(workflow.stages.values_list("id", flat=True))
+
+        parent_groups: dict = {}
+        sub_groups: dict = {}
         for task in approval_tasks:
-            stage_key = task.stage_number or 0
-            if stage_key not in groups:
+            if not task.workflow_stage_id:
+                continue
+            is_parent = task.workflow_stage_id in parent_stage_ids
+            target = parent_groups if is_parent else sub_groups
+            stage_key = task.workflow_stage_id
+            if stage_key not in target:
                 stage_name = (
                     task.workflow_stage.name
                     if task.workflow_stage
-                    else f"Stage {stage_key}"
+                    else f"Stage {task.stage_number or 0}"
                 )
                 approval_logic = (
                     task.workflow_stage.approval_logic if task.workflow_stage else "all"
                 )
-                groups[stage_key] = {
-                    "number": stage_key,
+                target[stage_key] = {
+                    "number": task.stage_number or 0,
                     "name": stage_name,
                     "approval_logic": approval_logic,
                     "tasks": [],
@@ -568,13 +582,17 @@ def submission_detail(request, submission_id):
                     "rejected_count": 0,
                     "total_count": 0,
                 }
-            groups[stage_key]["tasks"].append(task)
-            groups[stage_key]["total_count"] += 1
+            target[stage_key]["tasks"].append(task)
+            target[stage_key]["total_count"] += 1
             if task.status == "approved":
-                groups[stage_key]["approved_count"] += 1
+                target[stage_key]["approved_count"] += 1
             elif task.status == "rejected":
-                groups[stage_key]["rejected_count"] += 1
-        stage_groups = sorted(groups.values(), key=lambda x: x["number"])
+                target[stage_key]["rejected_count"] += 1
+
+        if parent_groups:
+            stage_groups = sorted(parent_groups.values(), key=lambda x: x["number"])
+        if sub_groups:
+            sub_workflow_groups = sorted(sub_groups.values(), key=lambda x: x["number"])
 
     # Resolve fresh presigned URLs for any file-upload fields
     form_data = _resolve_form_data_urls(submission.form_data)
@@ -605,6 +623,7 @@ def submission_detail(request, submission_id):
             "submission": submission,
             "approval_tasks": approval_tasks,
             "stage_groups": stage_groups,
+            "sub_workflow_groups": sub_workflow_groups,
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
             "approval_field_names": approval_field_names,

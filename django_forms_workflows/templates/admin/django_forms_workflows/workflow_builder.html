@@ -64,6 +64,7 @@
     .palette-node.condition { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
     .palette-node.action { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
     .palette-node.email { background: linear-gradient(135deg, #fa8bff 0%, #2bd2ff 100%); }
+    .palette-node.sub_workflow { background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); }
     .palette-node.end { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
     
     /* Workflow Canvas */
@@ -158,6 +159,20 @@
         background: linear-gradient(135deg, #f0f9ff 0%, #e6f5ff 100%);
     }
 
+    .workflow-node.sub_workflow {
+        border-color: #a18cd1;
+        background: linear-gradient(135deg, #f5f0ff 0%, #fdf2ff 100%);
+        min-width: 220px;
+    }
+
+    .workflow-node.join {
+        border-color: #6c757d;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        min-width: 100px;
+        max-width: 140px;
+        text-align: center;
+    }
+
     .workflow-node.end {
         border-color: #fee140;
         background: linear-gradient(135deg, #fffef0 0%, #fffce6 100%);
@@ -190,6 +205,8 @@
     .node-icon.condition { background: #00f2fe; color: white; }
     .node-icon.action { background: #38f9d7; color: white; }
     .node-icon.email { background: #2bd2ff; color: white; }
+    .node-icon.sub_workflow { background: #a18cd1; color: white; }
+    .node-icon.join { background: #6c757d; color: white; }
     .node-icon.end { background: #fee140; color: #333; }
     
     .node-content {
@@ -457,6 +474,11 @@
         <div class="palette-node email" draggable="true" data-node-type="email">
             <i class="bi bi-envelope"></i>
             <span>Email</span>
+        </div>
+
+        <div class="palette-node sub_workflow" draggable="true" data-node-type="sub_workflow">
+            <i class="bi bi-diagram-2"></i>
+            <span>Sub-Workflow</span>
         </div>
 
         <div class="palette-node end" draggable="true" data-node-type="end">

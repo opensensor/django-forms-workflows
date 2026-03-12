@@ -55,6 +55,20 @@ class WorkflowBuilder {
         this.canvas = document.getElementById('workflowCanvas');
         this.svg = document.getElementById('connectionsSvg');
 
+        // Create a single transform wrapper that holds both SVG and nodes.
+        // Applying pan/zoom to one wrapper keeps arrows and nodes aligned.
+        this.transformWrapper = document.createElement('div');
+        this.transformWrapper.style.position = 'absolute';
+        this.transformWrapper.style.top = '0';
+        this.transformWrapper.style.left = '0';
+        this.transformWrapper.style.width = '100%';
+        this.transformWrapper.style.height = '100%';
+        this.transformWrapper.style.transformOrigin = '0 0';
+
+        // Move SVG into the wrapper, then add wrapper to canvas
+        this.canvas.appendChild(this.transformWrapper);
+        this.transformWrapper.appendChild(this.svg);
+
         // Make canvas droppable
         this.canvas.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -72,7 +86,8 @@ class WorkflowBuilder {
 
         // Click on canvas background to deselect
         this.canvas.addEventListener('click', (e) => {
-            if (e.target === this.canvas || e.target === this.svg) {
+            if (e.target === this.canvas || e.target === this.svg
+                || e.target === this.transformWrapper) {
                 this.deselectAll();
             }
         });
@@ -80,6 +95,7 @@ class WorkflowBuilder {
         // ── Pan (middle-click or Ctrl+left-click on background) ─────────
         this.canvas.addEventListener('mousedown', (e) => {
             const isBackground = e.target === this.canvas || e.target === this.svg
+                || e.target === this.transformWrapper
                 || e.target.tagName === 'svg' || e.target.closest('.connections-svg');
             const shouldPan = isBackground && (e.button === 1 || (e.button === 0 && (e.ctrlKey || e.metaKey || e.shiftKey)));
             if (!shouldPan) return;
@@ -138,19 +154,10 @@ class WorkflowBuilder {
         return [x, y];
     }
 
-    /** Apply the current pan/zoom transform to nodes and SVG. */
+    /** Apply the current pan/zoom transform to the single wrapper (nodes + SVG). */
     applyTransform() {
         const t = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
-        // Apply to every node
-        this.canvas.querySelectorAll('.workflow-node').forEach(el => {
-            el.style.transformOrigin = '0 0';
-            el.style.transform = t;
-        });
-        // Apply to SVG connections
-        if (this.svg) {
-            this.svg.style.transformOrigin = '0 0';
-            this.svg.style.transform = t;
-        }
+        this.transformWrapper.style.transform = t;
     }
 
     /** Update the zoom percentage indicator. */
@@ -376,6 +383,20 @@ class WorkflowBuilder {
                     template: '',
                     trigger: 'on_approve'
                 };
+            case 'sub_workflow':
+                return {
+                    sub_workflow_def_id: null,
+                    sub_workflow_id: null,
+                    sub_workflow_name: '',
+                    count_field: '',
+                    label_template: 'Sub-workflow {index}',
+                    trigger: 'on_approval',
+                    data_prefix: '',
+                    detached: false,
+                    reject_parent: false,
+                };
+            case 'join':
+                return {};
             case 'end':
                 return {
                     status: 'approved'
@@ -471,6 +492,14 @@ class WorkflowBuilder {
 
             case 'email':
                 html += this.buildEmailProperties(node);
+                break;
+
+            case 'sub_workflow':
+                html += this.buildSubWorkflowProperties(node);
+                break;
+
+            case 'join':
+                html += '<div class="alert alert-secondary"><i class="bi bi-info-circle"></i> This join node automatically merges parallel approval stages. It cannot be edited or removed independently.</div>';
                 break;
 
             case 'end':
@@ -585,6 +614,7 @@ class WorkflowBuilder {
                 <input type="number" class="form-control" name="order" min="1"
                        value="${data.order || 1}"
                        onchange="workflowBuilder.updateStageConfig('${node.id}')" />
+                <small class="text-muted">Stages with the same order number run in parallel (fork/join).</small>
             </div>
 
             <div class="mb-3">
@@ -1032,6 +1062,118 @@ class WorkflowBuilder {
         `;
     }
 
+    buildSubWorkflowProperties(node) {
+        const data = node.data || {};
+
+        // Build workflow options from this.forms (available workflows)
+        let workflowOptions = '<option value="">-- Select a workflow --</option>';
+        this.forms.forEach(f => {
+            const selected = (data.sub_workflow_id == f.id) ? 'selected' : '';
+            workflowOptions += `<option value="${f.id}" ${selected}>${this.escapeHtml(f.name)} (${f.field_count} fields)</option>`;
+        });
+
+        // Build count field options from this.fields
+        let fieldOptions = '<option value="">-- Select a field --</option>';
+        this.fields.forEach(f => {
+            const selected = (data.count_field === f.field_name) ? 'selected' : '';
+            fieldOptions += `<option value="${f.field_name}" ${selected}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>`;
+        });
+
+        return `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Configure a sub-workflow that spawns child approval processes based on a form field value.
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Target Workflow</strong></label>
+                <select class="form-select" name="sub_workflow_id"
+                        onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                    ${workflowOptions}
+                </select>
+                <small class="text-muted">The workflow definition used for each sub-workflow instance</small>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Count Field</strong></label>
+                <select class="form-select" name="count_field"
+                        onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                    ${fieldOptions}
+                </select>
+                <small class="text-muted">Form field whose value determines how many sub-workflows to spawn</small>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Label Template</strong></label>
+                <input type="text" class="form-control" name="label_template"
+                       value="${this.escapeHtml(data.label_template || 'Sub-workflow {index}')}"
+                       onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')" />
+                <small class="text-muted">Use {index} as placeholder (e.g. "Payment {index}")</small>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Trigger</strong></label>
+                <select class="form-select" name="trigger"
+                        onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                    <option value="on_submission" ${data.trigger === 'on_submission' ? 'selected' : ''}>On Submission</option>
+                    <option value="on_approval" ${data.trigger === 'on_approval' ? 'selected' : ''}>After Parent Approval</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Data Prefix</strong></label>
+                <input type="text" class="form-control" name="data_prefix"
+                       value="${this.escapeHtml(data.data_prefix || '')}"
+                       onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')" />
+                <small class="text-muted">Field prefix to scope data per instance (e.g. "payment" matches payment_type_1, payment_amount_1 …)</small>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="sub_wf_detached_${node.id}"
+                           name="detached" ${data.detached ? 'checked' : ''}
+                           onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                    <label class="form-check-label" for="sub_wf_detached_${node.id}">
+                        <strong>Detached</strong>
+                    </label>
+                </div>
+                <small class="text-muted">When enabled, sub-workflows run independently and don't affect parent status</small>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="sub_wf_reject_parent_${node.id}"
+                           name="reject_parent" ${data.reject_parent ? 'checked' : ''}
+                           onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                    <label class="form-check-label" for="sub_wf_reject_parent_${node.id}">
+                        <strong>Reject Parent on Failure</strong>
+                    </label>
+                </div>
+                <small class="text-muted">When enabled, rejecting any sub-workflow rejects the parent and cancels siblings</small>
+            </div>
+        `;
+    }
+
+    updateSubWorkflowConfig(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const container = document.getElementById('propertiesContent');
+        const subWfSelect = container.querySelector('select[name="sub_workflow_id"]');
+        node.data.sub_workflow_id = subWfSelect.value ? parseInt(subWfSelect.value) : null;
+        const selectedOption = subWfSelect.selectedOptions[0];
+        node.data.sub_workflow_name = selectedOption && selectedOption.value ? selectedOption.text : '';
+
+        node.data.count_field = container.querySelector('select[name="count_field"]').value;
+        node.data.label_template = container.querySelector('input[name="label_template"]').value;
+        node.data.trigger = container.querySelector('select[name="trigger"]').value;
+        node.data.data_prefix = container.querySelector('input[name="data_prefix"]').value;
+        node.data.detached = container.querySelector(`#sub_wf_detached_${nodeId}`).checked;
+        node.data.reject_parent = container.querySelector(`#sub_wf_reject_parent_${nodeId}`).checked;
+
+        this.render();
+        this.selectNode(nodeId);
+    }
+
     buildEndProperties(node) {
         const data = node.data || {};
         return `
@@ -1181,6 +1323,8 @@ class WorkflowBuilder {
             condition: 'Condition',
             action: 'Action',
             email: 'Email Notification',
+            sub_workflow: 'Sub-Workflow',
+            join: 'Join',
             end: 'End'
         };
         return labels[type] || type;
@@ -1202,13 +1346,13 @@ class WorkflowBuilder {
     renderNodes() {
         console.log('Rendering nodes...');
         // Remove existing nodes
-        this.canvas.querySelectorAll('.workflow-node').forEach(n => n.remove());
+        this.transformWrapper.querySelectorAll('.workflow-node').forEach(n => n.remove());
 
-        // Render each node
+        // Render each node into the transform wrapper (alongside the SVG)
         this.nodes.forEach(node => {
             console.log('Creating node element for:', node);
             const nodeEl = this.createNodeElement(node);
-            this.canvas.appendChild(nodeEl);
+            this.transformWrapper.appendChild(nodeEl);
         });
         console.log('Nodes rendered');
     }
@@ -1238,6 +1382,7 @@ class WorkflowBuilder {
         // - all others: deletable
         const canDelete = node.type !== 'start' &&
                          node.type !== 'workflow_settings' &&
+                         node.type !== 'join' &&
                          !(node.type === 'form' && node.data.is_initial !== false);
 
         div.innerHTML = `
@@ -1309,6 +1454,8 @@ class WorkflowBuilder {
             condition: 'diagram-3',
             action: 'lightning',
             email: 'envelope',
+            sub_workflow: 'diagram-2',
+            join: 'sign-merge-right',
             end: 'flag'
         };
         return icons[type] || 'circle';
@@ -1403,6 +1550,17 @@ class WorkflowBuilder {
                 return node.data.action_type ? `${node.data.action_type.toUpperCase()}: ${node.data.trigger || ''}` : 'Configure action';
             case 'email':
                 return node.data.to ? `Send to: ${node.data.to}` : 'Configure email';
+            case 'join':
+                return '<small class="text-muted">Parallel stages merge here</small>';
+            case 'sub_workflow':
+                const swParts = [];
+                if (node.data.sub_workflow_name) swParts.push(node.data.sub_workflow_name);
+                if (node.data.count_field) swParts.push(`Count: ${node.data.count_field}`);
+                if (node.data.trigger) swParts.push(node.data.trigger === 'on_approval' ? 'After approval' : 'On submission');
+                if (node.data.detached) swParts.push('Detached');
+                return swParts.length > 0 ?
+                    `<span class="badge bg-info">Sub-Workflow</span><br><small class="text-muted">${swParts.join(' • ')}</small>` :
+                    '<span class="badge bg-secondary">Sub-Workflow</span><br><small class="text-muted">Not configured</small>';
             case 'end':
                 return 'Workflow end';
             default:

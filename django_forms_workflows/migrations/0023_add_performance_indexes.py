@@ -1,91 +1,111 @@
 from django.db import migrations
 
 
-class Migration(migrations.Migration):
-    # CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
-    # Setting atomic=False tells Django not to wrap this migration in BEGIN/COMMIT.
-    atomic = False
+# PostgreSQL-specific SQL (CONCURRENTLY avoids table locks in production).
+_PG_CREATE = [
+    """
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_status_only_idx
+    ON django_forms_workflows_formsubmission USING btree (status)
+    WHERE status IN (
+        'approved','rejected','withdrawn',
+        'submitted','pending_approval'
+    )
+    """,
+    """
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_history_sort_idx
+    ON django_forms_workflows_formsubmission
+        USING btree (status, completed_at DESC NULLS LAST, submitted_at DESC)
+    WHERE status IN ('approved','rejected','withdrawn')
+    """,
+    """
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_history_cat_idx
+    ON django_forms_workflows_formsubmission
+        USING btree (status, form_definition_id)
+    WHERE status IN ('approved','rejected','withdrawn')
+    """,
+    """
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_task_status_idx
+    ON django_forms_workflows_approvaltask USING btree (status)
+    """,
+]
 
+_PG_DROP = [
+    "DROP INDEX CONCURRENTLY IF EXISTS django_form_status_only_idx",
+    "DROP INDEX CONCURRENTLY IF EXISTS django_form_history_sort_idx",
+    "DROP INDEX CONCURRENTLY IF EXISTS django_form_history_cat_idx",
+    "DROP INDEX CONCURRENTLY IF EXISTS django_form_task_status_idx",
+]
+
+# Generic SQL for SQLite (and any other backend used in tests/dev).
+# No CONCURRENTLY, no USING btree, no NULLS LAST.
+_OTHER_CREATE = [
+    """
+    CREATE INDEX IF NOT EXISTS django_form_status_only_idx
+    ON django_forms_workflows_formsubmission (status)
+    WHERE status IN (
+        'approved','rejected','withdrawn',
+        'submitted','pending_approval'
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS django_form_history_sort_idx
+    ON django_forms_workflows_formsubmission (status, completed_at, submitted_at)
+    WHERE status IN ('approved','rejected','withdrawn')
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS django_form_history_cat_idx
+    ON django_forms_workflows_formsubmission (status, form_definition_id)
+    WHERE status IN ('approved','rejected','withdrawn')
+    """,
+    "CREATE INDEX IF NOT EXISTS django_form_task_status_idx ON django_forms_workflows_approvaltask (status)",
+]
+
+_OTHER_DROP = [
+    "DROP INDEX IF EXISTS django_form_status_only_idx",
+    "DROP INDEX IF EXISTS django_form_history_sort_idx",
+    "DROP INDEX IF EXISTS django_form_history_cat_idx",
+    "DROP INDEX IF EXISTS django_form_task_status_idx",
+]
+
+
+def create_indexes(apps, schema_editor):
+    stmts = _PG_CREATE if schema_editor.connection.vendor == "postgresql" else _OTHER_CREATE
+    for sql in stmts:
+        schema_editor.execute(sql)
+
+
+def drop_indexes(apps, schema_editor):
+    stmts = _PG_DROP if schema_editor.connection.vendor == "postgresql" else _OTHER_DROP
+    for sql in stmts:
+        schema_editor.execute(sql)
+
+
+class Migration(migrations.Migration):
     """
     Adds four performance indexes identified through EXPLAIN ANALYZE
     on the approval history and inbox views.
 
-    All indexes use CONCURRENTLY via SeparateDatabaseAndState so they
-    can run without locking the table in production.
+    On PostgreSQL indexes are created CONCURRENTLY to avoid table locks.
+    On other backends (SQLite for tests/dev) plain CREATE INDEX is used.
 
     Indexes added:
-      1. django_form_status_only_idx  — partial btree on status for all
-         non-draft statuses; used by COUNT and pending-inbox queries.
-
-      2. django_form_history_sort_idx — partial composite on
-         (status, completed_at DESC, submitted_at DESC) covering the
-         ORDER BY clause of the approval history view; eliminates the
-         full-table quicksort that previously cost ~550 kB of memory
-         per request.
-
-      3. django_form_history_cat_idx  — partial composite on
-         (status, form_definition_id) for the category-count GROUP BY
-         aggregation on the history view; allows an index-only scan
-         instead of a seq scan + hash join.
-
-      4. django_form_task_status_idx  — btree on
-         approvaltask(status) for the pending-tasks badge COUNT that
-         fires on every inbox/history page load.
+      1. django_form_status_only_idx  — partial on status for all non-draft rows.
+      2. django_form_history_sort_idx — partial composite covering the ORDER BY
+         used by the approval-history view.
+      3. django_form_history_cat_idx  — partial composite for the category-count
+         GROUP BY aggregation on the history view.
+      4. django_form_task_status_idx  — on approvaltask(status) for badge COUNTs.
     """
+
+    # CONCURRENTLY cannot run inside a transaction; atomic=False prevents Django
+    # from wrapping the whole migration in BEGIN/COMMIT on PostgreSQL.
+    atomic = False
 
     dependencies = [
         ("django_forms_workflows", "0022_add_bulk_pdf_export"),
     ]
 
-    # SeparateDatabaseAndState lets us run CREATE INDEX CONCURRENTLY
-    # (which cannot run inside a transaction) while still keeping
-    # Django's migration state in sync.
     operations = [
-        migrations.SeparateDatabaseAndState(
-            database_operations=[
-                migrations.RunSQL(
-                    sql="""
-                        CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_status_only_idx
-                        ON django_forms_workflows_formsubmission USING btree (status)
-                        WHERE status IN (
-                            'approved','rejected','withdrawn',
-                            'submitted','pending_approval'
-                        );
-                    """,
-                    reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS django_form_status_only_idx;",
-                    hints={"target_db": "default"},
-                ),
-                migrations.RunSQL(
-                    sql="""
-                        CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_history_sort_idx
-                        ON django_forms_workflows_formsubmission
-                            USING btree (status, completed_at DESC NULLS LAST, submitted_at DESC)
-                        WHERE status IN ('approved','rejected','withdrawn');
-                    """,
-                    reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS django_form_history_sort_idx;",
-                    hints={"target_db": "default"},
-                ),
-                migrations.RunSQL(
-                    sql="""
-                        CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_history_cat_idx
-                        ON django_forms_workflows_formsubmission
-                            USING btree (status, form_definition_id)
-                        WHERE status IN ('approved','rejected','withdrawn');
-                    """,
-                    reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS django_form_history_cat_idx;",
-                    hints={"target_db": "default"},
-                ),
-                migrations.RunSQL(
-                    sql="""
-                        CREATE INDEX CONCURRENTLY IF NOT EXISTS django_form_task_status_idx
-                        ON django_forms_workflows_approvaltask USING btree (status);
-                    """,
-                    reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS django_form_task_status_idx;",
-                    hints={"target_db": "default"},
-                ),
-            ],
-            # No model-state changes — these are pure DB indexes on existing fields.
-            state_operations=[],
-        ),
+        migrations.RunPython(create_indexes, reverse_code=drop_indexes),
     ]
 

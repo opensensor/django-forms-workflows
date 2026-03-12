@@ -6,6 +6,7 @@ Database-driven form definitions with approval workflows and external data integ
 
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 
 
@@ -1149,7 +1150,10 @@ class FormSubmission(models.Model):
     )
 
     # Submission Data
-    form_data = models.JSONField(help_text="The actual form responses")
+    form_data = models.JSONField(
+        help_text="The actual form responses",
+        encoder=DjangoJSONEncoder,
+    )
     attachments = models.JSONField(
         default=list, blank=True, help_text="List of uploaded file paths"
     )

@@ -97,6 +97,63 @@ class FormFieldInline(admin.StackedInline):
     )
 
 
+@admin.register(FormField)
+class FormFieldAdmin(admin.ModelAdmin):
+    """Standalone admin for FormField — useful for searching/editing fields
+    across all forms."""
+
+    list_display = [
+        "field_name",
+        "field_label",
+        "field_type",
+        "form_definition",
+        "required",
+        "workflow_stage",
+        "order",
+    ]
+    list_filter = ["form_definition", "field_type", "required", "workflow_stage"]
+    search_fields = ["field_name", "field_label"]
+    ordering = ["form_definition", "order"]
+    autocomplete_fields = ["form_definition", "prefill_source_config", "workflow_stage"]
+
+    fieldsets = (
+        (
+            "Basic Information",
+            {"fields": ("form_definition", "field_name", "field_label", "field_type")},
+        ),
+        (
+            "Field Configuration",
+            {"fields": ("required", "width", "order", "workflow_stage")},
+        ),
+        (
+            "Prefill / Default Value",
+            {"fields": ("prefill_source_config", "default_value")},
+        ),
+        (
+            "Choices (for select/radio/checkbox fields)",
+            {"fields": ("choices",), "classes": ("collapse",)},
+        ),
+        (
+            "Validation",
+            {
+                "fields": (
+                    "regex_validation",
+                    "regex_error_message",
+                    "min_value",
+                    "max_value",
+                    "min_length",
+                    "max_length",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Display",
+            {"fields": ("help_text", "placeholder"), "classes": ("collapse",)},
+        ),
+    )
+
+
 @admin.register(PrefillSource)
 class PrefillSourceAdmin(admin.ModelAdmin):
     list_display = (
@@ -210,6 +267,26 @@ class FormCategoryAdmin(admin.ModelAdmin):
     )
 
 
+class WorkflowDefinitionInline(admin.StackedInline):
+    """Inline for editing a WorkflowDefinition directly from the FormDefinition
+    change page."""
+
+    model = WorkflowDefinition
+    extra = 0
+    fields = [
+        "requires_approval",
+        ("approval_groups", "approval_logic"),
+        "requires_manager_approval",
+        ("escalation_field", "escalation_threshold", "escalation_groups"),
+        ("notify_on_submission", "notify_on_approval", "notify_on_rejection"),
+        "additional_notify_emails",
+        "enable_db_updates",
+        "db_update_mappings",
+        ("allow_bulk_export", "allow_bulk_pdf_export"),
+    ]
+    filter_horizontal = ["approval_groups", "escalation_groups"]
+
+
 @admin.register(FormDefinition)
 class FormDefinitionAdmin(admin.ModelAdmin):
     list_display = (
@@ -217,18 +294,19 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         "slug",
         "category",
         "is_active",
-        "requires_login",
-        "version",
-        "created_at",
         "form_builder_link",
         "workflow_builder_link",
+        "submission_count",
+        "last_submission",
+        "created_at",
         "clone_link",
     )
     list_filter = ("is_active", "requires_login", "category")
     list_select_related = ["category"]
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
-    inlines = [FormFieldInline]
+    readonly_fields = ("created_at", "updated_at", "created_by")
+    inlines = [FormFieldInline, WorkflowDefinitionInline]
     filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
     actions = ["clone_forms", "export_as_json", "push_forms_to_remote"]
@@ -291,6 +369,13 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 ),
             },
         ),
+        (
+            "Metadata",
+            {
+                "fields": ("created_at", "updated_at", "created_by"),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
     def form_builder_link(self, obj):
@@ -334,6 +419,31 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         return "-"
 
     clone_link.short_description = "Clone"
+
+    def submission_count(self, obj):
+        """Show total submission count for the form."""
+        return obj.submissions.count()
+
+    submission_count.short_description = "Submissions"
+
+    def last_submission(self, obj):
+        """Show the most recent submission info."""
+        last = obj.submissions.order_by("-created_at").first()
+        if last:
+            return format_html(
+                "{}<br><small>{}</small>",
+                last.submitter.username,
+                last.created_at.strftime("%Y-%m-%d %H:%M"),
+            )
+        return "-"
+
+    last_submission.short_description = "Last Submission"
+
+    def save_model(self, request, obj, form, change):
+        """Auto-set created_by on new form definitions."""
+        if not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
 
     def clone_forms(self, request, queryset):
         """Admin action to clone selected forms"""
@@ -792,6 +902,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
 
     list_display = ("__str__", "workflow", "order", "approval_logic", "approve_label")
     list_select_related = ("workflow", "workflow__form_definition")
+    search_fields = ("name", "workflow__form_definition__name")
     ordering = ("workflow", "order")
     filter_horizontal = ("approval_groups",)
     fields = (

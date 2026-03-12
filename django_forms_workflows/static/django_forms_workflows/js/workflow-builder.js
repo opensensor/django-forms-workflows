@@ -1,6 +1,6 @@
 /**
  * Visual Workflow Builder
- * 
+ *
  * Drag-and-drop workflow builder for post-submission actions and approvals.
  */
 
@@ -22,7 +22,7 @@ class WorkflowBuilder {
 
         this.init();
     }
-    
+
     async init() {
         console.log('Initializing workflow builder...');
         this.setupCanvas();
@@ -42,17 +42,17 @@ class WorkflowBuilder {
         this.render();
         console.log('Workflow builder initialized');
     }
-    
+
     setupCanvas() {
         this.canvas = document.getElementById('workflowCanvas');
         this.svg = document.getElementById('connectionsSvg');
-        
+
         // Make canvas droppable
         this.canvas.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
         });
-        
+
         this.canvas.addEventListener('drop', (e) => {
             e.preventDefault();
             const nodeType = e.dataTransfer.getData('nodeType');
@@ -63,7 +63,7 @@ class WorkflowBuilder {
                 this.createNode(nodeType, x, y);
             }
         });
-        
+
         // Click on canvas to deselect
         this.canvas.addEventListener('click', (e) => {
             if (e.target === this.canvas) {
@@ -71,7 +71,7 @@ class WorkflowBuilder {
             }
         });
     }
-    
+
     setupPalette() {
         const paletteNodes = document.querySelectorAll('.palette-node');
         paletteNodes.forEach(node => {
@@ -82,11 +82,11 @@ class WorkflowBuilder {
             });
         });
     }
-    
+
     setupEventListeners() {
         document.getElementById('btnSave').addEventListener('click', () => this.saveWorkflow());
     }
-    
+
     async loadWorkflow() {
         try {
             console.log('Loading workflow from:', this.config.apiUrls.load);
@@ -121,7 +121,7 @@ class WorkflowBuilder {
             console.error('Error loading workflow:', error);
         }
     }
-    
+
     async saveWorkflow() {
         const saveBtn = document.getElementById('btnSave');
         const originalText = saveBtn.innerHTML;
@@ -175,7 +175,7 @@ class WorkflowBuilder {
             saveBtn.innerHTML = originalText;
         }
     }
-    
+
     createStartNode() {
         const node = {
             id: `node_${this.nodeIdCounter++}`,
@@ -187,7 +187,7 @@ class WorkflowBuilder {
         this.nodes.push(node);
         this.render();
     }
-    
+
     createNode(type, x, y) {
         const node = {
             id: `node_${this.nodeIdCounter++}`,
@@ -199,7 +199,7 @@ class WorkflowBuilder {
         this.nodes.push(node);
         this.render();
     }
-    
+
     getDefaultNodeData(type) {
         switch (type) {
             case 'form':
@@ -210,7 +210,32 @@ class WorkflowBuilder {
                     field_count: 0,
                     fields: [],
                     has_more_fields: false,
-                    is_initial: false,  // Mark as additional form node
+                    is_initial: false,
+                };
+            case 'stage':
+                return {
+                    stage_id: null,
+                    name: 'New Stage',
+                    order: 1,
+                    approval_logic: 'all',
+                    requires_manager_approval: false,
+                    approve_label: '',
+                    approval_groups: [],
+                };
+            case 'workflow_settings':
+                return {
+                    requires_approval: true,
+                    approval_deadline_days: null,
+                    send_reminder_after_days: null,
+                    auto_approve_after_days: null,
+                    notification_cadence: 'immediate',
+                    escalation_field: '',
+                    escalation_threshold: '',
+                    escalation_groups: [],
+                    notify_on_submission: true,
+                    notify_on_approval: true,
+                    notify_on_rejection: true,
+                    notify_on_withdrawal: true,
                 };
             case 'approval':
                 return {
@@ -250,7 +275,7 @@ class WorkflowBuilder {
                 return {};
         }
     }
-    
+
     deleteNode(nodeId) {
         if (confirm('Delete this node?')) {
             this.nodes = this.nodes.filter(n => n.id !== nodeId);
@@ -259,7 +284,7 @@ class WorkflowBuilder {
             this.render();
         }
     }
-    
+
     selectNode(nodeId) {
         this.deselectAll();
         this.selectedNode = nodeId;
@@ -269,18 +294,18 @@ class WorkflowBuilder {
         }
         this.render();
     }
-    
+
     deselectAll() {
         this.selectedNode = null;
         this.selectedConnection = null;
         this.showEmptyProperties();
         this.render();
     }
-    
+
     showNodeProperties(node) {
         const content = document.getElementById('propertiesContent');
         content.innerHTML = this.buildPropertiesForm(node);
-        
+
         // Add event listeners for property changes
         content.querySelectorAll('input, select, textarea').forEach(input => {
             input.addEventListener('change', (e) => {
@@ -288,7 +313,7 @@ class WorkflowBuilder {
             });
         });
     }
-    
+
     showEmptyProperties() {
         const content = document.getElementById('propertiesContent');
         content.innerHTML = `
@@ -298,7 +323,7 @@ class WorkflowBuilder {
             </div>
         `;
     }
-    
+
     buildPropertiesForm(node) {
         let html = `<h6 class="mb-3">${this.getNodeTypeLabel(node.type)}</h6>`;
 
@@ -309,6 +334,14 @@ class WorkflowBuilder {
 
             case 'form':
                 html += this.buildFormProperties(node);
+                break;
+
+            case 'workflow_settings':
+                html += this.buildWorkflowSettingsProperties(node);
+                break;
+
+            case 'stage':
+                html += this.buildStageProperties(node);
                 break;
 
             case 'approval_config':
@@ -338,7 +371,7 @@ class WorkflowBuilder {
 
         return html;
     }
-    
+
     buildApprovalConfigProperties(node) {
         const data = node.data || {};
         const approvalGroups = data.approval_groups || [];
@@ -421,6 +454,184 @@ class WorkflowBuilder {
 
         return html;
     }
+
+    buildStageProperties(node) {
+        const data = node.data || {};
+        const selectedGroupIds = (data.approval_groups || []).map(g => g.id);
+
+        let html = `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Configure an approval stage with its own groups and logic.
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Stage Name</strong></label>
+                <input type="text" class="form-control" name="name"
+                       value="${this.escapeHtml(data.name || '')}"
+                       onchange="workflowBuilder.updateStageConfig('${node.id}')" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Order</strong></label>
+                <input type="number" class="form-control" name="order" min="1"
+                       value="${data.order || 1}"
+                       onchange="workflowBuilder.updateStageConfig('${node.id}')" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Approve Button Label</strong></label>
+                <input type="text" class="form-control" name="approve_label"
+                       value="${this.escapeHtml(data.approve_label || '')}"
+                       placeholder="Approve"
+                       onchange="workflowBuilder.updateStageConfig('${node.id}')" />
+                <small class="text-muted">Custom label for the approve button (e.g. "Sign Off")</small>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="stage_requires_manager_${node.id}"
+                           name="requires_manager_approval" ${data.requires_manager_approval ? 'checked' : ''}
+                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <label class="form-check-label" for="stage_requires_manager_${node.id}">
+                        <i class="bi bi-person-badge"></i> <strong>Require Manager Approval</strong>
+                    </label>
+                </div>
+            </div>
+
+            <hr />
+
+            <div class="mb-3">
+                <label class="form-label"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
+                <select class="form-select" id="stage_groups_${node.id}" name="approval_groups" multiple size="6"
+                        style="min-height: 140px;"
+                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+        `;
+
+        this.groups.forEach(group => {
+            const selected = selectedGroupIds.includes(group.id) ? 'selected' : '';
+            html += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
+        });
+
+        html += `
+                </select>
+                <small class="text-muted d-block mt-1">Hold Ctrl/Cmd to select multiple groups.</small>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Approval Logic</label>
+                <select class="form-select" name="approval_logic"
+                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>Any (OR)</option>
+                    <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
+                    <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>Sequential</option>
+                </select>
+            </div>
+        `;
+
+        return html;
+    }
+
+    buildWorkflowSettingsProperties(node) {
+        const data = node.data || {};
+        const selectedEscGroupIds = (data.escalation_groups || []).map(g => g.id);
+
+        let html = `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Workflow-level notification, deadline, and escalation settings.
+            </div>
+
+            <h6 class="mt-3">Deadlines &amp; Reminders</h6>
+            <div class="mb-3">
+                <label class="form-label">Approval Deadline (days)</label>
+                <input type="number" class="form-control" name="approval_deadline_days" min="1"
+                       value="${data.approval_deadline_days || ''}" placeholder="No deadline"
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Send Reminder After (days)</label>
+                <input type="number" class="form-control" name="send_reminder_after_days" min="1"
+                       value="${data.send_reminder_after_days || ''}" placeholder="No reminder"
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Auto-Approve After (days)</label>
+                <input type="number" class="form-control" name="auto_approve_after_days" min="1"
+                       value="${data.auto_approve_after_days || ''}" placeholder="Never"
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Notification Cadence</label>
+                <select class="form-select" name="notification_cadence"
+                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
+                    <option value="immediate" ${data.notification_cadence === 'immediate' ? 'selected' : ''}>Immediate</option>
+                    <option value="daily" ${data.notification_cadence === 'daily' ? 'selected' : ''}>Daily Digest</option>
+                    <option value="weekly" ${data.notification_cadence === 'weekly' ? 'selected' : ''}>Weekly Digest</option>
+                    <option value="none" ${data.notification_cadence === 'none' ? 'selected' : ''}>None</option>
+                </select>
+            </div>
+
+            <hr />
+            <h6>Notifications</h6>
+        `;
+
+        const notifFlags = [
+            ['notify_on_submission', 'On Submission'],
+            ['notify_on_approval', 'On Approval'],
+            ['notify_on_rejection', 'On Rejection'],
+            ['notify_on_withdrawal', 'On Withdrawal'],
+        ];
+        notifFlags.forEach(([key, label]) => {
+            html += `
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="ws_${key}_${node.id}"
+                       name="${key}" ${data[key] !== false ? 'checked' : ''}
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
+                <label class="form-check-label" for="ws_${key}_${node.id}">${label}</label>
+            </div>`;
+        });
+
+        html += `
+            <hr />
+            <h6>Escalation</h6>
+            <div class="mb-3">
+                <label class="form-label">Escalation Field</label>
+                <select class="form-select" name="escalation_field"
+                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
+                    <option value="">-- None --</option>
+        `;
+        this.fields.forEach(f => {
+            const sel = data.escalation_field === f.field_name ? 'selected' : '';
+            html += `<option value="${f.field_name}" ${sel}>${this.escapeHtml(f.field_label)}</option>`;
+        });
+        html += `
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Escalation Threshold</label>
+                <input type="text" class="form-control" name="escalation_threshold"
+                       value="${this.escapeHtml(data.escalation_threshold || '')}"
+                       placeholder="e.g. 5000"
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Escalation Groups</label>
+                <select class="form-select" id="ws_esc_groups_${node.id}" name="escalation_groups" multiple size="4"
+                        style="min-height: 100px;"
+                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
+        `;
+        this.groups.forEach(group => {
+            const sel = selectedEscGroupIds.includes(group.id) ? 'selected' : '';
+            html += `<option value="${group.id}" ${sel}>${this.escapeHtml(group.name)}</option>`;
+        });
+        html += `
+                </select>
+                <small class="text-muted d-block mt-1">Groups to notify when escalation threshold is exceeded.</small>
+            </div>
+        `;
+
+        return html;
+    }
+
 
     buildFormProperties(node) {
         const data = node.data || {};
@@ -596,7 +807,7 @@ class WorkflowBuilder {
 
         return html;
     }
-    
+
     buildConditionProperties(node) {
         const data = node.data || {};
         return `
@@ -639,7 +850,7 @@ class WorkflowBuilder {
             </p>
         `;
     }
-    
+
     buildActionProperties(node) {
         const data = node.data || {};
         return `
@@ -711,7 +922,7 @@ class WorkflowBuilder {
             </div>
         `;
     }
-    
+
     buildEndProperties(node) {
         const data = node.data || {};
         return `
@@ -724,7 +935,7 @@ class WorkflowBuilder {
             </p>
         `;
     }
-    
+
     updateNodeProperty(nodeId, property, value) {
         const node = this.nodes.find(n => n.id === nodeId);
         if (node) {
@@ -793,11 +1004,69 @@ class WorkflowBuilder {
         this.render();
         this.selectNode(nodeId); // Re-select to refresh properties panel
     }
-    
+
+    updateStageConfig(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const container = document.getElementById('propertiesContent');
+        node.data.name = container.querySelector('input[name="name"]').value;
+        node.data.order = parseInt(container.querySelector('input[name="order"]').value) || 1;
+        node.data.approve_label = container.querySelector('input[name="approve_label"]').value;
+        node.data.requires_manager_approval = container.querySelector(`#stage_requires_manager_${nodeId}`).checked;
+
+        const groupSelect = container.querySelector(`#stage_groups_${nodeId}`);
+        node.data.approval_groups = Array.from(groupSelect.selectedOptions).map(opt => ({
+            id: parseInt(opt.value),
+            name: opt.text
+        }));
+        node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
+
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    updateWorkflowSettings(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const container = document.getElementById('propertiesContent');
+
+        // Numeric fields (empty → null)
+        ['approval_deadline_days', 'send_reminder_after_days', 'auto_approve_after_days'].forEach(key => {
+            const val = container.querySelector(`input[name="${key}"]`).value;
+            node.data[key] = val ? parseInt(val) : null;
+        });
+
+        node.data.notification_cadence = container.querySelector('select[name="notification_cadence"]').value;
+
+        // Notification checkboxes
+        ['notify_on_submission', 'notify_on_approval', 'notify_on_rejection', 'notify_on_withdrawal'].forEach(key => {
+            node.data[key] = container.querySelector(`#ws_${key}_${nodeId}`).checked;
+        });
+
+        // Escalation
+        node.data.escalation_field = container.querySelector('select[name="escalation_field"]').value;
+        node.data.escalation_threshold = container.querySelector('input[name="escalation_threshold"]').value;
+
+        const escGroupSelect = container.querySelector(`#ws_esc_groups_${nodeId}`);
+        node.data.escalation_groups = Array.from(escGroupSelect.selectedOptions).map(opt => ({
+            id: parseInt(opt.value),
+            name: opt.text
+        }));
+
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+
+
     getNodeTypeLabel(type) {
         const labels = {
             start: 'Start',
             form: 'Form Submission',
+            workflow_settings: 'Workflow Settings',
+            stage: 'Approval Stage',
             approval_config: 'Approval Configuration',
             approval: 'Approval Step',
             condition: 'Condition',
@@ -807,13 +1076,13 @@ class WorkflowBuilder {
         };
         return labels[type] || type;
     }
-    
+
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
-    
+
     render() {
         console.log('Rendering workflow with', this.nodes.length, 'nodes and', this.connections.length, 'connections');
         this.renderNodes();
@@ -833,7 +1102,7 @@ class WorkflowBuilder {
         });
         console.log('Nodes rendered');
     }
-    
+
     createNodeElement(node) {
         // Ensure node.data exists (may be missing from saved workflow data)
         if (!node.data) {
@@ -853,12 +1122,12 @@ class WorkflowBuilder {
         const label = node.data.step_name || node.data.name || this.getNodeTypeLabel(node.type);
 
         // Determine if node can be deleted
-        // - start: never deletable
-        // - approval_config: never deletable
+        // - start, workflow_settings: never deletable
         // - form: only deletable if it's an additional form (is_initial === false)
+        // - stage: always deletable
         // - all others: deletable
         const canDelete = node.type !== 'start' &&
-                         node.type !== 'approval_config' &&
+                         node.type !== 'workflow_settings' &&
                          !(node.type === 'form' && node.data.is_initial !== false);
 
         div.innerHTML = `
@@ -923,6 +1192,8 @@ class WorkflowBuilder {
         const icons = {
             start: 'play-circle',
             form: 'file-earmark-text',
+            workflow_settings: 'gear',
+            stage: 'layers',
             approval_config: 'shield-check',
             approval: 'person-check',
             condition: 'diagram-3',
@@ -958,6 +1229,25 @@ class WorkflowBuilder {
 
                 const badgeHtml = badges ? `${badges}<br>` : '';
                 return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${node.data.form_builder_url || '#'}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
+            case 'workflow_settings':
+                const parts_ws = [];
+                if (node.data.approval_deadline_days) parts_ws.push(`Deadline: ${node.data.approval_deadline_days}d`);
+                if (node.data.notification_cadence && node.data.notification_cadence !== 'immediate') parts_ws.push(`Reminders: ${node.data.notification_cadence}`);
+                if (node.data.escalation_field) parts_ws.push('Escalation configured');
+                return parts_ws.length > 0 ?
+                    `<small class="text-muted">${parts_ws.join(' • ')}</small>` :
+                    '<small class="text-muted">Default settings</small>';
+            case 'stage':
+                const stageParts = [];
+                if (node.data.requires_manager_approval) stageParts.push('Manager');
+                if (node.data.approval_groups && node.data.approval_groups.length > 0) {
+                    const gc = node.data.approval_groups.length;
+                    stageParts.push(`${gc} group${gc > 1 ? 's' : ''} (${node.data.approval_logic || 'all'})`);
+                }
+                const label = node.data.approve_label ? ` • "${node.data.approve_label}"` : '';
+                return stageParts.length > 0 ?
+                    `<span class="badge bg-warning">Stage ${node.data.order || '?'}</span><br><small class="text-muted">${stageParts.join(' + ')}${label}</small>` :
+                    `<span class="badge bg-secondary">Stage ${node.data.order || '?'}</span><br><small class="text-muted">No approvers configured</small>`;
             case 'approval_config':
                 if (node.data.is_implicit) {
                     return '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Implicit Approval</span><br><small class="text-muted">Auto-approved on submission</small>';

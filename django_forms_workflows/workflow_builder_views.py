@@ -14,7 +14,12 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import FormDefinition, PostSubmissionAction, WorkflowDefinition
+from .models import (
+    FormDefinition,
+    PostSubmissionAction,
+    WorkflowDefinition,
+    WorkflowStage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +162,10 @@ def workflow_builder_save(request):
 def convert_workflow_to_visual(workflow, form_definition):
     """
     Convert WorkflowDefinition model to visual workflow format.
+
+    Reads WorkflowStage records to build stage nodes.  Falls back to the
+    deprecated flat approval_groups/approval_logic on WorkflowDefinition
+    only when no stages exist.
     """
     # Check if visual workflow data exists AND has the correct format (nodes array)
     if workflow.visual_workflow_data:
@@ -178,7 +187,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     node_id_counter = 1
 
     # Layout configuration for better spacing
-    horizontal_spacing = 280  # Increased from 200 for better readability
+    horizontal_spacing = 280
     start_x = 120
     start_y = 200
     current_x = start_x
@@ -200,7 +209,6 @@ def convert_workflow_to_visual(workflow, form_definition):
     # Form submission node (always present - represents the actual form)
     form_fields = list(form_definition.fields.all().order_by("order"))
 
-    # Build form builder URL
     from django.urls import reverse
 
     form_builder_url = reverse("admin:form_builder_edit", args=[form_definition.id])
@@ -215,7 +223,7 @@ def convert_workflow_to_visual(workflow, form_definition):
             "form_id": form_definition.id,
             "form_builder_url": form_builder_url,
             "field_count": len(form_fields),
-            "is_initial": True,  # Mark as the initial form node (not deletable)
+            "is_initial": True,
             "enable_multi_step": form_definition.enable_multi_step,
             "form_steps": form_definition.form_steps or [],
             "step_count": len(form_definition.form_steps)
@@ -229,129 +237,103 @@ def convert_workflow_to_visual(workflow, form_definition):
                     "required": field.required,
                     "prefill_source": field.get_prefill_source_key(),
                 }
-                for field in form_fields[:10]  # Limit to first 10 for performance
+                for field in form_fields[:10]
             ],
             "has_more_fields": len(form_fields) > 10,
         },
     }
     nodes.append(form_node)
-    connections.append(
-        {
-            "from": last_node_id,
-            "to": form_node["id"],
-        }
-    )
+    connections.append({"from": last_node_id, "to": form_node["id"]})
     last_node_id = form_node["id"]
     node_id_counter += 1
     current_x += horizontal_spacing
 
-    # Approval configuration node (always present - shows approval requirements)
-    approval_groups = list(workflow.approval_groups.all())
-    has_manager_approval = workflow.requires_manager_approval
-    has_group_approvals = len(approval_groups) > 0
-    is_implicit_approval = not has_manager_approval and not has_group_approvals
-
-    approval_config_node = {
+    # Workflow-level settings node (always present)
+    settings_node = {
         "id": f"node_{node_id_counter}",
-        "type": "approval_config",
+        "type": "workflow_settings",
         "x": current_x,
         "y": current_y,
         "data": {
-            "is_implicit": is_implicit_approval,
-            "requires_manager_approval": has_manager_approval,
-            "approval_groups": [
-                {
-                    "id": group.id,
-                    "name": group.name,
-                }
-                for group in approval_groups
+            "requires_approval": workflow.requires_approval,
+            "approval_deadline_days": workflow.approval_deadline_days,
+            "send_reminder_after_days": workflow.send_reminder_after_days,
+            "auto_approve_after_days": workflow.auto_approve_after_days,
+            "notification_cadence": workflow.notification_cadence,
+            "escalation_field": workflow.escalation_field or "",
+            "escalation_threshold": str(workflow.escalation_threshold)
+            if workflow.escalation_threshold is not None
+            else "",
+            "escalation_groups": [
+                {"id": g.id, "name": g.name} for g in workflow.escalation_groups.all()
             ],
-            "approval_logic": workflow.approval_logic if has_group_approvals else None,
+            "notify_on_submission": workflow.notify_on_submission,
+            "notify_on_approval": workflow.notify_on_approval,
+            "notify_on_rejection": workflow.notify_on_rejection,
+            "notify_on_withdrawal": workflow.notify_on_withdrawal,
         },
     }
-    nodes.append(approval_config_node)
-    connections.append(
-        {
-            "from": last_node_id,
-            "to": approval_config_node["id"],
-        }
-    )
-    last_node_id = approval_config_node["id"]
+    nodes.append(settings_node)
+    connections.append({"from": last_node_id, "to": settings_node["id"]})
+    last_node_id = settings_node["id"]
     node_id_counter += 1
     current_x += horizontal_spacing
 
-    # Manager approval node (if enabled)
-    if workflow.requires_manager_approval:
-        manager_node = {
-            "id": f"node_{node_id_counter}",
-            "type": "approval",
-            "x": current_x,
-            "y": current_y,
-            "data": {
-                "approval_type": "manager",
-                "step_name": "Manager Approval",
-            },
-        }
-        nodes.append(manager_node)
-        connections.append(
-            {
-                "from": last_node_id,
-                "to": manager_node["id"],
-            }
-        )
-        last_node_id = manager_node["id"]
-        node_id_counter += 1
-        current_x += horizontal_spacing
+    # ── Stage nodes ──────────────────────────────────────────────────────
+    stages = list(workflow.stages.order_by("order", "id"))
 
-    # Group approval nodes (already fetched above)
-    if approval_groups:
-        if workflow.approval_logic == "sequence":
-            # Sequential nodes - horizontal flow
-            for group in approval_groups:
-                group_node = {
-                    "id": f"node_{node_id_counter}",
-                    "type": "approval",
-                    "x": current_x,
-                    "y": current_y,
-                    "data": {
-                        "approval_type": "group",
-                        "group_id": group.id,
-                        "group_name": group.name,
-                        "step_name": f"{group.name} Approval",
-                    },
-                }
-                nodes.append(group_node)
-                connections.append(
-                    {
-                        "from": last_node_id,
-                        "to": group_node["id"],
-                    }
-                )
-                last_node_id = group_node["id"]
-                node_id_counter += 1
-                current_x += horizontal_spacing
-        else:
-            # Parallel nodes (all/any)
-            parallel_node = {
+    if stages:
+        for stage in stages:
+            stage_groups = list(stage.approval_groups.all())
+            stage_node = {
                 "id": f"node_{node_id_counter}",
-                "type": "approval",
+                "type": "stage",
                 "x": current_x,
                 "y": current_y,
                 "data": {
-                    "approval_type": "parallel",
-                    "logic": workflow.approval_logic,
-                    "groups": [{"id": g.id, "name": g.name} for g in approval_groups],
-                    "step_name": f"Parallel Approval ({workflow.approval_logic.upper()})",
+                    "stage_id": stage.id,
+                    "name": stage.name,
+                    "order": stage.order,
+                    "approval_logic": stage.approval_logic,
+                    "requires_manager_approval": stage.requires_manager_approval,
+                    "approve_label": stage.approve_label or "",
+                    "approval_groups": [
+                        {"id": g.id, "name": g.name} for g in stage_groups
+                    ],
                 },
             }
-            nodes.append(parallel_node)
-            connections.append(
-                {
-                    "from": last_node_id,
-                    "to": parallel_node["id"],
-                }
-            )
-            last_node_id = parallel_node["id"]
+            nodes.append(stage_node)
+            connections.append({"from": last_node_id, "to": stage_node["id"]})
+            last_node_id = stage_node["id"]
+            node_id_counter += 1
+            current_x += horizontal_spacing
+    else:
+        # Legacy flat fallback — represent as a single stage node
+        flat_groups = list(workflow.approval_groups.all())
+        has_manager = workflow.requires_manager_approval
+        has_groups = len(flat_groups) > 0
+
+        if has_manager or has_groups:
+            stage_node = {
+                "id": f"node_{node_id_counter}",
+                "type": "stage",
+                "x": current_x,
+                "y": current_y,
+                "data": {
+                    "stage_id": None,
+                    "name": "Approval",
+                    "order": 1,
+                    "approval_logic": workflow.approval_logic if has_groups else "any",
+                    "requires_manager_approval": has_manager,
+                    "approve_label": "",
+                    "approval_groups": [
+                        {"id": g.id, "name": g.name} for g in flat_groups
+                    ],
+                },
+            }
+            nodes.append(stage_node)
+            connections.append({"from": last_node_id, "to": stage_node["id"]})
+            last_node_id = stage_node["id"]
             node_id_counter += 1
             current_x += horizontal_spacing
 
@@ -455,87 +437,139 @@ def convert_workflow_to_visual(workflow, form_definition):
 def convert_visual_to_workflow(workflow_data, form_definition):
     """
     Convert visual workflow format to WorkflowDefinition model.
+
+    Stage nodes are persisted as WorkflowStage records.  The deprecated
+    flat ``approval_groups`` / ``approval_logic`` fields on
+    WorkflowDefinition are left unchanged (they are ignored when stages
+    exist).
     """
 
     nodes = workflow_data.get("nodes", [])
 
-    # Extract workflow configuration from nodes
-    requires_approval = False
-    requires_manager_approval = False
-    approval_groups = []
-    approval_logic = "any"
+    # ── Classify nodes ──────────────────────────────────────────────────
+    stage_nodes = []
     action_nodes = []
     email_nodes = []
+    settings_data = {}
 
     for node in nodes:
-        if node["type"] == "approval_config":
-            # Extract approval configuration from the approval_config node
-            data = node.get("data", {})
-            requires_manager_approval = data.get("requires_manager_approval", False)
-            approval_groups_data = data.get("approval_groups", [])
-            approval_logic = data.get("approval_logic", "any")
-
-            # Extract group IDs
-            for group_data in approval_groups_data:
-                approval_groups.append(group_data["id"])
-
-            # Set requires_approval if any approval is configured
-            requires_approval = requires_manager_approval or len(approval_groups) > 0
-
-        elif node["type"] == "approval":
-            requires_approval = True
-            data = node.get("data", {})
-
-            if data.get("approval_type") == "manager":
-                requires_manager_approval = True
-            elif data.get("approval_type") == "group":
-                group_id = data.get("group_id")
-                if group_id:
-                    approval_groups.append(group_id)
-            elif data.get("approval_type") == "parallel":
-                approval_logic = data.get("logic", "any")
-                for group_data in data.get("groups", []):
-                    approval_groups.append(group_data["id"])
-
-        elif node["type"] == "action":
+        node_type = node.get("type")
+        if node_type == "stage":
+            stage_nodes.append(node)
+        elif node_type == "action":
             action_nodes.append(node)
-
-        elif node["type"] == "email":
+        elif node_type == "email":
             email_nodes.append(node)
+        elif node_type == "workflow_settings":
+            settings_data = node.get("data", {})
+        # Legacy approval_config node — treat as a single stage
+        elif node_type == "approval_config":
+            data = node.get("data", {})
+            approval_groups = data.get("approval_groups", [])
+            has_manager = data.get("requires_manager_approval", False)
+            if approval_groups or has_manager:
+                stage_nodes.append(
+                    {
+                        "type": "stage",
+                        "data": {
+                            "stage_id": None,
+                            "name": "Approval",
+                            "order": 1,
+                            "approval_logic": data.get("approval_logic", "any"),
+                            "requires_manager_approval": has_manager,
+                            "approve_label": "",
+                            "approval_groups": approval_groups,
+                        },
+                    }
+                )
 
-    # Create or update workflow
-    workflow, created = WorkflowDefinition.objects.update_or_create(
+    requires_approval = len(stage_nodes) > 0
+
+    # ── Workflow-level settings ──────────────────────────────────────────
+    wf_defaults = {
+        "requires_approval": settings_data.get("requires_approval", requires_approval),
+        "visual_workflow_data": workflow_data,
+        "notify_on_submission": settings_data.get("notify_on_submission", True),
+        "notify_on_approval": settings_data.get("notify_on_approval", True),
+        "notify_on_rejection": settings_data.get("notify_on_rejection", True),
+        "notify_on_withdrawal": settings_data.get("notify_on_withdrawal", True),
+        "notification_cadence": settings_data.get("notification_cadence", "immediate"),
+        "escalation_field": settings_data.get("escalation_field", ""),
+    }
+
+    # Optional numeric fields
+    for key in (
+        "approval_deadline_days",
+        "send_reminder_after_days",
+        "auto_approve_after_days",
+    ):
+        raw = settings_data.get(key)
+        wf_defaults[key] = int(raw) if raw not in (None, "") else None
+
+    raw_threshold = settings_data.get("escalation_threshold")
+    if raw_threshold not in (None, ""):
+        from decimal import Decimal, InvalidOperation
+
+        try:
+            wf_defaults["escalation_threshold"] = Decimal(raw_threshold)
+        except (InvalidOperation, ValueError):
+            wf_defaults["escalation_threshold"] = None
+    else:
+        wf_defaults["escalation_threshold"] = None
+
+    workflow, _created = WorkflowDefinition.objects.update_or_create(
         form_definition=form_definition,
-        defaults={
-            "requires_approval": requires_approval,
-            "requires_manager_approval": requires_manager_approval,
-            "approval_logic": approval_logic,
-            "visual_workflow_data": workflow_data,  # Store the visual layout
-        },
+        defaults=wf_defaults,
     )
 
-    # Update approval groups
-    if approval_groups:
-        workflow.approval_groups.set(approval_groups)
+    # Escalation groups
+    esc_ids = [g["id"] for g in settings_data.get("escalation_groups", [])]
+    if esc_ids:
+        workflow.escalation_groups.set(esc_ids)
     else:
-        workflow.approval_groups.clear()
+        workflow.escalation_groups.clear()
 
-    # Handle post-submission actions - clear existing and recreate
-    # Get existing actions to preserve IDs where possible
+    # ── Persist stages ──────────────────────────────────────────────────
+    existing_stage_ids = set(workflow.stages.values_list("id", flat=True))
+    kept_stage_ids = set()
+
+    for idx, snode in enumerate(stage_nodes, start=1):
+        sdata = snode.get("data", {})
+        stage_id = sdata.get("stage_id")
+        group_ids = [g["id"] for g in sdata.get("approval_groups", [])]
+
+        stage_fields = {
+            "name": sdata.get("name", f"Stage {idx}"),
+            "order": sdata.get("order", idx),
+            "approval_logic": sdata.get("approval_logic", "all"),
+            "requires_manager_approval": sdata.get("requires_manager_approval", False),
+            "approve_label": sdata.get("approve_label", ""),
+        }
+
+        if stage_id and stage_id in existing_stage_ids:
+            WorkflowStage.objects.filter(id=stage_id).update(**stage_fields)
+            stage = WorkflowStage.objects.get(id=stage_id)
+            kept_stage_ids.add(stage_id)
+        else:
+            stage = WorkflowStage.objects.create(workflow=workflow, **stage_fields)
+            kept_stage_ids.add(stage.id)
+
+        stage.approval_groups.set(group_ids)
+
+    # Delete stages that were removed in the builder
+    workflow.stages.exclude(id__in=kept_stage_ids).delete()
+
+    # ── Post-submission actions (unchanged logic) ───────────────────────
     existing_actions = {
         action.name: action for action in form_definition.post_actions.all()
     }
-
-    # Track which actions we're keeping
     actions_to_keep = []
 
-    # Create/update action nodes
     for node in action_nodes:
         data = node.get("data", {})
         action_name = data.get("name", "Unnamed Action")
         action_type = data.get("action_type", "database")
 
-        # Parse config JSON if it's a string
         config = data.get("config", {})
         if isinstance(config, str):
             try:
@@ -543,15 +577,12 @@ def convert_visual_to_workflow(workflow_data, form_definition):
             except json.JSONDecodeError:
                 config = {}
 
-        # Prepare action data based on action type
         action_data = {
             "action_type": action_type,
             "trigger": data.get("trigger", "on_approve"),
         }
 
-        # Set the appropriate field mapping based on action type
         if action_type == "database":
-            # Handle new structured config format
             action_data["db_alias"] = config.get("db_alias", "")
             action_data["db_schema"] = config.get("db_schema", "")
             action_data["db_table"] = config.get("db_table", "")
@@ -561,7 +592,6 @@ def convert_visual_to_workflow(workflow_data, form_definition):
                 "field_mappings", config if isinstance(config, list) else []
             )
         elif action_type == "ldap":
-            # Handle new structured config format
             action_data["ldap_dn_template"] = config.get("ldap_dn_template", "")
             action_data["ldap_field_mappings"] = config.get(
                 "field_mappings", config if isinstance(config, list) else []
@@ -574,7 +604,6 @@ def convert_visual_to_workflow(workflow_data, form_definition):
         elif action_type == "custom":
             action_data["custom_handler_config"] = config
 
-        # Update existing or create new
         if action_name in existing_actions:
             action = existing_actions[action_name]
             for key, value in action_data.items():
@@ -586,22 +615,14 @@ def convert_visual_to_workflow(workflow_data, form_definition):
             )
         actions_to_keep.append(action.id)
 
-    # Create/update email nodes as actions
     for node in email_nodes:
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
-
-        # Note: Email actions don't have dedicated fields in PostSubmissionAction yet
-        # For now, we just create the action with basic info
-        # TODO: Add email-specific fields to PostSubmissionAction model
-
         action_data = {
             "action_type": "email",
             "trigger": data.get("trigger", "on_approve"),
             "description": f"Email to: {data.get('to', '')}, Subject: {data.get('subject', '')}",
         }
-
-        # Update existing or create new
         if action_name in existing_actions:
             action = existing_actions[action_name]
             for key, value in action_data.items():
@@ -613,7 +634,6 @@ def convert_visual_to_workflow(workflow_data, form_definition):
             )
         actions_to_keep.append(action.id)
 
-    # Delete actions that are no longer in the workflow
     form_definition.post_actions.exclude(id__in=actions_to_keep).delete()
 
     return workflow

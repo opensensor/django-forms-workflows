@@ -59,6 +59,7 @@
     }
     
     .palette-node.form { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .palette-node.stage { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
     .palette-node.approval { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
     .palette-node.condition { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
     .palette-node.action { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
@@ -181,6 +182,8 @@
     
     .node-icon.start { background: #28a745; color: white; }
     .node-icon.form { background: #667eea; color: white; }
+    .node-icon.workflow_settings { background: #6c757d; color: white; }
+    .node-icon.stage { background: #e83e8c; color: white; }
     .node-icon.approval_config { background: #ffc107; color: #333; }
     .node-icon.approval { background: #f5576c; color: white; }
     .node-icon.condition { background: #00f2fe; color: white; }
@@ -405,6 +408,11 @@
         <div class="palette-node form" draggable="true" data-node-type="form">
             <i class="bi bi-file-earmark-text"></i>
             <span>Form</span>
+        </div>
+
+        <div class="palette-node stage" draggable="true" data-node-type="stage">
+            <i class="bi bi-layers"></i>
+            <span>Approval Stage</span>
         </div>
 
         <div class="palette-node approval" draggable="true" data-node-type="approval">

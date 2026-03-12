@@ -46,11 +46,22 @@ except Exception:  # pragma: no cover
 
 
 def _base_url() -> str:
-    return (
-        getattr(settings, "FORMS_WORKFLOWS_BASE_URL", None)
-        or getattr(settings, "SITE_BASE_URL", None)
-        or ""
+    """Return the base URL (scheme + domain) for building absolute links in emails.
+
+    Checks, in order:
+    1. ``settings.FORMS_WORKFLOWS_BASE_URL``
+    2. ``settings.SITE_BASE_URL``
+    3. First entry in ``settings.CSRF_TRUSTED_ORIGINS``
+    """
+    url = getattr(settings, "FORMS_WORKFLOWS_BASE_URL", None) or getattr(
+        settings, "SITE_BASE_URL", None
     )
+    if url:
+        return url
+    origins = getattr(settings, "CSRF_TRUSTED_ORIGINS", None)
+    if origins:
+        return origins[0]
+    return ""
 
 
 def _abs(url_path: str) -> str:

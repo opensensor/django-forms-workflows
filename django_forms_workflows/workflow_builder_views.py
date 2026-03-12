@@ -450,6 +450,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 "sub_workflow_def_id": sub_wf_config.id,
                 "sub_workflow_id": sub_wf.form_definition_id,
                 "sub_workflow_name": sub_wf.form_definition.name,
+                "section_label": sub_wf_config.section_label,
                 "count_field": sub_wf_config.count_field,
                 "label_template": sub_wf_config.label_template,
                 "trigger": sub_wf_config.trigger,
@@ -670,6 +671,7 @@ def convert_visual_to_workflow(workflow_data, form_definition):
             if target_workflow:
                 sw_fields = {
                     "sub_workflow": target_workflow,
+                    "section_label": sw_data.get("section_label", ""),
                     "count_field": sw_data.get("count_field", ""),
                     "label_template": sw_data.get(
                         "label_template", "Sub-workflow {index}"

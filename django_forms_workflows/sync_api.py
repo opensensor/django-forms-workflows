@@ -241,6 +241,7 @@ def _serialize_sub_workflow_config(swc):
         return None
     return {
         "sub_workflow_form_slug": swc.sub_workflow.form_definition.slug,
+        "section_label": swc.section_label,
         "count_field": swc.count_field,
         "label_template": swc.label_template,
         "trigger": swc.trigger,
@@ -586,6 +587,7 @@ def import_form(form_data, conflict="update", category_cache=None):
                     parent_workflow=wf,
                     defaults={
                         "sub_workflow": sub_wf_form.workflow,
+                        "section_label": sub_wf_data.get("section_label", ""),
                         "count_field": sub_wf_data.get("count_field", ""),
                         "label_template": sub_wf_data.get(
                             "label_template", "Sub-workflow {index}"

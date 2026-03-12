@@ -593,6 +593,17 @@ def submission_detail(request, submission_id):
             stage_groups = sorted(parent_groups.values(), key=lambda x: x["number"])
         if sub_groups:
             sub_workflow_groups = sorted(sub_groups.values(), key=lambda x: x["number"])
+            # Resolve the user-facing section label from SubWorkflowDefinition
+            if workflow:
+                sub_wf_config = getattr(workflow, "sub_workflow_config", None)
+                if sub_wf_config and sub_wf_config.section_label:
+                    for sg in sub_workflow_groups:
+                        sg["section_label"] = sub_wf_config.section_label
+                elif sub_wf_config:
+                    # Fall back to the sub-workflow's form definition name
+                    sg_name = sub_wf_config.sub_workflow.form_definition.name
+                    for sg in sub_workflow_groups:
+                        sg["section_label"] = sg_name
 
     # Resolve fresh presigned URLs for any file-upload fields
     form_data = _resolve_form_data_urls(submission.form_data)

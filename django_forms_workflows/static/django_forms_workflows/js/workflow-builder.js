@@ -378,6 +378,7 @@ class WorkflowBuilder {
                     sub_workflow_def_id: null,
                     sub_workflow_id: null,
                     sub_workflow_name: '',
+                    section_label: '',
                     count_field: '',
                     label_template: 'Sub-workflow {index}',
                     trigger: 'on_approval',
@@ -958,6 +959,15 @@ class WorkflowBuilder {
             </div>
 
             <div class="mb-3">
+                <label class="form-label"><strong>Section Label</strong></label>
+                <input type="text" class="form-control" name="section_label"
+                       value="${this.escapeHtml(data.section_label || '')}"
+                       placeholder="e.g. Payment Approvals"
+                       onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')" />
+                <small class="text-muted">Heading shown to end users in approval history. If blank, uses the workflow name.</small>
+            </div>
+
+            <div class="mb-3">
                 <label class="form-label"><strong>Count Field</strong></label>
                 <select class="form-select" name="count_field"
                         onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
@@ -1027,6 +1037,7 @@ class WorkflowBuilder {
         const selectedOption = subWfSelect.selectedOptions[0];
         node.data.sub_workflow_name = selectedOption && selectedOption.value ? selectedOption.text : '';
 
+        node.data.section_label = container.querySelector('input[name="section_label"]').value;
         node.data.count_field = container.querySelector('select[name="count_field"]').value;
         node.data.label_template = container.querySelector('input[name="label_template"]').value;
         node.data.trigger = container.querySelector('select[name="trigger"]').value;

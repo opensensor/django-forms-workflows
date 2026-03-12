@@ -2126,6 +2126,12 @@ class SubWorkflowDefinition(models.Model):
         max_length=100,
         help_text="Form field name whose integer value determines how many sub-workflows to spawn (e.g. 'number_of_payments')",
     )
+    section_label = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Heading shown to end users in the approval history (e.g. 'Payment Approvals'). "
+        "If blank, defaults to the sub-workflow form name.",
+    )
     label_template = models.CharField(
         max_length=100,
         default="Sub-workflow {index}",

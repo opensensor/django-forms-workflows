@@ -14,11 +14,6 @@ in *staged mode*:
   tasks for the next stage.  When the final stage completes the submission is
   finalised.
 
-Legacy (flat) mode
-------------------
-WorkflowDefinitions with no WorkflowStage rows continue to use the existing
-flat approval_logic + approval_groups path unchanged.
-
 Rejection semantics
 -------------------
 * "all" / "sequence" — one rejection vetoes the whole submission immediately.
@@ -396,77 +391,17 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
             _finalize_submission(submission)
         return
 
-    # --- Legacy flat mode ---
-
-    # 1) Manager approval (first step if required)
-    manager_task_created = False
-    if getattr(workflow, "requires_manager_approval", False):
-        try:
-            from .ldap_backend import get_user_manager
-        except Exception:
-            get_user_manager = None  # type: ignore
-        manager = get_user_manager(submission.submitter) if get_user_manager else None
-        if manager:
-            task = ApprovalTask.objects.create(
-                submission=submission,
-                assigned_to=manager,
-                step_name="Manager Approval",
-                status="pending",
-                due_date=due_date,
-            )
-            manager_task_created = True
-            _notify_task_request(task)
-        else:
-            logger.info(
-                "Manager approval required but manager not found for user %s",
-                submission.submitter,
-            )
-
-    if manager_task_created:
-        return
-
-    # 2) Group approvals
-    groups = list(workflow.approval_groups.all().order_by("id"))
-    if not groups:
-        _finalize_submission(submission)
-        return
-
-    if workflow.approval_logic == "sequence":
-        g = groups[0]
-        task = ApprovalTask.objects.create(
-            submission=submission,
-            assigned_group=g,
-            step_name=f"{g.name} Approval (Step 1 of {len(groups)})",
-            step_number=1,
-            status="pending",
-            due_date=due_date,
-        )
-        _notify_task_request(task)
-    else:
-        # "all" or "any" → parallel tasks for every group
-        for g in groups:
-            task = ApprovalTask.objects.create(
-                submission=submission,
-                assigned_group=g,
-                step_name=f"{g.name} Approval",
-                status="pending",
-                due_date=due_date,
-            )
-            _notify_task_request(task)
+    # No stages configured — nothing to approve.
+    _finalize_submission(submission)
 
 
 @transaction.atomic
 def handle_approval(
     submission: FormSubmission, task: ApprovalTask, workflow: WorkflowDefinition
 ) -> None:
-    """Advance the workflow after an approval event on a task.
-
-    Dispatches to staged or legacy logic based on whether the task has an
-    associated ``workflow_stage``.
-    """
+    """Advance the workflow after an approval event on a staged task."""
     due_date = _due_date_for(workflow)
 
-    # ------------------------------------------------------------------ staged
     if task.workflow_stage:
         stage = task.workflow_stage
         stages = list(workflow.stages.order_by("order", "id"))
@@ -563,86 +498,8 @@ def handle_approval(
 
         return
 
-    # ------------------------------------------------------------------ legacy
-    is_manager_task = (
-        task.assigned_to_id is not None and task.step_name.lower().startswith("manager")
-    )
-
-    if is_manager_task:
-        groups = list(workflow.approval_groups.all().order_by("id"))
-        if not groups:
-            _finalize_submission(submission)
-            return
-        if workflow.approval_logic == "sequence":
-            g = groups[0]
-            new_task = ApprovalTask.objects.create(
-                submission=submission,
-                assigned_group=g,
-                step_name=f"{g.name} Approval (Step 1 of {len(groups)})",
-                step_number=1,
-                status="pending",
-                due_date=due_date,
-            )
-            _notify_task_request(new_task)
-        else:
-            for g in groups:
-                new_task = ApprovalTask.objects.create(
-                    submission=submission,
-                    assigned_group=g,
-                    step_name=f"{g.name} Approval",
-                    status="pending",
-                    due_date=due_date,
-                )
-                _notify_task_request(new_task)
-        return
-
-    logic = workflow.approval_logic
-
-    if logic == "any":
-        submission.approval_tasks.filter(
-            status="pending", assigned_group__isnull=False
-        ).exclude(id=task.id).update(status="skipped")
-        _finalize_submission(submission)
-        return
-
-    if logic == "all":
-        if not submission.approval_tasks.filter(
-            status="pending", assigned_group__isnull=False
-        ).exists():
-            _finalize_submission(submission)
-        return
-
-    if logic == "sequence":
-        groups = list(workflow.approval_groups.all().order_by("id"))
-        if not groups:
-            _finalize_submission(submission)
-            return
-        ids = [g.id for g in groups]
-        try:
-            idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]
-        except ValueError:
-            idx = -1
-
-        if idx == -1:
-            if not submission.approval_tasks.filter(
-                status="pending", assigned_group__isnull=False
-            ).exists():
-                _finalize_submission(submission)
-            return
-
-        if idx + 1 < len(groups):
-            next_group = groups[idx + 1]
-            new_task = ApprovalTask.objects.create(
-                submission=submission,
-                assigned_group=next_group,
-                step_name=f"{next_group.name} Approval (Step {idx + 2} of {len(groups)})",
-                step_number=idx + 2,
-                status="pending",
-                due_date=due_date,
-            )
-            _notify_task_request(new_task)
-        else:
-            _finalize_submission(submission)
+    # No workflow stage — task has no stage context; just finalize.
+    _finalize_submission(submission)
 
 
 @transaction.atomic
@@ -651,7 +508,7 @@ def handle_rejection(
 ) -> None:
     """Handle a rejection event on an approval task.
 
-    Semantics depend on the active ``approval_logic`` (per-stage or top-level):
+    Semantics depend on the stage's ``approval_logic``:
 
     * ``"all"`` / ``"sequence"`` — one rejection immediately vetoes the
       submission and cancels all remaining pending tasks.
@@ -664,7 +521,7 @@ def handle_rejection(
         logic = task.workflow_stage.approval_logic
         scope_qs = submission.approval_tasks.filter(workflow_stage=task.workflow_stage)
     else:
-        logic = workflow.approval_logic
+        logic = "all"
         scope_qs = submission.approval_tasks.filter(
             workflow_stage__isnull=True,
             assigned_group__isnull=False,
@@ -722,25 +579,12 @@ def execute_post_approval_updates(submission: FormSubmission) -> None:
     """Perform post-approval updates if configured.
 
     Executes post-submission actions with 'on_approve' trigger.
-    Also supports legacy db_update_mappings for backward compatibility.
     """
     # Execute new post-submission actions
     execute_post_submission_actions(submission, "on_approve")
 
     # Execute file workflow hooks for approval
     execute_file_workflow_hooks(submission, "on_approve")
-
-    # Legacy support for db_update_mappings
-    workflow: WorkflowDefinition | None = getattr(
-        submission.form_definition, "workflow", None
-    )
-    if workflow and getattr(workflow, "enable_db_updates", False):
-        mappings = getattr(workflow, "db_update_mappings", None)
-        if mappings:
-            logger.info(
-                "Legacy db_update_mappings detected. "
-                "Consider migrating to PostSubmissionAction model for better configurability."
-            )
 
 
 def execute_file_workflow_hooks(submission: FormSubmission, trigger: str) -> None:

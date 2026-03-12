@@ -6,7 +6,6 @@ Provides helper functions for permissions, LDAP integration, and workflow logic.
 
 import logging
 import re
-from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -266,36 +265,13 @@ def user_can_view_submission(user, submission: FormSubmission) -> bool:
 
 
 def check_escalation_needed(submission: FormSubmission) -> bool:
+    """Check if a submission needs escalation.
+
+    The legacy escalation_field/escalation_threshold fields have been removed.
+    Escalation should now be modelled as conditional approval stages.
+    This stub is kept for backward compatibility with any external callers.
     """
-    Check if a submission needs escalation based on workflow rules.
-
-    Args:
-        submission: FormSubmission object
-
-    Returns:
-        Boolean indicating if escalation is needed
-    """
-    workflow = getattr(submission.form_definition, "workflow", None)
-    if not workflow:
-        return False
-
-    if not workflow.escalation_field or not workflow.escalation_threshold:
-        return False
-
-    # Check if the escalation field value exceeds threshold
-    field_value = submission.form_data.get(workflow.escalation_field)
-    if field_value is None:
-        return False
-
-    try:
-        value = Decimal(str(field_value))
-        threshold = workflow.escalation_threshold
-        return value > threshold
-    except (ValueError, TypeError):
-        logger.warning(
-            f"Could not compare escalation field value: {field_value} for submission {submission.id}"
-        )
-        return False
+    return False
 
 
 def sync_ldap_groups():

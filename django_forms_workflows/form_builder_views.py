@@ -133,8 +133,7 @@ def form_builder_clone(request, form_id):
                     max_length=field.max_length,
                     regex_validation=field.regex_validation,
                     regex_error_message=field.regex_error_message,
-                    show_if_field=field.show_if_field,
-                    show_if_value=field.show_if_value,
+                    conditional_rules=field.conditional_rules,
                     allowed_extensions=field.allowed_extensions,
                     max_file_size_mb=field.max_file_size_mb,
                 )
@@ -229,8 +228,7 @@ def form_builder_load(request, form_id):
                 "regex_error_message": field.regex_error_message or "",
             },
             "conditional": {
-                "show_if_field": field.show_if_field,
-                "show_if_value": field.show_if_value or "",
+                "conditional_rules": field.conditional_rules or [],
             },
             "workflow_stage_id": field.workflow_stage_id,
         }
@@ -377,17 +375,15 @@ def form_builder_save(request):
 
                 # Add conditional properties
                 conditional = field_data.get("conditional", {})
-                field_props.update(
-                    {
-                        "show_if_field": conditional.get("show_if_field", ""),
-                        "show_if_value": conditional.get("show_if_value", ""),
-                    }
+                conditional_rules = conditional.get(
+                    "conditional_rules",
+                    field_data.get("conditional_rules"),
                 )
 
                 # Add client-side enhancement properties
                 field_props.update(
                     {
-                        "conditional_rules": field_data.get("conditional_rules"),
+                        "conditional_rules": conditional_rules,
                         "validation_rules": field_data.get("validation_rules"),
                         "field_dependencies": field_data.get("field_dependencies"),
                         "step_number": field_data.get("step_number"),
@@ -530,10 +526,10 @@ def form_builder_preview(request):
                 if validation.get("max_length") is not None:
                     field_kwargs["max_length"] = validation.get("max_length")
 
-                # Only set show_if_field if it has a value (SlugField doesn't accept empty string)
-                if conditional.get("show_if_field"):
-                    field_kwargs["show_if_field"] = conditional.get("show_if_field")
-                    field_kwargs["show_if_value"] = conditional.get("show_if_value", "")
+                # Conditional rules
+                cond_rules = conditional.get("conditional_rules")
+                if cond_rules:
+                    field_kwargs["conditional_rules"] = cond_rules
 
                 FormField.objects.create(**field_kwargs)
 

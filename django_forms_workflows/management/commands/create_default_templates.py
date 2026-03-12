@@ -52,7 +52,7 @@ class Command(BaseCommand):
                                 "regex_validation": "",
                                 "regex_error_message": "",
                             },
-                            "conditional": {"show_if_field": "", "show_if_value": ""},
+                            "conditional": {},
                         },
                         {
                             "order": 2,
@@ -75,7 +75,7 @@ class Command(BaseCommand):
                                 "regex_validation": "",
                                 "regex_error_message": "",
                             },
-                            "conditional": {"show_if_field": "", "show_if_value": ""},
+                            "conditional": {},
                         },
                         {
                             "order": 3,
@@ -98,7 +98,7 @@ class Command(BaseCommand):
                                 "regex_validation": "",
                                 "regex_error_message": "",
                             },
-                            "conditional": {"show_if_field": "", "show_if_value": ""},
+                            "conditional": {},
                         },
                         {
                             "order": 4,
@@ -121,7 +121,7 @@ class Command(BaseCommand):
                                 "regex_validation": "",
                                 "regex_error_message": "",
                             },
-                            "conditional": {"show_if_field": "", "show_if_value": ""},
+                            "conditional": {},
                         },
                     ],
                 },

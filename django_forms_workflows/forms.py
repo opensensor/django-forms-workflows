@@ -482,25 +482,8 @@ class DynamicForm(forms.Form):
 
         # Collect conditional rules from all fields
         for field in self.form_definition.fields.all():
-            # Legacy simple conditional logic
-            if field.show_if_field and field.show_if_value:
-                config["conditionalRules"].append(
-                    {
-                        "targetField": field.field_name,
-                        "action": "show",
-                        "operator": "AND",
-                        "conditions": [
-                            {
-                                "field": field.show_if_field,
-                                "operator": "equals",
-                                "value": field.show_if_value,
-                            }
-                        ],
-                    }
-                )
-
-            # Advanced conditional rules
-            if hasattr(field, "conditional_rules") and field.conditional_rules:
+            # Conditional rules
+            if field.conditional_rules:
                 if isinstance(field.conditional_rules, str):
                     try:
                         rules = json.loads(field.conditional_rules)

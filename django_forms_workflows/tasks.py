@@ -432,12 +432,10 @@ def send_approval_request(task_id: int) -> None:
             "stage_total_approvers": sibling_tasks,
         }
     elif task.step_number:
-        # Legacy sequential: show step info
-        workflow = getattr(task.submission.form_definition, "workflow", None)
-        total_steps = workflow.approval_groups.count() if workflow else 1
+        # Legacy sequential tasks (pre-staged)
         stage_context = {
             "stage_number": task.step_number,
-            "total_stages": total_steps,
+            "total_stages": task.step_number,
             "stage_approval_logic": "sequence",
             "stage_total_approvers": 1,
         }
@@ -544,22 +542,8 @@ def check_approval_deadlines() -> str:
                 task.save(update_fields=["status"])  # mark expired
                 expired_count += 1
 
-                # Escalate to configured groups upon expiry
-                try:
-                    groups = list(getattr(workflow, "escalation_groups", []).all())
-                except Exception:
-                    groups = []
-                for g in groups:
-                    for user in g.user_set.all():
-                        email = getattr(user, "email", None)
-                        if not email:
-                            continue
-                        try:
-                            from .tasks import send_escalation_notification
-
-                            send_escalation_notification.delay(task.id, to_email=email)
-                        except Exception:
-                            pass
+                # Escalation groups have been removed.
+                # Escalation should now be modelled as conditional stages.
 
                 # Optional auto-approve after grace period
                 if (

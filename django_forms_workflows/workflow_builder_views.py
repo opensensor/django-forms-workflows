@@ -164,9 +164,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     """
     Convert WorkflowDefinition model to visual workflow format.
 
-    Reads WorkflowStage records to build stage nodes.  Falls back to the
-    deprecated flat approval_groups/approval_logic on WorkflowDefinition
-    only when no stages exist.
+    Reads WorkflowStage records to build stage nodes.
     """
     # Check if visual workflow data exists AND has the correct format (nodes array)
     if workflow.visual_workflow_data:
@@ -261,13 +259,6 @@ def convert_workflow_to_visual(workflow, form_definition):
             "send_reminder_after_days": workflow.send_reminder_after_days,
             "auto_approve_after_days": workflow.auto_approve_after_days,
             "notification_cadence": workflow.notification_cadence,
-            "escalation_field": workflow.escalation_field or "",
-            "escalation_threshold": str(workflow.escalation_threshold)
-            if workflow.escalation_threshold is not None
-            else "",
-            "escalation_groups": [
-                {"id": g.id, "name": g.name} for g in workflow.escalation_groups.all()
-            ],
             "notify_on_submission": workflow.notify_on_submission,
             "notify_on_approval": workflow.notify_on_approval,
             "notify_on_rejection": workflow.notify_on_rejection,
@@ -368,36 +359,6 @@ def convert_workflow_to_visual(workflow, form_definition):
                 last_node_id = join_node["id"]
                 node_id_counter += 1
                 current_x += horizontal_spacing
-    else:
-        # Legacy flat fallback — represent as a single stage node
-        flat_groups = list(workflow.approval_groups.all())
-        has_manager = workflow.requires_manager_approval
-        has_groups = len(flat_groups) > 0
-
-        if has_manager or has_groups:
-            stage_node = {
-                "id": f"node_{node_id_counter}",
-                "type": "stage",
-                "x": current_x,
-                "y": current_y,
-                "data": {
-                    "stage_id": None,
-                    "name": "Approval",
-                    "order": 1,
-                    "approval_logic": workflow.approval_logic if has_groups else "any",
-                    "requires_manager_approval": has_manager,
-                    "approve_label": "",
-                    "approval_groups": [
-                        {"id": g.id, "name": g.name} for g in flat_groups
-                    ],
-                },
-            }
-            nodes.append(stage_node)
-            connections.append({"from": last_node_id, "to": stage_node["id"]})
-            last_node_id = stage_node["id"]
-            node_id_counter += 1
-            current_x += horizontal_spacing
-
     # Post-submission actions
     actions = form_definition.post_actions.filter(is_active=True).order_by("order")
 
@@ -531,10 +492,7 @@ def convert_visual_to_workflow(workflow_data, form_definition):
     """
     Convert visual workflow format to WorkflowDefinition model.
 
-    Stage nodes are persisted as WorkflowStage records.  The deprecated
-    flat ``approval_groups`` / ``approval_logic`` fields on
-    WorkflowDefinition are left unchanged (they are ignored when stages
-    exist).
+    Stage nodes are persisted as WorkflowStage records.
     """
 
     nodes = workflow_data.get("nodes", [])
@@ -558,26 +516,6 @@ def convert_visual_to_workflow(workflow_data, form_definition):
             sub_workflow_nodes.append(node)
         elif node_type == "workflow_settings":
             settings_data = node.get("data", {})
-        # Legacy approval_config node — treat as a single stage
-        elif node_type == "approval_config":
-            data = node.get("data", {})
-            approval_groups = data.get("approval_groups", [])
-            has_manager = data.get("requires_manager_approval", False)
-            if approval_groups or has_manager:
-                stage_nodes.append(
-                    {
-                        "type": "stage",
-                        "data": {
-                            "stage_id": None,
-                            "name": "Approval",
-                            "order": 1,
-                            "approval_logic": data.get("approval_logic", "any"),
-                            "requires_manager_approval": has_manager,
-                            "approve_label": "",
-                            "approval_groups": approval_groups,
-                        },
-                    }
-                )
 
     requires_approval = len(stage_nodes) > 0
 
@@ -590,7 +528,6 @@ def convert_visual_to_workflow(workflow_data, form_definition):
         "notify_on_rejection": settings_data.get("notify_on_rejection", True),
         "notify_on_withdrawal": settings_data.get("notify_on_withdrawal", True),
         "notification_cadence": settings_data.get("notification_cadence", "immediate"),
-        "escalation_field": settings_data.get("escalation_field", ""),
     }
 
     # Optional numeric fields
@@ -602,28 +539,10 @@ def convert_visual_to_workflow(workflow_data, form_definition):
         raw = settings_data.get(key)
         wf_defaults[key] = int(raw) if raw not in (None, "") else None
 
-    raw_threshold = settings_data.get("escalation_threshold")
-    if raw_threshold not in (None, ""):
-        from decimal import Decimal, InvalidOperation
-
-        try:
-            wf_defaults["escalation_threshold"] = Decimal(raw_threshold)
-        except (InvalidOperation, ValueError):
-            wf_defaults["escalation_threshold"] = None
-    else:
-        wf_defaults["escalation_threshold"] = None
-
     workflow, _created = WorkflowDefinition.objects.update_or_create(
         form_definition=form_definition,
         defaults=wf_defaults,
     )
-
-    # Escalation groups
-    esc_ids = [g["id"] for g in settings_data.get("escalation_groups", [])]
-    if esc_ids:
-        workflow.escalation_groups.set(esc_ids)
-    else:
-        workflow.escalation_groups.clear()
 
     # ── Persist stages ──────────────────────────────────────────────────
     existing_stage_ids = set(workflow.stages.values_list("id", flat=True))

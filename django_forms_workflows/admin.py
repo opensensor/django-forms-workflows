@@ -84,7 +84,7 @@ class FormFieldInline(admin.StackedInline):
             "Conditional display",
             {
                 "classes": ("collapse",),
-                "fields": (("show_if_field", "show_if_value"),),
+                "fields": ("conditional_rules",),
             },
         ),
         (
@@ -275,16 +275,10 @@ class WorkflowDefinitionInline(admin.StackedInline):
     extra = 0
     fields = [
         "requires_approval",
-        ("approval_groups", "approval_logic"),
-        "requires_manager_approval",
-        ("escalation_field", "escalation_threshold", "escalation_groups"),
         ("notify_on_submission", "notify_on_approval", "notify_on_rejection"),
         "additional_notify_emails",
-        "enable_db_updates",
-        "db_update_mappings",
         ("allow_bulk_export", "allow_bulk_pdf_export"),
     ]
-    filter_horizontal = ["approval_groups", "escalation_groups"]
 
 
 @admin.register(FormDefinition)
@@ -497,8 +491,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                             max_length=field.max_length,
                             regex_validation=field.regex_validation,
                             regex_error_message=field.regex_error_message,
-                            show_if_field=field.show_if_field,
-                            show_if_value=field.show_if_value,
+                            conditional_rules=field.conditional_rules,
                             allowed_extensions=field.allowed_extensions,
                             max_file_size_mb=field.max_file_size_mb,
                         )
@@ -937,46 +930,23 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
     list_display = (
         "form_definition",
         "requires_approval",
-        "approval_logic",
-        "requires_manager_approval",
         "allow_bulk_export",
         "allow_bulk_pdf_export",
     )
     list_filter = (
         "requires_approval",
-        "approval_logic",
-        "requires_manager_approval",
         "allow_bulk_export",
         "allow_bulk_pdf_export",
     )
     search_fields = ("form_definition__name",)
-    filter_horizontal = ("approval_groups", "escalation_groups")
     fieldsets = (
         (
             None,
             {
                 "fields": (
                     "form_definition",
-                    ("requires_approval", "approval_logic"),
-                    "approval_groups",
+                    "requires_approval",
                 )
-            },
-        ),
-        (
-            "Manager approval",
-            {
-                "classes": ("collapse",),
-                "fields": ("requires_manager_approval", "manager_can_override_group"),
-            },
-        ),
-        (
-            "Conditional escalation",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    ("escalation_field", "escalation_threshold"),
-                    "escalation_groups",
-                ),
             },
         ),
         (
@@ -1021,13 +991,6 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
                     "notification_cadence_time",
                     "notification_cadence_form_field",
                 ),
-            },
-        ),
-        (
-            "Post-approval DB updates",
-            {
-                "classes": ("collapse",),
-                "fields": ("enable_db_updates", "db_update_mappings"),
             },
         ),
         (

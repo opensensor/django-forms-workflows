@@ -980,9 +980,9 @@ def approve_submission(request, task_id):
                 )
             )
 
-        elif workflow.approval_logic in ("all", "any"):
-            # -------- parallel (single-stage) --------
-            workflow_mode = workflow.approval_logic
+        elif submission.approval_tasks.filter(assigned_group__isnull=False).exists():
+            # -------- legacy unstaged parallel tasks --------
+            workflow_mode = "all"
             for t in submission.approval_tasks.filter(
                 assigned_group__isnull=False
             ).select_related("assigned_group"):

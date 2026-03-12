@@ -1,5 +1,4 @@
 import json
-from decimal import Decimal
 
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
@@ -180,16 +179,20 @@ class Command(BaseCommand):
         )
         # Ensure associations and settings
         wf1.requires_approval = True
-        wf1.approval_logic = "any"
         wf1.approval_deadline_days = 7
         wf1.send_reminder_after_days = 3
-        wf1.escalation_field = "cost_estimate"
-        wf1.escalation_threshold = Decimal("1000.00")
         wf1.save()
-        wf1.approval_groups.set(
+        # Create a stage for approval
+        from django_forms_workflows.models import WorkflowStage
+
+        stage1, _ = WorkflowStage.objects.get_or_create(
+            workflow=wf1,
+            order=1,
+            defaults={"name": "Review", "approval_logic": "any"},
+        )
+        stage1.approval_groups.set(
             [groups["Barn Managers"], groups["Equipment Operators"]]
         )
-        wf1.escalation_groups.set([groups["Farm Owners"]])
         self.stdout.write(
             self.style.SUCCESS("Configured workflow for Equipment Repair Request")
         )
@@ -243,17 +246,20 @@ class Command(BaseCommand):
             form_definition=fd2,
             defaults={
                 "requires_approval": True,
-                "approval_logic": "all",
                 "approval_deadline_days": 5,
                 "send_reminder_after_days": 2,
             },
         )
         wf2.requires_approval = True
-        wf2.approval_logic = "all"
         wf2.approval_deadline_days = 5
         wf2.send_reminder_after_days = 2
         wf2.save()
-        wf2.approval_groups.set([groups["Field Crew"], groups["Barn Managers"]])
+        stage2, _ = WorkflowStage.objects.get_or_create(
+            workflow=wf2,
+            order=1,
+            defaults={"name": "Review", "approval_logic": "all"},
+        )
+        stage2.approval_groups.set([groups["Field Crew"], groups["Barn Managers"]])
         self.stdout.write(
             self.style.SUCCESS("Configured workflow for Barn Maintenance Request")
         )

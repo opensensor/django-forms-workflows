@@ -485,15 +485,7 @@ class FormField(models.Model):
             return self.prefill_source_config.get_source_identifier()
         return ""
 
-    # Conditional Display
-    show_if_field = models.SlugField(
-        blank=True, help_text="Only show if another field has specific value"
-    )
-    show_if_value = models.CharField(
-        max_length=200, blank=True, help_text="Value that triggers showing this field"
-    )
-
-    # Advanced Conditional Logic (Client-Side Enhancements)
+    # Conditional Logic (Client-Side Enhancements)
     conditional_rules = models.JSONField(
         blank=True,
         null=True,
@@ -553,19 +545,12 @@ class WorkflowDefinition(models.Model):
     """
     Approval workflow configuration.
 
-    Supports multi-step approvals with flexible routing logic:
+    Supports multi-step approvals with flexible routing logic via WorkflowStage:
     - All approvers must approve (AND)
     - Any approver can approve (OR)
     - Sequential approval chain
     - Manager approval from LDAP hierarchy
-    - Conditional escalation based on field values
     """
-
-    APPROVAL_LOGIC = [
-        ("all", "All must approve (AND)"),
-        ("any", "Any can approve (OR)"),
-        ("sequence", "Sequential approval chain"),
-    ]
 
     form_definition = models.OneToOneField(
         FormDefinition, related_name="workflow", on_delete=models.CASCADE
@@ -573,44 +558,6 @@ class WorkflowDefinition(models.Model):
 
     # Basic Approval
     requires_approval = models.BooleanField(default=True)
-    approval_groups = models.ManyToManyField(
-        Group,
-        related_name="can_approve_workflows",
-        blank=True,
-        help_text=(
-            "DEPRECATED — use WorkflowStage.approval_groups instead. "
-            "Flat-mode groups are auto-migrated to stages in migration 0037."
-        ),
-    )
-    approval_logic = models.CharField(
-        max_length=20, choices=APPROVAL_LOGIC, default="any"
-    )
-
-    # Manager Approval (requires LDAP integration)
-    requires_manager_approval = models.BooleanField(
-        default=False, help_text="Route to submitter's manager from LDAP"
-    )
-    manager_can_override_group = models.BooleanField(
-        default=True, help_text="Manager can approve even if not in approval group"
-    )
-
-    # Conditional Escalation
-    escalation_field = models.SlugField(
-        blank=True, help_text="Field name to check for escalation (e.g., 'amount')"
-    )
-    escalation_threshold = models.DecimalField(
-        null=True,
-        blank=True,
-        max_digits=15,
-        decimal_places=2,
-        help_text="If field value exceeds this, escalate",
-    )
-    escalation_groups = models.ManyToManyField(
-        Group,
-        related_name="escalation_workflows",
-        blank=True,
-        help_text="Additional approval needed if escalated",
-    )
 
     # Timeouts
     approval_deadline_days = models.IntegerField(
@@ -672,16 +619,6 @@ class WorkflowDefinition(models.Model):
         ),
     )
 
-    # Post-Approval Database Updates (optional feature)
-    enable_db_updates = models.BooleanField(
-        default=False, help_text="Enable database updates after approval"
-    )
-    db_update_mappings = models.JSONField(
-        blank=True,
-        null=True,
-        help_text='JSON: [{"form_field": "field_name", "db_target": "{{ db.schema.table.column }}", "update_condition": "always"}]',
-    )
-
     # Visual Workflow Builder Data
     visual_workflow_data = models.JSONField(
         blank=True,
@@ -724,8 +661,6 @@ class WorkflowStage(models.Model):
       Stage 2: Finance AND Legal approve in parallel (all)
       Stage 3: Any VP can sign off (any)
 
-    Backward-compatible: WorkflowDefinitions with no WorkflowStage rows
-    continue to use the legacy flat approval_logic + approval_groups path.
     """
 
     STAGE_LOGIC = [
@@ -767,11 +702,6 @@ class WorkflowStage(models.Model):
             "Custom label for the approve/complete button shown to the approver "
             '(e.g. "Complete", "Confirm", "Sign Off"). Defaults to "Approve" when blank.'
         ),
-    )
-    auto_created = models.BooleanField(
-        default=False,
-        editable=False,
-        help_text="True when this stage was auto-created by the legacy-to-staged data migration.",
     )
 
     class Meta:

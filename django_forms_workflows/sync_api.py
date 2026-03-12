@@ -214,8 +214,6 @@ def _serialize_field(field):
         "choices": field.choices,
         "prefill_source_config": _serialize_prefill_source(field.prefill_source_config),
         "default_value": field.default_value,
-        "show_if_field": field.show_if_field,
-        "show_if_value": field.show_if_value,
         "conditional_rules": field.conditional_rules,
         "validation_rules": field.validation_rules,
         "field_dependencies": field.field_dependencies,
@@ -257,15 +255,6 @@ def _serialize_workflow(wf):
         return None
     return {
         "requires_approval": wf.requires_approval,
-        "approval_groups": _group_names(wf.approval_groups),
-        "approval_logic": wf.approval_logic,
-        "requires_manager_approval": wf.requires_manager_approval,
-        "manager_can_override_group": wf.manager_can_override_group,
-        "escalation_field": wf.escalation_field,
-        "escalation_threshold": str(wf.escalation_threshold)
-        if wf.escalation_threshold is not None
-        else None,
-        "escalation_groups": _group_names(wf.escalation_groups),
         "approval_deadline_days": wf.approval_deadline_days,
         "send_reminder_after_days": wf.send_reminder_after_days,
         "auto_approve_after_days": wf.auto_approve_after_days,
@@ -280,8 +269,6 @@ def _serialize_workflow(wf):
         if wf.notification_cadence_time
         else None,
         "notification_cadence_form_field": wf.notification_cadence_form_field,
-        "enable_db_updates": wf.enable_db_updates,
-        "db_update_mappings": wf.db_update_mappings,
         "visual_workflow_data": wf.visual_workflow_data,
         "stages": [
             _serialize_workflow_stage(s) for s in wf.stages.all().order_by("order")
@@ -380,8 +367,6 @@ def build_export_payload(queryset):
         "workflow",
         "workflow__stages",
         "workflow__stages__approval_groups",
-        "workflow__approval_groups",
-        "workflow__escalation_groups",
         "workflow__sub_workflow_config",
         "workflow__sub_workflow_config__sub_workflow__form_definition",
         "post_actions",
@@ -535,21 +520,27 @@ def import_form(form_data, conflict="update", category_cache=None):
         nc_time = _time.fromisoformat(nc_time_str) if nc_time_str else None
         stages_data = wf_data.pop("stages", [])
         sub_wf_data = wf_data.pop("sub_workflow_config", None)
-        esc_thresh = wf_data.pop("escalation_threshold", None)
-        approval_group_names = wf_data.pop("approval_groups", [])
-        escalation_group_names = wf_data.pop("escalation_groups", [])
+
+        # Silently discard legacy keys that may appear in old exports
+        for legacy_key in (
+            "escalation_threshold",
+            "approval_groups",
+            "escalation_groups",
+            "approval_logic",
+            "requires_manager_approval",
+            "manager_can_override_group",
+            "escalation_field",
+            "enable_db_updates",
+            "db_update_mappings",
+        ):
+            wf_data.pop(legacy_key, None)
 
         wf, _ = WorkflowDefinition.objects.update_or_create(
             form_definition=form_obj,
             defaults={
                 **wf_data,
                 "notification_cadence_time": nc_time,
-                "escalation_threshold": Decimal(esc_thresh) if esc_thresh else None,
             },
-        )
-        wf.approval_groups.set([_get_or_create_group(n) for n in approval_group_names])
-        wf.escalation_groups.set(
-            [_get_or_create_group(n) for n in escalation_group_names]
         )
 
         # Update stages in-place (matched by order) so that existing
@@ -630,6 +621,8 @@ def import_form(form_data, conflict="update", category_cache=None):
         # Remove legacy fields no longer on the model (may exist in older payloads)
         field_data.pop("prefill_source", None)
         field_data.pop("approval_step", None)
+        field_data.pop("show_if_field", None)
+        field_data.pop("show_if_value", None)
         min_val = field_data.pop("min_value", None)
         max_val = field_data.pop("max_value", None)
         stage_order = field_data.pop("workflow_stage_order", None)

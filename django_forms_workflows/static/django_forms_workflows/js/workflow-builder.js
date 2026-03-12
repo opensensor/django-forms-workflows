@@ -345,20 +345,10 @@ class WorkflowBuilder {
                     send_reminder_after_days: null,
                     auto_approve_after_days: null,
                     notification_cadence: 'immediate',
-                    escalation_field: '',
-                    escalation_threshold: '',
-                    escalation_groups: [],
                     notify_on_submission: true,
                     notify_on_approval: true,
                     notify_on_rejection: true,
                     notify_on_withdrawal: true,
-                };
-            case 'approval':
-                return {
-                    approval_type: 'group',
-                    step_name: 'Approval Step',
-                    group_id: null,
-                    logic: 'any'
                 };
             case 'condition':
                 return {
@@ -474,9 +464,6 @@ class WorkflowBuilder {
                 html += this.buildStageProperties(node);
                 break;
 
-            case 'approval_config':
-                html += this.buildApprovalConfigProperties(node);
-                break;
 
             case 'approval':
                 html += this.buildApprovalProperties(node);
@@ -506,89 +493,6 @@ class WorkflowBuilder {
                 html += this.buildEndProperties(node);
                 break;
         }
-
-        return html;
-    }
-
-    buildApprovalConfigProperties(node) {
-        const data = node.data || {};
-        const approvalGroups = data.approval_groups || [];
-        const selectedGroupIds = approvalGroups.map(g => g.id);
-
-        let html = `
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Configure approval requirements for this workflow.
-            </div>
-
-            <div class="mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="requires_manager_approval"
-                           name="requires_manager_approval" ${data.requires_manager_approval ? 'checked' : ''}
-                           onchange="workflowBuilder.updateApprovalConfig('${node.id}')">
-                    <label class="form-check-label" for="requires_manager_approval">
-                        <i class="bi bi-person-badge"></i> <strong>Require Manager Approval</strong>
-                    </label>
-                </div>
-                <small class="text-muted d-block mt-1">
-                    When enabled, the submitter's manager must approve the request.
-                </small>
-            </div>
-
-            <hr />
-
-            <div class="mb-3">
-                <label class="form-label">
-                    <i class="bi bi-people"></i> <strong>Approval Groups</strong>
-                </label>
-                <small class="text-muted d-block mb-2">
-                    Select groups that can approve this workflow.
-                </small>
-                <select class="form-select" id="approval_groups" name="approval_groups" multiple size="6"
-                        style="width: 100%; min-height: 140px;"
-                        onchange="workflowBuilder.updateApprovalConfig('${node.id}')">
-        `;
-
-        this.groups.forEach(group => {
-            const selected = selectedGroupIds.includes(group.id) ? 'selected' : '';
-            html += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
-        });
-
-        html += `
-                </select>
-                <small class="text-muted d-block mt-1">
-                    Hold Ctrl/Cmd to select multiple groups.
-                </small>
-            </div>
-
-            <div class="mb-3" id="approval_logic_container" style="${approvalGroups.length > 0 ? '' : 'display:none;'}">
-                <label class="form-label">Approval Logic</label>
-                <select class="form-select" name="approval_logic"
-                        onchange="workflowBuilder.updateApprovalConfig('${node.id}')">
-                    <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>
-                        Any (OR)
-                    </option>
-                    <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>
-                        All (AND)
-                    </option>
-                    <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>
-                        Sequential
-                    </option>
-                </select>
-                <small class="text-muted d-block mt-1">
-                    <strong>Any:</strong> First approver completes the step (OR logic)<br>
-                    <strong>All:</strong> All approvers must approve (AND logic)<br>
-                    <strong>Sequential:</strong> Approvers must approve in order
-                </small>
-            </div>
-
-            <hr />
-
-            <div class="alert ${data.is_implicit ? 'alert-success' : 'alert-warning'} mb-0">
-                <i class="bi bi-${data.is_implicit ? 'check-circle' : 'hourglass-split'}"></i>
-                <strong>Current Status:</strong>
-                ${data.is_implicit ? 'Implicit Approval (auto-approved on submission)' : 'Explicit Approval Required'}
-            </div>
-        `;
 
         return html;
     }
@@ -672,11 +576,10 @@ class WorkflowBuilder {
 
     buildWorkflowSettingsProperties(node) {
         const data = node.data || {};
-        const selectedEscGroupIds = (data.escalation_groups || []).map(g => g.id);
 
         let html = `
             <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Workflow-level notification, deadline, and escalation settings.
+                <i class="bi bi-info-circle"></i> Workflow-level notification and deadline settings.
             </div>
 
             <h6 class="mt-3">Deadlines &amp; Reminders</h6>
@@ -728,45 +631,6 @@ class WorkflowBuilder {
                 <label class="form-check-label" for="ws_${key}_${node.id}">${label}</label>
             </div>`;
         });
-
-        html += `
-            <hr />
-            <h6>Escalation</h6>
-            <div class="mb-3">
-                <label class="form-label">Escalation Field</label>
-                <select class="form-select" name="escalation_field"
-                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
-                    <option value="">-- None --</option>
-        `;
-        this.fields.forEach(f => {
-            const sel = data.escalation_field === f.field_name ? 'selected' : '';
-            html += `<option value="${f.field_name}" ${sel}>${this.escapeHtml(f.field_label)}</option>`;
-        });
-        html += `
-                </select>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Escalation Threshold</label>
-                <input type="text" class="form-control" name="escalation_threshold"
-                       value="${this.escapeHtml(data.escalation_threshold || '')}"
-                       placeholder="e.g. 5000"
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Escalation Groups</label>
-                <select class="form-select" id="ws_esc_groups_${node.id}" name="escalation_groups" multiple size="4"
-                        style="min-height: 100px;"
-                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
-        `;
-        this.groups.forEach(group => {
-            const sel = selectedEscGroupIds.includes(group.id) ? 'selected' : '';
-            html += `<option value="${group.id}" ${sel}>${this.escapeHtml(group.name)}</option>`;
-        });
-        html += `
-                </select>
-                <small class="text-muted d-block mt-1">Groups to notify when escalation threshold is exceeded.</small>
-            </div>
-        `;
 
         return html;
     }
@@ -1226,36 +1090,6 @@ class WorkflowBuilder {
         this.selectNode(nodeId); // Re-select to refresh properties panel
     }
 
-    updateApprovalConfig(nodeId) {
-        const node = this.nodes.find(n => n.id === nodeId);
-        if (!node) return;
-
-        // Get form values
-        const requiresManager = document.getElementById('requires_manager_approval').checked;
-        const groupSelect = document.getElementById('approval_groups');
-        const selectedGroups = Array.from(groupSelect.selectedOptions).map(opt => ({
-            id: parseInt(opt.value),
-            name: opt.text
-        }));
-        const approvalLogic = document.querySelector('select[name="approval_logic"]').value;
-
-        // Update node data
-        node.data.requires_manager_approval = requiresManager;
-        node.data.approval_groups = selectedGroups;
-        node.data.approval_logic = approvalLogic;
-        node.data.is_implicit = !requiresManager && selectedGroups.length === 0;
-
-        // Show/hide approval logic based on group selection
-        const logicContainer = document.getElementById('approval_logic_container');
-        if (logicContainer) {
-            logicContainer.style.display = selectedGroups.length > 0 ? '' : 'none';
-        }
-
-        // Re-render to update the node display and properties panel
-        this.render();
-        this.selectNode(nodeId); // Re-select to refresh properties panel
-    }
-
     updateStageConfig(nodeId) {
         const node = this.nodes.find(n => n.id === nodeId);
         if (!node) return;
@@ -1296,16 +1130,6 @@ class WorkflowBuilder {
             node.data[key] = container.querySelector(`#ws_${key}_${nodeId}`).checked;
         });
 
-        // Escalation
-        node.data.escalation_field = container.querySelector('select[name="escalation_field"]').value;
-        node.data.escalation_threshold = container.querySelector('input[name="escalation_threshold"]').value;
-
-        const escGroupSelect = container.querySelector(`#ws_esc_groups_${nodeId}`);
-        node.data.escalation_groups = Array.from(escGroupSelect.selectedOptions).map(opt => ({
-            id: parseInt(opt.value),
-            name: opt.text
-        }));
-
         this.render();
         this.selectNode(nodeId);
     }
@@ -1318,8 +1142,6 @@ class WorkflowBuilder {
             form: 'Form Submission',
             workflow_settings: 'Workflow Settings',
             stage: 'Approval Stage',
-            approval_config: 'Approval Configuration',
-            approval: 'Approval Step',
             condition: 'Condition',
             action: 'Action',
             email: 'Email Notification',
@@ -1449,8 +1271,6 @@ class WorkflowBuilder {
             form: 'file-earmark-text',
             workflow_settings: 'gear',
             stage: 'layers',
-            approval_config: 'shield-check',
-            approval: 'person-check',
             condition: 'diagram-3',
             action: 'lightning',
             email: 'envelope',
@@ -1505,29 +1325,6 @@ class WorkflowBuilder {
                 return stageParts.length > 0 ?
                     `<span class="badge bg-warning">Stage ${node.data.order || '?'}</span><br><small class="text-muted">${stageParts.join(' + ')}${label}</small>` :
                     `<span class="badge bg-secondary">Stage ${node.data.order || '?'}</span><br><small class="text-muted">No approvers configured</small>`;
-            case 'approval_config':
-                if (node.data.is_implicit) {
-                    return '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Implicit Approval</span><br><small class="text-muted">Auto-approved on submission</small>';
-                } else {
-                    const parts = [];
-                    if (node.data.requires_manager_approval) {
-                        parts.push('Manager');
-                    }
-                    if (node.data.approval_groups && node.data.approval_groups.length > 0) {
-                        const groupCount = node.data.approval_groups.length;
-                        const logic = node.data.approval_logic || 'any';
-                        parts.push(`${groupCount} group${groupCount > 1 ? 's' : ''} (${logic})`);
-                    }
-                    return `<span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> Requires Approval</span><br><small class="text-muted">${parts.join(' + ')}</small>`;
-                }
-            case 'approval':
-                if (node.data.approval_type === 'manager') {
-                    return 'Manager approval required';
-                } else if (node.data.group_id) {
-                    const group = this.groups.find(g => g.id == node.data.group_id);
-                    return group ? `Group: ${group.name}` : 'Select group';
-                }
-                return 'Configure approval';
             case 'condition':
                 if (node.data.field && node.data.operator) {
                     const operatorSymbols = {

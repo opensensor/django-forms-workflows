@@ -34,20 +34,11 @@ Business users create and modify forms through Django Admin:
 - Draft saving with auto-save support
 
 ### 🔄 Multi-Stage Approval Workflows
-Flexible approval engine with two modes:
-
-**Legacy (flat) mode** — approval groups assigned directly to the workflow:
-- `any` — first approval from any group finalizes
-- `all` — every group must approve
-- `sequence` — groups approve in order
-
-**Staged mode** — named `WorkflowStage` records with per-stage logic:
-- Each stage has its own approval groups and logic (`any` / `all`)
+Flexible approval engine built on `WorkflowStage` records:
+- Each stage has its own approval groups and logic (`any` / `all` / `sequence`)
 - Stages execute in order; next stage unlocks when the current one completes
 - Stage-specific form fields (e.g. approver notes, signature date) appear only during that stage
 - Configurable stage labels (e.g. "Sign Off" instead of "Approve")
-
-Both modes support:
 - Email notifications and configurable reminder cadence (`daily` / `weekly` / `none`)
 - Escalation routing when a form field exceeds a threshold (e.g. amount > $5 000)
 - Rejection handling with per-stage or global rejection semantics
@@ -67,8 +58,6 @@ Populate form fields automatically from reusable `PrefillSource` records:
 - **External databases** — schema/table/column lookup with template support for multi-column composition
 - **Custom database queries** — reference a named query via `database_query_key`
 - **System values** — `current_date`, `current_time`
-
-> **Legacy support:** the plain-text `prefill_source` string field on `FormField` is still honoured for backwards compatibility. When both `prefill_source` and the FK `prefill_source_config` are set, the FK takes priority.
 
 ### ⚡ Post-Submission Actions
 Automatically run side-effects after a submission event:
@@ -276,7 +265,7 @@ GNU Lesser General Public License v3.0 (LGPLv3) — see [LICENSE](LICENSE) for d
 ### ✅ Delivered
 - [x] Database-driven form definitions with 15+ field types
 - [x] Dynamic form rendering with Crispy Forms
-- [x] Multi-stage approval workflows (legacy flat + staged)
+- [x] Multi-stage approval workflows (AND/OR/sequential approval chains)
 - [x] Sub-workflow support
 - [x] LDAP/AD integration with profile sync
 - [x] SSO attribute mapping

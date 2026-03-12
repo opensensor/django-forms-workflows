@@ -241,52 +241,72 @@
         </div>
         {% endfor %}
 
-        {% if sub_workflow_instances_merged %}
-        {# ---- Merged sub-workflow table ---- #}
-        <h5 class="mb-3 mt-4"><i class="bi bi-list-check"></i> {{ sub_wf_section_label|default:"Additional Approvals" }}</h5>
-        <div class="card mb-3 border-secondary">
+        {% if sub_workflow_instance_stages %}
+        {# ---- Per-instance stage cards (like parent stages) ---- #}
+        {% for section in sub_workflow_instance_stages %}
+        <h5 class="mb-3 mt-4"><i class="bi bi-list-check"></i> {{ section.instance.label }}</h5>
+        {% for stage in section.stage_groups %}
+        <div class="card mb-3
+            {% if stage.rejected_count > 0 %}border-danger
+            {% elif stage.approved_count == stage.total_count and stage.total_count > 0 %}border-success
+            {% elif stage.approved_count > 0 %}border-primary
+            {% else %}border-secondary{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center
+                {% if stage.rejected_count > 0 %}bg-danger text-white
+                {% elif stage.approved_count == stage.total_count and stage.total_count > 0 %}bg-success text-white
+                {% elif stage.approved_count > 0 %}bg-primary text-white
+                {% else %}bg-light text-muted{% endif %}">
+                <span>
+                    <strong>Step {{ forloop.counter }}: {{ stage.name }}</strong>
+                    {% if stage.approval_logic == "all" %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">All must approve</span>
+                    {% elif stage.approval_logic == "any" %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">Any can approve</span>
+                    {% else %}
+                        <span class="badge bg-light text-dark ms-2" style="font-size:11px;">Sequential</span>
+                    {% endif %}
+                </span>
+                <span class="badge bg-white
+                    {% if stage.rejected_count > 0 %}text-danger
+                    {% elif stage.approved_count == stage.total_count and stage.total_count > 0 %}text-success
+                    {% else %}text-secondary{% endif %}">
+                    {{ stage.approved_count }}/{{ stage.total_count }} approved
+                    {% if stage.rejected_count > 0 %}&nbsp;· {{ stage.rejected_count }} rejected{% endif %}
+                </span>
+            </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0">
+                    <table class="table table-sm mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th>#</th>
-                                <th>Label</th>
                                 <th>Assigned To</th>
                                 <th>Status</th>
                                 <th>Completed By</th>
                                 <th>Completed At</th>
-                                <th></th>
+                                <th>Comments</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for row in sub_workflow_instances_merged %}
+                            {% for task in stage.tasks %}
                             <tr>
-                                <td>{{ row.instance.index }}</td>
-                                <td>{{ row.instance.label }}</td>
                                 <td>
-                                    {% if row.task %}
-                                        {% if row.task.assigned_to %}
-                                            {{ row.task.assigned_to.get_full_name|default:row.task.assigned_to.username }}
-                                        {% elif row.task.assigned_group %}
-                                            {{ row.task.assigned_group.name }}
-                                        {% else %}-{% endif %}
+                                    {% if task.assigned_to %}
+                                        {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
+                                    {% elif task.assigned_group %}
+                                        {{ task.assigned_group.name }} <span class="text-muted">(Group)</span>
                                     {% else %}-{% endif %}
                                 </td>
                                 <td>
-                                    {% if row.instance.status == 'approved' %}<span class="badge bg-success">Approved</span>
-                                    {% elif row.instance.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
-                                    {% elif row.instance.status == 'in_progress' %}<span class="badge bg-primary">In Progress</span>
-                                    {% else %}<span class="badge bg-secondary">Pending</span>
+                                    {% if task.status == 'pending' %}<span class="badge bg-warning text-dark">Pending</span>
+                                    {% elif task.status == 'approved' %}<span class="badge bg-success">Approved</span>
+                                    {% elif task.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+                                    {% elif task.status == 'expired' %}<span class="badge bg-secondary">Expired</span>
+                                    {% elif task.status == 'skipped' %}<span class="badge bg-secondary">Skipped</span>
                                     {% endif %}
                                 </td>
-                                <td>{% if row.task and row.task.completed_by %}{{ row.task.completed_by.get_full_name|default:row.task.completed_by.username }}{% else %}-{% endif %}</td>
-                                <td>{% if row.task and row.task.completed_at %}{{ row.task.completed_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td>
-                                <td>
-                                    <a href="{% url 'forms_workflows:sub_workflow_detail' row.instance.id %}" class="btn btn-sm btn-outline-secondary">
-                                        <i class="bi bi-eye"></i> View
-                                    </a>
-                                </td>
+                                <td>{% if task.completed_by %}{{ task.completed_by.get_full_name|default:task.completed_by.username }}{% else %}-{% endif %}</td>
+                                <td>{% if task.completed_at %}{{ task.completed_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td>
+                                <td>{{ task.comments|default:"-" }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -294,6 +314,8 @@
                 </div>
             </div>
         </div>
+        {% endfor %}
+        {% endfor %}
         {% endif %}
 
         {% else %}

@@ -604,14 +604,13 @@ def submission_detail(request, submission_id):
                     for sg in sub_workflow_groups:
                         sg["section_label"] = sg_name
 
-    # Build merged sub-workflow instance rows that combine instance info
-    # (index, label, status, created) with per-instance approval task info
-    # (assigned_to, completed_by, completed_at) into a single table.
-    sub_workflow_instances_merged = None
-    sub_wf_section_label = None
+    # Build per-instance stage groups so each sub-workflow instance is
+    # rendered as its own section with stage cards (matching parent style).
+    sub_workflow_instance_stages = None
     sub_wfs = list(
         submission.sub_workflows.select_related("definition")
         .prefetch_related(
+            "approval_tasks__workflow_stage",
             "approval_tasks__assigned_to",
             "approval_tasks__assigned_group",
             "approval_tasks__completed_by",
@@ -619,34 +618,53 @@ def submission_detail(request, submission_id):
         .order_by("index")
     )
     if sub_wfs:
-        swf_config = sub_wfs[0].definition if sub_wfs else None
-        sub_wf_section_label = (
-            (
-                swf_config.section_label
-                if swf_config and swf_config.section_label
-                else None
-            )
-            or (swf_config.sub_workflow.form_definition.name if swf_config else None)
-            or "Additional Approvals"
-        )
-        merged_rows = []
+        instance_sections = []
         for swf in sub_wfs:
-            tasks = list(swf.approval_tasks.order_by("-completed_at", "id"))
-            # Pick the most relevant task for display (completed or first pending)
-            display_task = None
-            for t in tasks:
-                if t.status in ("approved", "rejected"):
-                    display_task = t
-                    break
-            if not display_task and tasks:
-                display_task = tasks[0]
-            merged_rows.append(
+            tasks = list(
+                swf.approval_tasks.select_related("workflow_stage").order_by(
+                    "stage_number", "id"
+                )
+            )
+            # Group tasks by workflow_stage (like parent stage_groups)
+            stage_map: dict = {}
+            for task in tasks:
+                stage_key = task.workflow_stage_id or f"flat_{task.stage_number}"
+                if stage_key not in stage_map:
+                    stage_name = (
+                        task.workflow_stage.name
+                        if task.workflow_stage
+                        else f"Step {task.stage_number or 1}"
+                    )
+                    approval_logic = (
+                        task.workflow_stage.approval_logic
+                        if task.workflow_stage
+                        else "all"
+                    )
+                    stage_map[stage_key] = {
+                        "number": task.stage_number or 0,
+                        "name": stage_name,
+                        "approval_logic": approval_logic,
+                        "tasks": [],
+                        "approved_count": 0,
+                        "rejected_count": 0,
+                        "total_count": 0,
+                    }
+                stage_map[stage_key]["tasks"].append(task)
+                stage_map[stage_key]["total_count"] += 1
+                if task.status == "approved":
+                    stage_map[stage_key]["approved_count"] += 1
+                elif task.status == "rejected":
+                    stage_map[stage_key]["rejected_count"] += 1
+
+            instance_sections.append(
                 {
                     "instance": swf,
-                    "task": display_task,
+                    "stage_groups": sorted(
+                        stage_map.values(), key=lambda x: x["number"]
+                    ),
                 }
             )
-        sub_workflow_instances_merged = merged_rows
+        sub_workflow_instance_stages = instance_sections
 
     # Resolve fresh presigned URLs for any file-upload fields
     form_data = _resolve_form_data_urls(submission.form_data)
@@ -678,8 +696,7 @@ def submission_detail(request, submission_id):
             "approval_tasks": approval_tasks,
             "stage_groups": stage_groups,
             "sub_workflow_groups": sub_workflow_groups,
-            "sub_workflow_instances_merged": sub_workflow_instances_merged,
-            "sub_wf_section_label": sub_wf_section_label,
+            "sub_workflow_instance_stages": sub_workflow_instance_stages,
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
             "approval_field_names": approval_field_names,

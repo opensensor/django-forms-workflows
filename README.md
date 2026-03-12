@@ -1,128 +1,116 @@
 # Django Forms Workflows
 
-**Enterprise-grade, database-driven form builder with approval workflows and external data integration**
+**Enterprise-grade, database-driven form builder with multi-stage approval workflows, external data integration, and cross-instance sync**
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![Django Version](https://img.shields.io/badge/django-5.1%2B-green)](https://www.djangoproject.com/)
+[![Version](https://img.shields.io/badge/version-0.15.0-orange)](https://github.com/opensensor/django-forms-workflows)
 
 ## Overview
 
 Django Forms Workflows bridges the gap between simple form libraries (like Crispy Forms) and expensive SaaS solutions (like JotForm, Formstack). It provides:
 
-- 📝 **Database-Driven Forms** - Forms stored in database, not code
-- 🔄 **Approval Workflows** - Multi-step approval engine with notifications
-- 🔌 **External Data Integration** - Pull data from LDAP, databases, APIs
-- 🔒 **Enterprise Security** - LDAP/AD authentication, complete audit trails
-- 🏠 **Self-Hosted** - No SaaS fees, full data control
-- 🎨 **Beautiful UI** - Built on Crispy Forms and Bootstrap
+- 📝 **Database-Driven Forms** — Define forms in the database, not code. 15+ field types, validation rules, and conditional logic.
+- 🔄 **Multi-Stage Approval Workflows** — Sequential, parallel, or hybrid approval flows with configurable stages.
+- 🔀 **Sub-Workflows** — Spawn child workflows from a parent submission (e.g. one form creates N payment approvals).
+- 🔌 **External Data Integration** — Prefill fields from LDAP, databases, REST APIs, or the Django user model.
+- ⚡ **Post-Submission Actions** — Trigger emails, database writes, LDAP updates, or custom Python handlers on submit/approve/reject.
+- 🔄 **Cross-Instance Sync** — Push/pull form definitions between environments directly from the Django Admin.
+- 🔒 **Enterprise Security** — LDAP/AD & SSO authentication, RBAC, complete audit trails.
+- 📁 **Managed File Uploads** — File uploads with approval, rejection, and version tracking per submission.
+- 🏠 **Self-Hosted** — No SaaS fees, full data control.
 
 ## Key Features
 
 ### 🎯 No-Code Form Creation
-Business users can create and modify forms through Django Admin without touching code:
-- Drag-and-drop field ordering
-- 15+ field types (text, select, date, file upload, etc.)
-- Validation rules (required, regex, min/max, etc.)
-- Conditional field visibility
-- Custom help text and placeholders
+Business users create and modify forms through Django Admin:
+- 15+ field types (text, email, select, radio, checkbox, date, time, datetime, decimal, number, phone, URL, file, textarea, hidden, section headers)
+- Field ordering with drag-and-drop
+- Validation rules (required, regex, min/max length, min/max value)
+- Conditional field visibility (`show_if_field` / `show_if_value`)
+- Custom help text, placeholders, and CSS classes
+- Read-only and pre-filled fields
+- Draft saving with auto-save support
 
-### 🔄 Powerful Approval Workflows
-Built-in multi-step approval engine:
-- Sequential or parallel approvals
-- Configurable approval logic (any/all approvers)
-- Email notifications and reminders
-- Complete audit trail
-- Approval delegation
+### 🔄 Multi-Stage Approval Workflows
+Flexible approval engine with two modes:
+
+**Legacy (flat) mode** — approval groups assigned directly to the workflow:
+- `any` — first approval from any group finalizes
+- `all` — every group must approve
+- `sequence` — groups approve in order
+
+**Staged mode** — named `WorkflowStage` records with per-stage logic:
+- Each stage has its own approval groups and logic (`any` / `all`)
+- Stages execute in order; next stage unlocks when the current one completes
+- Stage-specific form fields (e.g. approver notes, signature date) appear only during that stage
+- Configurable stage labels (e.g. "Sign Off" instead of "Approve")
+
+Both modes support:
+- Email notifications and configurable reminder cadence (`daily` / `weekly` / `none`)
+- Escalation routing when a form field exceeds a threshold (e.g. amount > $5 000)
+- Rejection handling with per-stage or global rejection semantics
+- Complete audit trail on every approval, rejection, and status change
+
+### 🔀 Sub-Workflows
+Spawn child workflow instances from a parent submission:
+- `SubWorkflowDefinition` links a parent workflow to a child form definition
+- `count_field` controls how many sub-workflows to create (driven by a form field value)
+- `data_prefix` slices the parent's form data to populate each child
+- Triggered `on_approval`, `on_submit`, or `manual`
 
 ### 🔌 Configurable Prefill Sources
-Automatically populate form fields from external systems with flexible, reusable configurations:
-- **User Model** - Current user's profile data (email, name, username)
-- **LDAP/Active Directory** - Enterprise directory attributes (department, title, manager)
-- **External Databases** - Pull from any SQL database with custom field mappings
-- **REST APIs** - Integrate with external services
-- **System Values** - Current date/time, previous submissions
+Populate form fields automatically from reusable `PrefillSource` records:
+- **User model** — `user.email`, `user.first_name`, `user.username`, etc.
+- **LDAP / Active Directory** — any LDAP attribute (department, title, manager, custom)
+- **External databases** — schema/table/column lookup with template support for multi-column composition
+- **Custom database queries** — reference a named query via `database_query_key`
+- **System values** — `current_date`, `current_time`
 
-**New in v1.1:** Prefill sources are now configurable database records with:
-- ✅ **Dropdown Selection** - Form builders select from pre-configured sources
-- ✅ **Custom Field Mappings** - Configure database lookup fields for different environments
-- ✅ **Reusable Configurations** - Define once, use across multiple forms
-- ✅ **Centralized Management** - All sources managed in Django Admin
+> **Legacy support:** the plain-text `prefill_source` string field on `FormField` is still honoured for backwards compatibility. When both `prefill_source` and the FK `prefill_source_config` are set, the FK takes priority.
 
-Example database prefill configuration:
-```python
-# Admin → Prefill Sources → Add Prefill Source
-Name: Student - First Name
-Source Type: Database
-DB Schema: dbo
-DB Table: STBIOS
-DB Column: FIRST_NAME
-DB Lookup Field: ID_NUMBER  # Column to match against
-DB User Field: employee_id   # UserProfile field to use for lookup
-```
+### ⚡ Post-Submission Actions
+Automatically run side-effects after a submission event:
 
-See [Prefill Sources Guide](docs/PREFILL_SOURCES.md) for detailed configuration.
+| Trigger | Description |
+|---------|-------------|
+| `on_submit` | Runs immediately on form submission |
+| `on_approve` | Runs when the submission is approved |
+| `on_reject` | Runs when the submission is rejected |
+| `on_complete` | Runs when the entire workflow completes |
 
-### 🔄 Post-Submission Actions (NEW)
-Automatically update external systems with form data after submission or approval:
-- **Database Updates** - Write data back to external databases with custom field mappings
-- **LDAP Updates** - Update Active Directory attributes
-- **API Calls** - Send data to external services via HTTP APIs
-- **Custom Handlers** - Execute custom Python code for complex integrations
-
-**Trigger Types:**
-- ✅ **On Submit** - Execute immediately when form is submitted
-- ✅ **On Approve** - Execute when form is approved
-- ✅ **On Reject** - Execute when form is rejected
-- ✅ **On Complete** - Execute when workflow is complete
+**Action types:** `email`, `database`, `ldap`, `api`, `custom`
 
 **Features:**
-- Conditional execution based on form field values
-- Automatic retries with configurable max attempts
-- Error handling (fail silently or block submission)
+- Conditional execution with 10 operators (`equals`, `not_equals`, `greater_than`, `less_than`, `contains`, `not_contains`, `is_empty`, `is_not_empty`, `is_true`, `is_false`, plus date comparisons)
+- Automatic retries with configurable `max_retries`
 - Execution ordering for dependent actions
-- Complete audit logging
+- Idempotent locking (`is_locked`) to prevent double-execution
+- Full execution logging via `ActionExecutionLog`
+- Pluggable handler architecture — register custom handlers for new action types
 
-Example database update configuration:
-```python
-# Admin → Post-Submission Actions → Add
-Name: Update HR Database
-Action Type: Database Update
-Trigger: On Approval
-DB Field Mappings:
-  [
-    {"form_field": "email", "db_column": "EMAIL_ADDRESS"},
-    {"form_field": "phone", "db_column": "PHONE_NUMBER"}
-  ]
-```
+### 🔄 Cross-Instance Form Sync
+Move form definitions between environments from the Django Admin:
+- **Pull from Remote** — connect to a configured remote instance and import selected forms
+- **Push to Remote** — select forms and push to any destination
+- **Import / Export JSON** — portable `.json` snapshots
+- **Conflict modes** — `update`, `skip`, or `new_slug`
+- **`FORMS_SYNC_REMOTES`** setting — pre-configure named instances (URL + token)
+- HTTP endpoints protected by Bearer token for CI/scripted use
 
-See [Post-Submission Actions Guide](docs/POST_SUBMISSION_ACTIONS.md) for detailed configuration.
-
-### 🔄 Cross-Instance Form Sync (Push / Pull)
-Move form definitions between environments (test → staging → prod) entirely from the Django Admin — no shell access or `kubectl exec` required:
-- **Pull from Remote** — connect to any configured remote instance, preview available forms, and import selected ones with one click
-- **Push to Remote** — select forms in the changelist and push them to any destination instance
-- **Import / Export JSON** — download a portable `.json` snapshot or upload one from another instance
-- **Conflict modes** — `update` (overwrite), `skip` (leave untouched), or `new_slug` (create a copy)
-- **`FORMS_SYNC_REMOTES`** setting — pre-configure named instances (URL + token) so admins pick from a dropdown instead of typing credentials every time
-- HTTP endpoints (`/forms-sync/export/` and `/forms-sync/import/`) protected by a shared Bearer token (`FORMS_SYNC_API_TOKEN`) for scripted / CI use
+### 📁 Managed File Uploads
+- `FileUploadConfig` per form definition (allowed extensions, max size)
+- `ManagedFile` records with approval/rejection/supersede lifecycle
+- Version tracking with `is_current` flag
 
 ### 🔒 Enterprise-Ready Security
-- LDAP/Active Directory authentication
-- Role-based permissions
-- Complete audit logging (who, what, when, where)
-- CSRF protection
-- SQL injection prevention
-- File upload validation
-
-### 📊 Comprehensive Audit Trail
-Track everything for compliance:
-- Form creation/modification
-- Form submissions
-- Approval decisions
-- Status changes
-- Field value changes
-- User actions with IP addresses
+- LDAP/Active Directory authentication with auto-sync of profile attributes
+- SSO integration (SAML, OAuth) with attribute mapping to `UserProfile`
+- Role-based access: `submit_groups` and `view_groups` on `FormDefinition`
+- Group-based approval routing via `WorkflowStage.approval_groups`
+- Complete audit logging (`AuditLog` — who, what, when, IP address)
+- `UserProfile` auto-created on first login with LDAP/SSO sync
 
 ## Quick Start
 
@@ -132,7 +120,7 @@ Track everything for compliance:
 pip install django-forms-workflows
 ```
 
-### Basic Setup
+### Setup
 
 1. Add to `INSTALLED_APPS`:
 
@@ -142,41 +130,50 @@ INSTALLED_APPS = [
     'crispy_forms',
     'crispy_bootstrap5',
     'django_forms_workflows',
-    # ...
 ]
-```
 
-2. Configure settings:
-
-```python
-# Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
-
-# Forms Workflows
-FORMS_WORKFLOWS = {
-    'ENABLE_APPROVALS': True,
-    'ENABLE_AUDIT_LOG': True,
-    'ENABLE_FILE_UPLOADS': True,
-    'MAX_FILE_SIZE': 10 * 1024 * 1024,  # 10MB
-}
 ```
 
-3. Run migrations:
-
-```bash
-python manage.py migrate django_forms_workflows
-```
-
-4. Include URLs:
+2. Include URLs and run migrations:
 
 ```python
+# urls.py
 urlpatterns = [
     path('forms/', include('django_forms_workflows.urls')),
 ]
 ```
 
-5. Create your first form in Django Admin!
+```bash
+python manage.py migrate django_forms_workflows
+```
+
+3. Create your first form in Django Admin!
+
+### Optional Settings
+
+```python
+FORMS_WORKFLOWS = {
+    "LDAP_SYNC": {
+        "enabled": True,
+        "attributes": {
+            "department": "department",
+            "title": "title",
+            "employee_id": "extensionAttribute1",
+        },
+    },
+}
+
+# Cross-instance sync
+FORMS_SYNC_API_TOKEN = "shared-secret"
+FORMS_SYNC_REMOTES = {
+    "production": {
+        "url": "https://prod.example.com/forms-sync/",
+        "token": "prod-token",
+    },
+}
+```
 
 ## Architecture
 
@@ -188,47 +185,43 @@ graph TB
         AU["Approval UI<br/>(Approvers)"]
     end
 
-    subgraph Django["Django Application"]
-        subgraph DSL["Data Source Abstraction Layer"]
-            LDAP["LDAP<br/>Source"]
-            DB["Database<br/>Source"]
-            API["API<br/>Source"]
-        end
+    subgraph Core["Django Forms Workflows"]
+        FD["FormDefinition<br/>+ FormField"]
+        WF["WorkflowDefinition<br/>+ WorkflowStage"]
+        PS["PrefillSource"]
+        PA["PostSubmissionAction<br/>+ Executor"]
+        SYNC["Sync API<br/>(Push/Pull)"]
     end
 
     subgraph External["External Systems"]
-        AD["Active<br/>Directory"]
-        Legacy["Legacy<br/>Databases"]
-        ExtAPI["External<br/>APIs"]
+        AD["LDAP / AD"]
+        DB["External<br/>Databases"]
+        API["REST APIs"]
+        SSO["SSO<br/>(SAML/OAuth)"]
     end
 
-    UI --> Django
-    DSL --> External
-
-    style UI fill:#e1f5ff
-    style Django fill:#fff4e1
-    style DSL fill:#ffe1f5
-    style External fill:#e1ffe1
+    FB --> FD
+    FV --> FD
+    AU --> WF
+    FD --> PS
+    FD --> PA
+    FD --> SYNC
+    PS --> AD
+    PS --> DB
+    PA --> DB
+    PA --> AD
+    PA --> API
+    SSO --> Core
 ```
 
 ## Use Cases
 
-Perfect for:
-- **HR Departments** - Employee onboarding, time-off requests, expense reports
-- **IT Departments** - Access requests, equipment requests, change management
-- **Finance** - Purchase orders, invoice approvals, budget requests
-- **Education** - Student applications, course registrations, facility requests
-- **Healthcare** - Patient intake, referrals, insurance claims
-- **Government** - Permit applications, FOIA requests, citizen services
-
-## Documentation
-
-- [Installation Guide](docs/installation.md)
-- [Configuration Guide](docs/configuration.md)
-- [Data Sources Guide](docs/data-sources.md)
-- [Workflow Guide](docs/workflows.md)
-- [API Reference](docs/api.md)
-- [Architecture Overview](docs/ARCHITECTURE.md)
+- **HR** — Onboarding, time-off requests, expense reports, status changes
+- **IT** — Access requests, equipment requests, change management
+- **Finance** — Purchase orders, invoice approvals, budget requests
+- **Education** — Student applications, course registrations, facility booking
+- **Healthcare** — Patient intake, referrals, insurance claims
+- **Government** — Permit applications, FOIA requests, citizen services
 
 ## Comparison
 
@@ -237,9 +230,13 @@ Perfect for:
 | Database-driven forms | ✅ | ❌ | ✅ | ❌ |
 | No-code form creation | ✅ | ❌ | ✅ | ❌ |
 | Self-hosted | ✅ | ✅ | ❌ | ✅ |
-| Approval workflows | ✅ | ❌ | ⚠️ | ❌ |
+| Multi-stage approval workflows | ✅ | ❌ | ⚠️ | ❌ |
+| Sub-workflows | ✅ | ❌ | ❌ | ❌ |
+| Post-submission actions | ✅ | ❌ | ⚠️ | ❌ |
 | External data prefill | ✅ | ❌ | ⚠️ | ❌ |
-| LDAP/AD integration | ✅ | ❌ | ❌ | ❌ |
+| Cross-instance sync | ✅ | ❌ | ❌ | ❌ |
+| LDAP/AD + SSO integration | ✅ | ❌ | ❌ | ❌ |
+| Managed file uploads | ✅ | ❌ | ✅ | ❌ |
 | Audit trail | ✅ | ❌ | ✅ | ❌ |
 | Open source | ✅ | ✅ | ❌ | ✅ |
 
@@ -247,9 +244,18 @@ Perfect for:
 
 - Python 3.10+
 - Django 5.1+
-- PostgreSQL 12+ (recommended) or MySQL 8.0+
-- Celery 5.0+ (for background tasks)
-- Redis/Valkey (for Celery broker)
+- PostgreSQL, MySQL, or SQLite (PostgreSQL recommended for production)
+- Optional: Celery 5.0+ with Redis/Valkey for background task processing
+
+## Testing
+
+```bash
+cd django-forms-workflows
+pip install pytest pytest-django
+python -m pytest tests/ -v
+```
+
+The test suite covers models, forms, workflow engine, sync API, post-submission action executor, views, signals, and utilities — 150+ tests.
 
 ## Contributing
 
@@ -257,7 +263,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for deta
 
 ## License
 
-GNU Lesser General Public License v3.0 (LGPLv3) - see [LICENSE](LICENSE) for details.
+GNU Lesser General Public License v3.0 (LGPLv3) — see [LICENSE](LICENSE) for details.
 
 ## Support
 
@@ -267,35 +273,33 @@ GNU Lesser General Public License v3.0 (LGPLv3) - see [LICENSE](LICENSE) for det
 
 ## Roadmap
 
-### Phase 1: Core (Current)
-- [x] Database-driven form definitions
-- [x] Dynamic form rendering
-- [x] Approval workflows
-- [x] LDAP integration
-- [x] Database prefill
-- [x] Audit logging
-
-### Phase 2: Enhanced UX
-- [x] Form builder UI (drag-and-drop)
+### ✅ Delivered
+- [x] Database-driven form definitions with 15+ field types
+- [x] Dynamic form rendering with Crispy Forms
+- [x] Multi-stage approval workflows (legacy flat + staged)
+- [x] Sub-workflow support
+- [x] LDAP/AD integration with profile sync
+- [x] SSO attribute mapping
+- [x] Configurable prefill sources (user, LDAP, database, API)
+- [x] Post-submission actions with conditional execution & retries
+- [x] Cross-instance form sync (push/pull/JSON import-export)
+- [x] Managed file uploads with approval lifecycle
 - [x] Conditional field visibility (client-side)
-- [x] File upload validation
-- [x] Form templates/cloning
-- [ ] Dashboard analytics
+- [x] Form templates and cloning
+- [x] Complete audit logging
+- [x] Comprehensive test suite (150+ tests)
 
-### Phase 3: Advanced Features
-- [x] Cross-instance form sync (push/pull) via Admin UI and HTTP API
+### 🚧 In Progress
+- [ ] Dashboard analytics
 - [ ] REST API for form submission
 - [ ] Webhook support
-- [ ] Custom field types (signature, location, etc.)
-- [ ] Advanced reporting
-- [ ] Form versioning
 
-### Phase 4: Enterprise
+### 📋 Planned
+- [ ] Custom field types (signature, location, barcode)
+- [ ] Advanced reporting and export
+- [ ] Form versioning with diff tracking
 - [ ] Multi-tenancy support
-- [ ] SSO integration (SAML, OAuth)
-- [ ] Advanced RBAC
-- [ ] White-label support
-- [ ] Plugin marketplace
+- [ ] Plugin / handler marketplace
 
 ## Credits
 
@@ -305,5 +309,3 @@ Special thanks to:
 - [Django Crispy Forms](https://github.com/django-crispy-forms/django-crispy-forms)
 - [Celery](https://github.com/celery/celery)
 - [django-auth-ldap](https://github.com/django-auth-ldap/django-auth-ldap)
-
-

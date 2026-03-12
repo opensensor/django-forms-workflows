@@ -48,6 +48,10 @@ jobs:
       run: |
         cd example_project
         python manage.py check
+
+    - name: Run test suite
+      run: |
+        python -m pytest tests/ -v --tb=short
   
   lint:
     name: Lint and Format Check
@@ -69,11 +73,11 @@ jobs:
 
     - name: Check code formatting with Ruff
       run: |
-        ruff format --check django_forms_workflows/
+        ruff format --check django_forms_workflows/ tests/
 
     - name: Lint with Ruff
       run: |
-        ruff check django_forms_workflows/
+        ruff check django_forms_workflows/ tests/
   
   build:
     name: Build Package

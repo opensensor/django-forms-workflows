@@ -81,6 +81,7 @@ all = [
   "weasyprint",
   "openpyxl"
 ]
+dev = ["pytest", "pytest-django", "pytest-cov", "ruff"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.4"
@@ -97,4 +98,12 @@ ruff = "^0.14.3"
 [build-system]
 requires = ["poetry-core>=1.7.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
 

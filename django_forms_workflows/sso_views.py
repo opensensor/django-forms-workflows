@@ -275,13 +275,15 @@ class SAMLACSView(View):
 
             # Redirect to target URL — validate RelayState to prevent open redirect
             relay_state = request.POST.get("RelayState", "")
-            if not url_has_allowed_host_and_scheme(
+            if url_has_allowed_host_and_scheme(
                 url=relay_state,
                 allowed_hosts={request.get_host()},
                 require_https=request.is_secure(),
             ):
-                relay_state = settings.LOGIN_REDIRECT_URL
-            return HttpResponseRedirect(relay_state)
+                redirect_url = relay_state
+            else:
+                redirect_url = settings.LOGIN_REDIRECT_URL
+            return HttpResponseRedirect(redirect_url)
 
         except Exception:
             logger.error("SAML ACS error", exc_info=True)

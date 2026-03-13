@@ -32,6 +32,7 @@ from .models import (
     NotificationLog,
     PostSubmissionAction,
     PrefillSource,
+    StageApprovalGroup,
     SubWorkflowDefinition,
     SubWorkflowInstance,
     UserProfile,
@@ -886,6 +887,15 @@ class FormDefinitionAdmin(admin.ModelAdmin):
 
 
 @admin.register(WorkflowStage)
+class StageApprovalGroupInline(admin.TabularInline):
+    """Inline for ordering approval groups within a stage."""
+
+    model = StageApprovalGroup
+    extra = 1
+    ordering = ("position",)
+    autocomplete_fields = ("group",)
+
+
 class WorkflowStageAdmin(admin.ModelAdmin):
     """Standalone admin for WorkflowStage.
 
@@ -894,15 +904,15 @@ class WorkflowStageAdmin(admin.ModelAdmin):
     """
 
     list_display = ("__str__", "workflow", "order", "approval_logic", "approve_label")
+    list_filter = ("workflow", "approval_logic", "requires_manager_approval")
     list_select_related = ("workflow", "workflow__form_definition")
     search_fields = ("name", "workflow__form_definition__name")
     ordering = ("workflow", "order")
-    filter_horizontal = ("approval_groups",)
+    inlines = [StageApprovalGroupInline]
     fields = (
         "workflow",
         ("order", "name"),
         "approval_logic",
-        "approval_groups",
         "approve_label",
         "requires_manager_approval",
     )
@@ -914,11 +924,9 @@ class WorkflowStageInline(admin.StackedInline):
     model = WorkflowStage
     extra = 0
     ordering = ("order",)
-    filter_horizontal = ("approval_groups",)
     fields = (
         ("order", "name"),
         "approval_logic",
-        "approval_groups",
         "approve_label",
         "requires_manager_approval",
     )
@@ -945,6 +953,7 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "form_definition",
+                    "name_label",
                     "requires_approval",
                 )
             },

@@ -557,6 +557,17 @@ class WorkflowDefinition(models.Model):
         FormDefinition, related_name="workflow", on_delete=models.CASCADE
     )
 
+    name_label = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=(
+            "User-facing label for this workflow shown in the submission "
+            'detail header (e.g. "Contract Approval"). When blank, falls '
+            "back to the form definition name."
+        ),
+    )
+
     # Basic Approval
     requires_approval = models.BooleanField(default=True)
 
@@ -687,6 +698,7 @@ class WorkflowStage(models.Model):
     )
     approval_groups = models.ManyToManyField(
         Group,
+        through="StageApprovalGroup",
         related_name="workflow_stages",
         blank=True,
         help_text="Groups that participate in this stage",
@@ -712,6 +724,37 @@ class WorkflowStage(models.Model):
 
     def __str__(self) -> str:
         return f"Stage {self.order}: {self.name}"
+
+
+class StageApprovalGroup(models.Model):
+    """
+    Through model for WorkflowStage ↔ Group M2M.
+
+    Stores a ``position`` so admins can control the order groups are
+    processed when approval_logic is ``"sequence"``.
+    """
+
+    stage = models.ForeignKey(
+        WorkflowStage,
+        on_delete=models.CASCADE,
+    )
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+    )
+    position = models.PositiveIntegerField(
+        default=0,
+        help_text="Order in which this group is processed (lower = first)",
+    )
+
+    class Meta:
+        ordering = ["position"]
+        unique_together = [("stage", "group")]
+        verbose_name = "Stage Approval Group"
+        verbose_name_plural = "Stage Approval Groups"
+
+    def __str__(self) -> str:
+        return f"{self.group.name} (pos {self.position})"
 
 
 class PendingNotification(models.Model):

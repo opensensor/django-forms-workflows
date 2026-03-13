@@ -720,6 +720,9 @@ def submission_detail(request, submission_id):
             "submission": submission,
             "approval_tasks": approval_tasks,
             "stage_groups": stage_groups,
+            "workflow_name_label": (
+                workflow.name_label if workflow and workflow.name_label else None
+            ),
             "sub_workflow_groups": sub_workflow_groups,
             "sub_workflow_instance_stages": sub_workflow_instance_stages,
             "form_data": form_data,

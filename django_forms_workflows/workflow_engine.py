@@ -235,7 +235,7 @@ def _create_stage_tasks(
     ``handle_approval`` processes that manager task.
     """
     stage_num = stage.order
-    groups = list(stage.approval_groups.all().order_by("id"))
+    groups = list(stage.approval_groups.all().order_by("stageapprovalgroup__position"))
 
     manager_task_created = False
     if stage.requires_manager_approval:
@@ -412,7 +412,9 @@ def handle_approval(
 
         if is_manager_task:
             # Manager gate passed — now create group tasks for same stage
-            groups = list(stage.approval_groups.all().order_by("id"))
+            groups = list(
+                stage.approval_groups.all().order_by("stageapprovalgroup__position")
+            )
             if not groups:
                 _advance_to_next_stage(
                     submission, workflow, stages, stage.order, due_date
@@ -468,7 +470,9 @@ def handle_approval(
                 )
 
         elif logic == "sequence":
-            groups = list(stage.approval_groups.all().order_by("id"))
+            groups = list(
+                stage.approval_groups.all().order_by("stageapprovalgroup__position")
+            )
             ids = [g.id for g in groups]
             try:
                 idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]
@@ -718,7 +722,7 @@ def _create_sub_workflow_stage_tasks(
     """Create ApprovalTask rows for one stage of a sub-workflow instance."""
     submission = instance.parent_submission
     stage_num = stage.order
-    groups = list(stage.approval_groups.all().order_by("id"))
+    groups = list(stage.approval_groups.all().order_by("stageapprovalgroup__position"))
 
     manager_task_created = False
     if stage.requires_manager_approval:
@@ -871,7 +875,9 @@ def handle_sub_workflow_approval(task: ApprovalTask) -> None:
     )
 
     if is_manager_task:
-        groups = list(stage.approval_groups.all().order_by("id"))
+        groups = list(
+            stage.approval_groups.all().order_by("stageapprovalgroup__position")
+        )
         if not groups:
             _advance_sub_workflow(instance, stages, stage.order, due_date)
             return
@@ -920,7 +926,9 @@ def handle_sub_workflow_approval(task: ApprovalTask) -> None:
             _advance_sub_workflow(instance, stages, stage.order, due_date)
 
     elif logic == "sequence":
-        groups = list(stage.approval_groups.all().order_by("id"))
+        groups = list(
+            stage.approval_groups.all().order_by("stageapprovalgroup__position")
+        )
         ids = [g.id for g in groups]
         try:
             idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]

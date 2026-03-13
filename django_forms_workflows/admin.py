@@ -47,6 +47,7 @@ class FormFieldInline(admin.StackedInline):
     extra = 0
     ordering = ("order",)
     fk_name = "form_definition"
+    classes = ("collapse",)
     fieldsets = (
         (
             None,

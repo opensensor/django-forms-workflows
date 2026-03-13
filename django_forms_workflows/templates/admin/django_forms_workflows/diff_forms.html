@@ -1,187 +1,126 @@
 {% extends "admin/base_site.html" %}
 {% load i18n %}
-
 {% block title %}{{ title }}{% endblock %}
-
 {% block extrahead %}
 {{ block.super }}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
-  .diff-container { display: flex; gap: 0; font-family: monospace; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; }
-  .diff-panel { flex: 1; overflow: auto; max-height: 75vh; }
-  .diff-panel-header { position: sticky; top: 0; z-index: 10; background: #f0f0f0; padding: 8px 12px; font-weight: bold; border-bottom: 1px solid #ccc; font-family: -apple-system, sans-serif; }
-  .diff-panel:not(:last-child) { border-right: 1px solid #ccc; }
-  .diff-line { display: flex; padding: 0 8px; min-height: 20px; line-height: 20px; white-space: pre; }
-  .diff-line-num { color: #999; width: 40px; text-align: right; padding-right: 8px; flex-shrink: 0; user-select: none; }
+  .diff-container { display: flex; gap: 0; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 12px; border: 1px solid #d0d7de; border-radius: 6px; overflow: hidden; background: #fff; }
+  .diff-panel { flex: 1; overflow: auto; max-height: 78vh; }
+  .diff-panel-header { position: sticky; top: 0; z-index: 10; background: #f6f8fa; padding: 10px 16px; font-weight: 600; font-size: 13px; border-bottom: 1px solid #d0d7de; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #24292f; }
+  .diff-panel:not(:last-child) { border-right: 1px solid #d0d7de; }
+  .diff-line { display: flex; padding: 0 12px; min-height: 22px; line-height: 22px; white-space: pre; }
+  .diff-line-num { color: #656d76; width: 45px; text-align: right; padding-right: 12px; flex-shrink: 0; user-select: none; font-size: 11px; }
   .diff-line-content { flex: 1; }
-  .diff-added { background: #e6ffed; }
-  .diff-removed { background: #ffeef0; }
-  .diff-changed { background: #fff8c5; }
-
-  .summary-panel { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px; margin-bottom: 20px; }
-  .summary-panel h3 { margin: 0 0 12px; font-size: 16px; }
-  .summary-item { padding: 4px 0; font-size: 14px; }
-  .summary-item .badge { font-size: 11px; padding: 3px 8px; border-radius: 3px; margin-right: 6px; }
-  .badge-added { background: #28a745; color: #fff; }
-  .badge-removed { background: #dc3545; color: #fff; }
-  .badge-changed { background: #ffc107; color: #333; }
-  .badge-identical { background: #6c757d; color: #fff; }
-  .badge-meta { background: #17a2b8; color: #fff; }
-  .diff-toggle-bar { margin: 12px 0; display: flex; gap: 8px; }
-  .diff-toggle-bar button { padding: 6px 14px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; font-size: 13px; }
-  .diff-toggle-bar button.active { background: #007bff; color: #fff; border-color: #007bff; }
+  .diff-added { background: #ccffd8; color: #116329; }
+  .diff-removed { background: #ffd7d5; color: #82071e; }
+  .diff-line:hover { background: #eaeef2; }
+  .diff-added:hover { background: #aff5b4; }
+  .diff-removed:hover { background: #ffb8b0; }
+  .summary-panel { background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+  .summary-panel h3 { margin: 0 0 14px; font-size: 16px; color: #24292f; }
+  .summary-item { padding: 5px 0; font-size: 14px; color: #24292f; }
+  .summary-item .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 12px; margin-right: 8px; vertical-align: middle; }
+  .badge-added { background: #1a7f37; color: #fff; }
+  .badge-removed { background: #cf222e; color: #fff; }
+  .badge-changed { background: #9a6700; color: #fff; }
+  .badge-identical { background: #6e7781; color: #fff; }
+  .badge-meta { background: #0969da; color: #fff; }
+  .diff-toggle-bar { margin: 16px 0; display: flex; gap: 0; border: 1px solid #d0d7de; border-radius: 6px; overflow: hidden; width: fit-content; }
+  .diff-toggle-bar button { padding: 8px 18px; border: none; border-right: 1px solid #d0d7de; cursor: pointer; background: #f6f8fa; font-size: 13px; font-weight: 500; color: #24292f; transition: background 0.15s; }
+  .diff-toggle-bar button:last-child { border-right: none; }
+  .diff-toggle-bar button:hover { background: #eaeef2; }
+  .diff-toggle-bar button.active { background: #0969da; color: #fff; }
 </style>
 {% endblock %}
-
 {% block content %}
 <h2 style="margin-bottom: 16px;">{{ title }}</h2>
-
 {% if summary %}
 {% for s in summary %}
 <div class="summary-panel">
-  <h3>
-    {% if s.identical %}
-      <span class="badge badge-identical">Identical</span>
-    {% endif %}
-    {{ s.left }} ↔ {{ s.right }}
-  </h3>
+  <h3>{% if s.identical %}<span class="badge badge-identical">Identical</span> {% endif %}{{ s.left }} ↔ {{ s.right }}</h3>
   {% if s.diffs %}
   <div>
     {% for d in s.diffs %}
     <div class="summary-item">
-      {% if "added" in d|lower %}
-        <span class="badge badge-added">+</span>
-      {% elif "removed" in d|lower %}
-        <span class="badge badge-removed">−</span>
-      {% elif "modified" in d|lower or "→" in d %}
-        <span class="badge badge-changed">Δ</span>
-      {% else %}
-        <span class="badge badge-meta">ℹ</span>
-      {% endif %}
+      {% if "added" in d|lower %}<span class="badge badge-added">+</span>{% elif "removed" in d|lower %}<span class="badge badge-removed">−</span>{% elif "modified" in d|lower or "→" in d %}<span class="badge badge-changed">Δ</span>{% else %}<span class="badge badge-meta">ℹ</span>{% endif %}
       {{ d }}
     </div>
     {% endfor %}
   </div>
-  {% else %}
-    <p style="color: #6c757d; margin: 0;">The two forms are identical.</p>
-  {% endif %}
+  {% else %}<p style="color: #6e7781; margin: 0;">The two forms are identical.</p>{% endif %}
 </div>
 {% endfor %}
 {% endif %}
-
 <div class="diff-toggle-bar">
-  <button id="btn-side" class="active" onclick="setMode('side')">Side by Side</button>
-  <button id="btn-inline" onclick="setMode('inline')">Inline</button>
-  <button id="btn-raw" onclick="setMode('raw')">Raw JSON</button>
+  <button id="btn-side" class="active">Side by Side</button>
+  <button id="btn-inline">Inline</button>
+  <button id="btn-raw">Raw JSON</button>
 </div>
-
 <div id="diff-output"></div>
-
-<!-- Raw JSON panels (hidden by default) -->
 <div id="raw-panels" style="display:none;">
   <div class="diff-container">
     {% for f in forms_json %}
     <div class="diff-panel">
       <div class="diff-panel-header">{{ f.name }} ({{ f.slug }})</div>
-      <pre style="margin:0; padding:8px; font-size:12px; white-space:pre-wrap;">{{ f.json }}</pre>
+      <pre style="margin:0;padding:12px;font-size:12px;white-space:pre-wrap;color:#24292f;">{{ f.json }}</pre>
     </div>
     {% endfor %}
   </div>
 </div>
-
-{% endblock %}
-
-{% block extrajs %}
-{{ block.super }}
 <script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
 <script>
-const formsJson = {{ forms_json_escaped|safe }};
-const formNames = {{ form_names|safe }};
-let currentMode = 'side';
-
-function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function renderSideBySide(a, b, nameA, nameB) {
-  const diff = Diff.diffLines(a, b);
-  let leftLines = [], rightLines = [];
-  let leftNum = 0, rightNum = 0;
-
-  diff.forEach(part => {
-    const lines = part.value.replace(/\n$/, '').split('\n');
-    lines.forEach(line => {
-      if (part.added) {
-        rightNum++;
-        leftLines.push({num: '', text: '', cls: 'diff-removed'});
-        rightLines.push({num: rightNum, text: line, cls: 'diff-added'});
-      } else if (part.removed) {
-        leftNum++;
-        leftLines.push({num: leftNum, text: line, cls: 'diff-removed'});
-        rightLines.push({num: '', text: '', cls: 'diff-added'});
-      } else {
-        leftNum++; rightNum++;
-        leftLines.push({num: leftNum, text: line, cls: ''});
-        rightLines.push({num: rightNum, text: line, cls: ''});
-      }
+(function() {
+  var formsJson = {{ forms_json_escaped|safe }};
+  var formNames = {{ form_names|safe }};
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function sideBySide(a, b, nA, nB) {
+    var d = Diff.diffLines(a, b), L = [], R = [], ln = 0, rn = 0;
+    d.forEach(function(p) {
+      p.value.replace(/\n$/, '').split('\n').forEach(function(line) {
+        if (p.added) { rn++; L.push({n:'',t:'',c:'diff-removed'}); R.push({n:rn,t:line,c:'diff-added'}); }
+        else if (p.removed) { ln++; L.push({n:ln,t:line,c:'diff-removed'}); R.push({n:'',t:'',c:'diff-added'}); }
+        else { ln++; rn++; L.push({n:ln,t:line,c:''}); R.push({n:rn,t:line,c:''}); }
+      });
     });
-  });
-
-  let html = '<div class="diff-container">';
-  html += '<div class="diff-panel"><div class="diff-panel-header">' + escapeHtml(nameA) + '</div>';
-  leftLines.forEach(l => {
-    html += '<div class="diff-line ' + l.cls + '"><span class="diff-line-num">' + l.num + '</span><span class="diff-line-content">' + escapeHtml(l.text) + '</span></div>';
-  });
-  html += '</div>';
-  html += '<div class="diff-panel"><div class="diff-panel-header">' + escapeHtml(nameB) + '</div>';
-  rightLines.forEach(l => {
-    html += '<div class="diff-line ' + l.cls + '"><span class="diff-line-num">' + l.num + '</span><span class="diff-line-content">' + escapeHtml(l.text) + '</span></div>';
-  });
-  html += '</div></div>';
-  return html;
-}
-
-function renderInline(a, b, nameA, nameB) {
-  const diff = Diff.diffLines(a, b);
-  let html = '<div style="border:1px solid #ccc; border-radius:4px; overflow:auto; max-height:75vh; font-family:monospace; font-size:13px;">';
-  html += '<div style="position:sticky;top:0;z-index:10;background:#f0f0f0;padding:8px 12px;border-bottom:1px solid #ccc;font-weight:bold;font-family:-apple-system,sans-serif;">' + escapeHtml(nameA) + ' ↔ ' + escapeHtml(nameB) + '</div>';
-  let num = 0;
-  diff.forEach(part => {
-    const lines = part.value.replace(/\n$/, '').split('\n');
-    const cls = part.added ? 'diff-added' : part.removed ? 'diff-removed' : '';
-    const prefix = part.added ? '+' : part.removed ? '-' : ' ';
-    lines.forEach(line => {
-      if (!part.added && !part.removed) num++;
-      html += '<div class="diff-line ' + cls + '"><span class="diff-line-num">' + (cls ? '' : num) + '</span><span class="diff-line-content">' + prefix + ' ' + escapeHtml(line) + '</span></div>';
-    });
-  });
-  html += '</div>';
-  return html;
-}
-
-function setMode(mode) {
-  currentMode = mode;
-  document.getElementById('btn-side').classList.toggle('active', mode === 'side');
-  document.getElementById('btn-inline').classList.toggle('active', mode === 'inline');
-  document.getElementById('btn-raw').classList.toggle('active', mode === 'raw');
-  document.getElementById('raw-panels').style.display = mode === 'raw' ? '' : 'none';
-  const out = document.getElementById('diff-output');
-  if (mode === 'raw') { out.innerHTML = ''; return; }
-
-  let html = '';
-  for (let i = 1; i < formsJson.length; i++) {
-    if (mode === 'side') {
-      html += renderSideBySide(formsJson[0], formsJson[i], formNames[0], formNames[i]);
-    } else {
-      html += renderInline(formsJson[0], formsJson[i], formNames[0], formNames[i]);
-    }
-    if (i < formsJson.length - 1) html += '<hr>';
+    var h = '<div class="diff-container">';
+    h += '<div class="diff-panel"><div class="diff-panel-header">'+esc(nA)+'</div>';
+    L.forEach(function(l){h+='<div class="diff-line '+l.c+'"><span class="diff-line-num">'+l.n+'</span><span class="diff-line-content">'+esc(l.t)+'</span></div>';});
+    h += '</div><div class="diff-panel"><div class="diff-panel-header">'+esc(nB)+'</div>';
+    R.forEach(function(l){h+='<div class="diff-line '+l.c+'"><span class="diff-line-num">'+l.n+'</span><span class="diff-line-content">'+esc(l.t)+'</span></div>';});
+    return h + '</div></div>';
   }
-  out.innerHTML = html;
-}
-
-// Initial render
-document.addEventListener('DOMContentLoaded', () => setMode('side'));
+  function inlineDiff(a, b, nA, nB) {
+    var d = Diff.diffLines(a, b), num = 0;
+    var h = '<div class="diff-container" style="display:block;"><div class="diff-panel" style="max-height:78vh;">';
+    h += '<div class="diff-panel-header">'+esc(nA)+' ↔ '+esc(nB)+'</div>';
+    d.forEach(function(p) {
+      var cls = p.added?'diff-added':p.removed?'diff-removed':'';
+      var pfx = p.added?'+':p.removed?'-':' ';
+      p.value.replace(/\n$/, '').split('\n').forEach(function(line) {
+        if (!p.added && !p.removed) num++;
+        h += '<div class="diff-line '+cls+'"><span class="diff-line-num">'+(cls?'':num)+'</span><span class="diff-line-content">'+pfx+' '+esc(line)+'</span></div>';
+      });
+    });
+    return h + '</div></div>';
+  }
+  function setMode(mode) {
+    document.getElementById('btn-side').classList.toggle('active', mode==='side');
+    document.getElementById('btn-inline').classList.toggle('active', mode==='inline');
+    document.getElementById('btn-raw').classList.toggle('active', mode==='raw');
+    document.getElementById('raw-panels').style.display = mode==='raw'?'':'none';
+    var out = document.getElementById('diff-output');
+    if (mode==='raw') { out.innerHTML=''; return; }
+    var h = '';
+    for (var i=1; i<formsJson.length; i++) {
+      h += mode==='side' ? sideBySide(formsJson[0],formsJson[i],formNames[0],formNames[i]) : inlineDiff(formsJson[0],formsJson[i],formNames[0],formNames[i]);
+      if (i<formsJson.length-1) h+='<hr style="margin:16px 0;border-color:#d0d7de;">';
+    }
+    out.innerHTML = h;
+  }
+  document.getElementById('btn-side').addEventListener('click', function(){setMode('side');});
+  document.getElementById('btn-inline').addEventListener('click', function(){setMode('inline');});
+  document.getElementById('btn-raw').addEventListener('click', function(){setMode('raw');});
+  setMode('side');
+})();
 </script>
 {% endblock %}
-

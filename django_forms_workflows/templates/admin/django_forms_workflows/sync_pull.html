@@ -16,6 +16,7 @@
 {% endblock %}
 
 {% block content %}
+{% include "admin/django_forms_workflows/_sync_diff.html" %}
 <h1>Pull Forms from Remote</h1>
 
 {% if error %}
@@ -87,18 +88,38 @@
                         <td>{{ form.form.name }}</td>
                         <td>{{ form.category.name|default:"—" }}</td>
                         <td>
-                            {% for d in form_diffs %}{% if d.slug == slug %}{% if d.is_new %}<span style="color:#1a7f37;font-weight:600;">New</span>{% elif d.summary.identical %}<span style="color:#6e7781;">Identical</span>{% else %}<a href="#" onclick="document.getElementById('diff-{{slug}}').style.display=document.getElementById('diff-{{slug}}').style.display==='none'?'':'none';return false;" style="font-weight:600;">{{ d.summary.diffs|length }} change{{ d.summary.diffs|length|pluralize }}</a>{% endif %}{% endif %}{% endfor %}
+                            {% for d in form_diffs %}{% if d.slug == slug %}
+                                {% if d.is_new %}
+                                    <span class="sync-status-new">✚ New</span>
+                                {% elif d.summary.identical %}
+                                    <span class="sync-status-identical">— No changes</span>
+                                {% else %}
+                                    <a href="#" class="sync-status-link" onclick="var el=document.getElementById('diff-{{slug}}');el.style.display=el.style.display==='none'?'':'none';return false;">
+                                        ▸ {{ d.summary.diffs|length }} change{{ d.summary.diffs|length|pluralize }}
+                                    </a>
+                                {% endif %}
+                            {% endif %}{% endfor %}
                         </td>
                     </tr>
                     {% for d in form_diffs %}{% if d.slug == slug and not d.is_new and not d.summary.identical %}
                     <tr id="diff-{{ slug }}" style="display:none;">
-                        <td colspan="5" style="padding:8px 16px;background:#f6f8fa;">
-                            {% for item in d.summary.diffs %}
-                            <div style="padding:3px 0;font-size:13px;">
-                                {% if "added" in item|lower %}<span style="background:#1a7f37;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">+</span>{% elif "removed" in item|lower %}<span style="background:#cf222e;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">−</span>{% else %}<span style="background:#9a6700;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">Δ</span>{% endif %}
-                                {{ item }}
-                            </div>
-                            {% endfor %}
+                        <td colspan="5" class="sync-diff-panel">
+                            <ul class="sync-diff-list">
+                                {% for item in d.summary.diffs %}
+                                <li>
+                                    {% if "added" in item|lower %}
+                                        <span class="sync-diff-tag sync-diff-tag-add">+</span>
+                                    {% elif "removed" in item|lower %}
+                                        <span class="sync-diff-tag sync-diff-tag-remove">−</span>
+                                    {% elif "modified" in item|lower or "→" in item %}
+                                        <span class="sync-diff-tag sync-diff-tag-change">Δ</span>
+                                    {% else %}
+                                        <span class="sync-diff-tag sync-diff-tag-info">i</span>
+                                    {% endif %}
+                                    {{ item }}
+                                </li>
+                                {% endfor %}
+                            </ul>
                         </td>
                     </tr>
                     {% endif %}{% endfor %}

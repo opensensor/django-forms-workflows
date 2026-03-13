@@ -174,6 +174,7 @@ def form_builder_clone(request, form_id):
                     notification_cadence_time=wf.notification_cadence_time,
                     notification_cadence_form_field=wf.notification_cadence_form_field,
                     visual_workflow_data=wf.visual_workflow_data,
+                    trigger_conditions=wf.trigger_conditions,
                     hide_approval_history=wf.hide_approval_history,
                     allow_bulk_export=wf.allow_bulk_export,
                     allow_bulk_pdf_export=wf.allow_bulk_pdf_export,
@@ -186,6 +187,7 @@ def form_builder_clone(request, form_id):
                         approval_logic=stage.approval_logic,
                         requires_manager_approval=stage.requires_manager_approval,
                         approve_label=stage.approve_label,
+                        trigger_conditions=stage.trigger_conditions,
                     )
                     for sag in StageApprovalGroup.objects.filter(stage=stage).order_by(
                         "position"

@@ -34,6 +34,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+from .conditions import evaluate_conditions
 from .models import (
     ApprovalTask,
     FormSubmission,
@@ -350,7 +351,9 @@ def _advance_to_next_stage(
         ).exists():
             return  # A parallel branch is still in progress
 
-    # Find stages at the next order level within this workflow track.
+    # Find stages at the next order level within this workflow track,
+    # filtering by trigger_conditions against the submission data.
+    form_data = submission.form_data or {}
     future_stages = [s for s in stages if s.order > current_order]
     if not future_stages:
         # This workflow track is complete.  Check whether ALL tracks are done
@@ -359,7 +362,31 @@ def _advance_to_next_stage(
         return
 
     next_order = future_stages[0].order
-    for stage in (s for s in future_stages if s.order == next_order):
+    eligible_stages = [
+        s
+        for s in future_stages
+        if s.order == next_order
+        and evaluate_conditions(s.trigger_conditions, form_data)
+    ]
+    if not eligible_stages:
+        # No eligible stages at the next order — check further orders
+        # or finalize if nothing remains.
+        remaining = [
+            s
+            for s in future_stages
+            if s.order > next_order
+            and evaluate_conditions(s.trigger_conditions, form_data)
+        ]
+        if remaining:
+            # Jump to the next eligible order level
+            jump_order = remaining[0].order
+            for stage in (s for s in remaining if s.order == jump_order):
+                _create_stage_tasks(submission, stage, due_date=due_date)
+        else:
+            _try_finalize_all_tracks(submission)
+        return
+
+    for stage in eligible_stages:
         _create_stage_tasks(submission, stage, due_date=due_date)
 
 
@@ -394,8 +421,14 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
     except Exception as e:
         logger.error("Error spawning sub-workflows on submission: %s", e, exc_info=True)
 
-    # Filter to workflows that actually require approval
-    approval_workflows = [w for w in workflows if w.requires_approval]
+    # Filter to workflows that require approval AND whose trigger
+    # conditions (if any) match the submission data.
+    form_data = submission.form_data or {}
+    approval_workflows = [
+        w
+        for w in workflows
+        if w.requires_approval and evaluate_conditions(w.trigger_conditions, form_data)
+    ]
     if not approval_workflows:
         _finalize_submission(submission)
         return
@@ -412,7 +445,12 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
             continue  # No stages configured for this track
 
         first_order = stages[0].order
-        first_order_stages = [s for s in stages if s.order == first_order]
+        first_order_stages = [
+            s
+            for s in stages
+            if s.order == first_order
+            and evaluate_conditions(s.trigger_conditions, form_data)
+        ]
         for stage in first_order_stages:
             groups = list(stage.approval_groups.all())
             if not stage.requires_manager_approval and not groups:

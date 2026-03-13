@@ -233,6 +233,7 @@ def _serialize_workflow_stage(stage):
         "approval_logic": stage.approval_logic,
         "approval_groups": _group_names(stage.approval_groups),
         "requires_manager_approval": stage.requires_manager_approval,
+        "trigger_conditions": stage.trigger_conditions,
     }
 
 
@@ -256,6 +257,7 @@ def _serialize_workflow(wf):
         return None
     return {
         "requires_approval": wf.requires_approval,
+        "trigger_conditions": wf.trigger_conditions,
         "approval_deadline_days": wf.approval_deadline_days,
         "send_reminder_after_days": wf.send_reminder_after_days,
         "auto_approve_after_days": wf.auto_approve_after_days,

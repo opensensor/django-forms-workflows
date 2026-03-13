@@ -278,6 +278,7 @@ class WorkflowDefinitionInline(admin.StackedInline):
     fields = [
         "name_label",
         "requires_approval",
+        "trigger_conditions",
         "hide_approval_history",
         ("notify_on_submission", "notify_on_approval", "notify_on_rejection"),
         "additional_notify_emails",
@@ -529,6 +530,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                             notification_cadence_time=wf.notification_cadence_time,
                             notification_cadence_form_field=wf.notification_cadence_form_field,
                             visual_workflow_data=wf.visual_workflow_data,
+                            trigger_conditions=wf.trigger_conditions,
                             hide_approval_history=wf.hide_approval_history,
                             allow_bulk_export=wf.allow_bulk_export,
                             allow_bulk_pdf_export=wf.allow_bulk_pdf_export,
@@ -541,6 +543,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                                 approval_logic=stage.approval_logic,
                                 requires_manager_approval=stage.requires_manager_approval,
                                 approve_label=stage.approve_label,
+                                trigger_conditions=stage.trigger_conditions,
                             )
                             for sag in StageApprovalGroup.objects.filter(
                                 stage=stage
@@ -1108,6 +1111,7 @@ class WorkflowStageInline(admin.StackedInline):
         "approval_logic",
         "approve_label",
         "requires_manager_approval",
+        "trigger_conditions",
     )
 
 
@@ -1134,6 +1138,7 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
                     "form_definition",
                     "name_label",
                     "requires_approval",
+                    "trigger_conditions",
                 )
             },
         ),

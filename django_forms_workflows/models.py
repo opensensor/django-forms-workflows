@@ -651,6 +651,19 @@ class WorkflowDefinition(models.Model):
         help_text="Visual workflow builder layout (nodes and connections)",
     )
 
+    # Conditional trigger — when set, this workflow only runs if the
+    # submission data matches the conditions.  None / empty = always run.
+    trigger_conditions = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Conditions that must be met for this workflow to run. "
+            'Format: {"operator": "AND|OR", "conditions": '
+            '[{"field": "field_name", "operator": "equals|not_equals|gt|lt|gte|lte|contains|in", '
+            '"value": "..."}]}'
+        ),
+    )
+
     # Privacy
     hide_approval_history = models.BooleanField(
         default=False,
@@ -737,6 +750,20 @@ class WorkflowStage(models.Model):
         help_text=(
             "Custom label for the approve/complete button shown to the approver "
             '(e.g. "Complete", "Confirm", "Sign Off"). Defaults to "Approve" when blank.'
+        ),
+    )
+    # Conditional trigger — when set, this stage only runs if the
+    # submission data matches the conditions.  None / empty = always run.
+    trigger_conditions = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Conditions that must be met for this stage to run. "
+            "When advancing from a prior stage, only stages whose conditions "
+            "match the submission data will be entered. "
+            'Format: {"operator": "AND|OR", "conditions": '
+            '[{"field": "field_name", "operator": "equals|not_equals|gt|lt|gte|lte|contains|in", '
+            '"value": "..."}]}'
         ),
     )
 

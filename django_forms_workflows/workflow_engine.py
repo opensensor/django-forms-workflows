@@ -840,12 +840,11 @@ def _spawn_sub_workflows_for_trigger(submission: FormSubmission, trigger: str) -
     due_date = _due_date_for(sub_wf)
 
     for i in range(1, count + 1):
-        label = config.label_template.format(index=i)
         instance, created = SubWorkflowInstance.objects.get_or_create(
             parent_submission=submission,
             definition=config,
             index=i,
-            defaults={"label": label, "status": "pending"},
+            defaults={"status": "pending"},
         )
         if not created:
             continue  # already spawned (e.g. on resubmit)

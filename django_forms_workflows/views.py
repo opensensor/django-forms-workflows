@@ -677,13 +677,10 @@ def submission_detail(request, submission_id):
                     stage_map[stage_key]["rejected_count"] += 1
                     inst_rejected += 1
 
-            # Resolve live label from definition template
-            live_label = swf.definition.label_template.format(index=swf.index)
-
             instance_sections.append(
                 {
                     "instance": swf,
-                    "label": live_label,
+                    "label": swf.label,
                     "stage_groups": sorted(
                         stage_map.values(), key=lambda x: x["number"]
                     ),

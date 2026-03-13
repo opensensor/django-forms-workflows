@@ -2206,7 +2206,6 @@ class SubWorkflowInstance(models.Model):
         on_delete=models.PROTECT,
     )
     index = models.PositiveIntegerField(help_text="Which instance (1, 2, 3 …)")
-    label = models.CharField(max_length=200)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -2217,6 +2216,11 @@ class SubWorkflowInstance(models.Model):
         unique_together = [["parent_submission", "definition", "index"]]
         verbose_name = "Sub-workflow Instance"
         verbose_name_plural = "Sub-workflow Instances"
+
+    @property
+    def label(self) -> str:
+        """Compute the instance label live from the definition template."""
+        return self.definition.label_template.format(index=self.index)
 
     def __str__(self):
         return f"{self.label} (Submission #{self.parent_submission_id})"

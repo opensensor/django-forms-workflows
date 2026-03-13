@@ -1732,7 +1732,7 @@ class CustomGroupAdmin(GroupAdmin):
 class SubWorkflowInstanceInline(admin.TabularInline):
     model = SubWorkflowInstance
     extra = 0
-    readonly_fields = ("index", "label", "status", "created_at", "completed_at")
+    readonly_fields = ("index", "status", "created_at", "completed_at")
     can_delete = False
 
 
@@ -1760,7 +1760,7 @@ class SubWorkflowInstanceAdmin(admin.ModelAdmin):
         "completed_at",
     )
     list_filter = ("status",)
-    search_fields = ("label", "parent_submission__id")
+    search_fields = ("parent_submission__id",)
     readonly_fields = ("created_at", "updated_at", "completed_at")
     raw_id_fields = ("parent_submission", "definition")
 

@@ -244,12 +244,27 @@
         {% if sub_workflow_instance_stages %}
         {# ---- One table per sub-workflow instance, steps as rows ---- #}
         {% for section in sub_workflow_instance_stages %}
-        <h5 class="mb-3 mt-4"><i class="bi bi-list-check"></i> {{ section.instance.label }}</h5>
         <div class="card mb-3
-            {% if section.instance.status == 'rejected' %}border-danger
-            {% elif section.instance.status == 'approved' %}border-success
-            {% elif section.instance.status == 'in_progress' %}border-primary
+            {% if section.rejected_count > 0 %}border-danger
+            {% elif section.approved_count == section.total_count and section.total_count > 0 %}border-success
+            {% elif section.approved_count > 0 %}border-primary
             {% else %}border-secondary{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center
+                {% if section.rejected_count > 0 %}bg-danger text-white
+                {% elif section.approved_count == section.total_count and section.total_count > 0 %}bg-success text-white
+                {% elif section.approved_count > 0 %}bg-primary text-white
+                {% else %}bg-light text-muted{% endif %}">
+                <span>
+                    <strong>{{ section.label }}</strong>
+                </span>
+                <span class="badge bg-white
+                    {% if section.rejected_count > 0 %}text-danger
+                    {% elif section.approved_count == section.total_count and section.total_count > 0 %}text-success
+                    {% else %}text-secondary{% endif %}">
+                    {{ section.approved_count }}/{{ section.total_count }} approved
+                    {% if section.rejected_count > 0 %}&nbsp;· {{ section.rejected_count }} rejected{% endif %}
+                </span>
+            </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-sm table-hover mb-0">

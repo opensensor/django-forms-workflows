@@ -627,6 +627,9 @@ def submission_detail(request, submission_id):
             )
             # Group tasks by workflow_stage (like parent stage_groups)
             stage_map: dict = {}
+            inst_approved = 0
+            inst_rejected = 0
+            inst_total = 0
             for task in tasks:
                 stage_key = task.workflow_stage_id or f"flat_{task.stage_number}"
                 if stage_key not in stage_map:
@@ -651,17 +654,27 @@ def submission_detail(request, submission_id):
                     }
                 stage_map[stage_key]["tasks"].append(task)
                 stage_map[stage_key]["total_count"] += 1
+                inst_total += 1
                 if task.status == "approved":
                     stage_map[stage_key]["approved_count"] += 1
+                    inst_approved += 1
                 elif task.status == "rejected":
                     stage_map[stage_key]["rejected_count"] += 1
+                    inst_rejected += 1
+
+            # Resolve live label from definition template
+            live_label = swf.definition.label_template.format(index=swf.index)
 
             instance_sections.append(
                 {
                     "instance": swf,
+                    "label": live_label,
                     "stage_groups": sorted(
                         stage_map.values(), key=lambda x: x["number"]
                     ),
+                    "approved_count": inst_approved,
+                    "rejected_count": inst_rejected,
+                    "total_count": inst_total,
                 }
             )
         sub_workflow_instance_stages = instance_sections

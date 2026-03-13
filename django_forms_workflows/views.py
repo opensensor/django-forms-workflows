@@ -2316,17 +2316,10 @@ def bulk_export_submissions_pdf(request):
 
 _STATUS_BADGE = {
     "approved": '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Approved</span>',
-    "approved_pending": (
-        '<span class="d-inline-flex align-items-center">'
-        '<span class="badge bg-success rounded-end-0 border-end border-white">'
-        '<i class="bi bi-check-circle me-1"></i>Approved</span>'
-        '<span class="badge bg-warning text-dark rounded-start-0">'
-        '<i class="bi bi-hourglass-split me-1"></i>Pending Completion</span>'
-        "</span>"
-    ),
+    "approved_pending": '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending Approval</span>',
     "rejected": '<span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>',
     "withdrawn": '<span class="badge bg-secondary"><i class="bi bi-dash-circle me-1"></i>Withdrawn</span>',
-    "pending_approval": '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Awaiting Co-Approver</span>',
+    "pending_approval": '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending Approval</span>',
     "submitted": '<span class="badge bg-info">Submitted</span>',
     "draft": '<span class="badge bg-secondary">Draft</span>',
 }

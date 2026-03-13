@@ -83,8 +83,13 @@ class Migration(migrations.Migration):
         ),
         # 2. Copy existing M2M data into the through table
         migrations.RunPython(migrate_m2m_data, migrations.RunPython.noop),
-        # 3. Switch the M2M to use the through model
-        migrations.AlterField(
+        # 3. Remove the old auto-created M2M field
+        migrations.RemoveField(
+            model_name="workflowstage",
+            name="approval_groups",
+        ),
+        # 4. Re-add the M2M field with the explicit through model
+        migrations.AddField(
             model_name="workflowstage",
             name="approval_groups",
             field=models.ManyToManyField(
@@ -95,7 +100,7 @@ class Migration(migrations.Migration):
                 to="auth.group",
             ),
         ),
-        # 4. Add name_label to WorkflowDefinition
+        # 5. Add name_label to WorkflowDefinition
         migrations.AddField(
             model_name="workflowdefinition",
             name="name_label",

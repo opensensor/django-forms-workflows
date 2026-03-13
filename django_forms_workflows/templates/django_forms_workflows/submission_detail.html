@@ -167,9 +167,41 @@
         <!-- Approval History -->
         {% if approval_tasks %}
 
-        {% if stage_groups %}
+        {% if hide_approval_history %}
+        {# ---- Privacy mode: submitter sees only the final decision ---- #}
+        <h5 class="mb-3"><i class="bi bi-shield-lock"></i> Approval Status</h5>
+        <div class="card mb-4
+            {% if submission.status == 'approved' %}border-success
+            {% elif submission.status == 'rejected' %}border-danger
+            {% else %}border-warning{% endif %}">
+            <div class="card-body text-center py-4">
+                {% if submission.status == 'approved' %}
+                    <span class="badge bg-success fs-5 px-4 py-2">Approved</span>
+                    {% if submission.completed_at %}
+                    <p class="text-muted mt-2 mb-0">Decision made on {{ submission.completed_at|date:"F d, Y g:i A" }}</p>
+                    {% endif %}
+                {% elif submission.status == 'rejected' %}
+                    <span class="badge bg-danger fs-5 px-4 py-2">Rejected</span>
+                    {% if submission.completed_at %}
+                    <p class="text-muted mt-2 mb-0">Decision made on {{ submission.completed_at|date:"F d, Y g:i A" }}</p>
+                    {% endif %}
+                    {% for task in approval_tasks %}
+                        {% if task.status == 'rejected' and task.comments %}
+                        <div class="alert alert-danger mt-3 mb-0 text-start">
+                            <strong>Reason:</strong> {{ task.comments }}
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <span class="badge bg-warning text-dark fs-5 px-4 py-2">Under Review</span>
+                    <p class="text-muted mt-2 mb-0">Your submission is being reviewed. You will be notified when a decision is made.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% elif stage_groups %}
         {# ---- Staged workflow: one card per stage ---- #}
-        <h5 class="mb-3"><i class="bi bi-diagram-3"></i> {% if workflow_name_label %}{{ workflow_name_label }}{% else %}Approval History{% endif %}</h5>
+        <h5 class="mb-3"><i class="bi bi-diagram-3"></i> Approval History</h5>
         {% for stage in stage_groups %}
         <div class="card mb-3
             {% if stage.rejected_count > 0 %}border-danger
@@ -182,7 +214,7 @@
                 {% elif stage.approved_count > 0 %}bg-primary text-white
                 {% else %}bg-light text-muted{% endif %}">
                 <span>
-                    <strong>Stage {{ stage.number }}{% if not stage.has_multiple_stages %}: {{ stage.name }}{% endif %}</strong>
+                    <strong>{% if workflow_name_label %}{{ workflow_name_label }}{% else %}Stage {{ stage.number }}{% if not stage.has_multiple_stages %}: {{ stage.name }}{% endif %}{% endif %}</strong>
                 </span>
                 <span class="badge bg-white
                     {% if stage.rejected_count > 0 %}text-danger

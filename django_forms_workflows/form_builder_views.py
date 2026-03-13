@@ -15,7 +15,15 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import FormDefinition, FormField, FormTemplate, PrefillSource
+from .models import (
+    FormDefinition,
+    FormField,
+    FormTemplate,
+    PrefillSource,
+    StageApprovalGroup,
+    WorkflowDefinition,
+    WorkflowStage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +150,50 @@ def form_builder_clone(request, form_id):
             cloned_form.submit_groups.set(original_form.submit_groups.all())
             cloned_form.view_groups.set(original_form.view_groups.all())
             cloned_form.admin_groups.set(original_form.admin_groups.all())
+
+            # Clone workflows, stages, and stage approval groups
+            for wf in original_form.workflows.all():
+                original_stages = list(
+                    wf.stages.prefetch_related("approval_groups").order_by("order")
+                )
+                cloned_wf = WorkflowDefinition.objects.create(
+                    form_definition=cloned_form,
+                    name_label=wf.name_label,
+                    requires_approval=wf.requires_approval,
+                    approval_deadline_days=wf.approval_deadline_days,
+                    send_reminder_after_days=wf.send_reminder_after_days,
+                    auto_approve_after_days=wf.auto_approve_after_days,
+                    notify_on_submission=wf.notify_on_submission,
+                    notify_on_approval=wf.notify_on_approval,
+                    notify_on_rejection=wf.notify_on_rejection,
+                    notify_on_withdrawal=wf.notify_on_withdrawal,
+                    additional_notify_emails=wf.additional_notify_emails,
+                    notification_cadence=wf.notification_cadence,
+                    notification_cadence_day=wf.notification_cadence_day,
+                    notification_cadence_time=wf.notification_cadence_time,
+                    notification_cadence_form_field=wf.notification_cadence_form_field,
+                    visual_workflow_data=wf.visual_workflow_data,
+                    hide_approval_history=wf.hide_approval_history,
+                    allow_bulk_export=wf.allow_bulk_export,
+                    allow_bulk_pdf_export=wf.allow_bulk_pdf_export,
+                )
+                for stage in original_stages:
+                    cloned_stage = WorkflowStage.objects.create(
+                        workflow=cloned_wf,
+                        name=stage.name,
+                        order=stage.order,
+                        approval_logic=stage.approval_logic,
+                        requires_manager_approval=stage.requires_manager_approval,
+                        approve_label=stage.approve_label,
+                    )
+                    for sag in StageApprovalGroup.objects.filter(stage=stage).order_by(
+                        "position"
+                    ):
+                        StageApprovalGroup.objects.create(
+                            stage=cloned_stage,
+                            group=sag.group,
+                            position=sag.position,
+                        )
 
             return JsonResponse(
                 {

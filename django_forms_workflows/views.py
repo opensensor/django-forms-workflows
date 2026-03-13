@@ -713,6 +713,18 @@ def submission_detail(request, submission_id):
         or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
     )
 
+    # Privacy: hide approval history from the submitter when configured.
+    # Approvers and admins always see the full history.
+    is_submitter_only = (
+        submission.submitter == request.user
+        and not request.user.is_superuser
+        and not user_can_approve(request.user, submission)
+        and not request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+    )
+    hide_approval_history = bool(
+        workflow and workflow.hide_approval_history and is_submitter_only
+    )
+
     return render(
         request,
         "django_forms_workflows/submission_detail.html",
@@ -730,6 +742,7 @@ def submission_detail(request, submission_id):
             "approval_field_names": approval_field_names,
             "approval_step_sections": approval_step_sections,
             "can_approve_pdf": can_approve_pdf,
+            "hide_approval_history": hide_approval_history,
         },
     )
 

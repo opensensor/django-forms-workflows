@@ -651,6 +651,16 @@ class WorkflowDefinition(models.Model):
         help_text="Visual workflow builder layout (nodes and connections)",
     )
 
+    # Privacy
+    hide_approval_history = models.BooleanField(
+        default=False,
+        help_text=(
+            "When enabled, the submitter will not see approval history or "
+            "individual approval steps — only the final decision (approved / rejected) "
+            "is shown. Approvers and admins can still see the full history."
+        ),
+    )
+
     # Bulk Export
     allow_bulk_export = models.BooleanField(
         default=False,

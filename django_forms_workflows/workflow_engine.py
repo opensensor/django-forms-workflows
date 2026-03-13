@@ -299,6 +299,34 @@ def _create_stage_tasks(
             _notify_task_request(task)
 
 
+def _try_finalize_all_tracks(submission: FormSubmission) -> None:
+    """Finalize the submission only when every workflow track is complete.
+
+    A track is complete when it has no pending approval tasks across any of
+    its stages.  For single-workflow forms this is equivalent to the old
+    ``_finalize_submission`` call.
+    """
+    # Collect all stage IDs across every workflow on this form
+    all_workflows = list(
+        submission.form_definition.workflows.filter(requires_approval=True)
+    )
+    if not all_workflows:
+        _finalize_submission(submission)
+        return
+
+    for wf in all_workflows:
+        stage_ids = list(wf.stages.values_list("id", flat=True))
+        if not stage_ids:
+            continue
+        if submission.approval_tasks.filter(
+            workflow_stage_id__in=stage_ids, status="pending"
+        ).exists():
+            return  # This track still has pending work
+
+    # All tracks complete
+    _finalize_submission(submission)
+
+
 def _advance_to_next_stage(
     submission: FormSubmission,
     workflow: WorkflowDefinition,
@@ -322,10 +350,12 @@ def _advance_to_next_stage(
         ).exists():
             return  # A parallel branch is still in progress
 
-    # Find stages at the next order level.
+    # Find stages at the next order level within this workflow track.
     future_stages = [s for s in stages if s.order > current_order]
     if not future_stages:
-        _finalize_submission(submission)
+        # This workflow track is complete.  Check whether ALL tracks are done
+        # before finalizing the submission.
+        _try_finalize_all_tracks(submission)
         return
 
     next_order = future_stages[0].order
@@ -340,16 +370,16 @@ def _advance_to_next_stage(
 def create_workflow_tasks(submission: FormSubmission) -> None:
     """Create approval tasks for a newly submitted form and send notifications.
 
-    Staged mode (workflow has WorkflowStage rows):
-      Creates tasks for the first stage only.  Subsequent stages are created
-      by ``handle_approval`` as each stage completes.
+    Multi-workflow mode:
+      Iterates over ALL workflows attached to the form definition.
+      For each workflow that requires approval, creates tasks for the first
+      stage(s).  All workflows run in parallel.  The submission is only
+      finalized when every workflow track has completed.
 
-    Legacy mode (no WorkflowStage rows):
-      Manager task first (if required), then group tasks per approval_logic.
+    Single-workflow / legacy mode:
+      Behaves identically to multi-workflow with one workflow.
     """
-    workflow: WorkflowDefinition | None = getattr(
-        submission.form_definition, "workflow", None
-    )
+    workflows = list(submission.form_definition.workflows.all())
 
     # Always notify submission was received (respects notify_on_submission flag)
     _notify_submission_created(submission)
@@ -364,7 +394,9 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
     except Exception as e:
         logger.error("Error spawning sub-workflows on submission: %s", e, exc_info=True)
 
-    if not workflow or not workflow.requires_approval:
+    # Filter to workflows that actually require approval
+    approval_workflows = [w for w in workflows if w.requires_approval]
+    if not approval_workflows:
         _finalize_submission(submission)
         return
 
@@ -372,27 +404,24 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
         submission.status = "pending_approval"
         submission.save(update_fields=["status"])
 
-    due_date = _due_date_for(workflow)
+    any_created = False
+    for workflow in approval_workflows:
+        due_date = _due_date_for(workflow)
+        stages = list(workflow.stages.order_by("order", "id"))
+        if not stages:
+            continue  # No stages configured for this track
 
-    # --- Staged mode ---
-    # Stages sharing the same ``order`` value are parallel — start them all.
-    stages = list(workflow.stages.order_by("order", "id"))
-    if stages:
         first_order = stages[0].order
         first_order_stages = [s for s in stages if s.order == first_order]
-        any_created = False
         for stage in first_order_stages:
             groups = list(stage.approval_groups.all())
             if not stage.requires_manager_approval and not groups:
                 continue  # empty stage — skip
             _create_stage_tasks(submission, stage, due_date=due_date)
             any_created = True
-        if not any_created:
-            _finalize_submission(submission)
-        return
 
-    # No stages configured — nothing to approve.
-    _finalize_submission(submission)
+    if not any_created:
+        _finalize_submission(submission)
 
 
 @transaction.atomic
@@ -400,6 +429,10 @@ def handle_approval(
     submission: FormSubmission, task: ApprovalTask, workflow: WorkflowDefinition
 ) -> None:
     """Advance the workflow after an approval event on a staged task."""
+    # Derive the workflow from the task's stage when available, so that
+    # multi-workflow (parallel track) forms advance the correct track.
+    if task.workflow_stage and task.workflow_stage.workflow_id:
+        workflow = task.workflow_stage.workflow
     due_date = _due_date_for(workflow)
 
     if task.workflow_stage:

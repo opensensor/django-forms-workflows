@@ -75,16 +75,34 @@
                         <th>Slug</th>
                         <th>Name</th>
                         <th>Category</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for form in remote_forms %}
+                    {% with slug=form.form.slug %}
                     <tr>
-                        <td><input type="checkbox" name="slugs" value="{{ form.form.slug }}" checked></td>
-                        <td><code>{{ form.form.slug }}</code></td>
+                        <td><input type="checkbox" name="slugs" value="{{ slug }}" checked></td>
+                        <td><code>{{ slug }}</code></td>
                         <td>{{ form.form.name }}</td>
                         <td>{{ form.category.name|default:"—" }}</td>
+                        <td>
+                            {% for d in form_diffs %}{% if d.slug == slug %}{% if d.is_new %}<span style="color:#1a7f37;font-weight:600;">New</span>{% elif d.summary.identical %}<span style="color:#6e7781;">Identical</span>{% else %}<a href="#" onclick="document.getElementById('diff-{{slug}}').style.display=document.getElementById('diff-{{slug}}').style.display==='none'?'':'none';return false;" style="font-weight:600;">{{ d.summary.diffs|length }} change{{ d.summary.diffs|length|pluralize }}</a>{% endif %}{% endif %}{% endfor %}
+                        </td>
                     </tr>
+                    {% for d in form_diffs %}{% if d.slug == slug and not d.is_new and not d.summary.identical %}
+                    <tr id="diff-{{ slug }}" style="display:none;">
+                        <td colspan="5" style="padding:8px 16px;background:#f6f8fa;">
+                            {% for item in d.summary.diffs %}
+                            <div style="padding:3px 0;font-size:13px;">
+                                {% if "added" in item|lower %}<span style="background:#1a7f37;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">+</span>{% elif "removed" in item|lower %}<span style="background:#cf222e;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">−</span>{% else %}<span style="background:#9a6700;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">Δ</span>{% endif %}
+                                {{ item }}
+                            </div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endif %}{% endfor %}
+                    {% endwith %}
                     {% endfor %}
                 </tbody>
             </table>

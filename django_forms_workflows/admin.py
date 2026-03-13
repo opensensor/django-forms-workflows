@@ -307,7 +307,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     inlines = [FormFieldInline, WorkflowDefinitionInline]
     filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
-    actions = ["clone_forms", "diff_forms", "export_as_json", "push_forms_to_remote"]
+    actions = ["clone_forms", "diff_forms", "export_as_json"]
 
     fieldsets = (
         (
@@ -550,6 +550,20 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                                     group=sag.group,
                                     position=sag.position,
                                 )
+                        # Clone SubWorkflowDefinition if present
+                        try:
+                            swc = wf.sub_workflow_config
+                            SubWorkflowDefinition.objects.create(
+                                parent_workflow=cloned_wf,
+                                sub_workflow=swc.sub_workflow,
+                                count_field=swc.count_field,
+                                section_label=swc.section_label,
+                                label_template=swc.label_template,
+                                trigger=swc.trigger,
+                                data_prefix=swc.data_prefix,
+                            )
+                        except SubWorkflowDefinition.DoesNotExist:
+                            pass
 
                     cloned_count += 1
             except Exception as e:
@@ -654,13 +668,6 @@ class FormDefinitionAdmin(admin.ModelAdmin):
 
     # ── Push/Pull admin actions & views ───────────────────────────────────────
 
-    @admin.action(description="Push selected forms to a remote instance")
-    def push_forms_to_remote(self, request, queryset):
-        """Admin action: redirect to the push view with selected form PKs."""
-        pks = ",".join(str(pk) for pk in queryset.values_list("pk", flat=True))
-        push_url = reverse("admin:formdefinition_sync_push")
-        return HttpResponseRedirect(f"{push_url}?pks={pks}")
-
     def sync_pull_admin_view(self, request):
         """Multi-step admin page for pulling form definitions from a remote instance.
 
@@ -668,7 +675,12 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         Step 1 (POST) – fetch available forms from the remote, show checkbox list
         Step 2 (POST) – import selected forms, show results
         """
-        from .sync_api import fetch_remote_payload, get_sync_remotes, import_payload
+        from .sync_api import (
+            build_export_payload,
+            fetch_remote_payload,
+            get_sync_remotes,
+            import_payload,
+        )
 
         context = dict(self.admin_site.each_context(request))
         context["title"] = "Pull Forms from Remote"
@@ -719,11 +731,46 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                     )
 
                 remote_forms = payload.get("forms", [])
+
+                # Build per-form diffs: remote vs local
+                import json
+
+                from .diff_views import _build_summary
+
+                form_diffs = []
+                for rf in remote_forms:
+                    slug = rf.get("form", {}).get("slug", "")
+                    local_fd = FormDefinition.objects.filter(slug=slug).first()
+                    if local_fd:
+                        local_payload = build_export_payload(
+                            FormDefinition.objects.filter(pk=local_fd.pk)
+                        )
+                        local_data = (
+                            local_payload["forms"][0]
+                            if local_payload.get("forms")
+                            else {}
+                        )
+                        local_json = json.dumps(local_data, indent=2, default=str)
+                        remote_json = json.dumps(rf, indent=2, default=str)
+                        summary = _build_summary([local_data, rf])
+                        form_diffs.append(
+                            {
+                                "slug": slug,
+                                "local_json": local_json,
+                                "remote_json": remote_json,
+                                "summary": summary[0] if summary else None,
+                                "is_new": False,
+                            }
+                        )
+                    else:
+                        form_diffs.append({"slug": slug, "is_new": True})
+
                 context["step"] = 1
                 context["remote_url"] = remote_url
                 context["remote_token"] = remote_token
                 context["remote_name"] = remote_name
                 context["remote_forms"] = remote_forms
+                context["form_diffs"] = form_diffs
                 return render(
                     request, "admin/django_forms_workflows/sync_pull.html", context
                 )
@@ -776,15 +823,19 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         return render(request, "admin/django_forms_workflows/sync_pull.html", context)
 
     def sync_push_admin_view(self, request):
-        """Admin page for pushing local form definitions to a remote instance.
+        """Multi-step admin page for pushing form definitions to a remote.
 
-        Arrives with ``?pks=1,2,3`` (selected from the changelist action) or
-        without PKs (push all forms).
-
-        Step 0 (GET)  – show forms to be pushed + remote picker
-        Step 1 (POST) – execute push, show results
+        Mirrors the pull flow:
+        Step 0 (GET)  – show remote picker (configured remotes + manual URL/token)
+        Step 1 (POST) – show all local forms with checkboxes + diff status
+        Step 2 (POST) – execute push for selected forms, show results
         """
-        from .sync_api import get_sync_remotes, push_to_remote
+        from .sync_api import (
+            build_export_payload,
+            fetch_remote_payload,
+            get_sync_remotes,
+            push_to_remote,
+        )
 
         context = dict(self.admin_site.each_context(request))
         context["title"] = "Push Forms to Remote"
@@ -792,23 +843,11 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         context["remotes"] = get_sync_remotes()
         context["step"] = 0
 
-        # Resolve form queryset from ?pks= query param or POST field
-        pks_raw = request.GET.get("pks") or request.POST.get("pks", "")
-        if pks_raw:
-            try:
-                pk_list = [int(p) for p in pks_raw.split(",") if p.strip().isdigit()]
-            except ValueError:
-                pk_list = []
-            queryset = self.model.objects.filter(pk__in=pk_list)
-        else:
-            queryset = self.model.objects.all()
-
-        context["forms_to_push"] = queryset
-        context["pks"] = pks_raw
-
         if request.method == "POST":
-            step = request.POST.get("step", "push")
-            if step == "push":
+            step = request.POST.get("step", "1")
+
+            # ── Step 1: show local forms with diff status ────────────────
+            if step == "1":
                 remote_idx = request.POST.get("remote_idx", "")
                 manual_url = request.POST.get("manual_url", "").strip()
                 manual_token = request.POST.get("manual_token", "").strip()
@@ -836,9 +875,76 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                         "Please select a configured remote or enter a URL and token."
                     )
                     return render(
-                        request, "admin/django_forms_workflows/sync_push.html", context
+                        request,
+                        "admin/django_forms_workflows/sync_push.html",
+                        context,
                     )
 
+                # Build per-form diffs: local vs remote
+
+                from .diff_views import _build_summary
+
+                local_qs = self.model.objects.all()
+                local_payload = build_export_payload(local_qs)
+                local_forms = local_payload.get("forms", [])
+
+                try:
+                    remote_payload = fetch_remote_payload(remote_url, remote_token)
+                    remote_forms_list = remote_payload.get("forms", [])
+                except Exception:
+                    remote_forms_list = []
+
+                remote_by_slug = {
+                    f.get("form", {}).get("slug"): f for f in remote_forms_list
+                }
+                form_diffs = []
+                for lf in local_forms:
+                    slug = lf.get("form", {}).get("slug", "")
+                    name = lf.get("form", {}).get("name", slug)
+                    rf = remote_by_slug.get(slug)
+                    if rf:
+                        summary = _build_summary([rf, lf])
+                        form_diffs.append(
+                            {
+                                "slug": slug,
+                                "name": name,
+                                "summary": summary[0] if summary else None,
+                                "is_new": False,
+                            }
+                        )
+                    else:
+                        form_diffs.append({"slug": slug, "name": name, "is_new": True})
+
+                context["step"] = 1
+                context["remote_url"] = remote_url
+                context["remote_token"] = remote_token
+                context["remote_name"] = remote_name
+                context["conflict"] = conflict
+                context["local_forms"] = local_forms
+                context["form_diffs"] = form_diffs
+                return render(
+                    request,
+                    "admin/django_forms_workflows/sync_push.html",
+                    context,
+                )
+
+            # ── Step 2: push selected forms ──────────────────────────────
+            if step == "2":
+                remote_url = request.POST.get("remote_url", "").strip()
+                remote_token = request.POST.get("remote_token", "").strip()
+                remote_name = request.POST.get("remote_name", remote_url)
+                conflict = request.POST.get("conflict", "update")
+                selected_slugs = request.POST.getlist("slugs")
+
+                if not selected_slugs:
+                    context["error"] = "No forms selected."
+                    return render(
+                        request,
+                        "admin/django_forms_workflows/sync_push.html",
+                        context,
+                    )
+
+                queryset = self.model.objects.filter(slug__in=selected_slugs)
                 try:
                     result = push_to_remote(
                         remote_url, remote_token, queryset, conflict=conflict
@@ -846,14 +952,18 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                 except Exception as exc:
                     context["error"] = f"Push failed: {exc}"
                     return render(
-                        request, "admin/django_forms_workflows/sync_push.html", context
+                        request,
+                        "admin/django_forms_workflows/sync_push.html",
+                        context,
                     )
 
-                context["step"] = 1
+                context["step"] = 2
                 context["remote_name"] = remote_name
                 context["push_result"] = result
                 return render(
-                    request, "admin/django_forms_workflows/sync_push.html", context
+                    request,
+                    "admin/django_forms_workflows/sync_push.html",
+                    context,
                 )
 
         return render(request, "admin/django_forms_workflows/sync_push.html", context)

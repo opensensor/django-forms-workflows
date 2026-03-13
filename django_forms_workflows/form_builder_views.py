@@ -21,6 +21,7 @@ from .models import (
     FormTemplate,
     PrefillSource,
     StageApprovalGroup,
+    SubWorkflowDefinition,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -194,6 +195,20 @@ def form_builder_clone(request, form_id):
                             group=sag.group,
                             position=sag.position,
                         )
+                # Clone SubWorkflowDefinition if present
+                try:
+                    swc = wf.sub_workflow_config
+                    SubWorkflowDefinition.objects.create(
+                        parent_workflow=cloned_wf,
+                        sub_workflow=swc.sub_workflow,
+                        count_field=swc.count_field,
+                        section_label=swc.section_label,
+                        label_template=swc.label_template,
+                        trigger=swc.trigger,
+                        data_prefix=swc.data_prefix,
+                    )
+                except SubWorkflowDefinition.DoesNotExist:
+                    pass
 
             return JsonResponse(
                 {

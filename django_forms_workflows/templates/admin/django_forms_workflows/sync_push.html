@@ -22,8 +22,8 @@
 <p class="errornote">{{ error }}</p>
 {% endif %}
 
-{# ── Step 1: Results ───────────────────────────────────────────────────── #}
-{% if step == 1 %}
+{# ── Step 2: Results ───────────────────────────────────────────────────── #}
+{% if step == 2 %}
 <p>Forms pushed successfully to <strong>{{ remote_name }}</strong>.</p>
 {% with r=push_result %}
 <p>
@@ -57,33 +57,77 @@
     ← Back to Form Definitions
 </a>
 
-{# ── Step 0: Confirm + pick remote ────────────────────────────────────── #}
-{% else %}
-<h2>Forms to be pushed</h2>
-{% if forms_to_push %}
-<table>
-    <thead>
-        <tr><th>Slug</th><th>Name</th><th>Category</th></tr>
-    </thead>
-    <tbody>
-        {% for form in forms_to_push %}
-        <tr>
-            <td><code>{{ form.slug }}</code></td>
-            <td>{{ form.name }}</td>
-            <td>{{ form.category|default:"—" }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p>No forms selected. All forms will be pushed.</p>
-{% endif %}
+{# ── Step 1: Select forms to push (with diff status) ─────────────────── #}
+{% elif step == 1 %}
+<p>Select forms to push to <strong>{{ remote_name }}</strong>:</p>
 
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="step" value="2">
+    <input type="hidden" name="remote_url" value="{{ remote_url }}">
+    <input type="hidden" name="remote_token" value="{{ remote_token }}">
+    <input type="hidden" name="remote_name" value="{{ remote_name }}">
+    <input type="hidden" name="conflict" value="{{ conflict }}">
+
+    <table>
+        <thead>
+            <tr>
+                <th><input type="checkbox" id="select-all" title="Select all"></th>
+                <th>Slug</th>
+                <th>Name</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in form_diffs %}
+            <tr>
+                <td><input type="checkbox" name="slugs" value="{{ d.slug }}" checked></td>
+                <td><code>{{ d.slug }}</code></td>
+                <td>{{ d.name }}</td>
+                <td>
+                    {% if d.is_new %}<span style="color:#1a7f37;font-weight:600;">New (will be created)</span>
+                    {% elif d.summary.identical %}<span style="color:#6e7781;">No changes</span>
+                    {% else %}<a href="#" onclick="document.getElementById('push-diff-{{ d.slug }}').style.display=document.getElementById('push-diff-{{ d.slug }}').style.display==='none'?'':'none';return false;" style="font-weight:600;">{{ d.summary.diffs|length }} change{{ d.summary.diffs|length|pluralize }}</a>{% endif %}
+                </td>
+            </tr>
+            {% if not d.is_new and not d.summary.identical %}
+            <tr id="push-diff-{{ d.slug }}" style="display:none;">
+                <td colspan="4" style="padding:8px 16px;background:#f6f8fa;">
+                    {% for item in d.summary.diffs %}
+                    <div style="padding:3px 0;font-size:13px;">
+                        {% if "added" in item|lower %}<span style="background:#1a7f37;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">+</span>
+                        {% elif "removed" in item|lower %}<span style="background:#cf222e;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">−</span>
+                        {% else %}<span style="background:#9a6700;color:#fff;padding:1px 6px;border-radius:10px;font-size:11px;font-weight:600;margin-right:6px;">Δ</span>{% endif %}
+                        {{ item }}
+                    </div>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="submit-row">
+        <input type="submit" value="Push Selected Forms →" class="default"
+            onclick="return confirm('Push selected form(s) to {{ remote_name }}?')">
+        <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button cancel-link">Cancel</a>
+    </div>
+</form>
+
+<script>
+document.getElementById('select-all').addEventListener('change', function() {
+    var boxes = document.querySelectorAll('input[name="slugs"]');
+    for (var i = 0; i < boxes.length; i++) boxes[i].checked = this.checked;
+});
+</script>
+
+{# ── Step 0: Pick remote ─────────────────────────────────────────────── #}
+{% else %}
 <h2>Destination</h2>
 <form method="post">
     {% csrf_token %}
-    <input type="hidden" name="step" value="push">
-    <input type="hidden" name="pks" value="{{ pks }}">
+    <input type="hidden" name="step" value="1">
     <fieldset class="module aligned">
         {% if remotes %}
         <div class="form-row">
@@ -117,11 +161,11 @@
         </div>
     </fieldset>
     <div class="submit-row">
-        <input type="submit" value="Push Forms →" class="default"
-            onclick="return confirm('Push {{ forms_to_push.count }} form(s) to the selected remote?')">
+        <input type="submit" value="Connect & Select Forms →" class="default">
         <a href="{% url 'admin:django_forms_workflows_formdefinition_changelist' %}" class="button cancel-link">Cancel</a>
     </div>
 </form>
+
 {% endif %}
 {% endblock %}
 

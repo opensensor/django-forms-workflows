@@ -307,7 +307,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     inlines = [FormFieldInline, WorkflowDefinitionInline]
     filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
-    actions = ["clone_forms", "export_as_json", "push_forms_to_remote"]
+    actions = ["clone_forms", "diff_forms", "export_as_json", "push_forms_to_remote"]
 
     fieldsets = (
         (
@@ -565,6 +565,20 @@ class FormDefinitionAdmin(admin.ModelAdmin):
             )
 
     clone_forms.short_description = "Clone selected forms"
+
+    @admin.action(description="Diff selected forms")
+    def diff_forms(self, request, queryset):
+        """Admin action: compare selected FormDefinitions side-by-side."""
+        if queryset.count() < 2:
+            self.message_user(
+                request, "Select at least 2 forms to diff.", level="error"
+            )
+            return
+        pks = ",".join(str(pk) for pk in queryset.values_list("pk", flat=True))
+        from django.urls import reverse
+
+        url = reverse("admin:form_diff") + f"?pks={pks}"
+        return HttpResponseRedirect(url)
 
     @admin.action(description="Export selected forms as JSON")
     def export_as_json(self, request, queryset):
@@ -847,9 +861,15 @@ class FormDefinitionAdmin(admin.ModelAdmin):
     def get_urls(self):
         """Add custom URLs for the form builder and workflow builder"""
         urls = super().get_urls()
-        from . import form_builder_views, workflow_builder_views
+        from . import diff_views, form_builder_views, workflow_builder_views
 
         custom_urls = [
+            # Diff view
+            path(
+                "diff/",
+                self.admin_site.admin_view(diff_views.diff_forms_view),
+                name="form_diff",
+            ),
             # Form Builder URLs
             path(
                 "builder/new/",

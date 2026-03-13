@@ -1,0 +1,187 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+  .diff-container { display: flex; gap: 0; font-family: monospace; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; }
+  .diff-panel { flex: 1; overflow: auto; max-height: 75vh; }
+  .diff-panel-header { position: sticky; top: 0; z-index: 10; background: #f0f0f0; padding: 8px 12px; font-weight: bold; border-bottom: 1px solid #ccc; font-family: -apple-system, sans-serif; }
+  .diff-panel:not(:last-child) { border-right: 1px solid #ccc; }
+  .diff-line { display: flex; padding: 0 8px; min-height: 20px; line-height: 20px; white-space: pre; }
+  .diff-line-num { color: #999; width: 40px; text-align: right; padding-right: 8px; flex-shrink: 0; user-select: none; }
+  .diff-line-content { flex: 1; }
+  .diff-added { background: #e6ffed; }
+  .diff-removed { background: #ffeef0; }
+  .diff-changed { background: #fff8c5; }
+
+  .summary-panel { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 16px; margin-bottom: 20px; }
+  .summary-panel h3 { margin: 0 0 12px; font-size: 16px; }
+  .summary-item { padding: 4px 0; font-size: 14px; }
+  .summary-item .badge { font-size: 11px; padding: 3px 8px; border-radius: 3px; margin-right: 6px; }
+  .badge-added { background: #28a745; color: #fff; }
+  .badge-removed { background: #dc3545; color: #fff; }
+  .badge-changed { background: #ffc107; color: #333; }
+  .badge-identical { background: #6c757d; color: #fff; }
+  .badge-meta { background: #17a2b8; color: #fff; }
+  .diff-toggle-bar { margin: 12px 0; display: flex; gap: 8px; }
+  .diff-toggle-bar button { padding: 6px 14px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; font-size: 13px; }
+  .diff-toggle-bar button.active { background: #007bff; color: #fff; border-color: #007bff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom: 16px;">{{ title }}</h2>
+
+{% if summary %}
+{% for s in summary %}
+<div class="summary-panel">
+  <h3>
+    {% if s.identical %}
+      <span class="badge badge-identical">Identical</span>
+    {% endif %}
+    {{ s.left }} ↔ {{ s.right }}
+  </h3>
+  {% if s.diffs %}
+  <div>
+    {% for d in s.diffs %}
+    <div class="summary-item">
+      {% if "added" in d|lower %}
+        <span class="badge badge-added">+</span>
+      {% elif "removed" in d|lower %}
+        <span class="badge badge-removed">−</span>
+      {% elif "modified" in d|lower or "→" in d %}
+        <span class="badge badge-changed">Δ</span>
+      {% else %}
+        <span class="badge badge-meta">ℹ</span>
+      {% endif %}
+      {{ d }}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+    <p style="color: #6c757d; margin: 0;">The two forms are identical.</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<div class="diff-toggle-bar">
+  <button id="btn-side" class="active" onclick="setMode('side')">Side by Side</button>
+  <button id="btn-inline" onclick="setMode('inline')">Inline</button>
+  <button id="btn-raw" onclick="setMode('raw')">Raw JSON</button>
+</div>
+
+<div id="diff-output"></div>
+
+<!-- Raw JSON panels (hidden by default) -->
+<div id="raw-panels" style="display:none;">
+  <div class="diff-container">
+    {% for f in forms_json %}
+    <div class="diff-panel">
+      <div class="diff-panel-header">{{ f.name }} ({{ f.slug }})</div>
+      <pre style="margin:0; padding:8px; font-size:12px; white-space:pre-wrap;">{{ f.json }}</pre>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
+<script>
+const formsJson = {{ forms_json_escaped|safe }};
+const formNames = {{ form_names|safe }};
+let currentMode = 'side';
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderSideBySide(a, b, nameA, nameB) {
+  const diff = Diff.diffLines(a, b);
+  let leftLines = [], rightLines = [];
+  let leftNum = 0, rightNum = 0;
+
+  diff.forEach(part => {
+    const lines = part.value.replace(/\n$/, '').split('\n');
+    lines.forEach(line => {
+      if (part.added) {
+        rightNum++;
+        leftLines.push({num: '', text: '', cls: 'diff-removed'});
+        rightLines.push({num: rightNum, text: line, cls: 'diff-added'});
+      } else if (part.removed) {
+        leftNum++;
+        leftLines.push({num: leftNum, text: line, cls: 'diff-removed'});
+        rightLines.push({num: '', text: '', cls: 'diff-added'});
+      } else {
+        leftNum++; rightNum++;
+        leftLines.push({num: leftNum, text: line, cls: ''});
+        rightLines.push({num: rightNum, text: line, cls: ''});
+      }
+    });
+  });
+
+  let html = '<div class="diff-container">';
+  html += '<div class="diff-panel"><div class="diff-panel-header">' + escapeHtml(nameA) + '</div>';
+  leftLines.forEach(l => {
+    html += '<div class="diff-line ' + l.cls + '"><span class="diff-line-num">' + l.num + '</span><span class="diff-line-content">' + escapeHtml(l.text) + '</span></div>';
+  });
+  html += '</div>';
+  html += '<div class="diff-panel"><div class="diff-panel-header">' + escapeHtml(nameB) + '</div>';
+  rightLines.forEach(l => {
+    html += '<div class="diff-line ' + l.cls + '"><span class="diff-line-num">' + l.num + '</span><span class="diff-line-content">' + escapeHtml(l.text) + '</span></div>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
+function renderInline(a, b, nameA, nameB) {
+  const diff = Diff.diffLines(a, b);
+  let html = '<div style="border:1px solid #ccc; border-radius:4px; overflow:auto; max-height:75vh; font-family:monospace; font-size:13px;">';
+  html += '<div style="position:sticky;top:0;z-index:10;background:#f0f0f0;padding:8px 12px;border-bottom:1px solid #ccc;font-weight:bold;font-family:-apple-system,sans-serif;">' + escapeHtml(nameA) + ' ↔ ' + escapeHtml(nameB) + '</div>';
+  let num = 0;
+  diff.forEach(part => {
+    const lines = part.value.replace(/\n$/, '').split('\n');
+    const cls = part.added ? 'diff-added' : part.removed ? 'diff-removed' : '';
+    const prefix = part.added ? '+' : part.removed ? '-' : ' ';
+    lines.forEach(line => {
+      if (!part.added && !part.removed) num++;
+      html += '<div class="diff-line ' + cls + '"><span class="diff-line-num">' + (cls ? '' : num) + '</span><span class="diff-line-content">' + prefix + ' ' + escapeHtml(line) + '</span></div>';
+    });
+  });
+  html += '</div>';
+  return html;
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-side').classList.toggle('active', mode === 'side');
+  document.getElementById('btn-inline').classList.toggle('active', mode === 'inline');
+  document.getElementById('btn-raw').classList.toggle('active', mode === 'raw');
+  document.getElementById('raw-panels').style.display = mode === 'raw' ? '' : 'none';
+  const out = document.getElementById('diff-output');
+  if (mode === 'raw') { out.innerHTML = ''; return; }
+
+  let html = '';
+  for (let i = 1; i < formsJson.length; i++) {
+    if (mode === 'side') {
+      html += renderSideBySide(formsJson[0], formsJson[i], formNames[0], formNames[i]);
+    } else {
+      html += renderInline(formsJson[0], formsJson[i], formNames[0], formNames[i]);
+    }
+    if (i < formsJson.length - 1) html += '<hr>';
+  }
+  out.innerHTML = html;
+}
+
+// Initial render
+document.addEventListener('DOMContentLoaded', () => setMode('side'));
+</script>
+{% endblock %}
+

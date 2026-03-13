@@ -144,9 +144,11 @@ def workflow(form_definition, approval_group):
     wf = WorkflowDefinition.objects.create(
         form_definition=form_definition,
         requires_approval=True,
-        approval_logic="any",
     )
-    wf.approval_groups.add(approval_group)
+    stage = WorkflowStage.objects.create(
+        workflow=wf, name="Approval", order=1, approval_logic="any"
+    )
+    stage.approval_groups.add(approval_group)
     return wf
 
 
@@ -155,7 +157,6 @@ def staged_workflow(form_definition, approval_group, second_approval_group):
     wf = WorkflowDefinition.objects.create(
         form_definition=form_definition,
         requires_approval=True,
-        approval_logic="sequence",
     )
     stage1 = WorkflowStage.objects.create(
         workflow=wf, name="Manager Review", order=1, approval_logic="all"

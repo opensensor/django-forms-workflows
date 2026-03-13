@@ -3,7 +3,6 @@ Tests for django_forms_workflows models.
 """
 
 from datetime import date
-from decimal import Decimal
 
 import pytest
 from django.contrib.auth.models import Group, User
@@ -232,15 +231,21 @@ class TestFormField:
         assert field.regex_validation == r"^[A-Z]"
 
     def test_conditional_display(self, form_definition):
+        rules = {
+            "operator": "AND",
+            "conditions": [
+                {"field": "department", "operator": "equals", "value": "hr"}
+            ],
+            "action": "show",
+        }
         field = FormField.objects.create(
             form_definition=form_definition,
             field_name="conditional",
             field_label="Conditional",
             field_type="text",
-            show_if_field="department",
-            show_if_value="hr",
+            conditional_rules=rules,
         )
-        assert field.show_if_field == "department"
+        assert field.conditional_rules["conditions"][0]["field"] == "department"
 
 
 # ── WorkflowDefinition & WorkflowStage ────────────────────────────────────
@@ -265,15 +270,20 @@ class TestWorkflowDefinition:
         )
         assert wf.notification_cadence == "daily"
 
-    def test_escalation(self, form_definition, approval_group):
-        wf = WorkflowDefinition.objects.create(
+    def test_multiple_workflows_per_form(self, form_definition):
+        wf1 = WorkflowDefinition.objects.create(
             form_definition=form_definition,
             requires_approval=True,
-            escalation_field="amount",
-            escalation_threshold=Decimal("5000.00"),
+            name_label="Track A",
         )
-        wf.escalation_groups.add(approval_group)
-        assert wf.escalation_threshold == Decimal("5000.00")
+        WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=True,
+            name_label="Track B",
+        )
+        assert form_definition.workflows.count() == 2
+        # Backward-compatible .workflow property returns first
+        assert form_definition.workflow == wf1
 
 
 class TestWorkflowStage:
@@ -657,7 +667,7 @@ class TestSubWorkflowModels:
             status="submitted",
         )
         instance = SubWorkflowInstance.objects.create(
-            parent_submission=sub, definition=config, index=1, label="Payment 1"
+            parent_submission=sub, definition=config, index=1
         )
         data = instance.form_data_slice
         assert "payment_type_1" in data

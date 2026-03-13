@@ -217,6 +217,19 @@ class FormDefinition(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def workflow(self):
+        """Backward-compatible accessor — returns the first workflow or None.
+
+        Before this was a OneToOneField with ``related_name="workflow"``.
+        Now that WorkflowDefinition uses a ForeignKey (one-to-many), existing
+        code that calls ``form_definition.workflow`` continues to work
+        transparently.  For forms with multiple workflows, use
+        ``form_definition.workflows.all()`` directly.
+        """
+        # Use the reverse manager installed by the ForeignKey (related_name="workflows")
+        return self.workflows.first()
+
 
 class PrefillSource(models.Model):
     """
@@ -553,8 +566,8 @@ class WorkflowDefinition(models.Model):
     - Manager approval from LDAP hierarchy
     """
 
-    form_definition = models.OneToOneField(
-        FormDefinition, related_name="workflow", on_delete=models.CASCADE
+    form_definition = models.ForeignKey(
+        FormDefinition, related_name="workflows", on_delete=models.CASCADE
     )
 
     name_label = models.CharField(

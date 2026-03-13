@@ -2,14 +2,13 @@
 Tests for django_forms_workflows.utils.
 """
 
-from decimal import Decimal
-
 from django.contrib.auth.models import Group, User
 
 from django_forms_workflows.models import (
     ApprovalTask,
     FormSubmission,
     WorkflowDefinition,
+    WorkflowStage,
 )
 from django_forms_workflows.utils import (
     check_escalation_needed,
@@ -20,58 +19,21 @@ from django_forms_workflows.utils import (
 
 
 class TestCheckEscalation:
-    def test_escalation_not_triggered_below_threshold(
+    def test_escalation_not_triggered_no_config(
         self, form_definition, user, approval_group
     ):
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition,
             requires_approval=True,
-            escalation_field="amount",
-            escalation_threshold=Decimal("1000.00"),
         )
-        wf.approval_groups.add(approval_group)
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Review", order=1, approval_logic="all"
+        )
+        stage.approval_groups.add(approval_group)
         sub = FormSubmission.objects.create(
             form_definition=form_definition,
             submitter=user,
             form_data={"amount": "500.00"},
-            status="submitted",
-        )
-        result = check_escalation_needed(sub)
-        assert result is False
-
-    def test_escalation_triggered_above_threshold(
-        self, form_definition, user, approval_group
-    ):
-        esc_group = Group.objects.create(name="Escalation Group")
-        wf = WorkflowDefinition.objects.create(
-            form_definition=form_definition,
-            requires_approval=True,
-            escalation_field="amount",
-            escalation_threshold=Decimal("1000.00"),
-        )
-        wf.approval_groups.add(approval_group)
-        wf.escalation_groups.add(esc_group)
-        sub = FormSubmission.objects.create(
-            form_definition=form_definition,
-            submitter=user,
-            form_data={"amount": "5000.00"},
-            status="submitted",
-        )
-        result = check_escalation_needed(sub)
-        assert result is True
-
-    def test_escalation_no_field_configured(
-        self, form_definition, user, approval_group
-    ):
-        wf = WorkflowDefinition.objects.create(
-            form_definition=form_definition,
-            requires_approval=True,
-        )
-        wf.approval_groups.add(approval_group)
-        sub = FormSubmission.objects.create(
-            form_definition=form_definition,
-            submitter=user,
-            form_data={"amount": "5000.00"},
             status="submitted",
         )
         result = check_escalation_needed(sub)

@@ -81,9 +81,11 @@ class TestLegacyFlatAll:
     def test_all_approve_finalizes(
         self, mock_created, mock_task, mock_final, workflow, user, approver_user
     ):
-        # Change to "all" logic
-        workflow.approval_logic = "all"
-        workflow.save()
+        # The workflow fixture already has a stage with "any" logic;
+        # update it to "all" for this test.
+        stage = workflow.stages.first()
+        stage.approval_logic = "all"
+        stage.save()
         sub = _make_submission(workflow.form_definition, user)
         create_workflow_tasks(sub)
         task = sub.approval_tasks.first()
@@ -95,10 +97,10 @@ class TestLegacyFlatAll:
         assert sub.status == "approved"
 
 
-# ── Legacy flat mode (any) ────────────────────────────────────────────────
+# ── Staged mode (any) ─────────────────────────────────────────────────────
 
 
-class TestLegacyFlatAny:
+class TestStagedAny:
     @patch("django_forms_workflows.workflow_engine._notify_final_approval")
     @patch("django_forms_workflows.workflow_engine._notify_task_request")
     @patch("django_forms_workflows.workflow_engine._notify_submission_created")
@@ -110,9 +112,11 @@ class TestLegacyFlatAny:
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition,
             requires_approval=True,
-            approval_logic="any",
         )
-        wf.approval_groups.add(g1, g2)
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Review", order=1, approval_logic="any"
+        )
+        stage.approval_groups.add(g1, g2)
         sub = _make_submission(form_definition, user)
         create_workflow_tasks(sub)
         assert sub.approval_tasks.count() == 2
@@ -126,10 +130,10 @@ class TestLegacyFlatAny:
         assert sub.status == "approved"
 
 
-# ── Legacy flat mode (sequence) ───────────────────────────────────────────
+# ── Staged mode (sequence across stages) ─────────────────────────────────
 
 
-class TestLegacyFlatSequence:
+class TestStagedSequence:
     @patch("django_forms_workflows.workflow_engine._notify_final_approval")
     @patch("django_forms_workflows.workflow_engine._notify_task_request")
     @patch("django_forms_workflows.workflow_engine._notify_submission_created")
@@ -141,17 +145,23 @@ class TestLegacyFlatSequence:
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition,
             requires_approval=True,
-            approval_logic="sequence",
         )
-        wf.approval_groups.add(g1, g2)
+        stage1 = WorkflowStage.objects.create(
+            workflow=wf, name="Stage 1", order=1, approval_logic="all"
+        )
+        stage1.approval_groups.add(g1)
+        stage2 = WorkflowStage.objects.create(
+            workflow=wf, name="Stage 2", order=2, approval_logic="all"
+        )
+        stage2.approval_groups.add(g2)
         sub = _make_submission(form_definition, user)
         create_workflow_tasks(sub)
-        # Only one task initially
+        # Only stage 1 task initially
         assert sub.approval_tasks.filter(status="pending").count() == 1
         task1 = sub.approval_tasks.first()
         assert task1.assigned_group == g1
 
-        # Approve first; second should be created
+        # Approve first; stage 2 task should be created
         task1.status = "approved"
         task1.approved_by = approver_user
         task1.save()
@@ -223,11 +233,13 @@ class TestRejection:
     @patch("django_forms_workflows.workflow_engine._notify_rejection")
     @patch("django_forms_workflows.workflow_engine._notify_task_request")
     @patch("django_forms_workflows.workflow_engine._notify_submission_created")
-    def test_legacy_all_reject(
+    def test_staged_all_reject(
         self, mock_created, mock_task, mock_reject, workflow, user, approver_user
     ):
-        workflow.approval_logic = "all"
-        workflow.save()
+        # The workflow fixture has a stage with "any" logic; change to "all"
+        stage = workflow.stages.first()
+        stage.approval_logic = "all"
+        stage.save()
         sub = _make_submission(workflow.form_definition, user)
         create_workflow_tasks(sub)
         task = sub.approval_tasks.first()
@@ -251,9 +263,11 @@ class TestRejection:
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition,
             requires_approval=True,
-            approval_logic="any",
         )
-        wf.approval_groups.add(g1, g2)
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Review", order=1, approval_logic="any"
+        )
+        stage.approval_groups.add(g1, g2)
         sub = _make_submission(form_definition, user)
         create_workflow_tasks(sub)
         # Reject one — submission should survive

@@ -56,9 +56,7 @@ def export_form(db):
     wf = WorkflowDefinition.objects.create(
         form_definition=fd,
         requires_approval=True,
-        approval_logic="all",
     )
-    wf.approval_groups.add(g)
     stage = WorkflowStage.objects.create(
         workflow=wf, name="Review", order=1, approval_logic="all"
     )

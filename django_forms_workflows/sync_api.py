@@ -321,10 +321,7 @@ def _serialize_post_action(action):
 
 def serialize_form(form_definition):
     """Serialize a FormDefinition (with all related objects) to a plain dict."""
-    try:
-        workflow = form_definition.workflow
-    except WorkflowDefinition.DoesNotExist:
-        workflow = None
+    workflow = form_definition.workflow
 
     return {
         "schema_version": SYNC_SCHEMA_VERSION,
@@ -365,11 +362,11 @@ def build_export_payload(queryset):
         "fields",
         "fields__prefill_source_config",
         "fields__workflow_stage",
-        "workflow",
-        "workflow__stages",
-        "workflow__stages__approval_groups",
-        "workflow__sub_workflow_config",
-        "workflow__sub_workflow_config__sub_workflow__form_definition",
+        "workflows",
+        "workflows__stages",
+        "workflows__stages__approval_groups",
+        "workflows__sub_workflow_config",
+        "workflows__sub_workflow_config__sub_workflow__form_definition",
         "post_actions",
         "submit_groups",
         "view_groups",

@@ -276,6 +276,7 @@ class WorkflowDefinitionInline(admin.StackedInline):
     model = WorkflowDefinition
     extra = 0
     fields = [
+        "name_label",
         "requires_approval",
         ("notify_on_submission", "notify_on_approval", "notify_on_rejection"),
         "additional_notify_emails",
@@ -887,7 +888,6 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
 
-@admin.register(WorkflowStage)
 class StageApprovalGroupInline(admin.TabularInline):
     """Inline for ordering approval groups within a stage."""
 
@@ -897,6 +897,7 @@ class StageApprovalGroupInline(admin.TabularInline):
     autocomplete_fields = ("group",)
 
 
+@admin.register(WorkflowStage)
 class WorkflowStageAdmin(admin.ModelAdmin):
     """Standalone admin for WorkflowStage.
 

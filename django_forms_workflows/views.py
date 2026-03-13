@@ -478,7 +478,7 @@ def my_submissions(request):
 
     # Check if any submissions support bulk export (fast EXISTS)
     any_exportable = base_submissions.filter(
-        form_definition__workflow__allow_bulk_export=True
+        form_definition__workflows__allow_bulk_export=True
     ).exists()
 
     # Extra form-field columns (only when a specific form is selected)
@@ -549,9 +549,9 @@ def submission_detail(request, submission_id):
     # render in distinct sections.
     stage_groups = None
     sub_workflow_groups = None
+    workflow = getattr(submission.form_definition, "workflow", None)
     if approval_tasks.filter(workflow_stage__isnull=False).exists():
         # Determine which stage IDs belong to the parent workflow
-        workflow = getattr(submission.form_definition, "workflow", None)
         parent_stage_ids = set()
         if workflow:
             parent_stage_ids = set(workflow.stages.values_list("id", flat=True))
@@ -862,10 +862,10 @@ def approval_inbox(request):
             pass
 
     any_exportable = base_tasks.filter(
-        submission__form_definition__workflow__allow_bulk_export=True
+        submission__form_definition__workflows__allow_bulk_export=True
     ).exists()
     any_pdf_exportable = base_tasks.filter(
-        submission__form_definition__workflow__allow_bulk_pdf_export=True
+        submission__form_definition__workflows__allow_bulk_pdf_export=True
     ).exists()
 
     # Compute default sort column index for DataTables (submitted_at)
@@ -1314,10 +1314,10 @@ def completed_approvals(request):
 
     # --- Bulk export flags (fast EXISTS — no full queryset fetch needed) ---
     any_exportable = base_submissions.filter(
-        form_definition__workflow__allow_bulk_export=True
+        form_definition__workflows__allow_bulk_export=True
     ).exists()
     any_pdf_exportable = base_submissions.filter(
-        form_definition__workflow__allow_bulk_pdf_export=True
+        form_definition__workflows__allow_bulk_pdf_export=True
     ).exists()
 
     # --- Form fields for column picker (when a specific form is filtered) ---
@@ -2063,7 +2063,7 @@ def bulk_export_submissions(request):
     # Fetch submissions that are bulk-exportable
     submissions = (
         FormSubmission.objects.filter(id__in=submission_ids)
-        .filter(form_definition__workflow__allow_bulk_export=True)
+        .filter(form_definition__workflows__allow_bulk_export=True)
         .select_related("form_definition", "submitter")
         .order_by("form_definition__name", "-submitted_at")
     )
@@ -2238,7 +2238,7 @@ def bulk_export_submissions_pdf(request):
     # Fetch only bulk-pdf-exportable submissions
     submissions = (
         FormSubmission.objects.filter(id__in=submission_ids)
-        .filter(form_definition__workflow__allow_bulk_pdf_export=True)
+        .filter(form_definition__workflows__allow_bulk_pdf_export=True)
         .select_related("form_definition", "submitter")
         .order_by("form_definition__name", "-submitted_at")
     )

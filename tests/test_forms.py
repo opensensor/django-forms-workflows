@@ -291,8 +291,13 @@ class TestDynamicFormEnhancements:
             field_label="Dependent",
             field_type="text",
             order=2,
-            show_if_field="trigger",
-            show_if_value="yes",
+            conditional_rules={
+                "operator": "AND",
+                "conditions": [
+                    {"field": "trigger", "operator": "equals", "value": "yes"}
+                ],
+                "action": "show",
+            },
         )
         form = DynamicForm(form_definition, user=user)
         config = form.get_enhancements_config()

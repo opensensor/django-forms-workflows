@@ -68,17 +68,16 @@ class TestConvertWorkflowToVisual:
         assert stage_nodes[0]["data"]["name"] == "Manager Review"
         assert stage_nodes[1]["data"]["name"] == "Finance Review"
 
-    def test_generates_fallback_for_flat_workflow(
-        self, workflow, form_definition, approval_group
-    ):
-        """Flat workflow (no stages) produces a single stage node fallback."""
-        result = convert_workflow_to_visual(workflow, form_definition)
+    def test_workflow_with_no_stages_has_no_stage_nodes(self, form_definition, db):
+        """Workflow without stages produces no stage nodes."""
+        flat_wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=True,
+        )
+        result = convert_workflow_to_visual(flat_wf, form_definition)
 
         stage_nodes = [n for n in result["nodes"] if n["type"] == "stage"]
-        assert len(stage_nodes) == 1
-        assert stage_nodes[0]["data"]["stage_id"] is None  # Not persisted yet
-        groups = stage_nodes[0]["data"]["approval_groups"]
-        assert any(g["id"] == approval_group.id for g in groups)
+        assert len(stage_nodes) == 0
 
     def test_workflow_settings_node_populated(self, staged_workflow, form_definition):
         staged_workflow.approval_deadline_days = 7
@@ -175,9 +174,6 @@ class TestConvertVisualToWorkflow:
                 "send_reminder_after_days": 3,
                 "auto_approve_after_days": "",
                 "notification_cadence": "weekly",
-                "escalation_field": "amount",
-                "escalation_threshold": "5000",
-                "escalation_groups": [],
                 "notify_on_submission": True,
                 "notify_on_approval": False,
                 "notify_on_rejection": True,
@@ -189,35 +185,7 @@ class TestConvertVisualToWorkflow:
         assert wf.send_reminder_after_days == 3
         assert wf.auto_approve_after_days is None
         assert wf.notification_cadence == "weekly"
-        assert wf.escalation_field == "amount"
         assert wf.notify_on_approval is False
-
-    def test_legacy_approval_config_converted_to_stage(
-        self, form_definition, approval_group
-    ):
-        """A legacy approval_config node is transparently converted to a stage."""
-        visual = {
-            "nodes": [
-                {"type": "start", "data": {}},
-                {
-                    "type": "approval_config",
-                    "data": {
-                        "requires_manager_approval": True,
-                        "approval_groups": [
-                            {"id": approval_group.id, "name": "Approvers"}
-                        ],
-                        "approval_logic": "any",
-                    },
-                },
-                {"type": "end", "data": {}},
-            ],
-            "connections": [],
-        }
-        wf = convert_visual_to_workflow(visual, form_definition)
-        stages = list(wf.stages.order_by("order"))
-        assert len(stages) == 1
-        assert stages[0].name == "Approval"
-        assert stages[0].requires_manager_approval is True
 
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()

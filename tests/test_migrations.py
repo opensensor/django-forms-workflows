@@ -77,12 +77,11 @@ class TestFlatWorkflowToStagedLogic:
         g1 = Group.objects.create(name="Seq1")
         g2 = Group.objects.create(name="Seq2")
         wf = WorkflowDefinition.objects.create(
-            form_definition=fd, requires_approval=True, approval_logic="sequence"
+            form_definition=fd, requires_approval=True
         )
-        wf.approval_groups.add(g1, g2)
 
         # Simulate migration logic: create stages from flat groups
-        groups = list(wf.approval_groups.all().order_by("id"))
+        groups = [g1, g2]
         stages = []
         for i, group in enumerate(groups, start=1):
             stage = WorkflowStage.objects.create(
@@ -90,7 +89,6 @@ class TestFlatWorkflowToStagedLogic:
                 name=f"{group.name} Review",
                 order=i,
                 approval_logic="all",
-                auto_created=True,
             )
             stage.approval_groups.add(group)
             stages.append(stage)
@@ -107,18 +105,16 @@ class TestFlatWorkflowToStagedLogic:
         g1 = Group.objects.create(name="All1")
         g2 = Group.objects.create(name="All2")
         wf = WorkflowDefinition.objects.create(
-            form_definition=fd, requires_approval=True, approval_logic="all"
+            form_definition=fd, requires_approval=True
         )
-        wf.approval_groups.add(g1, g2)
 
         # Simulate: single stage with all groups
-        groups = list(wf.approval_groups.all().order_by("id"))
+        groups = [g1, g2]
         stage = WorkflowStage.objects.create(
             workflow=wf,
             name="Review",
             order=1,
             approval_logic="all",
-            auto_created=True,
         )
         stage.approval_groups.set(groups)
 
@@ -131,12 +127,9 @@ class TestFlatWorkflowToStagedLogic:
         )
         g1 = Group.objects.create(name="Map1")
         wf = WorkflowDefinition.objects.create(
-            form_definition=fd, requires_approval=True, approval_logic="sequence"
+            form_definition=fd, requires_approval=True
         )
-        wf.approval_groups.add(g1)
-        stage = WorkflowStage.objects.create(
-            workflow=wf, name="Review", order=1, auto_created=True
-        )
+        stage = WorkflowStage.objects.create(workflow=wf, name="Review", order=1)
         stage.approval_groups.add(g1)
 
         # Create a field and map it to stage (simulating what migration does)

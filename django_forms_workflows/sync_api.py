@@ -579,11 +579,12 @@ def import_form(form_data, conflict="update", category_cache=None):
         if sub_wf_data:
             sub_form_slug = sub_wf_data.get("sub_workflow_form_slug")
             sub_wf_form = FormDefinition.objects.filter(slug=sub_form_slug).first()
-            if sub_wf_form and hasattr(sub_wf_form, "workflow"):
+            sub_wf = sub_wf_form.workflow if sub_wf_form else None
+            if sub_wf:
                 SubWorkflowDefinition.objects.update_or_create(
                     parent_workflow=wf,
                     defaults={
-                        "sub_workflow": sub_wf_form.workflow,
+                        "sub_workflow": sub_wf,
                         "section_label": sub_wf_data.get("section_label", ""),
                         "count_field": sub_wf_data.get("count_field", ""),
                         "label_template": sub_wf_data.get(

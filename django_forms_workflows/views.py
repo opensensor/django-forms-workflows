@@ -2464,8 +2464,8 @@ def completed_approvals_ajax(request):
 
     # --- Page slice ---
     base_qs = qs.select_related(
-        "form_definition__category", "form_definition__workflow", "submitter"
-    )
+        "form_definition__category", "submitter"
+    ).prefetch_related("form_definition__workflows")
     # Only defer form_data when we don't need it (no per-form column expansion).
     # .defer(None) is invalid Django — conditionally apply instead.
     if not form_slug:
@@ -2591,9 +2591,8 @@ def approval_inbox_ajax(request):
     # --- Page slice ---
     page_qs = qs.select_related(
         "submission__form_definition__category",
-        "submission__form_definition__workflow",
         "submission__submitter",
-    )[start : start + length]
+    ).prefetch_related("submission__form_definition__workflows")[start : start + length]
 
     # --- Serialise ---
     data = []
@@ -2692,8 +2691,8 @@ def my_submissions_ajax(request):
         except FormDefinition.DoesNotExist:
             pass
 
-    base_qs = qs.select_related(
-        "form_definition__category", "form_definition__workflow"
+    base_qs = qs.select_related("form_definition__category").prefetch_related(
+        "form_definition__workflows"
     )
     if not form_slug:
         base_qs = base_qs.defer("form_data")

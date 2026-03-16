@@ -884,8 +884,8 @@ def approval_inbox(request):
     # Compute default sort column index for DataTables (submitted_at)
     _exp_off = 1 if (any_exportable or any_pdf_exportable) else 0
     _cat_off = 0 if category_slug else 1
-    # columns: [checkbox?] [category?] actions form submitter step submitted_at
-    default_sort_col = _exp_off + _cat_off + 1 + 3  # index of submitted_at
+    # columns: [checkbox?] [category?] actions form submitter stage step_num assigned submitted_at
+    default_sort_col = _exp_off + _cat_off + 1 + 5  # index of submitted_at
 
     return render(
         request,
@@ -2366,7 +2366,9 @@ _INBOX_SORTABLE = {
     "submission__form_definition__category__name",
     "submission__form_definition__name",
     "submission__submitter__last_name",
-    "step_name",
+    "stage_number",
+    "workflow_stage__name",
+    "assigned_group__name",
     "submission__submitted_at",
 }
 _MY_SUB_SORTABLE = {
@@ -2627,6 +2629,9 @@ def approval_inbox_ajax(request):
     page_qs = qs.select_related(
         "submission__form_definition__category",
         "submission__submitter",
+        "workflow_stage",
+        "assigned_group",
+        "assigned_to",
     ).prefetch_related("submission__form_definition__workflows")[start : start + length]
 
     # --- Serialise ---
@@ -2655,7 +2660,17 @@ def approval_inbox_ajax(request):
             "submitter": escape(
                 sub.submitter.get_full_name() or sub.submitter.username
             ),
-            "step": escape(task.step_name or ""),
+            "stage": f"Stage {task.stage_number}" if task.stage_number else "—",
+            "step_num": escape(task.workflow_stage.name if task.workflow_stage else ""),
+            "assigned": escape(
+                task.assigned_group.name
+                if task.assigned_group
+                else (
+                    task.assigned_to.get_full_name() or task.assigned_to.username
+                    if task.assigned_to
+                    else "—"
+                )
+            ),
             "submitted_at": sub.submitted_at.strftime("%Y-%m-%d %H:%M")
             if sub.submitted_at
             else "—",

@@ -281,11 +281,17 @@ class StageApprovalGroupInline(nested_admin.NestedTabularInline):
 
 
 class StageFormFieldNotificationInline(nested_admin.NestedTabularInline):
-    """Inline for configuring form-field conditional notifications on a stage."""
+    """Inline for configuring stage-level notifications (static and/or form-field driven)."""
 
     model = StageFormFieldNotification
     extra = 0
-    fields = ("notification_type", "email_field", "subject_template", "conditions")
+    fields = (
+        "notification_type",
+        "email_field",
+        "static_emails",
+        "subject_template",
+        "conditions",
+    )
 
 
 class WorkflowStageInline(nested_admin.NestedStackedInline):

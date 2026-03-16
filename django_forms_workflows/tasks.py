@@ -781,6 +781,25 @@ def _get_form_field_email(form_data: dict, email_field: str) -> str | None:
     return value if value and "@" in value else None
 
 
+def _collect_notification_recipients(notif, form_data: dict) -> list[str]:
+    """Return the deduplicated list of recipient emails for a StageFormFieldNotification.
+
+    Combines:
+    - The dynamic email read from form_data via notif.email_field (if set and valid).
+    - All static emails from notif.static_emails (comma-separated, if set).
+    """
+    recipients: list[str] = []
+    if notif.email_field:
+        dynamic = _get_form_field_email(form_data, notif.email_field)
+        if dynamic:
+            recipients.append(dynamic)
+    for addr in (notif.static_emails or "").split(","):
+        addr = addr.strip()
+        if addr and "@" in addr and addr not in recipients:
+            recipients.append(addr)
+    return recipients
+
+
 def _build_form_field_notification_context(
     submission: FormSubmission,
     task: ApprovalTask | None = None,
@@ -834,24 +853,25 @@ def send_stage_form_field_notifications(task_id: int) -> None:
 
                 if not evaluate_conditions(notif.conditions, form_data):
                     logger.info(
-                        "Form-field notification %s skipped: conditions not met (submission %s)",
+                        "Stage notification %s skipped: conditions not met (submission %s)",
                         notif.id,
                         submission.id,
                     )
                     continue
             except Exception:
                 logger.warning(
-                    "Form-field notification %s: error evaluating conditions; skipping.",
+                    "Stage notification %s: error evaluating conditions; skipping.",
                     notif.id,
                 )
                 continue
 
-        email = _get_form_field_email(form_data, notif.email_field)
-        if not email:
+        recipients = _collect_notification_recipients(notif, form_data)
+        if not recipients:
             logger.info(
-                "Form-field notification %s: field '%s' is empty or invalid; skipping.",
+                "Stage notification %s: no recipients resolved (email_field='%s', static_emails='%s'); skipping.",
                 notif.id,
                 notif.email_field,
+                notif.static_emails,
             )
             continue
 
@@ -870,7 +890,7 @@ def send_stage_form_field_notifications(task_id: int) -> None:
         }
         _send_html_email(
             subject,
-            [email],
+            recipients,
             "emails/approval_request.html",
             context,
             notification_type="approval_request",
@@ -910,6 +930,12 @@ def send_submission_form_field_notifications(
         notification_type=notification_type,
     ).select_related("stage")
 
+    default_subjects = {
+        "submission_received": f"Submission Received: {form_name} (ID {submission.id})",
+        "approval_notification": f"Submission Approved: {form_name} (ID {submission.id})",
+        "rejection_notification": f"Submission Rejected: {form_name} (ID {submission.id})",
+    }
+
     for notif in notifications:
         if notif.conditions:
             try:
@@ -919,13 +945,13 @@ def send_submission_form_field_notifications(
                     continue
             except Exception:
                 logger.warning(
-                    "Form-field notification %s: error evaluating conditions; skipping.",
+                    "Stage notification %s: error evaluating conditions; skipping.",
                     notif.id,
                 )
                 continue
 
-        email = _get_form_field_email(form_data, notif.email_field)
-        if not email:
+        recipients = _collect_notification_recipients(notif, form_data)
+        if not recipients:
             continue
 
         subject = (
@@ -933,16 +959,14 @@ def send_submission_form_field_notifications(
                 form_name=form_name, submission_id=submission.id
             )
             if notif.subject_template
-            else {
-                "submission_received": f"Submission Received: {form_name} (ID {submission.id})",
-                "approval_notification": f"Submission Approved: {form_name} (ID {submission.id})",
-                "rejection_notification": f"Submission Rejected: {form_name} (ID {submission.id})",
-            }.get(notification_type, f"{form_name} (ID {submission.id})")
+            else default_subjects.get(
+                notification_type, f"{form_name} (ID {submission.id})"
+            )
         )
         context = {"submission": submission, "submission_url": submission_url}
         _send_html_email(
             subject,
-            [email],
+            recipients,
             template,
             context,
             notification_type=notification_type,

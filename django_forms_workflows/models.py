@@ -838,18 +838,28 @@ class StageApprovalGroup(models.Model):
 
 class StageFormFieldNotification(models.Model):
     """
-    A notification rule that sends an email to an address captured in the
-    form submission data when a stage activates (or when the submission
-    reaches a final state).
+    A notification rule attached to a workflow stage that can send emails to:
 
-    This enables "conditional notifications" where — for example — the
-    Instructor whose email was entered in the form receives a notification
-    when the workflow reaches the Instructor Approval stage, even if that
-    person is not a registered system user.
+    * A **dynamic** recipient — an email address captured in a form field
+      (``email_field``).  The value is resolved from the submission's
+      ``form_data`` at send time, so the recipient can vary per submission.
+    * One or more **static** recipients — a comma-separated list of fixed
+      email addresses (``static_emails``) that always receive the notification
+      regardless of what was submitted.
 
-    Conditions (same format as WorkflowStage.trigger_conditions) are
-    evaluated against the submission's form_data before sending; leave
-    blank to always send.
+    Both fields may be set simultaneously; the union of recipients is notified.
+    At least one of ``email_field`` or ``static_emails`` must be provided.
+
+    ``notification_type`` controls which email template is used and when the
+    notification fires:
+
+    * ``approval_request``      — fires when the stage activates.
+    * ``submission_received``   — fires when the form is first submitted.
+    * ``approval_notification`` — fires when the whole workflow is approved.
+    * ``rejection_notification``— fires when the submission is rejected.
+
+    Optional ``conditions`` (same JSON format as ``WorkflowStage.trigger_conditions``)
+    are evaluated against ``form_data`` before sending; leave blank to always send.
     """
 
     NOTIFICATION_TYPES = [
@@ -872,9 +882,22 @@ class StageFormFieldNotification(models.Model):
     )
     email_field = models.CharField(
         max_length=200,
+        blank=True,
+        default="",
         help_text=(
             "Slug of the form field whose value is the recipient email address. "
-            "The value is read from the submission's form_data at send time."
+            "The value is read from the submission's form_data at send time. "
+            "Leave blank if you only need static recipients."
+        ),
+    )
+    static_emails = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text=(
+            "Comma-separated list of fixed email addresses to notify. "
+            "These recipients are always included regardless of form data. "
+            "Can be combined with Email Field to notify both static and dynamic addresses."
         ),
     )
     subject_template = models.CharField(

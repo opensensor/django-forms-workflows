@@ -278,10 +278,26 @@ class WorkflowDefinitionInline(admin.StackedInline):
     fields = [
         "name_label",
         "requires_approval",
-        "trigger_conditions",
         "hide_approval_history",
-        ("notify_on_submission", "notify_on_approval", "notify_on_rejection"),
+        "trigger_conditions",
+        (
+            "notify_on_submission",
+            "notify_on_approval",
+            "notify_on_rejection",
+            "notify_on_withdrawal",
+        ),
         "additional_notify_emails",
+        "notification_cadence",
+        (
+            "notification_cadence_day",
+            "notification_cadence_time",
+            "notification_cadence_form_field",
+        ),
+        (
+            "approval_deadline_days",
+            "send_reminder_after_days",
+            "auto_approve_after_days",
+        ),
         ("allow_bulk_export", "allow_bulk_pdf_export"),
     ]
 
@@ -1085,19 +1101,49 @@ class WorkflowStageAdmin(admin.ModelAdmin):
     per group that needs its own approve_label or approval fields.
     """
 
-    list_display = ("__str__", "workflow", "order", "approval_logic", "approve_label")
+    list_display = (
+        "__str__",
+        "workflow",
+        "order",
+        "approval_logic",
+        "approve_label",
+        "requires_manager_approval",
+        "has_trigger_conditions",
+    )
     list_filter = ("workflow", "approval_logic", "requires_manager_approval")
     list_select_related = ("workflow", "workflow__form_definition")
     search_fields = ("name", "workflow__form_definition__name")
     ordering = ("workflow", "order")
     inlines = [StageApprovalGroupInline]
-    fields = (
-        "workflow",
-        ("order", "name"),
-        "approval_logic",
-        "approve_label",
-        "requires_manager_approval",
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "workflow",
+                    ("order", "name"),
+                    "approval_logic",
+                    "approve_label",
+                    "requires_manager_approval",
+                )
+            },
+        ),
+        (
+            "Conditional Trigger",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "When set, this stage only runs if the submission data matches these "
+                    "conditions. Leave blank to always run this stage."
+                ),
+                "fields": ("trigger_conditions",),
+            },
+        ),
     )
+
+    @admin.display(boolean=True, description="Has trigger conditions")
+    def has_trigger_conditions(self, obj):
+        return bool(obj.trigger_conditions)
 
 
 class WorkflowStageInline(admin.StackedInline):
@@ -1138,6 +1184,7 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
                     "form_definition",
                     "name_label",
                     "requires_approval",
+                    "hide_approval_history",
                     "trigger_conditions",
                 )
             },

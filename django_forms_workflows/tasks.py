@@ -865,7 +865,6 @@ def send_stage_form_field_notifications(task_id: int) -> None:
         context = {
             "task": task,
             "submission": submission,
-            "approver": None,
             "approval_url": approval_url,
             "submission_url": submission_url,
         }

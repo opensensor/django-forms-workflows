@@ -62,13 +62,71 @@ def _build_summary(forms_data):
             o_stages = o_wf.get("stages", [])
             if len(b_stages) != len(o_stages):
                 diffs.append(f"Workflow stages: {len(b_stages)} → {len(o_stages)}")
+
+            # Per-stage comparison keyed on (order, name) to handle parallel stages
+            b_stage_map = {(s.get("order"), s.get("name")): s for s in b_stages}
+            o_stage_map = {(s.get("order"), s.get("name")): s for s in o_stages}
+            added_stages = sorted(o_stage_map.keys() - b_stage_map.keys())
+            removed_stages = sorted(b_stage_map.keys() - o_stage_map.keys())
+            if added_stages:
+                diffs.append(f"Stages added: {', '.join(n for _, n in added_stages)}")
+            if removed_stages:
+                diffs.append(
+                    f"Stages removed: {', '.join(n for _, n in removed_stages)}"
+                )
+            stage_field_keys = [
+                "assignee_email_field",
+                "approve_label",
+                "approval_logic",
+            ]
+            for key in sorted(b_stage_map.keys() & o_stage_map.keys()):
+                bs, os_ = b_stage_map[key], o_stage_map[key]
+                for sk in stage_field_keys:
+                    if bs.get(sk) != os_.get(sk):
+                        diffs.append(
+                            f"Stage '{key[1]}' {sk}: {bs.get(sk)!r} → {os_.get(sk)!r}"
+                        )
+                b_notifs = bs.get("form_field_notifications", [])
+                o_notifs = os_.get("form_field_notifications", [])
+                if len(b_notifs) != len(o_notifs):
+                    diffs.append(
+                        f"Stage '{key[1]}' notifications: {len(b_notifs)} → {len(o_notifs)}"
+                    )
+                # Approval groups: support both old string lists and new dict lists
+                b_groups = {
+                    g["name"] if isinstance(g, dict) else g
+                    for g in bs.get("approval_groups", [])
+                }
+                o_groups = {
+                    g["name"] if isinstance(g, dict) else g
+                    for g in os_.get("approval_groups", [])
+                }
+                if b_groups != o_groups:
+                    added_g = o_groups - b_groups
+                    removed_g = b_groups - o_groups
+                    parts = []
+                    if added_g:
+                        parts.append(f"+{', '.join(sorted(added_g))}")
+                    if removed_g:
+                        parts.append(f"-{', '.join(sorted(removed_g))}")
+                    diffs.append(
+                        f"Stage '{key[1]}' approval_groups: {'; '.join(parts)}"
+                    )
+
             wf_setting_keys = [
                 "requires_approval",
+                "name_label",
                 "notify_on_submission",
                 "notify_on_approval",
                 "notify_on_rejection",
+                "notify_on_withdrawal",
+                "additional_notify_emails",
                 "hide_approval_history",
+                "collapse_parallel_stages",
+                "allow_bulk_export",
+                "allow_bulk_pdf_export",
                 "approval_deadline_days",
+                "notification_cadence",
             ]
             for key in wf_setting_keys:
                 if b_wf.get(key) != o_wf.get(key):

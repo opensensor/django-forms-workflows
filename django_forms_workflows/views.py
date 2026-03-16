@@ -23,7 +23,7 @@ from django.views.decorators.http import require_http_methods
 
 from .forms import DynamicForm
 from .models import ApprovalTask, AuditLog, FormDefinition, FormField, FormSubmission
-from .utils import user_can_approve, user_can_submit_form
+from .utils import user_can_approve, user_can_submit_form, user_can_view_form
 
 logger = logging.getLogger(__name__)
 
@@ -202,11 +202,16 @@ def form_list(request):
         accessible_cat_pks = _get_accessible_category_pks(request.user)
         forms = (
             FormDefinition.objects.filter(is_active=True, is_listed=True)
-            # Annotate submit_group_count to distinguish "no restriction" from "restricted"
+            # Annotate group counts to distinguish "no restriction" from "restricted"
             .annotate(
                 submit_group_count=models.Count("submit_groups", distinct=True),
+                view_group_count=models.Count("view_groups", distinct=True),
             )
-            # Form-level: user in submit_groups OR form has no restriction
+            # Form-level: user in view_groups OR form has no view restriction
+            .filter(
+                models.Q(view_groups__in=user_groups) | models.Q(view_group_count=0)
+            )
+            # Form-level: user in submit_groups OR form has no submit restriction
             .filter(
                 models.Q(submit_groups__in=user_groups) | models.Q(submit_group_count=0)
             )
@@ -244,7 +249,10 @@ def form_submit(request, slug):
     """Submit a form"""
     form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
 
-    # Check permissions
+    # Check permissions — view access is a prerequisite for submit access
+    if not user_can_view_form(request.user, form_def):
+        messages.error(request, "You don't have permission to access this form.")
+        return redirect("forms_workflows:form_list")
     if not user_can_submit_form(request.user, form_def):
         messages.error(request, "You don't have permission to submit this form.")
         return redirect("forms_workflows:form_list")
@@ -343,8 +351,10 @@ def form_auto_save(request, slug):
     """Auto-save form draft via AJAX"""
     form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
 
-    # Check permissions
-    if not user_can_submit_form(request.user, form_def):
+    # Check permissions — view access is a prerequisite for submit access
+    if not user_can_view_form(request.user, form_def) or not user_can_submit_form(
+        request.user, form_def
+    ):
         return JsonResponse(
             {"success": False, "error": "Permission denied"}, status=403
         )

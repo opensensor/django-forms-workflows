@@ -44,7 +44,7 @@ from .models import (
 
 
 # Inline for form fields when editing a form definition
-class FormFieldInline(admin.StackedInline):
+class FormFieldInline(nested_admin.NestedStackedInline):
     model = FormField
     extra = 0
     ordering = ("order",)

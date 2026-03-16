@@ -194,12 +194,14 @@ def form_list(request):
         Ordered list of ``(FormCategory | None, [FormDefinition, ...])``.
     """
     if request.user.is_staff or request.user.is_superuser:
-        forms = FormDefinition.objects.filter(is_active=True).select_related("category")
+        forms = FormDefinition.objects.filter(
+            is_active=True, is_listed=True
+        ).select_related("category")
     else:
         user_groups = request.user.groups.all()
         accessible_cat_pks = _get_accessible_category_pks(request.user)
         forms = (
-            FormDefinition.objects.filter(is_active=True)
+            FormDefinition.objects.filter(is_active=True, is_listed=True)
             # Annotate submit_group_count to distinguish "no restriction" from "restricted"
             .annotate(
                 submit_group_count=models.Count("submit_groups", distinct=True),

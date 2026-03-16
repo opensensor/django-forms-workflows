@@ -124,6 +124,13 @@ class FormDefinition(models.Model):
     is_active = models.BooleanField(
         default=True, help_text="Inactive forms are hidden from users"
     )
+    is_listed = models.BooleanField(
+        default=True,
+        help_text=(
+            "When disabled, the form is hidden from the form list page but remains "
+            "accessible to permitted users via its direct slug URL."
+        ),
+    )
     version = models.IntegerField(
         default=1, help_text="Incremented when form structure changes"
     )

@@ -310,6 +310,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         "slug",
         "category",
         "is_active",
+        "is_listed",
         "form_builder_link",
         "workflow_builder_link",
         "submission_count",
@@ -317,7 +318,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         "created_at",
         "clone_link",
     )
-    list_filter = ("is_active", "requires_login", "category")
+    list_filter = ("is_active", "is_listed", "requires_login", "category")
     list_select_related = ["category"]
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
@@ -336,7 +337,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                     "category",
                     "description",
                     "instructions",
-                    ("is_active", "version"),
+                    ("is_active", "is_listed", "version"),
                 )
             },
         ),
@@ -484,6 +485,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                         description=form.description,
                         instructions=form.instructions,
                         is_active=False,
+                        is_listed=form.is_listed,
                         version=1,
                         requires_login=form.requires_login,
                         allow_save_draft=form.allow_save_draft,

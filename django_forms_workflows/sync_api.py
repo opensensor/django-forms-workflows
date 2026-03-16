@@ -37,6 +37,8 @@ from .models import (
     FormField,
     PostSubmissionAction,
     PrefillSource,
+    StageApprovalGroup,
+    StageFormFieldNotification,
     SubWorkflowDefinition,
     WorkflowDefinition,
     WorkflowStage,
@@ -227,13 +229,33 @@ def _serialize_field(field):
 
 
 def _serialize_workflow_stage(stage):
+    # Serialize approval groups with their sequence position so that
+    # "sequence" stages are restored in the correct order on import.
+    approval_groups = [
+        {"name": sag.group.name, "position": sag.position}
+        for sag in stage.stageapprovalgroup_set.select_related("group").order_by(
+            "position"
+        )
+    ]
     return {
         "name": stage.name,
         "order": stage.order,
         "approval_logic": stage.approval_logic,
-        "approval_groups": _group_names(stage.approval_groups),
+        "approval_groups": approval_groups,
         "requires_manager_approval": stage.requires_manager_approval,
+        "approve_label": stage.approve_label,
         "trigger_conditions": stage.trigger_conditions,
+        "assignee_email_field": stage.assignee_email_field,
+        "form_field_notifications": [
+            {
+                "notification_type": n.notification_type,
+                "email_field": n.email_field,
+                "static_emails": n.static_emails,
+                "subject_template": n.subject_template,
+                "conditions": n.conditions,
+            }
+            for n in stage.form_field_notifications.all()
+        ],
     }
 
 
@@ -256,23 +278,36 @@ def _serialize_workflow(wf):
     if wf is None:
         return None
     return {
+        # Identity / display
+        "name_label": wf.name_label,
+        # Core approval settings
         "requires_approval": wf.requires_approval,
         "trigger_conditions": wf.trigger_conditions,
         "approval_deadline_days": wf.approval_deadline_days,
         "send_reminder_after_days": wf.send_reminder_after_days,
         "auto_approve_after_days": wf.auto_approve_after_days,
+        # Notification flags
         "notify_on_submission": wf.notify_on_submission,
         "notify_on_approval": wf.notify_on_approval,
         "notify_on_rejection": wf.notify_on_rejection,
         "notify_on_withdrawal": wf.notify_on_withdrawal,
         "additional_notify_emails": wf.additional_notify_emails,
+        # Notification cadence
         "notification_cadence": wf.notification_cadence,
         "notification_cadence_day": wf.notification_cadence_day,
         "notification_cadence_time": wf.notification_cadence_time.isoformat()
         if wf.notification_cadence_time
         else None,
         "notification_cadence_form_field": wf.notification_cadence_form_field,
+        # Privacy / display options
+        "hide_approval_history": wf.hide_approval_history,
+        "collapse_parallel_stages": wf.collapse_parallel_stages,
+        # Bulk export options
+        "allow_bulk_export": wf.allow_bulk_export,
+        "allow_bulk_pdf_export": wf.allow_bulk_pdf_export,
+        # Visual editor data
         "visual_workflow_data": wf.visual_workflow_data,
+        # Stages and sub-workflows
         "stages": [
             _serialize_workflow_stage(s) for s in wf.stages.all().order_by("order")
         ],
@@ -366,7 +401,9 @@ def build_export_payload(queryset):
         "fields__workflow_stage",
         "workflows",
         "workflows__stages",
-        "workflows__stages__approval_groups",
+        "workflows__stages__stageapprovalgroup_set",
+        "workflows__stages__stageapprovalgroup_set__group",
+        "workflows__stages__form_field_notifications",
         "workflows__sub_workflow_config",
         "workflows__sub_workflow_config__sub_workflow__form_definition",
         "post_actions",
@@ -563,7 +600,8 @@ def import_form(form_data, conflict="update", category_cache=None):
 
         for idx, stage_data in enumerate(stages_data):
             stage_data = dict(stage_data)
-            stage_group_names = stage_data.pop("approval_groups", [])
+            stage_group_data = stage_data.pop("approval_groups", [])
+            stage_notif_data = stage_data.pop("form_field_notifications", [])
             order = stage_data.get("order", idx + 1)
             if order in existing_by_order:
                 stage = existing_by_order[order]
@@ -572,9 +610,28 @@ def import_form(form_data, conflict="update", category_cache=None):
                 stage.save()
             else:
                 stage = WorkflowStage.objects.create(workflow=wf, **stage_data)
-            stage.approval_groups.set(
-                [_get_or_create_group(n) for n in stage_group_names]
-            )
+
+            # Sync approval groups with position so sequential stages are
+            # restored in the correct processing order.
+            # Backwards-compatible: old exports used plain name strings; new
+            # exports use {"name": ..., "position": ...} dicts.
+            StageApprovalGroup.objects.filter(stage=stage).delete()
+            for pos, entry in enumerate(stage_group_data):
+                if isinstance(entry, dict):
+                    group = _get_or_create_group(entry["name"])
+                    position = entry.get("position", pos)
+                else:
+                    group = _get_or_create_group(entry)
+                    position = pos
+                StageApprovalGroup.objects.create(
+                    stage=stage, group=group, position=position
+                )
+
+            # Sync stage-level conditional notifications
+            stage.form_field_notifications.all().delete()
+            for notif in stage_notif_data:
+                StageFormFieldNotification.objects.create(stage=stage, **notif)
+
             stage_order_map[order] = stage
 
         # ── Sub-workflow config ─────────────────────────────────────────────

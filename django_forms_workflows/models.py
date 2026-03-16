@@ -675,6 +675,16 @@ class WorkflowDefinition(models.Model):
         ),
     )
 
+    # Approval History Display
+    collapse_parallel_stages = models.BooleanField(
+        default=False,
+        help_text=(
+            "When enabled, parallel stages that share the same order number are "
+            "collapsed into a single combined table in the approval history, "
+            "instead of each appearing as its own card."
+        ),
+    )
+
     # Bulk Export
     allow_bulk_export = models.BooleanField(
         default=False,

@@ -233,7 +233,7 @@
                 {% elif stage.approved_count > 0 %}bg-primary text-white
                 {% else %}bg-light text-muted{% endif %}">
                 <span>
-                    <strong>{% if workflow_name_label %}{{ workflow_name_label }}{% else %}Stage {{ stage.number }}: {{ stage.name }}{% endif %}</strong>
+                    <strong>{% if workflow_name_label %}{{ workflow_name_label }}{% else %}Stage {{ stage.number }}{% if not stage.has_multiple_stages %}: {{ stage.name }}{% endif %}{% endif %}</strong>
                 </span>
                 <span class="badge bg-white
                     {% if stage.rejected_count > 0 %}text-danger

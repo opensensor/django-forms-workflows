@@ -279,6 +279,7 @@ class WorkflowDefinitionInline(admin.StackedInline):
         "name_label",
         "requires_approval",
         "hide_approval_history",
+        "collapse_parallel_stages",
         "trigger_conditions",
         (
             "notify_on_submission",
@@ -548,6 +549,7 @@ class FormDefinitionAdmin(admin.ModelAdmin):
                             visual_workflow_data=wf.visual_workflow_data,
                             trigger_conditions=wf.trigger_conditions,
                             hide_approval_history=wf.hide_approval_history,
+                            collapse_parallel_stages=wf.collapse_parallel_stages,
                             allow_bulk_export=wf.allow_bulk_export,
                             allow_bulk_pdf_export=wf.allow_bulk_pdf_export,
                         )
@@ -1185,6 +1187,7 @@ class WorkflowDefinitionAdmin(admin.ModelAdmin):
                     "name_label",
                     "requires_approval",
                     "hide_approval_history",
+                    "collapse_parallel_stages",
                     "trigger_conditions",
                 )
             },

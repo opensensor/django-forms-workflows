@@ -558,14 +558,21 @@ def submission_detail(request, submission_id):
 
         parent_groups: dict = {}
         sub_groups: dict = {}
+        collapse = bool(
+            workflow and getattr(workflow, "collapse_parallel_stages", False)
+        )
         for task in approval_tasks:
             if not task.workflow_stage_id:
                 continue
             is_parent = task.workflow_stage_id in parent_stage_ids
             target = parent_groups if is_parent else sub_groups
-            # Group by workflow_stage_id so every distinct stage (including
-            # parallel stages at the same order number) gets its own card.
-            stage_key = task.workflow_stage_id
+            # When collapse_parallel_stages is enabled on the workflow,
+            # parent tasks at the same order number share a single card.
+            # Otherwise (default) every distinct workflow_stage gets its own card.
+            if is_parent and collapse:
+                stage_key = task.stage_number or 0
+            else:
+                stage_key = task.workflow_stage_id
             if stage_key not in target:
                 stage_name = (
                     task.workflow_stage.name
@@ -584,6 +591,7 @@ def submission_detail(request, submission_id):
                     "approved_count": 0,
                     "rejected_count": 0,
                     "total_count": 0,
+                    "has_multiple_stages": False,
                 }
             group = target[stage_key]
             # Enrich task with its stage name for the "Step" column
@@ -598,6 +606,14 @@ def submission_detail(request, submission_id):
                 group["approved_count"] += 1
             elif task.status == "rejected":
                 group["rejected_count"] += 1
+
+        # When collapsed, detect groups that merged multiple parallel stages
+        # so the template can omit the per-stage name in the card header.
+        if collapse:
+            for group in parent_groups.values():
+                stage_ids = {t.workflow_stage_id for t in group["tasks"]}
+                if len(stage_ids) > 1:
+                    group["has_multiple_stages"] = True
 
         if parent_groups:
             stage_groups = sorted(parent_groups.values(), key=lambda x: x["number"])

@@ -133,11 +133,17 @@ class DatabaseDataSource(DataSource):
                 if value:
                     return value
 
-            # Then check the user's profile
-            if hasattr(user, "forms_profile"):
-                profile = user.forms_profile
-                if hasattr(profile, user_id_field):
-                    return getattr(profile, user_id_field)
+            # Then check the user's profile — try both known related names
+            for profile_attr in ("profile", "forms_profile", "userprofile"):
+                if hasattr(user, profile_attr):
+                    try:
+                        profile = getattr(user, profile_attr)
+                        if hasattr(profile, user_id_field):
+                            value = getattr(profile, user_id_field)
+                            if value:
+                                return value
+                    except Exception:
+                        continue
             return None
         except Exception as e:
             logger.error(f"Error getting user ID field {user_id_field}: {e}")

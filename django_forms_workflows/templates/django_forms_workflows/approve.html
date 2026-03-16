@@ -180,7 +180,7 @@
                                     </a>
                                 {% elif entry.value.path %}
                                     <span class="text-muted">{{ entry.value.filename }}</span>
-                                {% elif entry.value|length and entry.value.0 %}
+                                {% elif entry.value.0.filename %}
                                     {# Multi-file upload: list of file dicts #}
                                     <ul class="list-unstyled mb-0">
                                     {% for f in entry.value %}

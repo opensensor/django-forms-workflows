@@ -24,7 +24,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from .models import ApprovalTask, FormSubmission, NotificationLog, PendingNotification
+from .models import (
+    ApprovalTask,
+    FormSubmission,
+    NotificationLog,
+    PendingNotification,
+    StageFormFieldNotification,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -762,3 +768,184 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> None
         context,
         notification_type="batched",
     )
+
+
+# ---------------------------------------------------------------------------
+# Form-Field Conditional Notification Tasks
+# ---------------------------------------------------------------------------
+
+
+def _get_form_field_email(form_data: dict, email_field: str) -> str | None:
+    """Extract and validate an email address from form_data by field slug."""
+    value = str(form_data.get(email_field, "")).strip()
+    return value if value and "@" in value else None
+
+
+def _build_form_field_notification_context(
+    submission: FormSubmission,
+    task: ApprovalTask | None = None,
+) -> tuple[str, str]:
+    """Return (submission_url, approval_url) for notification templates."""
+    submission_url = _abs(
+        reverse("forms_workflows:submission_detail", args=[submission.id])
+    )
+    approval_url = (
+        _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
+        if task
+        else submission_url
+    )
+    return submission_url, approval_url
+
+
+@shared_task(name="django_forms_workflows.send_stage_form_field_notifications")
+def send_stage_form_field_notifications(task_id: int) -> None:
+    """Send approval_request emails to form-field-specified addresses for a stage.
+
+    Fires when a workflow stage activates.  For each StageFormFieldNotification
+    record on the stage with notification_type='approval_request', reads the
+    email address from the submission's form_data, evaluates any conditions, and
+    sends the appropriate template email.
+    """
+    task = ApprovalTask.objects.select_related(
+        "submission__form_definition",
+        "submission__submitter",
+        "workflow_stage",
+    ).get(id=task_id)
+
+    if not task.workflow_stage:
+        return
+
+    stage = task.workflow_stage
+    submission = task.submission
+    form_data = submission.form_data or {}
+    form_name = submission.form_definition.name
+    submission_url, approval_url = _build_form_field_notification_context(
+        submission, task
+    )
+
+    notifications = StageFormFieldNotification.objects.filter(
+        stage=stage, notification_type="approval_request"
+    )
+
+    for notif in notifications:
+        if notif.conditions:
+            try:
+                from .conditions import evaluate_conditions
+
+                if not evaluate_conditions(notif.conditions, form_data):
+                    logger.info(
+                        "Form-field notification %s skipped: conditions not met (submission %s)",
+                        notif.id,
+                        submission.id,
+                    )
+                    continue
+            except Exception:
+                logger.warning(
+                    "Form-field notification %s: error evaluating conditions; skipping.",
+                    notif.id,
+                )
+                continue
+
+        email = _get_form_field_email(form_data, notif.email_field)
+        if not email:
+            logger.info(
+                "Form-field notification %s: field '%s' is empty or invalid; skipping.",
+                notif.id,
+                notif.email_field,
+            )
+            continue
+
+        subject = (
+            notif.subject_template.format(
+                form_name=form_name, submission_id=submission.id
+            )
+            if notif.subject_template
+            else f"Action Required: {form_name} (ID {submission.id})"
+        )
+        context = {
+            "task": task,
+            "submission": submission,
+            "approver": None,
+            "approval_url": approval_url,
+            "submission_url": submission_url,
+        }
+        _send_html_email(
+            subject,
+            [email],
+            "emails/approval_request.html",
+            context,
+            notification_type="approval_request",
+            submission_id=submission.id,
+        )
+
+
+@shared_task(name="django_forms_workflows.send_submission_form_field_notifications")
+def send_submission_form_field_notifications(
+    submission_id: int, notification_type: str
+) -> None:
+    """Send form-field notifications for submission-level events.
+
+    Called for submission_received, approval_notification, and
+    rejection_notification types.  Scans every stage on every workflow
+    attached to the form for matching StageFormFieldNotification records,
+    extracts the email from form_data, checks conditions, and dispatches.
+    """
+    template_map = {
+        "submission_received": "emails/submission_notification.html",
+        "approval_notification": "emails/approval_notification.html",
+        "rejection_notification": "emails/rejection_notification.html",
+    }
+    template = template_map.get(notification_type)
+    if not template:
+        return
+
+    submission = FormSubmission.objects.select_related(
+        "form_definition", "submitter"
+    ).get(id=submission_id)
+    form_data = submission.form_data or {}
+    form_name = submission.form_definition.name
+    submission_url, _ = _build_form_field_notification_context(submission)
+
+    notifications = StageFormFieldNotification.objects.filter(
+        stage__workflow__form_definition=submission.form_definition,
+        notification_type=notification_type,
+    ).select_related("stage")
+
+    for notif in notifications:
+        if notif.conditions:
+            try:
+                from .conditions import evaluate_conditions
+
+                if not evaluate_conditions(notif.conditions, form_data):
+                    continue
+            except Exception:
+                logger.warning(
+                    "Form-field notification %s: error evaluating conditions; skipping.",
+                    notif.id,
+                )
+                continue
+
+        email = _get_form_field_email(form_data, notif.email_field)
+        if not email:
+            continue
+
+        subject = (
+            notif.subject_template.format(
+                form_name=form_name, submission_id=submission.id
+            )
+            if notif.subject_template
+            else {
+                "submission_received": f"Submission Received: {form_name} (ID {submission.id})",
+                "approval_notification": f"Submission Approved: {form_name} (ID {submission.id})",
+                "rejection_notification": f"Submission Rejected: {form_name} (ID {submission.id})",
+            }.get(notification_type, f"{form_name} (ID {submission.id})")
+        )
+        context = {"submission": submission, "submission_url": submission_url}
+        _send_html_email(
+            subject,
+            [email],
+            template,
+            context,
+            notification_type=notification_type,
+            submission_id=submission_id,
+        )

@@ -34,6 +34,7 @@ from .models import (
     PostSubmissionAction,
     PrefillSource,
     StageApprovalGroup,
+    StageFormFieldNotification,
     SubWorkflowDefinition,
     SubWorkflowInstance,
     UserProfile,
@@ -279,18 +280,27 @@ class StageApprovalGroupInline(nested_admin.NestedTabularInline):
     autocomplete_fields = ("group",)
 
 
+class StageFormFieldNotificationInline(nested_admin.NestedTabularInline):
+    """Inline for configuring form-field conditional notifications on a stage."""
+
+    model = StageFormFieldNotification
+    extra = 0
+    fields = ("notification_type", "email_field", "subject_template", "conditions")
+
+
 class WorkflowStageInline(nested_admin.NestedStackedInline):
     """Inline for defining ordered stages on a WorkflowDefinition."""
 
     model = WorkflowStage
     extra = 0
     ordering = ("order",)
-    inlines = [StageApprovalGroupInline]
+    inlines = [StageApprovalGroupInline, StageFormFieldNotificationInline]
     fields = (
         ("order", "name"),
         "approval_logic",
         "approve_label",
         "requires_manager_approval",
+        "assignee_email_field",
         "trigger_conditions",
     )
 
@@ -1136,7 +1146,7 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
     list_select_related = ("workflow", "workflow__form_definition")
     search_fields = ("name", "workflow__form_definition__name")
     ordering = ("workflow", "order")
-    inlines = [StageApprovalGroupInline]
+    inlines = [StageApprovalGroupInline, StageFormFieldNotificationInline]
     fieldsets = (
         (
             None,
@@ -1148,6 +1158,18 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
                     "approve_label",
                     "requires_manager_approval",
                 )
+            },
+        ),
+        (
+            "Dynamic Assignment",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "When set, the workflow engine resolves the task assignee by looking up "
+                    "the email address stored in this form field. Falls back to the configured "
+                    "approval groups if the field is empty or no matching user is found."
+                ),
+                "fields": ("assignee_email_field",),
             },
         ),
         (

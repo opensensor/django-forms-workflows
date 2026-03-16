@@ -82,6 +82,7 @@ def _notify_submission_created_immediate(submission: FormSubmission) -> None:
         send_submission_notification.delay(submission.id)
     except Exception:  # ImportError or other
         logger.warning("Notification tasks not available for submission_created")
+    _notify_form_field_recipients_for_submission(submission, "submission_received")
 
 
 def _notify_task_request(task: ApprovalTask) -> None:
@@ -123,6 +124,7 @@ def _notify_final_approval(submission: FormSubmission) -> None:
         send_approval_notification.delay(submission.id)
     except Exception:
         logger.warning("Notification tasks not available for approval_notification")
+    _notify_form_field_recipients_for_submission(submission, "approval_notification")
 
 
 def _notify_rejection(submission: FormSubmission) -> None:
@@ -132,6 +134,30 @@ def _notify_rejection(submission: FormSubmission) -> None:
         send_rejection_notification.delay(submission.id)
     except Exception:
         logger.warning("Notification tasks not available for rejection_notification")
+    _notify_form_field_recipients_for_submission(submission, "rejection_notification")
+
+
+def _notify_form_field_recipients_for_submission(
+    submission: FormSubmission,
+    notification_type: str,
+) -> None:
+    """Dispatch form-field notifications for submission-level events.
+
+    Iterates every workflow attached to the form, then every stage in those
+    workflows, collecting ``StageFormFieldNotification`` records whose type
+    matches ``notification_type``. Dispatches a single Celery task per record
+    (or logs a warning if Celery is unavailable).
+    """
+    try:
+        from .tasks import send_submission_form_field_notifications
+
+        send_submission_form_field_notifications.delay(submission.id, notification_type)
+    except Exception:
+        logger.warning(
+            "Could not dispatch form-field '%s' notifications for submission %s",
+            notification_type,
+            submission.id,
+        )
 
 
 def _due_date_for(workflow: WorkflowDefinition):
@@ -221,6 +247,74 @@ def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
 # ---- staged workflow helpers ----
 
 
+def _resolve_dynamic_assignee(submission: FormSubmission, stage: WorkflowStage):
+    """Return the User whose email matches stage.assignee_email_field, or None.
+
+    Looks up the email address stored in the submission's form_data under the
+    key given by ``stage.assignee_email_field``, then tries to find a unique
+    matching User.  Returns None if the field is not set, the value is empty /
+    not a valid email, or no unique user is found (logs a warning in that case).
+    """
+    if not stage.assignee_email_field:
+        return None
+    form_data = submission.form_data or {}
+    email_value = str(form_data.get(stage.assignee_email_field, "")).strip()
+    if not email_value or "@" not in email_value:
+        return None
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    try:
+        return user_model.objects.get(email__iexact=email_value)
+    except user_model.DoesNotExist:
+        logger.info(
+            "Dynamic assignee lookup: no user with email '%s' (stage '%s', submission %s); "
+            "falling back to group assignment.",
+            email_value,
+            stage.name,
+            submission.id,
+        )
+    except user_model.MultipleObjectsReturned:
+        logger.warning(
+            "Dynamic assignee lookup: multiple users with email '%s' (stage '%s', submission %s); "
+            "falling back to group assignment.",
+            email_value,
+            stage.name,
+            submission.id,
+        )
+    return None
+
+
+def _notify_stage_form_field_recipients(
+    task: ApprovalTask,
+    stage: WorkflowStage,
+    submission: FormSubmission,
+) -> None:
+    """Dispatch StageFormFieldNotification emails for a stage that just activated.
+
+    Only ``approval_request`` type notifications are fired here (at stage
+    activation time). ``submission_received``, ``approval_notification``, and
+    ``rejection_notification`` types are handled by the workflow finalisation
+    hooks that already exist; this function is intentionally scoped to the
+    activation moment so callers remain simple.
+    """
+    notifications = list(
+        stage.form_field_notifications.filter(notification_type="approval_request")
+    )
+    if not notifications:
+        return
+    try:
+        from .tasks import send_stage_form_field_notifications
+
+        send_stage_form_field_notifications.delay(task.id)
+    except Exception:
+        logger.warning(
+            "Could not dispatch form-field notifications for stage '%s' task %s",
+            stage.name,
+            task.id,
+        )
+
+
 def _create_stage_tasks(
     submission: FormSubmission,
     stage: WorkflowStage,
@@ -234,10 +328,32 @@ def _create_stage_tasks(
     Handles manager-first ordering within the stage: if ``requires_manager_approval``
     is True, only the manager task is created; group tasks are created later when
     ``handle_approval`` processes that manager task.
+
+    Dynamic assignment: if ``stage.assignee_email_field`` is set, the engine
+    resolves the assignee by looking up the email stored in that form field and
+    creates a single ``assigned_to`` task instead of group tasks.  Falls back to
+    the normal group task path when the user cannot be resolved.
     """
     stage_num = stage.order
     groups = list(stage.approval_groups.all().order_by("stageapprovalgroup__position"))
 
+    # --- Dynamic assignment (email field → User lookup) ----------------------
+    dynamic_assignee = _resolve_dynamic_assignee(submission, stage)
+    if dynamic_assignee is not None:
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_to=dynamic_assignee,
+            workflow_stage=stage,
+            stage_number=stage_num,
+            step_name=f"Stage {stage_num}",
+            status="pending",
+            due_date=due_date,
+        )
+        _notify_task_request(task)
+        _notify_stage_form_field_recipients(task, stage, submission)
+        return
+
+    # --- Manager-first ordering ----------------------------------------------
     manager_task_created = False
     if stage.requires_manager_approval:
         try:
@@ -284,8 +400,10 @@ def _create_stage_tasks(
             due_date=due_date,
         )
         _notify_task_request(task)
+        _notify_stage_form_field_recipients(task, stage, submission)
     else:
         # "all" or "any" → parallel tasks for every group in this stage
+        first_task = None
         for g in groups:
             task = ApprovalTask.objects.create(
                 submission=submission,
@@ -297,6 +415,11 @@ def _create_stage_tasks(
                 due_date=due_date,
             )
             _notify_task_request(task)
+            if first_task is None:
+                first_task = task
+        # Fire form-field notifications once for the stage (using first task for context)
+        if first_task is not None:
+            _notify_stage_form_field_recipients(first_task, stage, submission)
 
 
 def _try_finalize_all_tracks(submission: FormSubmission) -> None:

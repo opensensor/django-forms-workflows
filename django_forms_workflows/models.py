@@ -784,6 +784,17 @@ class WorkflowStage(models.Model):
             '"value": "..."}]}'
         ),
     )
+    assignee_email_field = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=(
+            "Form field slug whose value is an email address. When set, the workflow "
+            "engine looks up the system user with that email and assigns this stage's "
+            "task directly to them (bypassing the approval groups). Falls back to "
+            "group assignment if the field is empty or no matching user is found."
+        ),
+    )
 
     class Meta:
         ordering = ["order"]
@@ -823,6 +834,75 @@ class StageApprovalGroup(models.Model):
 
     def __str__(self) -> str:
         return f"{self.group.name} (pos {self.position})"
+
+
+class StageFormFieldNotification(models.Model):
+    """
+    A notification rule that sends an email to an address captured in the
+    form submission data when a stage activates (or when the submission
+    reaches a final state).
+
+    This enables "conditional notifications" where — for example — the
+    Instructor whose email was entered in the form receives a notification
+    when the workflow reaches the Instructor Approval stage, even if that
+    person is not a registered system user.
+
+    Conditions (same format as WorkflowStage.trigger_conditions) are
+    evaluated against the submission's form_data before sending; leave
+    blank to always send.
+    """
+
+    NOTIFICATION_TYPES = [
+        ("approval_request", "Approval Request (stage activated)"),
+        ("submission_received", "Submission Received"),
+        ("approval_notification", "Submission Approved (final)"),
+        ("rejection_notification", "Submission Rejected (final)"),
+    ]
+
+    stage = models.ForeignKey(
+        WorkflowStage,
+        on_delete=models.CASCADE,
+        related_name="form_field_notifications",
+    )
+    notification_type = models.CharField(
+        max_length=30,
+        choices=NOTIFICATION_TYPES,
+        default="approval_request",
+        help_text="Which notification email template to send.",
+    )
+    email_field = models.CharField(
+        max_length=200,
+        help_text=(
+            "Slug of the form field whose value is the recipient email address. "
+            "The value is read from the submission's form_data at send time."
+        ),
+    )
+    subject_template = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=(
+            "Custom subject line. Leave blank to use the default for the notification type. "
+            "Supports {form_name} and {submission_id} placeholders."
+        ),
+    )
+    conditions = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Optional conditions that must be met (against form_data) for this "
+            "notification to be sent. Same format as stage trigger_conditions. "
+            "Leave blank to always send."
+        ),
+    )
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Stage Form-Field Notification"
+        verbose_name_plural = "Stage Form-Field Notifications"
+
+    def __str__(self) -> str:
+        return f"{self.get_notification_type_display()} → field '{self.email_field}'"
 
 
 class PendingNotification(models.Model):

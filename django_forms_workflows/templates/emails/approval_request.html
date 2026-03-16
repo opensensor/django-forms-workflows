@@ -21,7 +21,7 @@
       <p style="margin:6px 0 0 0; opacity:.85;">{{ site_name }}</p>
     </div>
     <div class="content">
-      <p>Hello {{ approver.get_full_name|default:approver.username }},</p>
+      <p>Hello {% if approver %}{{ approver.get_full_name|default:approver.username }}{% else %}there{% endif %},</p>
       <p>A new form submission requires your review:</p>
       <table>
         <tr><th>Form</th><td>{{ submission.form_definition.name }}</td></tr>

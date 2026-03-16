@@ -7,6 +7,7 @@ configure approval workflows, and review submissions and audit logs.
 
 import json
 
+import nested_admin
 from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin
 from django.contrib.auth.models import Group
@@ -269,12 +270,38 @@ class FormCategoryAdmin(admin.ModelAdmin):
     )
 
 
-class WorkflowDefinitionInline(admin.StackedInline):
+class StageApprovalGroupInline(nested_admin.NestedTabularInline):
+    """Inline for ordering approval groups within a stage."""
+
+    model = StageApprovalGroup
+    extra = 1
+    ordering = ("position",)
+    autocomplete_fields = ("group",)
+
+
+class WorkflowStageInline(nested_admin.NestedStackedInline):
+    """Inline for defining ordered stages on a WorkflowDefinition."""
+
+    model = WorkflowStage
+    extra = 0
+    ordering = ("order",)
+    inlines = [StageApprovalGroupInline]
+    fields = (
+        ("order", "name"),
+        "approval_logic",
+        "approve_label",
+        "requires_manager_approval",
+        "trigger_conditions",
+    )
+
+
+class WorkflowDefinitionInline(nested_admin.NestedStackedInline):
     """Inline for editing a WorkflowDefinition directly from the FormDefinition
     change page."""
 
     model = WorkflowDefinition
     extra = 0
+    inlines = [WorkflowStageInline]
     fields = [
         "name_label",
         "requires_approval",
@@ -304,7 +331,7 @@ class WorkflowDefinitionInline(admin.StackedInline):
 
 
 @admin.register(FormDefinition)
-class FormDefinitionAdmin(admin.ModelAdmin):
+class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
     list_display = (
         "name",
         "slug",
@@ -1088,17 +1115,8 @@ class FormDefinitionAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
 
-class StageApprovalGroupInline(admin.TabularInline):
-    """Inline for ordering approval groups within a stage."""
-
-    model = StageApprovalGroup
-    extra = 1
-    ordering = ("position",)
-    autocomplete_fields = ("group",)
-
-
 @admin.register(WorkflowStage)
-class WorkflowStageAdmin(admin.ModelAdmin):
+class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
     """Standalone admin for WorkflowStage.
 
     Stages at the same ``order`` value run in parallel — create one stage
@@ -1150,23 +1168,8 @@ class WorkflowStageAdmin(admin.ModelAdmin):
         return bool(obj.trigger_conditions)
 
 
-class WorkflowStageInline(admin.StackedInline):
-    """Inline for defining ordered stages on a WorkflowDefinition."""
-
-    model = WorkflowStage
-    extra = 0
-    ordering = ("order",)
-    fields = (
-        ("order", "name"),
-        "approval_logic",
-        "approve_label",
-        "requires_manager_approval",
-        "trigger_conditions",
-    )
-
-
 @admin.register(WorkflowDefinition)
-class WorkflowDefinitionAdmin(admin.ModelAdmin):
+class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
     inlines = [WorkflowStageInline]
     list_display = (
         "form_definition",

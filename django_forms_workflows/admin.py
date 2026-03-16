@@ -278,12 +278,14 @@ class WorkflowDefinitionInline(admin.StackedInline):
     fields = [
         "name_label",
         "requires_approval",
+        "approval_groups",
         "trigger_conditions",
         "hide_approval_history",
         ("notify_on_submission", "notify_on_approval", "notify_on_rejection"),
         "additional_notify_emails",
         ("allow_bulk_export", "allow_bulk_pdf_export"),
     ]
+    filter_horizontal = ("approval_groups",)
 
 
 @admin.register(FormDefinition)

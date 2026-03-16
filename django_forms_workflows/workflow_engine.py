@@ -251,7 +251,7 @@ def _create_stage_tasks(
                 assigned_to=manager,
                 workflow_stage=stage,
                 stage_number=stage_num,
-                step_name=f"Stage {stage_num}: Manager Approval",
+                step_name=f"Stage {stage_num}",
                 status="pending",
                 due_date=due_date,
             )
@@ -278,7 +278,7 @@ def _create_stage_tasks(
             assigned_group=g,
             workflow_stage=stage,
             stage_number=stage_num,
-            step_name=f"Stage {stage_num}: {g.name} (Step 1 of {len(groups)})",
+            step_name=f"Stage {stage_num} (Step 1 of {len(groups)})",
             step_number=1,
             status="pending",
             due_date=due_date,
@@ -287,13 +287,12 @@ def _create_stage_tasks(
     else:
         # "all" or "any" → parallel tasks for every group in this stage
         for g in groups:
-            label = stage.approve_label or "Approval"
             task = ApprovalTask.objects.create(
                 submission=submission,
                 assigned_group=g,
                 workflow_stage=stage,
                 stage_number=stage_num,
-                step_name=f"Stage {stage_num}: {g.name} {label}",
+                step_name=f"Stage {stage_num}",
                 status="pending",
                 due_date=due_date,
             )
@@ -498,7 +497,7 @@ def handle_approval(
                     assigned_group=g,
                     workflow_stage=stage,
                     stage_number=stage.order,
-                    step_name=f"Stage {stage.order}: {g.name} (Step 1 of {len(groups)})",
+                    step_name=f"Stage {stage.order} (Step 1 of {len(groups)})",
                     step_number=1,
                     status="pending",
                     due_date=due_date,
@@ -506,13 +505,12 @@ def handle_approval(
                 _notify_task_request(new_task)
             else:
                 for g in groups:
-                    label = stage.approve_label or "Approval"
                     new_task = ApprovalTask.objects.create(
                         submission=submission,
                         assigned_group=g,
                         workflow_stage=stage,
                         stage_number=stage.order,
-                        step_name=f"Stage {stage.order}: {g.name} {label}",
+                        step_name=f"Stage {stage.order}",
                         status="pending",
                         due_date=due_date,
                     )
@@ -557,10 +555,7 @@ def handle_approval(
                     assigned_group=next_group,
                     workflow_stage=stage,
                     stage_number=stage.order,
-                    step_name=(
-                        f"Stage {stage.order}: {next_group.name}"
-                        f" (Step {idx + 2} of {len(groups)})"
-                    ),
+                    step_name=f"Stage {stage.order} (Step {idx + 2} of {len(groups)})",
                     step_number=idx + 2,
                     status="pending",
                     due_date=due_date,
@@ -809,7 +804,7 @@ def _create_sub_workflow_stage_tasks(
                 assigned_to=manager,
                 workflow_stage=stage,
                 stage_number=stage_num,
-                step_name=f"{instance.label} – Stage {stage_num}: Manager Approval",
+                step_name=f"{instance.label} – Stage {stage_num}",
                 status="pending",
                 due_date=due_date,
             )
@@ -841,7 +836,7 @@ def _create_sub_workflow_stage_tasks(
             assigned_group=g,
             workflow_stage=stage,
             stage_number=stage_num,
-            step_name=f"{instance.label} – Stage {stage_num}: {g.name} (Step 1 of {len(groups)})",
+            step_name=f"{instance.label} – Stage {stage_num} (Step 1 of {len(groups)})",
             step_number=1,
             status="pending",
             due_date=due_date,
@@ -849,14 +844,13 @@ def _create_sub_workflow_stage_tasks(
         _notify_task_request(task)
     else:
         for g in groups:
-            label = stage.approve_label or "Approval"
             task = ApprovalTask.objects.create(
                 submission=submission,
                 sub_workflow_instance=instance,
                 assigned_group=g,
                 workflow_stage=stage,
                 stage_number=stage_num,
-                step_name=f"{instance.label} – Stage {stage_num}: {g.name} {label}",
+                step_name=f"{instance.label} – Stage {stage_num}",
                 status="pending",
                 due_date=due_date,
             )
@@ -960,7 +954,7 @@ def handle_sub_workflow_approval(task: ApprovalTask) -> None:
                 assigned_group=g,
                 workflow_stage=stage,
                 stage_number=stage.order,
-                step_name=f"{instance.label} – Stage {stage.order}: {g.name} (Step 1 of {len(groups)})",
+                step_name=f"{instance.label} – Stage {stage.order} (Step 1 of {len(groups)})",
                 step_number=1,
                 status="pending",
                 due_date=due_date,
@@ -968,14 +962,13 @@ def handle_sub_workflow_approval(task: ApprovalTask) -> None:
             _notify_task_request(new_task)
         else:
             for g in groups:
-                label = stage.approve_label or "Approval"
                 new_task = ApprovalTask.objects.create(
                     submission=instance.parent_submission,
                     sub_workflow_instance=instance,
                     assigned_group=g,
                     workflow_stage=stage,
                     stage_number=stage.order,
-                    step_name=f"{instance.label} – Stage {stage.order}: {g.name} {label}",
+                    step_name=f"{instance.label} – Stage {stage.order}",
                     status="pending",
                     due_date=due_date,
                 )
@@ -1014,10 +1007,7 @@ def handle_sub_workflow_approval(task: ApprovalTask) -> None:
                 assigned_group=next_group,
                 workflow_stage=stage,
                 stage_number=stage.order,
-                step_name=(
-                    f"{instance.label} – Stage {stage.order}: {next_group.name}"
-                    f" (Step {idx + 2} of {len(groups)})"
-                ),
+                step_name=f"{instance.label} – Stage {stage.order} (Step {idx + 2} of {len(groups)})",
                 step_number=idx + 2,
                 status="pending",
                 due_date=due_date,

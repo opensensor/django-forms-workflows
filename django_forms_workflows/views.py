@@ -488,7 +488,7 @@ def my_submissions(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file"])
+                .exclude(field_type__in=["section", "file", "multifile"])
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -867,7 +867,7 @@ def approval_inbox(request):
             form_def_obj = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=form_def_obj)
-                .exclude(field_type__in=["section", "file"])
+                .exclude(field_type__in=["section", "file", "multifile"])
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -1340,7 +1340,7 @@ def completed_approvals(request):
             form_def_obj = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=form_def_obj)
-                .exclude(field_type__in=["section", "file"])
+                .exclude(field_type__in=["section", "file", "multifile"])
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -1613,7 +1613,9 @@ def submission_pdf(request, submission_id):
 # Helper functions
 
 # Field types where free-text search makes no sense (binary / structural)
-_NONSEARCHABLE_FIELD_TYPES = frozenset({"section", "file", "hidden", "checkbox"})
+_NONSEARCHABLE_FIELD_TYPES = frozenset(
+    {"section", "file", "multifile", "hidden", "checkbox"}
+)
 
 
 def _form_data_search_q(form_slug, search, field_prefix="form_data"):
@@ -1647,6 +1649,23 @@ def _form_data_search_q(form_slug, search, field_prefix="form_data"):
     return q
 
 
+def _serialize_single_file(file_obj, key, submission_id):
+    """Serialize a single file upload to a storable dict."""
+    file_path = save_uploaded_file(file_obj, key, submission_id)
+    if file_path:
+        return {
+            "filename": file_obj.name,
+            "path": file_path,
+            "size": file_obj.size if hasattr(file_obj, "size") else 0,
+            "content_type": (
+                file_obj.content_type
+                if hasattr(file_obj, "content_type")
+                else "application/octet-stream"
+            ),
+        }
+    return file_obj.name  # Fallback if save fails
+
+
 def serialize_form_data(data, submission_id=None):
     """
     Convert form data to JSON-serializable format.
@@ -1655,6 +1674,9 @@ def serialize_form_data(data, submission_id=None):
     storage path, size, and content-type.  The URL is intentionally NOT
     stored here — presigned S3/Spaces URLs expire and must be generated
     on-demand at render time via ``_resolve_form_data_urls()``.
+
+    Multi-file fields (``multifile`` type) are stored as a JSON list of
+    the same per-file dict format used for single file uploads.
     """
     serialized = {}
     for key, value in data.items():
@@ -1662,23 +1684,14 @@ def serialize_form_data(data, submission_id=None):
             serialized[key] = value.isoformat()
         elif isinstance(value, Decimal):
             serialized[key] = str(value)
-        elif hasattr(value, "read"):  # File upload (InMemoryUploadedFile or similar)
-            # Save file to storage (uses S3/Spaces if configured)
-            file_path = save_uploaded_file(value, key, submission_id)
-            if file_path:
-                serialized[key] = {
-                    "filename": value.name,
-                    "path": file_path,
-                    "size": value.size if hasattr(value, "size") else 0,
-                    "content_type": (
-                        value.content_type
-                        if hasattr(value, "content_type")
-                        else "application/octet-stream"
-                    ),
-                }
-            else:
-                # Fallback if save fails
-                serialized[key] = value.name
+        elif isinstance(value, list) and value and hasattr(value[0], "read"):
+            # Multi-file upload: list of file objects
+            serialized[key] = [
+                _serialize_single_file(f, f"{key}_{i}", submission_id)
+                for i, f in enumerate(value)
+            ]
+        elif hasattr(value, "read"):  # Single file upload
+            serialized[key] = _serialize_single_file(value, key, submission_id)
         else:
             serialized[key] = value
     return serialized
@@ -2016,10 +2029,18 @@ def _resolve_form_data_urls(form_data):
     resolved = {}
     for key, value in form_data.items():
         if isinstance(value, dict) and "path" in value:
-            # Build a fresh copy with a newly-generated URL
+            # Single file upload — build a fresh copy with a newly-generated URL
             entry = dict(value)  # shallow copy so we don't mutate the model field
             entry["url"] = get_file_url(value)  # may be None if storage is unavailable
             resolved[key] = entry
+        elif (
+            isinstance(value, list)
+            and value
+            and isinstance(value[0], dict)
+            and "path" in value[0]
+        ):
+            # Multi-file upload — resolve URLs for each file in the list
+            resolved[key] = [{**f, "url": get_file_url(f)} for f in value]
         else:
             resolved[key] = value
     return resolved
@@ -2177,6 +2198,14 @@ def bulk_export_submissions(request):
                 # Handle file upload dicts — just output filename
                 if isinstance(value, dict) and "filename" in value:
                     value = value["filename"]
+                # Handle multi-file upload lists — output comma-separated filenames
+                elif (
+                    isinstance(value, list)
+                    and value
+                    and isinstance(value[0], dict)
+                    and "filename" in value[0]
+                ):
+                    value = ", ".join(f["filename"] for f in value)
                 # Handle lists (multiselect, checkboxes)
                 elif isinstance(value, list):
                     value = ", ".join(str(v) for v in value)
@@ -2461,7 +2490,7 @@ def completed_approvals_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file"])
+                .exclude(field_type__in=["section", "file", "multifile"])
                 .order_by("order")
                 .values("field_name")
             )
@@ -2587,7 +2616,7 @@ def approval_inbox_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file"])
+                .exclude(field_type__in=["section", "file", "multifile"])
                 .order_by("order")
                 .values("field_name")
             )
@@ -2690,7 +2719,7 @@ def my_submissions_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file"])
+                .exclude(field_type__in=["section", "file", "multifile"])
                 .order_by("order")
                 .values("field_name")
             )

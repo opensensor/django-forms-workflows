@@ -408,6 +408,7 @@ class FormField(models.Model):
         ("checkbox", "Single Checkbox"),
         ("checkboxes", "Multiple Checkboxes"),
         ("file", "File Upload"),
+        ("multifile", "Multi-File Upload"),
         ("hidden", "Hidden Field"),
         ("section", "Section Header (not a field)"),
     ]

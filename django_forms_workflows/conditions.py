@@ -40,6 +40,17 @@ def _coerce_numeric(val: Any) -> Decimal | None:
         return None
 
 
+def _is_empty_value(actual: Any) -> bool:
+    """Return True when ``actual`` represents an empty / absent value."""
+    if actual is None:
+        return True
+    if isinstance(actual, str):
+        return actual.strip() == ""
+    if isinstance(actual, list | dict):
+        return len(actual) == 0
+    return False
+
+
 def _evaluate_single(condition: dict, data: dict) -> bool:
     """Evaluate a single condition dict against submission data."""
     field = condition.get("field", "")
@@ -47,6 +58,13 @@ def _evaluate_single(condition: dict, data: dict) -> bool:
     expected = condition.get("value")
 
     actual = data.get(field)
+
+    # Presence / absence operators (no expected value needed)
+    if operator == "not_empty":
+        return not _is_empty_value(actual)
+
+    if operator == "is_empty":
+        return _is_empty_value(actual)
 
     # Normalise to strings for simple comparisons
     actual_str = str(actual).strip() if actual is not None else ""
@@ -99,16 +117,36 @@ def _evaluate_single(condition: dict, data: dict) -> bool:
 def evaluate_conditions(conditions: dict | None, data: dict) -> bool:
     """Evaluate a trigger_conditions rule set against form data.
 
+    Supports two formats:
+
+    *Compound* (multi-condition group)::
+
+        {
+            "operator": "AND" | "OR",
+            "conditions": [
+                {"field": "foo", "operator": "equals", "value": "bar"},
+                ...
+            ]
+        }
+
+    *Simple* (single condition, no wrapping ``conditions`` list)::
+
+        {"field": "foo", "operator": "not_empty"}
+
     Returns ``True`` when:
-    - ``conditions`` is ``None``, empty dict, or has no ``conditions`` list
-      (unconditional — always matches)
-    - All / any individual conditions pass (depending on the top-level operator)
+    - ``conditions`` is ``None`` or an empty dict (unconditional — always matches)
+    - The condition(s) evaluate to True according to the configured logic
     """
     if not conditions:
         return True
 
     condition_list = conditions.get("conditions")
+
+    # Simple single-condition format: {"field": "...", "operator": "..."}
     if not condition_list:
+        if "field" in conditions:
+            return _evaluate_single(conditions, data)
+        # No conditions key and no field key — unconditional
         return True
 
     group_operator = conditions.get("operator", "AND").upper()

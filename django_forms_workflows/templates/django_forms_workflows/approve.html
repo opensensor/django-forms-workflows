@@ -171,6 +171,7 @@
                             <th style="width: 30%;">{{ entry.label }}</th>
                             <td>
                                 {% if entry.value.url %}
+                                    {# Single file with URL #}
                                     {% if entry.value.content_type and 'image' in entry.value.content_type %}
                                         <img src="{{ entry.value.url }}" alt="{{ entry.value.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
                                     {% endif %}
@@ -179,6 +180,25 @@
                                     </a>
                                 {% elif entry.value.path %}
                                     <span class="text-muted">{{ entry.value.filename }}</span>
+                                {% elif entry.value|length and entry.value.0 %}
+                                    {# Multi-file upload: list of file dicts #}
+                                    <ul class="list-unstyled mb-0">
+                                    {% for f in entry.value %}
+                                        <li class="mb-1">
+                                            {% if f.url %}
+                                                {% if f.content_type and 'image' in f.content_type %}
+                                                    <img src="{{ f.url }}" alt="{{ f.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
+                                                {% endif %}
+                                                <a href="{{ f.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-download"></i> {{ f.filename }}
+                                                </a>
+                                                <small class="text-muted ms-1">{% if f.size %}({{ f.size|filesizeformat }}){% endif %}</small>
+                                            {% else %}
+                                                <span class="text-muted">{{ f.filename }}</span>
+                                            {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                    </ul>
                                 {% else %}
                                     {{ entry.value }}
                                 {% endif %}

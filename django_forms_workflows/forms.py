@@ -17,6 +17,38 @@ from django.core.validators import RegexValidator
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Multi-file upload support
+# ---------------------------------------------------------------------------
+
+
+class MultipleFileInput(forms.ClearableFileInput):
+    """File input widget that accepts multiple files via a single input."""
+
+    allow_multiple_selected = True
+
+    def value_from_datadict(self, data, files, name):
+        return files.getlist(name)
+
+
+class MultipleFileField(forms.FileField):
+    """Form field that accepts and validates a list of uploaded files."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("widget", MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        single_file_clean = super().clean
+        if isinstance(data, list | tuple):
+            return [single_file_clean(d, initial) for d in data if d]
+        if data:
+            return [single_file_clean(data, initial)]
+        if not self.required:
+            return []
+        raise forms.ValidationError(self.error_messages["required"])
+
+
 class DynamicForm(forms.Form):
     """
     Dynamically generated form based on FormDefinition.
@@ -307,6 +339,13 @@ class DynamicForm(forms.Form):
 
         elif field_def.field_type == "file":
             self.fields[field_def.field_name] = forms.FileField(**field_args)
+
+        elif field_def.field_type == "multifile":
+            self.fields[field_def.field_name] = MultipleFileField(
+                required=field_def.required,
+                label=field_def.field_label,
+                help_text=field_def.help_text,
+            )
 
         elif field_def.field_type == "hidden":
             self.fields[field_def.field_name] = forms.CharField(
@@ -822,6 +861,13 @@ class ApprovalStepForm(forms.Form):
                 initial=field_args["initial"],
             )
 
+        elif field_def.field_type == "multifile":
+            self.fields[field_def.field_name] = MultipleFileField(
+                required=field_args.get("required", False),
+                label=field_def.field_label,
+                help_text=field_def.help_text,
+            )
+
         else:
             # Default to text field for unknown types
             if widget_attrs:
@@ -841,6 +887,73 @@ class ApprovalStepForm(forms.Form):
             return [(c.strip(), c.strip()) for c in choices.split(",") if c.strip()]
         return []
 
+    def _build_layout_fields(self, field_defs):
+        """Convert a list of field definitions into crispy layout elements,
+        respecting half / third / fourth width settings."""
+        layout_fields = []
+        fields = list(field_defs)
+        i = 0
+        while i < len(fields):
+            field = fields[i]
+            if field.field_type == "section":
+                layout_fields.append(
+                    HTML(f'<h4 class="mt-4 mb-3">{field.field_label}</h4>')
+                )
+                i += 1
+            elif field.width == "half":
+                next_field = fields[i + 1] if i + 1 < len(fields) else None
+                if (
+                    next_field
+                    and next_field.width == "half"
+                    and next_field.field_type != "section"
+                ):
+                    layout_fields.append(
+                        Row(
+                            Div(
+                                Field(field.field_name),
+                                css_class=f"col-md-6 field-wrapper field-{field.field_name}",
+                            ),
+                            Div(
+                                Field(next_field.field_name),
+                                css_class=f"col-md-6 field-wrapper field-{next_field.field_name}",
+                            ),
+                        )
+                    )
+                    i += 2
+                else:
+                    layout_fields.append(
+                        Div(
+                            Row(Column(Field(field.field_name), css_class="col-md-6")),
+                            css_class=f"field-wrapper field-{field.field_name}",
+                        )
+                    )
+                    i += 1
+            elif field.width == "third":
+                layout_fields.append(
+                    Div(
+                        Row(Column(Field(field.field_name), css_class="col-md-4")),
+                        css_class=f"field-wrapper field-{field.field_name}",
+                    )
+                )
+                i += 1
+            elif field.width == "fourth":
+                layout_fields.append(
+                    Div(
+                        Row(Column(Field(field.field_name), css_class="col-md-3")),
+                        css_class=f"field-wrapper field-{field.field_name}",
+                    )
+                )
+                i += 1
+            else:
+                layout_fields.append(
+                    Div(
+                        Field(field.field_name),
+                        css_class=f"field-wrapper field-{field.field_name}",
+                    )
+                )
+                i += 1
+        return layout_fields
+
     def _setup_layout(self):
         """Setup Crispy Forms layout."""
         self.helper = FormHelper()
@@ -850,37 +963,24 @@ class ApprovalStepForm(forms.Form):
         layout_fields = []
         stage_id = self.approval_task.workflow_stage_id
 
-        # Add fields organized by workflow stage
-        current_stage_fields = []
-        other_fields = []
-
+        # Separate fields into current stage vs other (read-only) groups
+        current_stage_defs = []
+        other_defs = []
         for field_def in self.form_definition.fields.order_by("order"):
-            if field_def.field_type == "section":
-                section_html = HTML(
-                    f'<h4 class="mt-4 mb-3">{field_def.field_label}</h4>'
-                )
-                if field_def.workflow_stage_id == stage_id:
-                    current_stage_fields.append(section_html)
-                else:
-                    other_fields.append(section_html)
+            if field_def.workflow_stage_id == stage_id:
+                current_stage_defs.append(field_def)
             else:
-                field_wrapper = Div(
-                    Field(field_def.field_name),
-                    css_class=f"field-wrapper field-{field_def.field_name}",
-                )
-                if field_def.workflow_stage_id == stage_id:
-                    current_stage_fields.append(field_wrapper)
-                else:
-                    other_fields.append(field_wrapper)
+                other_defs.append(field_def)
 
         # Add submitted data section first (read-only)
-        if other_fields:
+        if other_defs:
             layout_fields.append(
                 HTML('<h3 class="mb-3">Submitted Information (Read-Only)</h3>')
             )
-            layout_fields.extend(other_fields)
+            layout_fields.extend(self._build_layout_fields(other_defs))
 
-        # Add current stage fields section
+        # Add current stage fields section with width support
+        current_stage_fields = self._build_layout_fields(current_stage_defs)
         if current_stage_fields:
             layout_fields.append(HTML('<hr class="my-4">'))
             step_name = self.approval_task.step_name or "Review"

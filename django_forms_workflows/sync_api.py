@@ -580,17 +580,20 @@ def import_form(form_data, conflict="update", category_cache=None):
             },
         )
 
-        # Update stages in-place (matched by order) so that existing
+        # Update stages in-place (matched by order + name) so that existing
         # ApprovalTask records — which hold a PROTECT FK to WorkflowStage —
-        # are not broken.  Stages that no longer exist in the incoming data
-        # have their task references nullified before being deleted.
-        existing_by_order = {s.order: s for s in wf.stages.all()}
-        incoming_orders = {
-            sd.get("order", idx + 1) for idx, sd in enumerate(stages_data)
+        # are not broken.  Parallel stages share the same order number, so
+        # we must key on (order, name) to distinguish them correctly.
+        # Stages absent from the incoming data have their task references
+        # nullified before being deleted.
+        existing_by_key = {(s.order, s.name): s for s in wf.stages.all()}
+        incoming_keys = {
+            (sd.get("order", idx + 1), sd.get("name", ""))
+            for idx, sd in enumerate(stages_data)
         }
 
         # Nullify task references then delete stages absent from incoming data
-        removed = [s for o, s in existing_by_order.items() if o not in incoming_orders]
+        removed = [s for k, s in existing_by_key.items() if k not in incoming_keys]
         if removed:
             ApprovalTask.objects.filter(workflow_stage__in=removed).update(
                 workflow_stage=None
@@ -603,8 +606,10 @@ def import_form(form_data, conflict="update", category_cache=None):
             stage_group_data = stage_data.pop("approval_groups", [])
             stage_notif_data = stage_data.pop("form_field_notifications", [])
             order = stage_data.get("order", idx + 1)
-            if order in existing_by_order:
-                stage = existing_by_order[order]
+            name = stage_data.get("name", "")
+            key = (order, name)
+            if key in existing_by_key:
+                stage = existing_by_key[key]
                 for k, v in stage_data.items():
                     setattr(stage, k, v)
                 stage.save()

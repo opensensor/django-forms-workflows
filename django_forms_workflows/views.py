@@ -2480,13 +2480,10 @@ def completed_approvals_ajax(request):
         qs = qs.filter(form_definition__category__slug=category_slug)
     if form_slug:
         qs = qs.filter(form_definition__slug=form_slug)
-    if status_filter in (
-        "approved",
-        "approved_pending",
-        "rejected",
-        "withdrawn",
-        "pending_approval",
-    ):
+    if status_filter == "pending_approval":
+        # Covers both initial pending_approval and mid-workflow approved_pending
+        qs = qs.filter(status__in=["pending_approval", "approved_pending"])
+    elif status_filter in ("approved", "rejected", "withdrawn"):
         qs = qs.filter(status=status_filter)
 
     # --- Search ---

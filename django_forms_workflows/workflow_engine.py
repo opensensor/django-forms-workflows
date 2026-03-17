@@ -200,11 +200,11 @@ def _finalize_submission(submission: FormSubmission) -> None:
         logger.error("Error spawning sub-workflows on approval: %s", e, exc_info=True)
 
     # If non-detached sub-workflow instances are now pending/in-progress,
-    # hold the parent at "approved_pending" until they all complete.
+    # hold the parent at "pending_approval" until they all complete.
     try:
-        _maybe_set_approved_pending(submission)
+        _maybe_set_pending_approval(submission)
     except Exception as e:
-        logger.error("Error setting approved_pending status: %s", e, exc_info=True)
+        logger.error("Error setting pending_approval status: %s", e, exc_info=True)
 
 
 def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
@@ -820,8 +820,8 @@ def execute_file_workflow_hooks(submission: FormSubmission, trigger: str) -> Non
 # ---------------------------------------------------------------------------
 
 
-def _maybe_set_approved_pending(submission: FormSubmission) -> None:
-    """Flip parent to approved_pending if non-detached sub-workflow instances are running."""
+def _maybe_set_pending_approval(submission: FormSubmission) -> None:
+    """Flip parent to pending_approval if non-detached sub-workflow instances are running."""
     if submission.status != "approved":
         return
     try:
@@ -831,13 +831,13 @@ def _maybe_set_approved_pending(submission: FormSubmission) -> None:
     if config.detached:
         return
     if submission.sub_workflows.filter(status__in=["pending", "in_progress"]).exists():
-        submission.status = "approved_pending"
+        submission.status = "pending_approval"
         submission.save(update_fields=["status"])
 
 
 def _promote_parent_if_complete(submission: FormSubmission) -> None:
-    """Promote parent from approved_pending to approved when all sub-workflows finish."""
-    if submission.status != "approved_pending":
+    """Promote parent from pending_approval to approved when all sub-workflows finish."""
+    if submission.status != "pending_approval":
         return
     if submission.sub_workflows.filter(status__in=["pending", "in_progress"]).exists():
         return
@@ -890,7 +890,7 @@ def _reject_sub_workflow(instance: SubWorkflowInstance) -> None:
             sibling.save(update_fields=["status", "completed_at"])
             sibling.approval_tasks.filter(status="pending").update(status="skipped")
 
-        if submission.status in ("approved_pending", "approved"):
+        if submission.status in ("pending_approval", "approved"):
             submission.status = "rejected"
             submission.save(update_fields=["status"])
             logger.info(

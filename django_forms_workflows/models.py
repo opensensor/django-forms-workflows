@@ -1348,7 +1348,6 @@ class FormSubmission(models.Model):
         ("submitted", "Submitted"),
         ("pending_approval", "Pending Approval"),
         ("approved", "Approved"),
-        ("approved_pending", "Approved – Pending Completion"),
         ("rejected", "Rejected"),
         ("withdrawn", "Withdrawn"),
     ]

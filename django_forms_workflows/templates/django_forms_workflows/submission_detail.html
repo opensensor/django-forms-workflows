@@ -16,7 +16,7 @@
                     <span class="badge bg-warning text-dark">Pending Approval</span>
                 {% elif submission.status == 'approved' %}
                     <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Approved</span>
-                {% elif submission.status == 'approved_pending' %}
+                {% elif submission.status == 'pending_approval' %}
                     <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending Approval</span>
                 {% elif submission.status == 'rejected' %}
                     <span class="badge bg-danger">Rejected</span>

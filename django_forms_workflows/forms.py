@@ -532,9 +532,14 @@ class DynamicForm(forms.Form):
                     rules = field.conditional_rules
 
                 if rules:
-                    config["conditionalRules"].append(
-                        {"targetField": field.field_name, **rules}
-                    )
+                    # conditional_rules may be stored as a list of rule dicts
+                    # (one per show/hide rule) or as a single rule dict.
+                    rule_list = rules if isinstance(rules, list) else [rules]
+                    for rule in rule_list:
+                        if isinstance(rule, dict):
+                            config["conditionalRules"].append(
+                                {"targetField": field.field_name, **rule}
+                            )
 
             # Field dependencies
             if hasattr(field, "field_dependencies") and field.field_dependencies:

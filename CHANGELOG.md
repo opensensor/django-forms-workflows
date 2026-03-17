@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-03-17
+
+### Added
+- **Send Back for Correction** — a new third decision path on the approval screen that returns a staged workflow to any prior stage without terminating the submission.
+  - `WorkflowStage.allow_send_back` (`BooleanField`, default `False`) — opt-in per stage via Django Admin; only stages with this flag enabled appear as send-back targets for downstream approvers.
+  - `ApprovalTask.status` extended with `"returned"` (Returned for Correction) — records the closed task without triggering rejection hooks.
+  - `AuditLog.action` extended with `"send_back"` — full audit trail entry written on every send-back with target stage name and reason.
+  - `handle_send_back(submission, task, target_stage)` in `workflow_engine.py` — cancels sibling pending tasks at the current stage, re-creates tasks at the target stage via the existing `_create_stage_tasks` helper; `FormSubmission.status` remains `pending_approval` throughout.
+  - `handle_sub_workflow_send_back(task, target_stage)` — identical logic scoped to a `SubWorkflowInstance` using `_create_sub_workflow_stage_tasks`.
+  - `approve_submission` view updated to accept `decision=send_back`; validates target stage belongs to the same workflow, has a lower `order`, and that a non-empty reason was supplied.
+  - `approve.html` — collapsible **Send Back for Correction** card (Bootstrap warning colour, collapsed by default) injected after the main decision buttons in both the step-fields and standard approval forms; hidden when no prior `allow_send_back` stages exist.
+  - Migration `0055_add_send_back` covering all model changes above.
+
 ## [0.14.12] - 2026-03-06
 
 ### Fixed

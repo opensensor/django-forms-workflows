@@ -795,6 +795,14 @@ class WorkflowStage(models.Model):
             "group assignment if the field is empty or no matching user is found."
         ),
     )
+    allow_send_back = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow approvers at a later stage to return the submission to this stage "
+            "for correction, without terminating the workflow. When enabled, this stage "
+            "will appear as a 'Send Back' target option for all subsequent stages."
+        ),
+    )
 
     class Meta:
         ordering = ["order"]
@@ -1411,6 +1419,7 @@ class ApprovalTask(models.Model):
         ("pending", "Pending"),
         ("approved", "Approved"),
         ("rejected", "Rejected"),
+        ("returned", "Returned for Correction"),
         ("expired", "Expired"),
         ("skipped", "Skipped"),
     ]
@@ -1510,6 +1519,7 @@ class AuditLog(models.Model):
         ("submit", "Submitted"),
         ("approve", "Approved"),
         ("reject", "Rejected"),
+        ("send_back", "Returned for Correction"),
         ("withdraw", "Withdrawn"),
         ("assign", "Assigned"),
         ("comment", "Commented"),

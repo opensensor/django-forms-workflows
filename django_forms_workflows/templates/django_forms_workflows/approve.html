@@ -277,6 +277,54 @@
             </div>
         </form>
 
+        {% if send_back_stages %}
+        <!-- Send Back for Correction -->
+        <div class="card mb-4 border-warning">
+            <div class="card-header bg-warning bg-opacity-10 border-warning">
+                <button class="btn btn-link text-warning-emphasis fw-semibold p-0 text-decoration-none w-100 text-start"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#sendBackPanel"
+                        aria-expanded="false"
+                        aria-controls="sendBackPanel">
+                    <i class="bi bi-arrow-return-left me-2"></i>
+                    Send Back for Correction
+                    <i class="bi bi-chevron-down float-end mt-1"></i>
+                </button>
+            </div>
+            <div class="collapse" id="sendBackPanel">
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Use this option when data entered by a previous stage approver needs to be corrected.
+                        The submission will <strong>not</strong> be rejected — it will be returned to the
+                        selected stage so the approver there can revise their entries and re-approve.
+                    </p>
+                    <form method="post" data-loading-message="Sending back for correction…">
+                        {% csrf_token %}
+                        <input type="hidden" name="decision" value="send_back">
+                        <div class="mb-3">
+                            <label for="send_back_stage_id" class="form-label fw-semibold">Return to stage <span class="text-danger">*</span></label>
+                            <select class="form-select" id="send_back_stage_id" name="send_back_stage_id" required>
+                                <option value="">— select a stage —</option>
+                                {% for stage in send_back_stages %}
+                                <option value="{{ stage.id }}">{{ stage.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="send_back_reason" class="form-label fw-semibold">Reason for correction <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="send_back_reason" name="send_back_reason" rows="3"
+                                      placeholder="Describe what needs to be corrected and why…" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-arrow-return-left"></i> Send Back for Correction
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Future Steps Preview (greyed out) -->
         {% for step in approval_steps %}
             {% if step.number > current_step_number %}
@@ -358,6 +406,55 @@
                 </form>
             </div>
         </div>
+
+        {% if send_back_stages %}
+        <!-- Send Back for Correction -->
+        <div class="card mb-4 border-warning">
+            <div class="card-header bg-warning bg-opacity-10 border-warning">
+                <button class="btn btn-link text-warning-emphasis fw-semibold p-0 text-decoration-none w-100 text-start"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#sendBackPanelStd"
+                        aria-expanded="false"
+                        aria-controls="sendBackPanelStd">
+                    <i class="bi bi-arrow-return-left me-2"></i>
+                    Send Back for Correction
+                    <i class="bi bi-chevron-down float-end mt-1"></i>
+                </button>
+            </div>
+            <div class="collapse" id="sendBackPanelStd">
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Use this option when data entered by a previous stage approver needs to be corrected.
+                        The submission will <strong>not</strong> be rejected — it will be returned to the
+                        selected stage so the approver there can revise their entries and re-approve.
+                    </p>
+                    <form method="post" data-loading-message="Sending back for correction…">
+                        {% csrf_token %}
+                        <input type="hidden" name="decision" value="send_back">
+                        <div class="mb-3">
+                            <label for="send_back_stage_id_std" class="form-label fw-semibold">Return to stage <span class="text-danger">*</span></label>
+                            <select class="form-select" id="send_back_stage_id_std" name="send_back_stage_id" required>
+                                <option value="">— select a stage —</option>
+                                {% for stage in send_back_stages %}
+                                <option value="{{ stage.id }}">{{ stage.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="send_back_reason_std" class="form-label fw-semibold">Reason for correction <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="send_back_reason_std" name="send_back_reason" rows="3"
+                                      placeholder="Describe what needs to be corrected and why…" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-arrow-return-left"></i> Send Back for Correction
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         {% endif %}
     </div>
 </div>

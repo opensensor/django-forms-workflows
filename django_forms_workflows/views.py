@@ -976,9 +976,75 @@ def approve_submission(request, task_id):
         decision = request.POST.get("decision")
         comments = request.POST.get("comments", "")
 
-        if decision not in ["approve", "reject"]:
+        if decision not in ["approve", "reject", "send_back"]:
             messages.error(request, "Invalid decision.")
             return redirect("forms_workflows:approve_submission", task_id=task_id)
+
+        # Send-back path — no approval-step-field validation needed.
+        if decision == "send_back":
+            send_back_reason = request.POST.get("send_back_reason", "").strip()
+            send_back_stage_id = request.POST.get("send_back_stage_id", "").strip()
+            if not send_back_reason:
+                messages.error(
+                    request, "A reason is required when sending back for correction."
+                )
+                return redirect("forms_workflows:approve_submission", task_id=task_id)
+            if not send_back_stage_id:
+                messages.error(request, "Please select a stage to send back to.")
+                return redirect("forms_workflows:approve_submission", task_id=task_id)
+
+            from .models import WorkflowStage
+            from .workflow_engine import handle_send_back, handle_sub_workflow_send_back
+
+            try:
+                target_stage = WorkflowStage.objects.get(pk=send_back_stage_id)
+            except WorkflowStage.DoesNotExist:
+                messages.error(request, "Invalid target stage selected.")
+                return redirect("forms_workflows:approve_submission", task_id=task_id)
+
+            # Verify the target stage belongs to the same workflow and is truly prior.
+            current_stage = task.workflow_stage
+            if (
+                current_stage is None
+                or target_stage.workflow_id != current_stage.workflow_id
+            ):
+                messages.error(
+                    request, "Target stage does not belong to this workflow."
+                )
+                return redirect("forms_workflows:approve_submission", task_id=task_id)
+            if target_stage.order >= current_stage.order:
+                messages.error(request, "You can only send back to a prior stage.")
+                return redirect("forms_workflows:approve_submission", task_id=task_id)
+
+            task.status = "returned"
+            task.decision = "send_back"
+            task.comments = send_back_reason
+            task.completed_by = request.user
+            task.completed_at = timezone.now()
+            task.save()
+
+            if task.sub_workflow_instance_id:
+                handle_sub_workflow_send_back(task, target_stage)
+            else:
+                handle_send_back(submission, task, target_stage)
+
+            AuditLog.objects.create(
+                action="send_back",
+                object_type="FormSubmission",
+                object_id=submission.id,
+                user=request.user,
+                user_ip=get_client_ip(request),
+                changes={
+                    "task_id": task.id,
+                    "target_stage": target_stage.name,
+                    "reason": send_back_reason,
+                },
+            )
+            messages.success(
+                request,
+                f'Submission returned to "{target_stage.name}" for correction.',
+            )
+            return redirect("forms_workflows:approval_inbox")
 
         # If there are approval step fields and decision is approve, validate them
         if has_approval_step_fields and decision == "approve":
@@ -1070,7 +1136,8 @@ def approve_submission(request, task_id):
             changes={"task_id": task.id, "comments": comments},
         )
 
-        messages.success(request, f"Submission {decision}d successfully.")
+        action_label = "approved" if decision == "approve" else "rejected"
+        messages.success(request, f"Submission {action_label} successfully.")
         return redirect("forms_workflows:approval_inbox")
 
     # GET request - create the approval step form if needed
@@ -1164,6 +1231,28 @@ def approve_submission(request, task_id):
         else ""
     )
 
+    # Build the list of prior stages the approver may send back to.
+    # For sub-workflow tasks we look at the sub-workflow's own stage set.
+    send_back_stages: list = []
+    if task.workflow_stage and task.workflow_stage.allow_send_back is not None:
+        # current task's stage is NOT a send-back target for itself; only
+        # stages with a *lower* order value and allow_send_back=True qualify.
+        current_order = task.workflow_stage.order
+        if task.sub_workflow_instance_id:
+            sub_wf = task.sub_workflow_instance.definition.sub_workflow
+            send_back_stages = list(
+                sub_wf.stages.filter(
+                    allow_send_back=True, order__lt=current_order
+                ).order_by("order")
+            )
+        else:
+            wf_for_send_back = task.workflow_stage.workflow
+            send_back_stages = list(
+                wf_for_send_back.stages.filter(
+                    allow_send_back=True, order__lt=current_order
+                ).order_by("order")
+            )
+
     return render(
         request,
         "django_forms_workflows/approve.html",
@@ -1187,6 +1276,8 @@ def approve_submission(request, task_id):
             "approve_label": approve_label,
             # sub-workflow context (None for regular tasks)
             "sub_workflow_instance": task.sub_workflow_instance,
+            # send-back targets (empty list → panel hidden in template)
+            "send_back_stages": send_back_stages,
         },
     )
 

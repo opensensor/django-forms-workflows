@@ -735,6 +735,51 @@ def handle_rejection(
         _reject_submission(submission)
 
 
+@transaction.atomic
+def handle_send_back(
+    submission: FormSubmission,
+    task: ApprovalTask,
+    target_stage: WorkflowStage,
+) -> None:
+    """Return a staged workflow to a prior stage for correction.
+
+    The current task must already be saved with ``status="returned"`` before
+    calling this function (the view is responsible for that).
+
+    Steps:
+      1. Cancel any other pending tasks at the current stage.
+      2. Create fresh tasks for ``target_stage`` (reuses ``_create_stage_tasks``
+         so all assignment / notification logic is identical to first activation).
+      3. ``FormSubmission.status`` stays ``pending_approval`` throughout — the
+         submission is *not* rejected or finalised.
+    """
+    current_stage = task.workflow_stage
+    if current_stage is None:
+        logger.warning(
+            "handle_send_back called on task %s with no workflow_stage; ignoring.",
+            task.id,
+        )
+        return
+
+    # 1. Cancel parallel sibling tasks still pending at the current stage.
+    submission.approval_tasks.filter(
+        workflow_stage=current_stage, status="pending"
+    ).exclude(id=task.id).update(status="skipped")
+
+    # 2. Create new tasks at the target (prior) stage.
+    workflow = target_stage.workflow
+    due_date = _due_date_for(workflow)
+    _create_stage_tasks(submission, target_stage, due_date)
+
+    logger.info(
+        "Submission %s sent back from stage '%s' to stage '%s' by task %s.",
+        submission.id,
+        current_stage.name,
+        target_stage.name,
+        task.id,
+    )
+
+
 # --- Post-submission actions ------------------------------------------------
 
 
@@ -1157,3 +1202,47 @@ def handle_sub_workflow_rejection(task: ApprovalTask) -> None:
     else:
         # "all" or "sequence" — one rejection vetoes immediately
         _reject_sub_workflow(instance)
+
+
+@transaction.atomic
+def handle_sub_workflow_send_back(
+    task: ApprovalTask,
+    target_stage: WorkflowStage,
+) -> None:
+    """Return a sub-workflow to a prior stage for correction.
+
+    Mirrors ``handle_send_back`` but scoped to the sub-workflow instance.
+    The current task must already be saved with ``status="returned"`` before
+    calling this function.
+
+    Steps:
+      1. Cancel any other pending tasks at the current sub-workflow stage.
+      2. Create fresh tasks for ``target_stage`` within the same instance.
+      3. The parent ``FormSubmission.status`` is untouched.
+    """
+    instance = task.sub_workflow_instance
+    current_stage = task.workflow_stage
+    if instance is None or current_stage is None:
+        logger.warning(
+            "handle_sub_workflow_send_back called on task %s with no instance/stage; ignoring.",
+            task.id,
+        )
+        return
+
+    # 1. Cancel parallel sibling tasks still pending at the current stage.
+    instance.approval_tasks.filter(
+        workflow_stage=current_stage, status="pending"
+    ).exclude(id=task.id).update(status="skipped")
+
+    # 2. Create new tasks at the target stage within the sub-workflow.
+    sub_wf = instance.definition.sub_workflow
+    due_date = _due_date_for(sub_wf)
+    _create_sub_workflow_stage_tasks(instance, target_stage, due_date)
+
+    logger.info(
+        "Sub-workflow instance %s sent back from stage '%s' to stage '%s' by task %s.",
+        instance.id,
+        current_stage.name,
+        target_stage.name,
+        task.id,
+    )

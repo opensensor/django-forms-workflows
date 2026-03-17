@@ -112,10 +112,17 @@ class FormFieldAdmin(admin.ModelAdmin):
         "field_type",
         "form_definition",
         "required",
+        "readonly",
         "workflow_stage",
         "order",
     ]
-    list_filter = ["form_definition", "field_type", "required", "workflow_stage"]
+    list_filter = [
+        "form_definition",
+        "field_type",
+        "required",
+        "readonly",
+        "workflow_stage",
+    ]
     search_fields = ["field_name", "field_label"]
     ordering = ["form_definition", "order"]
     autocomplete_fields = ["form_definition", "prefill_source_config", "workflow_stage"]
@@ -127,7 +134,7 @@ class FormFieldAdmin(admin.ModelAdmin):
         ),
         (
             "Field Configuration",
-            {"fields": ("required", "width", "order", "workflow_stage")},
+            {"fields": (("required", "readonly"), "width", "order", "workflow_stage")},
         ),
         (
             "Prefill / Default Value",

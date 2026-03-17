@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-03-17
+
+### Fixed
+- **`FormFieldAdmin` missing `readonly` field** — the standalone FormField admin page (`/admin/django_forms_workflows/formfield/`) did not expose the `readonly` flag. Added `readonly` alongside `required` in the "Field Configuration" fieldset, added it to `list_display`, and added it to `list_filter`. It was already present in `FormFieldInline` (when editing fields inline from the parent FormDefinition page).
+
 ## [0.32.0] - 2026-03-17
 
 ### Added

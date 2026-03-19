@@ -81,6 +81,7 @@ class FormFieldInline(nested_admin.NestedStackedInline):
                     "choices",
                     "prefill_source_config",
                     "default_value",
+                    "formula",
                 ),
             },
         ),
@@ -143,6 +144,10 @@ class FormFieldAdmin(admin.ModelAdmin):
         (
             "Choices (for select/radio/checkbox fields)",
             {"fields": ("choices",), "classes": ("collapse",)},
+        ),
+        (
+            "Formula (for calculated fields)",
+            {"fields": ("formula",), "classes": ("collapse",)},
         ),
         (
             "Validation",

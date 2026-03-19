@@ -418,6 +418,8 @@ class FormField(models.Model):
         ("multifile", "Multi-File Upload"),
         ("hidden", "Hidden Field"),
         ("section", "Section Header (not a field)"),
+        ("calculated", "Calculated / Formula"),
+        ("spreadsheet", "Spreadsheet Upload (CSV / Excel)"),
     ]
 
     # Relationship
@@ -506,6 +508,17 @@ class FormField(models.Model):
         if self.prefill_source_config:
             return self.prefill_source_config.get_source_identifier()
         return ""
+
+    # Formula / Calculated field
+    formula = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            'For "Calculated / Formula" fields: use {field_name} tokens to reference '
+            "other fields. Supports literal text and concatenation. "
+            "Example: {dept_code} - {job_type}"
+        ),
+    )
 
     # Conditional Logic (Client-Side Enhancements)
     conditional_rules = models.JSONField(

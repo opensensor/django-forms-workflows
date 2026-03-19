@@ -240,7 +240,7 @@
         {% endfor %}
 
         <!-- Approval Form with Step Fields -->
-        <form method="post" data-loading-message="Processing your decision...">
+        <form method="post" enctype="multipart/form-data" data-loading-message="Processing your decision...">
             {% csrf_token %}
 
             <!-- Current Step Fields Section with Decision inline -->

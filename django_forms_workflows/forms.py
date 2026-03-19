@@ -7,6 +7,7 @@ class for handling approval-step field editing.
 """
 
 import logging
+import re
 from datetime import date, datetime
 
 from crispy_forms.helper import FormHelper
@@ -15,6 +16,26 @@ from django import forms
 from django.core.validators import RegexValidator
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Formula / calculated-field helpers
+# ---------------------------------------------------------------------------
+
+
+def _evaluate_formula(formula: str, data: dict) -> str:
+    """Substitute {field_name} tokens in *formula* with values from *data*.
+
+    Unknown tokens are left as empty strings so the result is always a clean
+    string rather than a raw template literal.
+    """
+    if not formula:
+        return ""
+    return re.sub(
+        r"\{(\w+)\}",
+        lambda m: str(data.get(m.group(1), "")),
+        formula,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +366,33 @@ class DynamicForm(forms.Form):
                 required=field_def.required,
                 label=field_def.field_label,
                 help_text=field_def.help_text,
+            )
+
+        elif field_def.field_type == "calculated":
+            # Evaluate the formula against any already-known data so the field
+            # is pre-filled on edit / re-visit.  Always stored as text.
+            evaluated = _evaluate_formula(field_def.formula, self.initial_data or {})
+            self.fields[field_def.field_name] = forms.CharField(
+                required=False,
+                label=field_def.field_label,
+                help_text=field_def.help_text or field_def.formula,
+                initial=evaluated or initial,
+                widget=forms.TextInput(
+                    attrs={
+                        "readonly": "readonly",
+                        "data-calculated": "true",
+                        "data-formula": field_def.formula,
+                        "class": "form-control form-control-calculated",
+                    }
+                ),
+            )
+
+        elif field_def.field_type == "spreadsheet":
+            self.fields[field_def.field_name] = forms.FileField(
+                required=field_def.required,
+                label=field_def.field_label,
+                help_text=field_def.help_text or "Accepted formats: .csv, .xls, .xlsx",
+                widget=forms.ClearableFileInput(attrs={"accept": ".csv,.xls,.xlsx"}),
             )
 
         elif field_def.field_type == "hidden":
@@ -871,6 +919,35 @@ class ApprovalStepForm(forms.Form):
                 required=field_args.get("required", False),
                 label=field_def.field_label,
                 help_text=field_def.help_text,
+            )
+
+        elif field_def.field_type == "calculated":
+            existing = (self.existing_data or {}).get(field_def.field_name, "")
+            evaluated = (
+                _evaluate_formula(field_def.formula, self.existing_data or {})
+                or existing
+            )
+            self.fields[field_def.field_name] = forms.CharField(
+                required=False,
+                label=field_def.field_label,
+                help_text=field_def.help_text or field_def.formula,
+                initial=evaluated,
+                widget=forms.TextInput(
+                    attrs={
+                        "readonly": "readonly",
+                        "data-calculated": "true",
+                        "data-formula": field_def.formula,
+                        "class": "form-control form-control-calculated",
+                    }
+                ),
+            )
+
+        elif field_def.field_type == "spreadsheet":
+            self.fields[field_def.field_name] = forms.FileField(
+                required=field_args.get("required", False),
+                label=field_def.field_label,
+                help_text=field_def.help_text or "Accepted formats: .csv, .xls, .xlsx",
+                widget=forms.ClearableFileInput(attrs={"accept": ".csv,.xls,.xlsx"}),
             )
 
         else:

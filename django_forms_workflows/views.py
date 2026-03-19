@@ -287,6 +287,10 @@ def form_submit(request, slug):
             submission.form_data = serialize_form_data(
                 form.cleaned_data, submission_id=submission.pk
             )
+            # Re-evaluate any calculated fields server-side (authoritative values)
+            submission.form_data = _re_evaluate_calculated_fields(
+                submission.form_data, form_def
+            )
 
             if "save_draft" in request.POST:
                 submission.status = "draft"
@@ -1056,6 +1060,7 @@ def approve_submission(request, task_id):
                 approval_task=task,
                 user=request.user,
                 data=request.POST,
+                files=request.FILES,
             )
 
             if not approval_step_form.is_valid():
@@ -1780,6 +1785,53 @@ def _serialize_single_file(file_obj, key, submission_id):
     return file_obj.name  # Fallback if save fails
 
 
+def _parse_spreadsheet(file_obj):
+    """Parse a CSV or Excel upload into a list of row dicts.
+
+    Returns a dict with keys ``headers`` (list) and ``rows`` (list of dicts).
+    Falls back gracefully if openpyxl is not installed.
+    """
+    import csv
+    import io
+
+    name = getattr(file_obj, "name", "")
+    file_obj.seek(0)
+
+    if name.lower().endswith(".csv"):
+        text = file_obj.read().decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        headers = reader.fieldnames or []
+        rows = [dict(row) for row in reader]
+        return {"headers": list(headers), "rows": rows}
+
+    # Excel: .xlsx or .xls
+    try:
+        import openpyxl
+
+        wb = openpyxl.load_workbook(
+            io.BytesIO(file_obj.read()), read_only=True, data_only=True
+        )
+        ws = wb.active
+        row_iter = iter(ws.rows)
+        header_row = next(row_iter, None)
+        if header_row is None:
+            return {"headers": [], "rows": []}
+        headers = [str(c.value or "") for c in header_row]
+        rows = []
+        for row in row_iter:
+            rows.append(
+                {
+                    headers[i]: (str(c.value) if c.value is not None else "")
+                    for i, c in enumerate(row)
+                }
+            )
+        wb.close()
+        return {"headers": headers, "rows": rows}
+    except ImportError:
+        logger.warning("openpyxl not installed; cannot parse Excel upload for field.")
+        return {"headers": [], "rows": [], "error": "openpyxl not installed"}
+
+
 def serialize_form_data(data, submission_id=None):
     """
     Convert form data to JSON-serializable format.
@@ -1791,6 +1843,9 @@ def serialize_form_data(data, submission_id=None):
 
     Multi-file fields (``multifile`` type) are stored as a JSON list of
     the same per-file dict format used for single file uploads.
+
+    Spreadsheet fields (``spreadsheet`` type) are parsed and stored as a
+    dict with ``headers`` and ``rows`` keys.
     """
     serialized = {}
     for key, value in data.items():
@@ -1804,11 +1859,32 @@ def serialize_form_data(data, submission_id=None):
                 _serialize_single_file(f, f"{key}_{i}", submission_id)
                 for i, f in enumerate(value)
             ]
-        elif hasattr(value, "read"):  # Single file upload
-            serialized[key] = _serialize_single_file(value, key, submission_id)
+        elif hasattr(value, "read"):
+            name = getattr(value, "name", "")
+            if name.lower().endswith((".csv", ".xlsx", ".xls")):
+                serialized[key] = _parse_spreadsheet(value)
+            else:
+                serialized[key] = _serialize_single_file(value, key, submission_id)
         else:
             serialized[key] = value
     return serialized
+
+
+def _re_evaluate_calculated_fields(form_data: dict, form_def) -> dict:
+    """Re-evaluate all ``calculated`` fields using the server-side formula.
+
+    This runs after ``serialize_form_data`` so all sibling field values are
+    already present in *form_data*, giving the formula evaluator a complete
+    picture even when the client-side JS was not able to compute it.
+    """
+    from .forms import _evaluate_formula
+
+    for field_def in form_def.fields.filter(field_type="calculated"):
+        if field_def.formula:
+            form_data[field_def.field_name] = _evaluate_formula(
+                field_def.formula, form_data
+            )
+    return form_data
 
 
 def save_uploaded_file(file_obj, field_name, submission_id=None):

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-03-19
+
+### Added
+- **Calculated / Formula field type** (`field_type = "calculated"`) — reads a `formula` template string (e.g. `{dept_code} - {job_type}`) stored on `FormField.formula` and produces a read-only computed value. Live client-side evaluation via injected vanilla JS in `form_submit.html`; authoritative server-side re-evaluation via `_re_evaluate_calculated_fields()` called after `serialize_form_data` at submit time. Formula exposed in both `FormFieldInline` ("Choices & Defaults" fieldset) and standalone `FormFieldAdmin` ("Formula" collapsed fieldset).
+- **Spreadsheet Upload field type** (`field_type = "spreadsheet"`) — accepts `.csv`, `.xls`, `.xlsx` uploads. CSV parsed with stdlib `csv`; Excel parsed with `openpyxl` (already in the `excel` optional extra). Stored in `form_data` as `{"headers": [...], "rows": [{...}, ...]}`. Available in both `DynamicForm` and `ApprovalStepForm`.
+- **Migration 0056** — adds `FormField.formula` (TextField, blank, default `""`) and extends `FormField.field_type` choices to include the two new types.
+
+### Fixed
+- **File upload in approval step** — `ApprovalStepForm` was instantiated without `files=request.FILES` in the POST branch of `approve_submission`, so uploaded files were silently ignored and the field always failed validation. Fixed by passing `files=request.FILES`. Also added `enctype="multipart/form-data"` to the approval step `<form>` tag in `approve.html`.
+- **Sub-workflow spawning on parent form submission** — `create_workflow_tasks` was blindly iterating every `WorkflowDefinition` attached to the form, including child/template workflows referenced by `SubWorkflowDefinition.sub_workflow`. Those are now excluded via the existing `used_as_sub_workflow` reverse relation (`not w.used_as_sub_workflow.exists()`), so sub-workflow templates only activate through the controlled `_spawn_sub_workflows_for_trigger` path and never auto-start at submission time. No model or migration change needed.
+
 ## [0.32.1] - 2026-03-17
 
 ### Fixed

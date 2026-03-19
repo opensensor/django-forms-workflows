@@ -545,11 +545,16 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
 
     # Filter to workflows that require approval AND whose trigger
     # conditions (if any) match the submission data.
+    # Workflows referenced by any SubWorkflowDefinition.sub_workflow are
+    # templates — they must only be spawned via _spawn_sub_workflows_for_trigger,
+    # never auto-started on submission.
     form_data = submission.form_data or {}
     approval_workflows = [
         w
         for w in workflows
-        if w.requires_approval and evaluate_conditions(w.trigger_conditions, form_data)
+        if w.requires_approval
+        and not w.used_as_sub_workflow.exists()
+        and evaluate_conditions(w.trigger_conditions, form_data)
     ]
     if not approval_workflows:
         _finalize_submission(submission)

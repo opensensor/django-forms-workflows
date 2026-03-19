@@ -49,6 +49,52 @@
             window.formEnhancements = formEnhancements;
         }
     });
+
+    // ── Calculated / Formula fields ──────────────────────────────────────────
+    // Each [data-calculated] input carries a data-formula attribute like
+    // "{dept_code} - {job_type}".  We watch every referenced source field
+    // and update the calculated field live.
+    (function () {
+        function evaluateFormula(formula, form) {
+            return formula.replace(/\{(\w+)\}/g, function (_, name) {
+                const el = form.querySelector('[name="' + name + '"]');
+                if (!el) return '';
+                if (el.type === 'checkbox') return el.checked ? el.value || 'true' : '';
+                return el.value || '';
+            });
+        }
+
+        function wireCalculatedFields(form) {
+            const calcFields = form.querySelectorAll('[data-calculated="true"]');
+            if (!calcFields.length) return;
+
+            // Collect all source field names across every formula
+            const sourceNames = new Set();
+            calcFields.forEach(function (el) {
+                const formula = el.dataset.formula || '';
+                (formula.match(/\{(\w+)\}/g) || []).forEach(function (tok) {
+                    sourceNames.add(tok.slice(1, -1));
+                });
+            });
+
+            function updateAll() {
+                calcFields.forEach(function (el) {
+                    el.value = evaluateFormula(el.dataset.formula || '', form);
+                });
+            }
+
+            // Attach listeners to every source field
+            sourceNames.forEach(function (name) {
+                const src = form.querySelector('[name="' + name + '"]');
+                if (src) src.addEventListener('input', updateAll);
+                if (src) src.addEventListener('change', updateAll);
+            });
+
+            updateAll(); // run once on page load
+        }
+
+        document.querySelectorAll('form').forEach(wireCalculatedFields);
+    })();
 </script>
 {% endblock %}
 

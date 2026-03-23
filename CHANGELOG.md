@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.1] - 2026-03-23
+
+### Fixed
+- **Formula/calculated field causes 500 error** — `DynamicForm.__init__` never stored `initial_data` as `self.initial_data`, but `add_field` referenced `self.initial_data` when building a `calculated` field type, resulting in `AttributeError` and a 500 on any form that contains a calculated field. Fixed by adding `self.initial_data = initial_data or {}` to `__init__`.
+- **File upload field type not working in approval step** — `ApprovalStepForm._create_field` had no handler for `field_type = "file"`, so file-upload fields assigned to a workflow stage silently fell through to a plain `CharField`, preventing files from being uploaded during approval. Added a proper `FileField` / `ClearableFileInput` branch (respecting `allowed_extensions`). Also fixed `get_updated_form_data` to serialize uploaded file objects to storage (via `_serialize_single_file`) before merging into the submission's `form_data` JSON, consistent with how `serialize_form_data` handles files on normal form submission.
+
 ## [0.33.0] - 2026-03-19
 
 ### Added

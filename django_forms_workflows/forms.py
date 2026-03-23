@@ -87,6 +87,7 @@ class DynamicForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.form_definition = form_definition
         self.user = user
+        self.initial_data = initial_data or {}
 
         # Build form fields from definition
         # Exclude fields scoped to a workflow stage - those are for approvers only
@@ -914,6 +915,22 @@ class ApprovalStepForm(forms.Form):
                 initial=field_args["initial"],
             )
 
+        elif field_def.field_type == "file":
+            accept_attrs = {}
+            if field_def.allowed_extensions:
+                exts = ",".join(
+                    f".{e.strip()}"
+                    for e in field_def.allowed_extensions.split(",")
+                    if e.strip()
+                )
+                accept_attrs["accept"] = exts
+            self.fields[field_def.field_name] = forms.FileField(
+                required=field_args.get("required", False),
+                label=field_def.field_label,
+                help_text=field_def.help_text,
+                widget=forms.ClearableFileInput(attrs=accept_attrs),
+            )
+
         elif field_def.field_type == "multifile":
             self.fields[field_def.field_name] = MultipleFileField(
                 required=field_args.get("required", False),
@@ -1097,6 +1114,23 @@ class ApprovalStepForm(forms.Form):
                     value = value.isoformat()
                 elif isinstance(value, date):
                     value = value.isoformat()
+                elif isinstance(value, list) and value and hasattr(value[0], "read"):
+                    # Multi-file upload: serialize each file to storage
+                    from .views import _serialize_single_file
+
+                    value = [
+                        _serialize_single_file(
+                            f, f"{field_name}_{i}", self.submission.id
+                        )
+                        for i, f in enumerate(value)
+                    ]
+                elif hasattr(value, "read"):
+                    # Single file upload: serialize to storage
+                    from .views import _serialize_single_file
+
+                    value = _serialize_single_file(
+                        value, field_name, self.submission.id
+                    )
                 updated_data[field_name] = value
 
         return updated_data

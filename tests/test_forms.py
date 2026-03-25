@@ -5,6 +5,8 @@ Tests for DynamicForm and ApprovalStepForm.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from django_forms_workflows.forms import ApprovalStepForm, DynamicForm
 from django_forms_workflows.models import (
     ApprovalTask,
@@ -400,3 +402,178 @@ class TestApprovalStepForm:
         assert updated["reviewer_notes"] == "Looks good"
         # Original data preserved
         assert updated["full_name"] == "Test User"
+
+
+# ── File field validators ────────────────────────────────────────────────
+
+
+class TestMaxFileSizeValidator:
+    def test_accepts_small_file(self):
+        from django_forms_workflows.forms import MaxFileSizeValidator
+
+        validator = MaxFileSizeValidator(5)  # 5 MB
+
+        class FakeFile:
+            size = 1 * 1024 * 1024  # 1 MB
+
+        # Should not raise
+        validator(FakeFile())
+
+    def test_rejects_large_file(self):
+        from django.core.exceptions import ValidationError
+
+        from django_forms_workflows.forms import MaxFileSizeValidator
+
+        validator = MaxFileSizeValidator(2)  # 2 MB
+
+        class FakeFile:
+            size = 5 * 1024 * 1024  # 5 MB
+
+        with pytest.raises(ValidationError):
+            validator(FakeFile())
+
+    def test_equality(self):
+        from django_forms_workflows.forms import MaxFileSizeValidator
+
+        assert MaxFileSizeValidator(5) == MaxFileSizeValidator(5)
+        assert MaxFileSizeValidator(5) != MaxFileSizeValidator(10)
+
+
+class TestBuildFileValidators:
+    def test_no_restrictions(self, form_definition):
+        from django_forms_workflows.forms import _build_file_validators
+
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="doc",
+            field_label="Document",
+            field_type="file",
+            order=1,
+        )
+        validators = _build_file_validators(field)
+        assert validators == []
+
+    def test_extension_only(self, form_definition):
+        from django.core.validators import FileExtensionValidator
+
+        from django_forms_workflows.forms import _build_file_validators
+
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="doc",
+            field_label="Document",
+            field_type="file",
+            order=1,
+            allowed_extensions="pdf,doc,docx",
+        )
+        validators = _build_file_validators(field)
+        assert len(validators) == 1
+        assert isinstance(validators[0], FileExtensionValidator)
+
+    def test_size_only(self, form_definition):
+        from django_forms_workflows.forms import (
+            MaxFileSizeValidator,
+            _build_file_validators,
+        )
+
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="doc",
+            field_label="Document",
+            field_type="file",
+            order=1,
+            max_file_size_mb=10,
+        )
+        validators = _build_file_validators(field)
+        assert len(validators) == 1
+        assert isinstance(validators[0], MaxFileSizeValidator)
+
+    def test_both_restrictions(self, form_definition):
+        from django_forms_workflows.forms import _build_file_validators
+
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="doc",
+            field_label="Document",
+            field_type="file",
+            order=1,
+            allowed_extensions="pdf",
+            max_file_size_mb=5,
+        )
+        validators = _build_file_validators(field)
+        assert len(validators) == 2
+
+
+class TestFileFieldAcceptAttribute:
+    def test_accept_attr_set(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="upload",
+            field_label="Upload",
+            field_type="file",
+            order=1,
+            allowed_extensions="pdf,docx",
+        )
+        form = DynamicForm(form_definition, user=user)
+        widget = form.fields["upload"].widget
+        assert "accept" in widget.attrs
+        assert ".pdf" in widget.attrs["accept"]
+        assert ".docx" in widget.attrs["accept"]
+
+    def test_no_accept_attr_when_no_extensions(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="upload",
+            field_label="Upload",
+            field_type="file",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        widget = form.fields["upload"].widget
+        assert widget.attrs.get("accept") is None
+
+
+class TestFileValidationRulesInConfig:
+    def test_file_type_rule_emitted(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="upload",
+            field_label="Upload",
+            field_type="file",
+            order=1,
+            allowed_extensions="pdf,doc",
+        )
+        form = DynamicForm(form_definition, user=user)
+        config = form.get_enhancements_config()
+        rules = config["validationRules"]
+        upload_rules = [r for r in rules if r["field"] == "upload"]
+        assert len(upload_rules) == 1
+        type_rules = [r for r in upload_rules[0]["rules"] if r["type"] == "file_type"]
+        assert len(type_rules) == 1
+        assert "pdf" in type_rules[0]["value"]
+
+    def test_file_size_rule_emitted(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="upload",
+            field_label="Upload",
+            field_type="file",
+            order=1,
+            max_file_size_mb=10,
+        )
+        form = DynamicForm(form_definition, user=user)
+        config = form.get_enhancements_config()
+        rules = config["validationRules"]
+        upload_rules = [r for r in rules if r["field"] == "upload"]
+        assert len(upload_rules) == 1
+        size_rules = [r for r in upload_rules[0]["rules"] if r["type"] == "file_size"]
+        assert len(size_rules) == 1
+        assert size_rules[0]["value"] == 10
+
+    def test_no_file_rules_for_non_file(self, form_with_fields, user):
+        form = DynamicForm(form_with_fields, user=user)
+        config = form.get_enhancements_config()
+        rules = config["validationRules"]
+        for r in rules:
+            for rule in r["rules"]:
+                assert rule["type"] not in ("file_type", "file_size")

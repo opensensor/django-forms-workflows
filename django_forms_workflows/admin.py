@@ -167,6 +167,13 @@ class FormFieldAdmin(admin.ModelAdmin):
             "Display",
             {"fields": ("help_text", "placeholder"), "classes": ("collapse",)},
         ),
+        (
+            "File Upload",
+            {
+                "fields": ("allowed_extensions", "max_file_size_mb"),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
 

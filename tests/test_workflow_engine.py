@@ -329,3 +329,100 @@ class TestEdgeCases:
         create_workflow_tasks(sub)
         sub.refresh_from_db()
         assert sub.status == "approved"
+
+
+class TestSendBack:
+    @patch("django_forms_workflows.workflow_engine._notify_task_request")
+    @patch("django_forms_workflows.workflow_engine._notify_submission_created")
+    def test_send_back_creates_new_tasks(
+        self, mock_created, mock_task_req, staged_workflow, user, approval_group
+    ):
+        from django_forms_workflows.models import ApprovalTask
+        from django_forms_workflows.workflow_engine import handle_send_back
+
+        sub = _make_submission(staged_workflow.form_definition, user)
+
+        stages = list(staged_workflow.stages.order_by("order"))
+        stage1 = stages[0]
+        stage2 = stages[1]
+
+        # Simulate: stage1 approved, now at stage2
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            step_name="Manager Review",
+            status="approved",
+            stage_number=1,
+            workflow_stage=stage1,
+        )
+        t2 = ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=Group.objects.get(name="Finance Approvers"),
+            step_name="Finance Review",
+            status="returned",
+            stage_number=2,
+            workflow_stage=stage2,
+        )
+        sub.status = "pending_approval"
+        sub.save()
+
+        handle_send_back(sub, t2, stage1)
+
+        # New task(s) should be created for stage1
+        new_tasks = ApprovalTask.objects.filter(
+            submission=sub, workflow_stage=stage1, status="pending"
+        )
+        assert new_tasks.count() >= 1
+
+
+class TestTwoStageFullCycle:
+    """End-to-end: submit → stage 1 approve → stage 2 approve → approved."""
+
+    @patch("django_forms_workflows.workflow_engine._notify_final_approval")
+    @patch("django_forms_workflows.workflow_engine._notify_task_request")
+    @patch("django_forms_workflows.workflow_engine._notify_submission_created")
+    def test_full_two_stage_approval(
+        self,
+        mock_created,
+        mock_task_req,
+        mock_final,
+        staged_workflow,
+        user,
+        approval_group,
+        second_approval_group,
+    ):
+        from django_forms_workflows.models import ApprovalTask
+
+        sub = _make_submission(staged_workflow.form_definition, user)
+        create_workflow_tasks(sub)
+
+        # Stage 1 task should be pending
+        s1_tasks = ApprovalTask.objects.filter(
+            submission=sub, stage_number=1, status="pending"
+        )
+        assert s1_tasks.count() >= 1
+
+        # Approve stage 1
+        for task in s1_tasks:
+            task.status = "approved"
+            task.save()
+            handle_approval(sub, task, staged_workflow)
+
+        sub.refresh_from_db()
+        # Should not be final approved yet (stage 2 pending)
+        assert sub.status == "pending_approval"
+
+        # Stage 2 task should now exist
+        s2_tasks = ApprovalTask.objects.filter(
+            submission=sub, stage_number=2, status="pending"
+        )
+        assert s2_tasks.count() >= 1
+
+        # Approve stage 2
+        for task in s2_tasks:
+            task.status = "approved"
+            task.save()
+            handle_approval(sub, task, staged_workflow)
+
+        sub.refresh_from_db()
+        assert sub.status == "approved"

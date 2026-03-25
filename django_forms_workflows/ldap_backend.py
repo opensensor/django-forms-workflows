@@ -394,10 +394,20 @@ def search_ldap_users(search_term, max_results=10):
             settings, "FORMS_WORKFLOWS_LDAP_USERNAME_ATTR", "sAMAccountName"
         )
 
-        # Build search filter (search by username, first name, or last name)
+        # Build search filter.
+        # Searches displayName in addition to sAMAccountName, givenName, and sn
+        # so that full-name values (e.g. "Jarred Simmonds") from form fields are
+        # matched correctly.  displayName is the authoritative full-name field in
+        # Active Directory and is what the _lookup_by_ldap engine passes here.
         if search_term:
             escaped_term = escape_filter_chars(search_term)
-            search_filter = f"(&(objectClass=user)(|({username_attr}=*{escaped_term}*)(givenName=*{escaped_term}*)(sn=*{escaped_term}*)))"
+            search_filter = (
+                f"(&(objectClass=user)"
+                f"(|({username_attr}=*{escaped_term}*)"
+                f"(displayName=*{escaped_term}*)"
+                f"(givenName=*{escaped_term}*)"
+                f"(sn=*{escaped_term}*)))"
+            )
         else:
             search_filter = "(objectClass=user)"
 
@@ -407,7 +417,15 @@ def search_ldap_users(search_term, max_results=10):
             settings.AUTH_LDAP_USER_SEARCH.base_dn,
             ldap.SCOPE_SUBTREE,
             search_filter,
-            [username_attr, "givenName", "sn", "mail", "department", "title"],
+            [
+                username_attr,
+                "displayName",
+                "givenName",
+                "sn",
+                "mail",
+                "department",
+                "title",
+            ],
         )
 
         users = []

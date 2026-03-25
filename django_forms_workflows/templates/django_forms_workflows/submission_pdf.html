@@ -250,6 +250,15 @@
     </tbody>
 </table>
 
+{% if resolved_attachments %}
+<h3 style="margin-top: 20px;">Attachments</h3>
+<ul>
+{% for att in resolved_attachments %}
+    <li>{{ att.filename }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
 {% for section in approval_step_sections %}
 <div class="step-section-header">
     <span class="step-name-cell">{{ section.step_name }}</span>

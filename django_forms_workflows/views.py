@@ -722,6 +722,9 @@ def submission_detail(request, submission_id):
     form_data = _resolve_form_data_urls(submission.form_data)
     form_data_ordered = _build_ordered_form_data(submission, form_data)
 
+    # Resolve presigned URLs for model-level attachments (e.g. migrated SP files)
+    resolved_attachments = _resolve_attachments(submission.attachments)
+
     # Collect stage-scoped field names so the template can exclude them from
     # the main "Form Data" table and render them in their own sections.
     approval_field_names = list(
@@ -766,6 +769,7 @@ def submission_detail(request, submission_id):
             "sub_workflow_instance_stages": sub_workflow_instance_stages,
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
+            "resolved_attachments": resolved_attachments,
             "approval_field_names": approval_field_names,
             "approval_step_sections": approval_step_sections,
             "can_approve_pdf": can_approve_pdf,
@@ -1078,6 +1082,9 @@ def approve_submission(request, task_id):
                         "has_approval_step_fields": has_approval_step_fields,
                         "form_data": _fd,
                         "form_data_ordered": _build_ordered_form_data(submission, _fd),
+                        "resolved_attachments": _resolve_attachments(
+                            submission.attachments
+                        ),
                     },
                 )
 
@@ -1228,6 +1235,9 @@ def approve_submission(request, task_id):
     form_data = _resolve_form_data_urls(submission.form_data)
     form_data_ordered = _build_ordered_form_data(submission, form_data)
 
+    # Resolve presigned URLs for model-level attachments (e.g. migrated SP files)
+    resolved_attachments = _resolve_attachments(submission.attachments)
+
     # Resolve the approve-button label from the stage (each parallel stage
     # has its own label, so no per-group override is needed).
     approve_label = (
@@ -1277,6 +1287,7 @@ def approve_submission(request, task_id):
             "workflow_mode": workflow_mode,
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
+            "resolved_attachments": resolved_attachments,
             # custom button label
             "approve_label": approve_label,
             # sub-workflow context (None for regular tasks)
@@ -1703,6 +1714,7 @@ def submission_pdf(request, submission_id):
             "form_def": form_def,
             "pdf_rows": pdf_rows,
             "approval_step_sections": approval_step_sections,
+            "resolved_attachments": _resolve_attachments(submission.attachments),
             "request": request,
         },
     )
@@ -1782,7 +1794,19 @@ def _serialize_single_file(file_obj, key, submission_id):
                 else "application/octet-stream"
             ),
         }
-    return file_obj.name  # Fallback if save fails
+    # Fallback if save fails — still return a dict so the template can
+    # display the filename (even without a downloadable URL).
+    return {
+        "filename": file_obj.name,
+        "path": None,
+        "size": file_obj.size if hasattr(file_obj, "size") else 0,
+        "content_type": (
+            file_obj.content_type
+            if hasattr(file_obj, "content_type")
+            else "application/octet-stream"
+        ),
+        "upload_failed": True,
+    }
 
 
 def _parse_spreadsheet(file_obj):
@@ -1922,16 +1946,21 @@ def get_file_url(file_info):
     Get a URL for accessing an uploaded file.
 
     Handles both old format (just filename) and new format (dict with path).
+    Also handles plain path strings (e.g. from FormSubmission.attachments).
     """
-    if isinstance(file_info, dict) and "path" in file_info:
+    if isinstance(file_info, dict) and file_info.get("path"):
         try:
             return default_storage.url(file_info["path"])
         except Exception as e:
             logger.error(f"Failed to get file URL: {e}")
             return None
-    elif isinstance(file_info, str):
-        # Old format - just filename, can't generate URL
-        return None
+    elif isinstance(file_info, str) and "/" in file_info:
+        # Path string (e.g. "media/uploads/18346/supporting_documents_0/file.pdf")
+        try:
+            return default_storage.url(file_info)
+        except Exception as e:
+            logger.error(f"Failed to get file URL for path string: {e}")
+            return None
     return None
 
 
@@ -2316,6 +2345,32 @@ def _resolve_form_data_urls(form_data):
             resolved[key] = [{**f, "url": get_file_url(f)} for f in value]
         else:
             resolved[key] = value
+    return resolved
+
+
+def _resolve_attachments(attachments):
+    """Resolve model-level attachments (e.g. migrated SharePoint files) to
+    a list of dicts with ``filename``, ``path``, and ``url`` keys suitable
+    for rendering download links in templates.
+
+    ``attachments`` is a JSON list of storage path strings stored on
+    ``FormSubmission.attachments``.
+    """
+    if not attachments:
+        return []
+    resolved = []
+    for path_str in attachments:
+        if not isinstance(path_str, str):
+            continue
+        filename = path_str.rsplit("/", 1)[-1] if "/" in path_str else path_str
+        url = get_file_url(path_str)
+        resolved.append(
+            {
+                "filename": filename,
+                "path": path_str,
+                "url": url,
+            }
+        )
     return resolved
 
 

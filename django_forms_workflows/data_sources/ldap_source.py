@@ -105,9 +105,9 @@ class LDAPDataSource(DataSource):
         Query LDAP directly for a user attribute.
 
         This is used for SSO users who don't have a cached ldap_user object.
+        TLS configuration is applied via configure_ldap_connection(), which
+        respects FORMS_WORKFLOWS_LDAP_ALLOW_SELF_SIGNED and LDAP_TLS_REQUIRE_CERT.
         """
-        import os
-
         try:
             import ldap
             from ldap.filter import escape_filter_chars
@@ -140,14 +140,12 @@ class LDAPDataSource(DataSource):
             return None
 
         try:
-            conn = ldap.initialize(ldap_server)
-            conn.set_option(ldap.OPT_REFERRALS, 0)
-            conn.set_option(ldap.OPT_PROTOCOL_VERSION, ldap.VERSION3)
+            from django_forms_workflows.ldap_backend import configure_ldap_connection
 
-            # Configure TLS
-            tls_require_cert = os.getenv("LDAP_TLS_REQUIRE_CERT", "demand").lower()
-            if tls_require_cert == "never":
-                conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+            conn = ldap.initialize(ldap_server)
+            conn.set_option(ldap.OPT_PROTOCOL_VERSION, ldap.VERSION3)
+            # Apply TLS + referral settings centrally (honours FORMS_WORKFLOWS_LDAP_ALLOW_SELF_SIGNED)
+            configure_ldap_connection(conn)
 
             if bind_dn and bind_password:
                 conn.simple_bind_s(bind_dn, bind_password)

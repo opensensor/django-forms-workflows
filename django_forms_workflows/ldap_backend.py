@@ -21,37 +21,53 @@ logger = logging.getLogger(__name__)
 
 def configure_ldap_connection(conn):
     """
-    Configure LDAP connection with TLS settings from environment variables.
+    Configure LDAP connection with TLS settings.
 
-    This function applies TLS certificate verification settings based on the
-    LDAP_TLS_REQUIRE_CERT environment variable.
+    Checks the ``FORMS_WORKFLOWS_LDAP_ALLOW_SELF_SIGNED`` Django setting first.
+    When ``True``, self-signed certificates are accepted (``OPT_X_TLS_ALLOW``).
+
+    Falls back to the ``LDAP_TLS_REQUIRE_CERT`` environment variable for
+    fine-grained control:
+        - ``'never'``  – never require/verify certificates
+        - ``'allow'``  – allow self-signed / unverifiable certificates
+        - ``'try'``    – try to verify; proceed even if verification fails
+        - ``'demand'`` – require a valid certificate (default)
+
+    Django Settings:
+        FORMS_WORKFLOWS_LDAP_ALLOW_SELF_SIGNED (bool):
+            Set to ``True`` to accept self-signed LDAP/AD certificates.
+            Takes precedence over the ``LDAP_TLS_REQUIRE_CERT`` env var.
+            Default: ``False``.
 
     Args:
         conn: LDAP connection object
-
-    Environment Variables:
-        LDAP_TLS_REQUIRE_CERT: TLS certificate verification level
-            - 'never': Don't require or verify certificates (ldap.OPT_X_TLS_NEVER)
-            - 'allow': Allow connection without cert verification (ldap.OPT_X_TLS_ALLOW)
-            - 'try': Try to verify but proceed if verification fails (ldap.OPT_X_TLS_TRY)
-            - 'demand' or 'hard': Require valid certificate (ldap.OPT_X_TLS_DEMAND)
-            - Default: 'demand'
     """
-    # Configure TLS settings based on environment variable
-    tls_require_cert = os.getenv("LDAP_TLS_REQUIRE_CERT", "demand").lower()
+    # Check Django setting first — simple on/off for self-signed cert acceptance
+    allow_self_signed = getattr(
+        settings, "FORMS_WORKFLOWS_LDAP_ALLOW_SELF_SIGNED", False
+    )
 
-    if tls_require_cert == "never":
-        conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
-        logger.debug("LDAP TLS certificate verification: NEVER")
-    elif tls_require_cert == "allow":
+    if allow_self_signed:
         conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
-        logger.debug("LDAP TLS certificate verification: ALLOW")
-    elif tls_require_cert == "try":
-        conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_TRY)
-        logger.debug("LDAP TLS certificate verification: TRY")
-    else:  # 'demand' or 'hard' or any other value
-        conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_DEMAND)
-        logger.debug("LDAP TLS certificate verification: DEMAND")
+        logger.debug(
+            "LDAP TLS certificate verification: ALLOW (FORMS_WORKFLOWS_LDAP_ALLOW_SELF_SIGNED=True)"
+        )
+    else:
+        # Fall back to env-var-based configuration for fine-grained control
+        tls_require_cert = os.getenv("LDAP_TLS_REQUIRE_CERT", "demand").lower()
+
+        if tls_require_cert == "never":
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
+            logger.debug("LDAP TLS certificate verification: NEVER")
+        elif tls_require_cert == "allow":
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW)
+            logger.debug("LDAP TLS certificate verification: ALLOW")
+        elif tls_require_cert == "try":
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_TRY)
+            logger.debug("LDAP TLS certificate verification: TRY")
+        else:  # 'demand' or 'hard' or any other value
+            conn.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_DEMAND)
+            logger.debug("LDAP TLS certificate verification: DEMAND")
 
     # Set other standard options
     conn.set_option(ldap.OPT_REFERRALS, 0)

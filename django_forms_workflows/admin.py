@@ -6,6 +6,7 @@ configure approval workflows, and review submissions and audit logs.
 """
 
 import json
+import logging
 
 import nested_admin
 from django.contrib import admin
@@ -41,6 +42,8 @@ from .models import (
     WorkflowDefinition,
     WorkflowStage,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Inline for form fields when editing a form definition
@@ -655,7 +658,9 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                                 data_prefix=swc.data_prefix,
                             )
                         except SubWorkflowDefinition.DoesNotExist:
-                            pass
+                            logger.debug(
+                                "SubWorkflowDefinition not found during clone; skipping component"
+                            )
 
                     cloned_count += 1
             except Exception as e:
@@ -679,7 +684,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
             self.message_user(
                 request, "Select at least 2 forms to diff.", level="error"
             )
-            return
+            return None
         pks = ",".join(str(pk) for pk in queryset.values_list("pk", flat=True))
         from django.urls import reverse
 
@@ -1944,10 +1949,9 @@ class ManagedFileAdmin(admin.ModelAdmin):
         """Display file size in human-readable format."""
         if obj.file_size < 1024:
             return f"{obj.file_size} B"
-        elif obj.file_size < 1024 * 1024:
+        if obj.file_size < 1024 * 1024:
             return f"{obj.file_size / 1024:.1f} KB"
-        else:
-            return f"{obj.file_size / (1024 * 1024):.1f} MB"
+        return f"{obj.file_size / (1024 * 1024):.1f} MB"
 
     file_size_display.short_description = "Size"
 

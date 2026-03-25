@@ -339,8 +339,7 @@ def get_user_manager(user):
                         User = get_user_model()
 
                         try:
-                            manager_user = User.objects.get(username=manager_username)
-                            return manager_user
+                            return User.objects.get(username=manager_username)
                         except User.DoesNotExist:
                             logger.warning(
                                 f"Manager {manager_username} not found in Django database"

@@ -178,15 +178,14 @@ class APICallHandler(BaseActionHandler):
                         "response": response.text[:500],  # First 500 chars
                     },
                 }
-            else:
-                return {
-                    "success": False,
-                    "message": f"API call failed: {method} {url} -> {response.status_code}",
-                    "data": {
-                        "status_code": response.status_code,
-                        "response": response.text[:500],
-                    },
-                }
+            return {
+                "success": False,
+                "message": f"API call failed: {method} {url} -> {response.status_code}",
+                "data": {
+                    "status_code": response.status_code,
+                    "response": response.text[:500],
+                },
+            }
 
         except requests.exceptions.Timeout:
             return {"success": False, "message": f"API call timed out: {method} {url}"}

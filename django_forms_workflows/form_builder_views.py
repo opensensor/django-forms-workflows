@@ -210,7 +210,9 @@ def form_builder_clone(request, form_id):
                         data_prefix=swc.data_prefix,
                     )
                 except SubWorkflowDefinition.DoesNotExist:
-                    pass
+                    logger.debug(
+                        "SubWorkflowDefinition not found during clone; skipping component"
+                    )
 
             return JsonResponse(
                 {

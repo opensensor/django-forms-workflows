@@ -105,7 +105,7 @@ class DatabaseDataSource(DataSource):
                 return None
 
             # Query the database
-            value = self._query_database(
+            return self._query_database(
                 database_alias=database_alias,
                 schema=schema,
                 table=table,
@@ -113,8 +113,6 @@ class DatabaseDataSource(DataSource):
                 user_id=user_id,
                 lookup_field=lookup_field,
             )
-
-            return value
 
         except Exception as e:
             logger.error(f"Error getting database value for {field_name}: {e}")
@@ -176,11 +174,10 @@ class DatabaseDataSource(DataSource):
 
         if len(parts) == 3:
             return parts[0], parts[1], parts[2]
-        elif len(parts) == 2:
+        if len(parts) == 2:
             # Assume default schema
             return default_schema, parts[0], parts[1]
-        else:
-            return None, None, None
+        return None, None, None
 
     def _is_safe_identifier(self, identifier: str) -> bool:
         """

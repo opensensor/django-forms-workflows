@@ -98,6 +98,7 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"LDAP connection failed: {e}"))
             return
 
+        results = []
         try:
             conn.set_option(ldap.OPT_SIZELIMIT, max_results)
             results = conn.search_s(
@@ -108,9 +109,10 @@ class Command(BaseCommand):
             )
         except ldap.SIZELIMIT_EXCEEDED:
             self.stdout.write(
-                self.style.WARNING(f"Hit LDAP size limit ({max_results})")
+                self.style.WARNING(
+                    f"Hit LDAP size limit ({max_results}); results may be partial"
+                )
             )
-            results = []
         except Exception as e:
             self.stderr.write(self.style.ERROR(f"LDAP search failed: {e}"))
             conn.unbind_s()
@@ -158,7 +160,11 @@ class Command(BaseCommand):
                         defaults={"department": dept, "title": title},
                     )
                 except Exception:
-                    pass
+                    logger.debug(
+                        "UserProfile creation failed for '%s'; continuing",
+                        username,
+                        exc_info=True,
+                    )
                 created += 1
             except Exception as e:
                 errors += 1

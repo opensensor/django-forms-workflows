@@ -31,7 +31,7 @@ def user_can_access_category(user, category) -> bool:
                 if not user.groups.filter(id__in=allowed).exists():
                     return False
         except Exception:
-            pass
+            logger.debug("Could not check category allowed_groups", exc_info=True)
         cat = cat.parent if getattr(cat, "parent_id", None) else None
     return True
 
@@ -66,7 +66,10 @@ def user_can_submit_form(user: User, form_def: FormDefinition) -> bool:
             if not user_can_access_category(user, form_def.category):
                 return False
         except Exception:
-            pass
+            logger.debug(
+                "Could not check form submit_groups or category hierarchy",
+                exc_info=True,
+            )
 
     return True
 

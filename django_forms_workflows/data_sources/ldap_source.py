@@ -178,7 +178,7 @@ class LDAPDataSource(DataSource):
             try:
                 conn.unbind_s()
             except Exception:
-                pass
+                logger.debug("Could not unbind LDAP connection", exc_info=True)
 
     def _get_manager_email(self, ldap_user) -> str | None:
         """

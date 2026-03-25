@@ -78,8 +78,7 @@ def get_gmail_service(config):
         credentials = credentials.with_subject(delegated_user)
 
     # Build the Gmail service
-    service = build("gmail", "v1", credentials=credentials, cache_discovery=False)
-    return service
+    return build("gmail", "v1", credentials=credentials, cache_discovery=False)
 
 
 class GmailAPIBackend(BaseEmailBackend):

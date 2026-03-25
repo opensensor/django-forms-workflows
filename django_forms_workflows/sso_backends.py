@@ -195,11 +195,32 @@ def sync_user_profile(backend, user, response, *args, **kwargs):
     if isinstance(response, dict):
         all_attrs.update(response)
 
+    # Common alternate spellings sent by SAML/OAuth providers for name fields.
+    # social_core normalises these into 'first_name'/'last_name' in `details`,
+    # but some providers (e.g. Google SAML when attributes aren't mapped in
+    # Google Admin Console) may pass them under different keys in the raw
+    # response.  We try each alias in order and use the first non-empty value.
+    _first_name_aliases = ["first_name", "firstName", "givenName", "given_name"]
+    _last_name_aliases = ["last_name", "lastName", "sn", "surname", "family_name"]
+
+    def _resolve_attr(aliases):
+        for key in aliases:
+            val = all_attrs.get(key)
+            if val:
+                return val
+        return None
+
     # Update User model fields
     user_updated = False
     for django_field, sso_field in attr_map.items():
         if not django_field.startswith("profile."):
-            value = all_attrs.get(sso_field)
+            # Apply alias resolution for the two name fields
+            if django_field == "first_name":
+                value = _resolve_attr(_first_name_aliases)
+            elif django_field == "last_name":
+                value = _resolve_attr(_last_name_aliases)
+            else:
+                value = all_attrs.get(sso_field)
             if value and hasattr(user, django_field):
                 setattr(user, django_field, value)
                 user_updated = True
@@ -268,9 +289,12 @@ def get_saml_config():
                 if "-----BEGIN" in decoded:
                     idp_x509_cert = decoded
             except Exception:
-                pass  # Keep original if decoding fails
+                logger.debug(
+                    "Could not base64-decode IDP x509 cert; keeping original",
+                    exc_info=True,
+                )
 
-    config = {
+    return {
         "strict": saml_settings.get("strict", True),
         "debug": saml_settings.get("debug", settings.DEBUG),
         "sp": {
@@ -308,8 +332,6 @@ def get_saml_config():
             },
         ),
     }
-
-    return config
 
 
 def link_to_existing_user(backend, details, user=None, *args, **kwargs):
@@ -374,7 +396,9 @@ def link_to_existing_user(backend, details, user=None, *args, **kwargs):
             )
             return {"user": existing_user, "is_new": False}
         except User.DoesNotExist:
-            pass
+            logger.debug(
+                "No existing user found with email '%s' to link SSO login", email
+            )
 
     logger.debug(f"No existing user found for username '{username}' or email '{email}'")
     return {}
@@ -382,13 +406,15 @@ def link_to_existing_user(backend, details, user=None, *args, **kwargs):
 
 def sync_ldap_groups_on_sso(backend, user, response, *args, **kwargs):
     """
-    Pipeline function to sync LDAP group memberships for SSO users.
+    Pipeline function to sync LDAP group memberships **and** user attributes
+    (first_name, last_name, department, etc.) for SSO users.
 
     When a user logs in via SSO (Google, SAML, etc.), this function queries
-    LDAP to get the user's group memberships and syncs them to Django groups.
-
-    This ensures SSO users have the same permissions as LDAP users, even when
-    Google Workspace is synced from Active Directory.
+    LDAP to:
+    1. Sync the user's Django group memberships from Active Directory.
+    2. Sync first_name / last_name (and other profile fields) from LDAP onto
+       the Django User / UserProfile.  This is the authoritative name sync for
+       sites where the Google SAML assertion does not include name attributes.
 
     Add to SOCIAL_AUTH_PIPELINE after user creation:
         'django_forms_workflows.sso_backends.sync_ldap_groups_on_sso',
@@ -417,6 +443,17 @@ def sync_ldap_groups_on_sso(backend, user, response, *args, **kwargs):
     except Exception as e:
         logger.warning(
             f"Failed to sync LDAP groups for SSO user '{user.username}': {e}"
+        )
+
+    # Also sync first_name / last_name and profile attributes from LDAP.
+    # This handles the common case where Google SAML does not send name
+    # attributes, so Django's first_name / last_name remain empty after the
+    # social_core user_details pipeline step.
+    try:
+        sync_user_ldap_attributes(user)
+    except Exception as e:
+        logger.warning(
+            f"Failed to sync LDAP attributes for SSO user '{user.username}': {e}"
         )
 
 
@@ -722,6 +759,27 @@ def sync_user_ldap_attributes(user):
         synced_attrs["company"] = get_attr(user_attrs, "company")
         synced_attrs["first_name"] = get_attr(user_attrs, "givenName")
         synced_attrs["last_name"] = get_attr(user_attrs, "sn")
+
+        # --- Sync first_name / last_name to Django User model ---------------
+        # SSO-only users (Google SAML) may not receive name attributes in the
+        # SAML assertion when the Google Admin Console is not configured to
+        # send them.  LDAP is the authoritative source for these names, so we
+        # always update them here when the LDAP values are non-empty.
+        user_name_updated = False
+        ldap_first = synced_attrs.get("first_name")
+        ldap_last = synced_attrs.get("last_name")
+        if ldap_first and user.first_name != ldap_first:
+            user.first_name = ldap_first
+            user_name_updated = True
+        if ldap_last and user.last_name != ldap_last:
+            user.last_name = ldap_last
+            user_name_updated = True
+        if user_name_updated:
+            user.save(update_fields=["first_name", "last_name"])
+            logger.info(
+                f"Updated first/last name for user '{user.username}' from LDAP: "
+                f"'{ldap_first} {ldap_last}'"
+            )
 
         # Update or create UserProfile
         profile, created = UserProfile.objects.get_or_create(user=user)

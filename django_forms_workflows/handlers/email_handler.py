@@ -338,11 +338,10 @@ class EmailHandler(BaseActionHandler):
                         "subject": subject,
                     },
                 }
-            else:
-                return {
-                    "success": False,
-                    "message": "Email send returned 0 (no emails sent)",
-                }
+            return {
+                "success": False,
+                "message": "Email send returned 0 (no emails sent)",
+            }
 
         except Exception as e:
             return {

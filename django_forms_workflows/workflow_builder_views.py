@@ -173,11 +173,10 @@ def convert_workflow_to_visual(workflow, form_definition):
         if isinstance(visual_data, dict) and "nodes" in visual_data:
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
-        else:
-            # Old format (e.g., stages array) - regenerate
-            logger.info(
-                "Found legacy visual_workflow_data format, regenerating visual layout"
-            )
+        # Old format (e.g., stages array) - regenerate
+        logger.info(
+            "Found legacy visual_workflow_data format, regenerating visual layout"
+        )
 
     # Generate default layout from workflow configuration
     logger.info("Generating default visual workflow layout")

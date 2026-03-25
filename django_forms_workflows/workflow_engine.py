@@ -276,20 +276,19 @@ def _resolve_dynamic_assignee(submission: FormSubmission, stage: WorkflowStage):
 
     if lookup_type == "email":
         return _lookup_by_email(user_model, field_value, stage, submission)
-    elif lookup_type == "username":
+    if lookup_type == "username":
         return _lookup_by_username(user_model, field_value, stage, submission)
-    elif lookup_type == "full_name":
+    if lookup_type == "full_name":
         return _lookup_by_full_name(user_model, field_value, stage, submission)
-    elif lookup_type == "ldap":
+    if lookup_type == "ldap":
         return _lookup_by_ldap(user_model, field_value, stage, submission)
-    else:
-        logger.warning(
-            "Unknown assignee_lookup_type '%s' on stage '%s'; "
-            "falling back to group assignment.",
-            lookup_type,
-            stage.name,
-        )
-        return None
+    logger.warning(
+        "Unknown assignee_lookup_type '%s' on stage '%s'; "
+        "falling back to group assignment.",
+        lookup_type,
+        stage.name,
+    )
+    return None
 
 
 def _lookup_by_email(user_model, value, stage, submission):
@@ -341,15 +340,61 @@ def _lookup_by_username(user_model, value, stage, submission):
 
 
 def _lookup_by_full_name(user_model, value, stage, submission):
-    """Resolve assignee by full name (e.g. 'Jane Smith')."""
+    """Resolve assignee by full name (e.g. 'Jane Smith').
+
+    Performs two passes against the Django User table:
+
+    1. **Exact split** – splits the value on the first space into first_name /
+       last_name and does ``iexact`` lookups on both columns.  This requires
+       that ``auth_user.first_name`` and ``auth_user.last_name`` are populated.
+
+    .. important::
+        For sites using **Google SSO exclusively**, Django's first_name /
+        last_name fields are only populated when the Google SAML app is
+        configured to send those attributes *and* ``social_core``'s
+        ``user_details`` pipeline step maps them.  If those attributes are not
+        sent, both columns will be empty and this lookup will always fail.
+
+        In that scenario, prefer the ``ldap`` lookup type, which queries
+        Active Directory directly by display name and is independent of what
+        is stored in the Django User table.
+
+    2. **LDAP fallback** – if no match is found locally *and* LDAP is
+       configured, falls through to ``_lookup_by_ldap`` so the name is
+       resolved from Active Directory and the user is JIT-provisioned if
+       not yet in the system.
+    """
     parts = value.split()
-    if len(parts) < 2:
-        # Try single-word match on last_name
+
+    # --- 1. Django User table lookup (iexact on first_name + last_name) -----
+    if len(parts) >= 2:
+        first_name = parts[0]
+        last_name = " ".join(parts[1:])
+        try:
+            return user_model.objects.get(
+                first_name__iexact=first_name, last_name__iexact=last_name
+            )
+        except user_model.DoesNotExist:
+            pass  # fall through to LDAP
+        except user_model.MultipleObjectsReturned:
+            logger.warning(
+                "Dynamic assignee lookup (full_name): multiple users matching '%s %s' "
+                "(stage '%s', submission %s); falling back to group assignment.",
+                first_name,
+                last_name,
+                stage.name,
+                submission.id,
+            )
+            return None
+    else:
+        # Single-word value: try last_name only
         try:
             return user_model.objects.get(last_name__iexact=value)
-        except (user_model.DoesNotExist, user_model.MultipleObjectsReturned):
-            logger.info(
-                "Dynamic assignee lookup (full_name): cannot resolve single name '%s' "
+        except user_model.DoesNotExist:
+            pass  # fall through to LDAP
+        except user_model.MultipleObjectsReturned:
+            logger.warning(
+                "Dynamic assignee lookup (full_name): multiple users with last_name '%s' "
                 "(stage '%s', submission %s); falling back to group assignment.",
                 value,
                 stage.name,
@@ -357,31 +402,16 @@ def _lookup_by_full_name(user_model, value, stage, submission):
             )
             return None
 
-    first_name = parts[0]
-    last_name = " ".join(parts[1:])
-    try:
-        return user_model.objects.get(
-            first_name__iexact=first_name, last_name__iexact=last_name
-        )
-    except user_model.DoesNotExist:
-        logger.info(
-            "Dynamic assignee lookup (full_name): no user matching '%s %s' "
-            "(stage '%s', submission %s); falling back to group assignment.",
-            first_name,
-            last_name,
-            stage.name,
-            submission.id,
-        )
-    except user_model.MultipleObjectsReturned:
-        logger.warning(
-            "Dynamic assignee lookup (full_name): multiple users matching '%s %s' "
-            "(stage '%s', submission %s); falling back to group assignment.",
-            first_name,
-            last_name,
-            stage.name,
-            submission.id,
-        )
-    return None
+    # --- 2. LDAP fallback (queries AD by display name, JIT-provisions) -------
+    logger.info(
+        "Dynamic assignee lookup (full_name): '%s' not found in Django User table "
+        "(first_name/last_name may not be populated for SSO-only users); "
+        "attempting LDAP lookup (stage '%s', submission %s).",
+        value,
+        stage.name,
+        submission.id,
+    )
+    return _lookup_by_ldap(user_model, value, stage, submission)
 
 
 def _lookup_by_ldap(user_model, value, stage, submission):
@@ -466,7 +496,11 @@ def _lookup_by_ldap(user_model, value, stage, submission):
                 },
             )
         except Exception:
-            pass  # Profile creation is best-effort
+            logger.debug(
+                "UserProfile creation failed for '%s'; continuing without profile",
+                username,
+                exc_info=True,
+            )
         logger.info(
             "Dynamic assignee lookup (ldap): auto-provisioned user '%s' for "
             "assignee '%s' (stage '%s', submission %s).",

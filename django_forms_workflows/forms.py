@@ -395,6 +395,14 @@ class DynamicForm(forms.Form):
                 choices=choices, widget=forms.CheckboxSelectMultiple, **field_args
             )
 
+        elif field_def.field_type == "multiselect_list":
+            choices = self._parse_choices(field_def.choices)
+            self.fields[field_def.field_name] = forms.MultipleChoiceField(
+                choices=choices,
+                widget=forms.SelectMultiple(attrs={"class": "form-select"}),
+                **field_args,
+            )
+
         elif field_def.field_type == "radio":
             choices = self._parse_choices(field_def.choices)
             self.fields[field_def.field_name] = forms.ChoiceField(
@@ -541,19 +549,19 @@ class DynamicForm(forms.Form):
                 return source.get_value(self.user, field_name) or ""
 
             # Handle ldap.* sources
-            elif prefill_source.startswith("ldap."):
+            if prefill_source.startswith("ldap."):
                 source = LDAPDataSource()
                 field_name = prefill_source.replace("ldap.", "")
                 return source.get_value(self.user, field_name) or ""
 
             # Handle dbquery.* sources (code-defined complex queries)
-            elif prefill_source.startswith("dbquery."):
+            if prefill_source.startswith("dbquery."):
                 source = DatabaseDataSource()
                 query_key = prefill_source.replace("dbquery.", "")
                 return source.execute_custom_query(self.user, query_key) or ""
 
             # Handle db.* or {{ db.* }} sources
-            elif prefill_source.startswith("db.") or prefill_source.startswith("{{"):
+            if prefill_source.startswith("db.") or prefill_source.startswith("{{"):
                 source = DatabaseDataSource()
 
                 # Build kwargs from prefill_config
@@ -1010,6 +1018,22 @@ class ApprovalStepForm(forms.Form):
                 field_args["widget"] = forms.Select(attrs=widget_attrs)
             self.fields[field_def.field_name] = forms.ChoiceField(
                 choices=choices, **field_args
+            )
+
+        elif field_def.field_type == "multiselect":
+            choices = self._parse_choices(field_def.choices)
+            self.fields[field_def.field_name] = forms.MultipleChoiceField(
+                choices=choices,
+                widget=forms.CheckboxSelectMultiple,
+                **field_args,
+            )
+
+        elif field_def.field_type == "multiselect_list":
+            choices = self._parse_choices(field_def.choices)
+            self.fields[field_def.field_name] = forms.MultipleChoiceField(
+                choices=choices,
+                widget=forms.SelectMultiple(attrs={"class": "form-select"}),
+                **field_args,
             )
 
         elif field_def.field_type == "radio":

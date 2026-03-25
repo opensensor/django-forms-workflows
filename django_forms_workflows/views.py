@@ -509,7 +509,9 @@ def my_submissions(request):
                 .values("field_name", "field_label")
             )
         except FormDefinition.DoesNotExist:
-            pass
+            logger.debug(
+                "FormDefinition not found when loading export fields for submission list"
+            )
 
     # Compute default sort column index for DataTables (submitted_at)
     _exp_off = 1 if any_exportable else 0
@@ -903,7 +905,9 @@ def approval_inbox(request):
                 .values("field_name", "field_label")
             )
         except FormDefinition.DoesNotExist:
-            pass
+            logger.debug(
+                "FormDefinition not found when loading export fields for approval inbox"
+            )
 
     any_exportable = base_tasks.filter(
         submission__form_definition__workflows__allow_bulk_export=True
@@ -1311,6 +1315,9 @@ def approve_submission(request, task_id):
 @login_required
 def reassign_task(request, task_id):
     """Reassign an approval task to another member of the stage's approval groups."""
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
     task = get_object_or_404(ApprovalTask, id=task_id)
 
     if task.status != "pending":
@@ -1336,9 +1343,6 @@ def reassign_task(request, task_id):
         return redirect("forms_workflows:approval_inbox")
 
     if request.method == "POST":
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
         new_assignee_id = request.POST.get("new_assignee_id", "").strip()
         if not new_assignee_id:
             messages.error(request, "Please select a user to reassign to.")
@@ -1387,9 +1391,6 @@ def reassign_task(request, task_id):
         return redirect("forms_workflows:approval_inbox")
 
     # GET — show reassignment form with eligible users
-    from django.contrib.auth import get_user_model
-
-    user_model = get_user_model()
     eligible_users = (
         user_model.objects.filter(groups__pk__in=stage_group_ids, is_active=True)
         .distinct()
@@ -1585,7 +1586,9 @@ def completed_approvals(request):
                 .values("field_name", "field_label")
             )
         except FormDefinition.DoesNotExist:
-            pass
+            logger.debug(
+                "FormDefinition not found when loading export fields for completed tasks"
+            )
 
     # Compute default sort column index for DataTables (completed_at)
     _exp_off = 1 if (any_exportable or any_pdf_exportable) else 0
@@ -2110,7 +2113,7 @@ def _get_choice_label(field, value):
                 return choice.get("label", value)
         return value
 
-    if field.field_type in ("multiselect", "checkboxes"):
+    if field.field_type in ("multiselect", "multiselect_list", "checkboxes"):
         label_map = {
             str(c.get("value", "")): c.get("label", c.get("value", "")) for c in choices
         }
@@ -2372,7 +2375,7 @@ def _build_approval_step_sections(submission):
 
                         raw_value = f"${Decimal(str(raw_value)):,.2f}"
                     except (InvalidOperation, TypeError, ValueError):
-                        pass
+                        logger.debug("Could not format currency value %r", raw_value)
                 elif f.get("choices") and isinstance(f["choices"], list):
                     if field_type in ("select", "radio"):
                         str_val = str(raw_value) if raw_value is not None else ""
@@ -2380,9 +2383,11 @@ def _build_approval_step_sections(submission):
                             if str(choice.get("value", "")) == str_val:
                                 raw_value = choice.get("label", raw_value)
                                 break
-                    elif field_type in ("multiselect", "checkboxes") and isinstance(
-                        raw_value, list
-                    ):
+                    elif field_type in (
+                        "multiselect",
+                        "multiselect_list",
+                        "checkboxes",
+                    ) and isinstance(raw_value, list):
                         label_map = {
                             str(c.get("value", "")): c.get("label", c.get("value", ""))
                             for c in f["choices"]
@@ -2522,7 +2527,7 @@ def bulk_export_submissions(request):
             body = json.loads(request.body)
             submission_ids_raw = body.get("submission_ids", [])
         except (json.JSONDecodeError, AttributeError):
-            pass
+            logger.debug("Could not parse bulk export request body as JSON")
 
     try:
         submission_ids = [int(sid) for sid in submission_ids_raw]
@@ -2705,7 +2710,7 @@ def bulk_export_submissions_pdf(request):
             body = json.loads(request.body)
             submission_ids_raw = body.get("submission_ids", [])
         except (json.JSONDecodeError, AttributeError):
-            pass
+            logger.debug("Could not parse bulk PDF request body as JSON")
 
     try:
         submission_ids = [int(sid) for sid in submission_ids_raw]
@@ -2928,7 +2933,9 @@ def completed_approvals_ajax(request):
                 .values("field_name")
             )
         except FormDefinition.DoesNotExist:
-            pass
+            logger.debug(
+                "FormDefinition not found when loading filter fields for all submissions list"
+            )
 
     # --- Page slice ---
     base_qs = qs.select_related(
@@ -3054,7 +3061,9 @@ def approval_inbox_ajax(request):
                 .values("field_name")
             )
         except FormDefinition.DoesNotExist:
-            pass
+            logger.debug(
+                "FormDefinition not found when loading filter fields for pending submissions list"
+            )
 
     # --- Page slice ---
     page_qs = qs.select_related(
@@ -3170,7 +3179,9 @@ def my_submissions_ajax(request):
                 .values("field_name")
             )
         except FormDefinition.DoesNotExist:
-            pass
+            logger.debug(
+                "FormDefinition not found when loading filter fields for submitted submissions list"
+            )
 
     base_qs = qs.select_related("form_definition__category").prefetch_related(
         "form_definition__workflows"

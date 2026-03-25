@@ -373,7 +373,7 @@ class PrefillSource(models.Model):
             if self.db_template and self.db_columns:
                 return f"{{{{ {self.db_schema}.{self.db_table}.* }}}}"
             # Single column lookup
-            elif self.db_column:
+            if self.db_column:
                 return f"{{{{ {self.db_schema}.{self.db_table}.{self.db_column} }}}}"
         elif self.source_type == "ldap" and self.ldap_attribute:
             return f"ldap.{self.ldap_attribute}"
@@ -411,7 +411,8 @@ class FormField(models.Model):
         ("email", "Email Address"),
         ("url", "Website URL"),
         ("select", "Dropdown Select"),
-        ("multiselect", "Multiple Select"),
+        ("multiselect", "Multiple Select (Checkboxes)"),
+        ("multiselect_list", "Multiple Select (List)"),
         ("radio", "Radio Buttons"),
         ("checkbox", "Single Checkbox"),
         ("checkboxes", "Multiple Checkboxes"),
@@ -825,9 +826,13 @@ class WorkflowStage(models.Model):
             "How to resolve the form field value to a system user. "
             "'Email' looks up by email address. "
             "'Username' looks up by sAMAccountName/username. "
-            "'Full name' matches against first + last name. "
-            "'LDAP lookup' searches Active Directory by display name and "
-            "auto-provisions the Django user if not yet in the system."
+            "'Full name' matches against Django User first_name + last_name (iexact), "
+            "then falls back to an LDAP search — NOTE: for Google SSO-only sites, "
+            "first_name/last_name are only populated if Google SAML sends those "
+            "attributes or users were pre-provisioned via sync_ldap_users. "
+            "'LDAP lookup' searches Active Directory directly by display name and "
+            "auto-provisions the Django user if not yet in the system — recommended "
+            "for sites where SSO does not populate first/last name."
         ),
     )
     allow_send_back = models.BooleanField(
@@ -1264,8 +1269,7 @@ class PostSubmissionAction(models.Model):
         # Check if action is locked and has already executed
         if self.is_locked:
             # Check if this action has already executed successfully for this submission
-            from django_forms_workflows.models import ActionExecutionLog
-
+            # ActionExecutionLog is defined later in this module; safe to reference at runtime
             if ActionExecutionLog.objects.filter(
                 action=self, submission=submission, success=True
             ).exists():
@@ -1277,13 +1281,13 @@ class PostSubmissionAction(models.Model):
 
             if self.condition_operator == "equals":
                 return str(field_value) == self.condition_value
-            elif self.condition_operator == "not_equals":
+            if self.condition_operator == "not_equals":
                 return str(field_value) != self.condition_value
-            elif self.condition_operator == "contains":
+            if self.condition_operator == "contains":
                 return self.condition_value in str(field_value)
-            elif self.condition_operator == "not_contains":
+            if self.condition_operator == "not_contains":
                 return self.condition_value not in str(field_value)
-            elif self.condition_operator == "greater_than":
+            if self.condition_operator == "greater_than":
                 try:
                     return float(field_value) > float(self.condition_value)
                 except (ValueError, TypeError):
@@ -2268,11 +2272,11 @@ class FileWorkflowHook(models.Model):
 
         if self.condition_operator == "equals":
             return str(field_value) == self.condition_value
-        elif self.condition_operator == "not_equals":
+        if self.condition_operator == "not_equals":
             return str(field_value) != self.condition_value
-        elif self.condition_operator == "contains":
+        if self.condition_operator == "contains":
             return self.condition_value in str(field_value)
-        elif self.condition_operator == "greater_than":
+        if self.condition_operator == "greater_than":
             try:
                 return float(field_value) > float(self.condition_value)
             except (ValueError, TypeError):

@@ -223,7 +223,9 @@ def _compute_scheduled_for(workflow, submission=None):
                 if candidate > now:
                     return candidate
             except (ValueError, TypeError):
-                pass
+                logger.debug(
+                    "Could not parse date string %r for reminder schedule", date_str
+                )
         # Fallback: send tomorrow
         return _at_time(now + timedelta(days=1))
 
@@ -579,11 +581,13 @@ def check_approval_deadlines() -> str:
                             status="skipped"
                         )
                         try:
-                            from .tasks import send_approval_notification
-
                             send_approval_notification.delay(submission.id)
                         except Exception:
-                            pass
+                            logger.debug(
+                                "Could not enqueue send_approval_notification for submission %s",
+                                submission.id,
+                                exc_info=True,
+                            )
                         auto_approved_count += 1
 
         # Send reminder if configured and not yet sent
@@ -598,11 +602,13 @@ def check_approval_deadlines() -> str:
             )
             if now > reminder_time:
                 try:
-                    from .tasks import send_approval_reminder
-
                     send_approval_reminder.delay(task.id)
                 except Exception:
-                    pass
+                    logger.debug(
+                        "Could not enqueue send_approval_reminder for task %s",
+                        task.id,
+                        exc_info=True,
+                    )
                 task.reminder_sent_at = now
                 task.save(update_fields=["reminder_sent_at"])
                 reminder_count += 1

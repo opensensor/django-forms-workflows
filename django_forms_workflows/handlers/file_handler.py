@@ -80,9 +80,7 @@ class FilePatternResolver:
         result = re.sub(r"\{[^}]+\}", "", result)
         # Clean up double slashes/underscores
         result = re.sub(r"//+", "/", result)
-        result = re.sub(r"__+", "_", result)
-
-        return result
+        return re.sub(r"__+", "_", result)
 
     def _get_employee_id(self):
         """Get employee ID from user profile."""
@@ -92,7 +90,9 @@ class FilePatternResolver:
             if hasattr(self.user, "profile"):
                 return getattr(self.user.profile, "employee_id", "") or ""
         except Exception:
-            pass
+            logger.debug(
+                "Could not retrieve employee_id from user profile", exc_info=True
+            )
         return ""
 
     def _get_field_name(self):
@@ -140,8 +140,7 @@ class FileOperationHandler:
 
                 logger.info(f"Renamed file from {old_path} to {new_path}")
                 return {"success": True, "message": f"Renamed to {new_filename}"}
-            else:
-                return {"success": False, "message": f"File not found: {old_path}"}
+            return {"success": False, "message": f"File not found: {old_path}"}
 
         except Exception as e:
             logger.error(f"Error renaming file: {e}", exc_info=True)
@@ -177,8 +176,7 @@ class FileOperationHandler:
 
                 logger.info(f"Moved file from {old_path} to {new_path}")
                 return {"success": True, "message": f"Moved to {new_path}"}
-            else:
-                return {"success": False, "message": f"File not found: {old_path}"}
+            return {"success": False, "message": f"File not found: {old_path}"}
 
         except Exception as e:
             logger.error(f"Error moving file: {e}", exc_info=True)
@@ -208,8 +206,7 @@ class FileOperationHandler:
 
                 logger.info(f"Copied file from {old_path} to {new_path}")
                 return {"success": True, "message": f"Copied to {new_path}"}
-            else:
-                return {"success": False, "message": f"File not found: {old_path}"}
+            return {"success": False, "message": f"File not found: {old_path}"}
 
         except Exception as e:
             logger.error(f"Error copying file: {e}", exc_info=True)
@@ -230,8 +227,7 @@ class FileOperationHandler:
 
                 logger.info(f"Deleted file: {file_path}")
                 return {"success": True, "message": f"Deleted {file_path}"}
-            else:
-                return {"success": False, "message": f"File not found: {file_path}"}
+            return {"success": False, "message": f"File not found: {file_path}"}
 
         except Exception as e:
             logger.error(f"Error deleting file: {e}", exc_info=True)
@@ -277,13 +273,12 @@ class WebhookHandler:
                     "message": f"Webhook returned {response.status_code}",
                     "data": {"status_code": response.status_code},
                 }
-            else:
-                logger.warning(f"Webhook call failed: {url} ({response.status_code})")
-                return {
-                    "success": False,
-                    "message": f"Webhook returned {response.status_code}",
-                    "data": {"status_code": response.status_code},
-                }
+            logger.warning(f"Webhook call failed: {url} ({response.status_code})")
+            return {
+                "success": False,
+                "message": f"Webhook returned {response.status_code}",
+                "data": {"status_code": response.status_code},
+            }
 
         except requests.Timeout:
             logger.error(f"Webhook timeout: {self.hook.webhook_url}")

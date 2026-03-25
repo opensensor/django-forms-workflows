@@ -153,12 +153,13 @@ class LDAPUpdateHandler(BaseActionHandler):
                 if value:
                     placeholders[field] = value
         except Exception:
-            pass
+            logger.debug(
+                "Could not load user profile fields for LDAP DN template", exc_info=True
+            )
 
         # Replace placeholders
         try:
-            dn = template.format(**placeholders)
-            return dn
+            return template.format(**placeholders)
         except KeyError as e:
             self.log_error(f"Missing placeholder in DN template: {e}")
             return None

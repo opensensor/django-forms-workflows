@@ -422,6 +422,8 @@ class FormField(models.Model):
         ("section", "Section Header (not a field)"),
         ("calculated", "Calculated / Formula"),
         ("spreadsheet", "Spreadsheet Upload (CSV / Excel)"),
+        ("country", "Country Picker"),
+        ("us_state", "US State Picker"),
     ]
 
     # Relationship

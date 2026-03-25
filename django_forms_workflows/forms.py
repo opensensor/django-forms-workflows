@@ -13,11 +13,29 @@ from datetime import date, datetime
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML, Column, Div, Field, Layout, Row, Submit
 from django import forms
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.validators import FileExtensionValidator, RegexValidator
 from django.utils.deconstruct import deconstructible
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Optional picklist package imports
+# ---------------------------------------------------------------------------
+
+try:
+    from django_countries import countries as _country_list
+
+    _has_django_countries = True
+except ImportError:
+    _has_django_countries = False
+
+try:
+    from localflavor.us.us_states import US_STATES as _US_STATES
+
+    _has_localflavor = True
+except ImportError:
+    _has_localflavor = False
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +496,32 @@ class DynamicForm(forms.Form):
                 label=field_def.field_label,
                 help_text=field_def.help_text or "Accepted formats: .csv, .xls, .xlsx",
                 widget=forms.ClearableFileInput(attrs={"accept": ".csv,.xls,.xlsx"}),
+            )
+
+        elif field_def.field_type == "country":
+            if not _has_django_countries:
+                raise ImproperlyConfigured(
+                    "The 'country' field type requires django-countries. "
+                    "Install it with: pip install django-forms-workflows[picklists]"
+                )
+            country_choices = [("", "-- Select Country --")] + list(_country_list)
+            self.fields[field_def.field_name] = forms.ChoiceField(
+                choices=country_choices,
+                widget=forms.Select(attrs={"class": "form-select"}),
+                **field_args,
+            )
+
+        elif field_def.field_type == "us_state":
+            if not _has_localflavor:
+                raise ImproperlyConfigured(
+                    "The 'us_state' field type requires django-localflavor. "
+                    "Install it with: pip install django-forms-workflows[picklists]"
+                )
+            state_choices = [("", "-- Select State --")] + list(_US_STATES)
+            self.fields[field_def.field_name] = forms.ChoiceField(
+                choices=state_choices,
+                widget=forms.Select(attrs={"class": "form-select"}),
+                **field_args,
             )
 
         elif field_def.field_type == "hidden":
@@ -1104,6 +1148,32 @@ class ApprovalStepForm(forms.Form):
                 label=field_def.field_label,
                 help_text=field_def.help_text or "Accepted formats: .csv, .xls, .xlsx",
                 widget=forms.ClearableFileInput(attrs={"accept": ".csv,.xls,.xlsx"}),
+            )
+
+        elif field_def.field_type == "country":
+            if not _has_django_countries:
+                raise ImproperlyConfigured(
+                    "The 'country' field type requires django-countries. "
+                    "Install it with: pip install django-forms-workflows[picklists]"
+                )
+            country_choices = [("", "-- Select Country --")] + list(_country_list)
+            self.fields[field_def.field_name] = forms.ChoiceField(
+                choices=country_choices,
+                widget=forms.Select(attrs={"class": "form-select"}),
+                **field_args,
+            )
+
+        elif field_def.field_type == "us_state":
+            if not _has_localflavor:
+                raise ImproperlyConfigured(
+                    "The 'us_state' field type requires django-localflavor. "
+                    "Install it with: pip install django-forms-workflows[picklists]"
+                )
+            state_choices = [("", "-- Select State --")] + list(_US_STATES)
+            self.fields[field_def.field_name] = forms.ChoiceField(
+                choices=state_choices,
+                widget=forms.Select(attrs={"class": "form-select"}),
+                **field_args,
             )
 
         else:

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-forms-workflows"
-version = "0.35.7"
+version = "0.35.8"
 description = "Enterprise-grade, database-driven form builder with approval workflows and external data integration"
 license = "LGPL-3.0-only"
 readme = "README.md"
@@ -62,6 +62,10 @@ sphinx = { version = ">=7.0", optional = true }
 sphinx-rtd-theme = { version = ">=2.0", optional = true }
 sphinx-autodoc-typehints = { version = ">=1.25", optional = true }
 
+# Optional picklist dependencies (country + US state field types)
+django-countries = { version = ">=7.0", optional = true }
+django-localflavor = { version = ">=4.0", optional = true }
+
 # Optional dev/test dependencies
 pytest = { version = ">=7.4", optional = true }
 pytest-django = { version = ">=4.5", optional = true }
@@ -78,6 +82,7 @@ mysql = ["mysqlclient"]
 gmail = ["google-auth", "google-api-python-client"]
 pdf = ["weasyprint"]
 excel = ["openpyxl"]
+picklists = ["django-countries", "django-localflavor"]
 docs = ["sphinx", "sphinx-rtd-theme", "sphinx-autodoc-typehints"]
 all = [
   "django-auth-ldap", "python-ldap",
@@ -86,7 +91,8 @@ all = [
   "psycopg2-binary", "mysqlclient",
   "google-auth", "google-api-python-client",
   "weasyprint",
-  "openpyxl"
+  "openpyxl",
+  "django-countries", "django-localflavor"
 ]
 dev = ["pytest", "pytest-django", "pytest-cov", "ruff"]
 

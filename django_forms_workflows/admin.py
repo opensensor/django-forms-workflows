@@ -1054,9 +1054,25 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                         context,
                     )
 
+                # Normalize the remote API response into the flat shape the
+                # template expects: {created, updated, skipped, results: [...]}
+                name_map = {fd.slug: fd.name for fd in queryset}
+                raw_counts = result.get("counts", {})
+                context["push_result"] = {
+                    "created": raw_counts.get("created", 0),
+                    "updated": raw_counts.get("updated", 0),
+                    "skipped": raw_counts.get("skipped", 0),
+                    "results": [
+                        {
+                            "slug": f["slug"],
+                            "name": name_map.get(f["slug"], f["slug"]),
+                            "action": f["action"],
+                        }
+                        for f in result.get("forms", [])
+                    ],
+                }
                 context["step"] = 2
                 context["remote_name"] = remote_name
-                context["push_result"] = result
                 return render(
                     request,
                     "admin/django_forms_workflows/sync_push.html",

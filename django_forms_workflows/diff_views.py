@@ -82,6 +82,8 @@ def _build_summary(forms_data):
                 "allow_send_back",
                 "approve_label",
                 "approval_logic",
+                "requires_manager_approval",
+                "trigger_conditions",
             ]
             for key in sorted(b_stage_map.keys() & o_stage_map.keys()):
                 bs, os_ = b_stage_map[key], o_stage_map[key]
@@ -130,7 +132,13 @@ def _build_summary(forms_data):
                 "allow_bulk_export",
                 "allow_bulk_pdf_export",
                 "approval_deadline_days",
+                "send_reminder_after_days",
+                "auto_approve_after_days",
                 "notification_cadence",
+                "notification_cadence_day",
+                "notification_cadence_time",
+                "notification_cadence_form_field",
+                "trigger_conditions",
             ]
             for key in wf_setting_keys:
                 if b_wf.get(key) != o_wf.get(key):
@@ -139,16 +147,28 @@ def _build_summary(forms_data):
         # Form metadata
         meta_keys = [
             "name",
+            "description",
+            "instructions",
             "is_active",
             "allow_save_draft",
             "allow_withdrawal",
             "requires_login",
             "enable_multi_step",
+            "enable_auto_save",
+            "auto_save_interval",
             "pdf_generation",
         ]
         for key in meta_keys:
             if b_form.get(key) != o_form.get(key):
                 diffs.append(f"{key}: {b_form.get(key)!r} → {o_form.get(key)!r}")
+
+        # Category
+        b_cat = base.get("category") or {}
+        o_cat = other.get("category") or {}
+        b_cat_slug = b_cat.get("slug") if b_cat else None
+        o_cat_slug = o_cat.get("slug") if o_cat else None
+        if b_cat_slug != o_cat_slug:
+            diffs.append(f"category: {b_cat_slug!r} → {o_cat_slug!r}")
 
         # Permission groups
         for g in ("submit_groups", "view_groups", "admin_groups"):
@@ -169,6 +189,41 @@ def _build_summary(forms_data):
         o_actions = other.get("post_actions", [])
         if len(b_actions) != len(o_actions):
             diffs.append(f"Post actions: {len(b_actions)} → {len(o_actions)}")
+        else:
+            b_action_names = {a.get("name") for a in b_actions}
+            o_action_names = {a.get("name") for a in o_actions}
+            added_a = o_action_names - b_action_names
+            removed_a = b_action_names - o_action_names
+            if added_a:
+                diffs.append(
+                    f"Post actions added: {', '.join(sorted(str(a) for a in added_a))}"
+                )
+            if removed_a:
+                diffs.append(
+                    f"Post actions removed: {', '.join(sorted(str(a) for a in removed_a))}"
+                )
+            b_action_map = {a.get("name"): a for a in b_actions}
+            o_action_map = {a.get("name"): a for a in o_actions}
+            action_check_keys = [
+                "action_type",
+                "trigger",
+                "is_active",
+                "order",
+                "api_endpoint",
+                "api_method",
+                "email_to",
+                "email_subject_template",
+                "condition_field",
+                "condition_operator",
+                "condition_value",
+            ]
+            for name in sorted(b_action_names & o_action_names):
+                ba, oa = b_action_map[name], o_action_map[name]
+                for ak in action_check_keys:
+                    if ba.get(ak) != oa.get(ak):
+                        diffs.append(
+                            f"Post action '{name}' {ak}: {ba.get(ak)!r} → {oa.get(ak)!r}"
+                        )
 
         summaries.append(
             {

@@ -65,20 +65,6 @@ jobs:
       run: |
         twine upload dist/*
     
-    - name: Create GitHub Release
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-rc')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: dist/*
-        generate_release_notes: true
-        body: |
-          ## Installation
-          
-          ```bash
-          pip install django-forms-workflows==${{ github.ref_name }}
-          ```
-          
-          See [CHANGELOG.md](https://github.com/opensensor/django-forms-workflows/blob/main/CHANGELOG.md) for details.
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # GitHub Release is created by the changelog.yml workflow
+    # which uses Claude AI to generate release notes.
 

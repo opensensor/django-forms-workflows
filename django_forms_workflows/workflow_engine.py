@@ -471,8 +471,9 @@ def _lookup_by_ldap(user_model, value, stage, submission):
         return None
 
     # Get or JIT-create the Django User
+    jit_created = False
     try:
-        return user_model.objects.get(username__iexact=username)
+        user = user_model.objects.get(username__iexact=username)
     except user_model.DoesNotExist:
         # Auto-provision the user so the approval task can be assigned.
         # When they later SSO in, the social-auth pipeline's
@@ -484,6 +485,7 @@ def _lookup_by_ldap(user_model, value, stage, submission):
             last_name=match.get("last_name", ""),
             is_active=True,
         )
+        jit_created = True
         # Create a profile if the model exists
         try:
             from .models import UserProfile
@@ -509,7 +511,35 @@ def _lookup_by_ldap(user_model, value, stage, submission):
             stage.name,
             submission.id,
         )
-        return user
+
+    # Sync LDAP group memberships so the user has the correct Django permissions.
+    # Always do this for JIT-provisioned users (they have no groups yet), and
+    # also for existing pre-provisioned users in case their groups have changed
+    # since they were last synced.
+    try:
+        from .sso_backends import sync_user_ldap_groups
+
+        n = sync_user_ldap_groups(user)
+        logger.info(
+            "Dynamic assignee lookup (ldap): synced %d LDAP groups for user '%s' "
+            "(jit_created=%s, stage '%s', submission %s).",
+            n,
+            username,
+            jit_created,
+            stage.name,
+            submission.id,
+        )
+    except Exception:
+        logger.warning(
+            "Dynamic assignee lookup (ldap): could not sync LDAP groups for "
+            "user '%s' (stage '%s', submission %s).",
+            username,
+            stage.name,
+            submission.id,
+            exc_info=True,
+        )
+
+    return user
 
 
 def _notify_stage_form_field_recipients(

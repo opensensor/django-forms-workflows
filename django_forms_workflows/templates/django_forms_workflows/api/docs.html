@@ -1,0 +1,67 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="robots" content="noindex,nofollow"/>
+  <title>{{ site_name|default:"Forms Workflows" }} – API Docs</title>
+  <link rel="stylesheet"
+        href="{% static 'django_forms_workflows/api/swagger-ui.css' %}"/>
+  <style>
+    /* Minimal chrome around the Swagger UI panel */
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; font-family: sans-serif; }
+
+    #api-header {
+      background: #1b1b1b;
+      color: #fff;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    #api-header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    #api-header a {
+      color: #ccc;
+      font-size: 0.85rem;
+      text-decoration: none;
+    }
+    #api-header a:hover { color: #fff; }
+
+    #swagger-ui .topbar { display: none; }   /* hide the Swagger default topbar */
+  </style>
+</head>
+<body>
+
+<div id="api-header">
+  <h1>{{ site_name|default:"Forms Workflows" }} — REST API</h1>
+  <a href="{% url 'admin:index' %}">← Back to Admin</a>
+  <a href="{% url 'forms_workflows_api:schema' %}" style="margin-left:auto">
+    schema.json ↗
+  </a>
+</div>
+
+<div id="swagger-ui"></div>
+
+{# All JS/CSS is served from the package's bundled static files — no CDN. #}
+<script src="{% static 'django_forms_workflows/api/swagger-ui-bundle.js' %}"></script>
+<script>
+  window.onload = function () {
+    SwaggerUIBundle({
+      url: "{{ schema_url }}",
+      dom_id: "#swagger-ui",
+      presets: [
+        SwaggerUIBundle.presets.apis,
+        SwaggerUIBundle.SwaggerUIStandalonePreset
+      ],
+      layout: "BaseLayout",
+      deepLinking: true,
+      displayRequestDuration: true,
+      filter: true,
+      persistAuthorization: true,
+    });
+  };
+</script>
+</body>
+</html>
+

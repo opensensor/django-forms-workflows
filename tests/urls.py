@@ -11,4 +11,5 @@ urlpatterns = [
     path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("forms/", include("django_forms_workflows.urls")),
+    path("api/", include("django_forms_workflows.api_urls")),
 ]

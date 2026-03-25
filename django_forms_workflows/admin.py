@@ -20,6 +20,7 @@ from django.utils.html import format_html, mark_safe
 
 from .models import (
     ActionExecutionLog,
+    APIToken,
     ApprovalTask,
     AuditLog,
     FileUploadConfig,
@@ -435,6 +436,19 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                     "allow_withdrawal",
                     "allow_resubmit",
                     "allow_batch_import",
+                ),
+            },
+        ),
+        (
+            "API Access",
+            {
+                "classes": ("collapse",),
+                "fields": ("api_enabled",),
+                "description": (
+                    "Enable this form for REST API submission. Requires the API URLs "
+                    "to be included in your project's <code>urls.py</code> and a valid "
+                    "<strong>APIToken</strong> in the <code>Authorization: Bearer</code> "
+                    "header. All existing submit_groups / view_groups permissions still apply."
                 ),
             },
         ),
@@ -2132,3 +2146,60 @@ class NotificationLogAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(APIToken)
+class APITokenAdmin(admin.ModelAdmin):
+    """
+    Manage REST API personal access tokens.
+
+    Tokens are created here by admins and handed to the consumer
+    (CI pipelines, mobile apps, etc.).  The raw UUID is shown only once
+    on the change page — copy it immediately after creation.
+    """
+
+    list_display = (
+        "name",
+        "user",
+        "short_token",
+        "is_active",
+        "created_at",
+        "last_used_at",
+    )
+    list_filter = ("is_active",)
+    search_fields = ("name", "user__username", "user__email")
+    readonly_fields = ("token", "created_at", "last_used_at")
+    autocomplete_fields = ("user",)
+    ordering = ("-created_at",)
+
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": ("user", "name", "is_active"),
+            },
+        ),
+        (
+            "Token",
+            {
+                "fields": ("token",),
+                "description": (
+                    "Copy this value now — it is shown in plain text here but "
+                    "treat it like a password. Send it as:<br>"
+                    "<code>Authorization: Bearer &lt;token&gt;</code>"
+                ),
+            },
+        ),
+        (
+            "Audit",
+            {
+                "classes": ("collapse",),
+                "fields": ("created_at", "last_used_at"),
+            },
+        ),
+    )
+
+    @admin.display(description="Token (prefix)")
+    def short_token(self, obj):
+        token_str = str(obj.token)
+        return f"{token_str[:8]}…"

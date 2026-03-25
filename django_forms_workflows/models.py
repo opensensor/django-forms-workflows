@@ -4,6 +4,8 @@ Django Forms Workflows - Core Models
 Database-driven form definitions with approval workflows and external data integration.
 """
 
+import uuid
+
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.serializers.json import DjangoJSONEncoder
@@ -176,6 +178,14 @@ class FormDefinition(models.Model):
             "submit multiple form entries at once. Each row is validated against the "
             "same rules as the individual form. File upload fields are excluded from "
             "batch import."
+        ),
+    )
+    api_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Expose this form via the REST API. Requires the API URLs to be included "
+            "in your project's urls.py and the caller to supply a valid APIToken. "
+            "All existing permission checks (submit_groups, view_groups) still apply."
         ),
     )
     requires_login = models.BooleanField(
@@ -2581,3 +2591,55 @@ class NotificationLog(models.Model):
             f"[{self.get_status_display()}] {self.get_notification_type_display()} "
             f"→ {self.recipient_email} ({self.created_at:%Y-%m-%d %H:%M})"
         )
+
+
+class APIToken(models.Model):
+    """
+    Personal access token for the REST API.
+
+    Each token is owned by a Django user and inherits all of that user's
+    permissions (submit_groups, view_groups, etc.).  Tokens are created and
+    revoked via Django Admin.  Only forms with ``api_enabled=True`` are
+    accessible via the API regardless of token ownership.
+
+    Usage::
+
+        Authorization: Bearer <token-uuid>
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="api_tokens",
+        help_text="The user this token authenticates as.",
+    )
+    token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+        help_text="Send as: Authorization: Bearer <token>",
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text="Human-readable label, e.g. 'CI Pipeline' or 'Mobile App v2'.",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive tokens are rejected immediately.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Updated on every successful API request.",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "API Token"
+        verbose_name_plural = "API Tokens"
+
+    def __str__(self):
+        status = "active" if self.is_active else "revoked"
+        return f"{self.name} ({self.user.username}) [{status}]"

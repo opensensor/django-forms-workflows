@@ -2,18 +2,33 @@
 
 Get Django Forms Workflows up and running in 10 minutes!
 
+> **Current release:** v0.35.11 · [Changelog](../CHANGELOG.md) · [Full Docs index](../README.md)
+
 ## Prerequisites
 
 - Python 3.10 or higher
-- Django 5.1 or higher
-- PostgreSQL 12+ (recommended) or MySQL 8.0+
+- Django 5.2 or higher
+- PostgreSQL 14+ (recommended) or MySQL 8.0+
 
 ## Installation
 
 ### 1. Install the Package
 
 ```bash
+# Core package
 pip install django-forms-workflows
+
+# With Excel spreadsheet field support
+pip install "django-forms-workflows[excel]"
+
+# With LDAP/AD support
+pip install "django-forms-workflows[ldap]"
+
+# With PDF export support
+pip install "django-forms-workflows[pdf]"
+
+# Everything
+pip install "django-forms-workflows[all]"
 ```
 
 ### 2. Update Django Settings
@@ -47,11 +62,17 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 # Forms Workflows Configuration (optional)
 FORMS_WORKFLOWS = {
+    # Replace "Django Forms Workflows" branding across all templates
+    'SITE_NAME': 'My Org Workflows',
     'ENABLE_APPROVALS': True,
     'ENABLE_AUDIT_LOG': True,
     'ENABLE_FILE_UPLOADS': True,
     'MAX_FILE_SIZE': 10 * 1024 * 1024,  # 10MB
 }
+
+# Optional context processor — injects site_name into templates
+# Add this to your TEMPLATES setting:
+# 'django_forms_workflows.context_processors.forms_workflows'
 ```
 
 ### 3. Update URLs
@@ -200,6 +221,19 @@ When you view the form while logged in, the email field will be automatically fi
 See [LDAP Configuration Guide](CONFIGURATION.md#ldap-integration) to:
 - Authenticate users against Active Directory
 - Prefill fields from LDAP attributes (department, title, manager, etc.)
+- Use `assignee_lookup_type = "ldap"` for manager-routing on approval stages
+
+### Enable Dynamic Assignees
+
+See [Dynamic Assignees](DYNAMIC_ASSIGNEES.md) to route approval tasks to the specific individual named in a form field (by email, username, or display name).
+
+### Use Calculated / Formula Fields
+
+See [Calculated Fields Guide](CALCULATED_FIELDS.md) to auto-compute read-only values from other field inputs, including spreadsheet-structured file uploads.
+
+### Enable Send Back for Correction
+
+See [Send Back for Correction](SEND_BACK.md) to let approvers return submissions to any prior stage without terminating the workflow.
 
 ### Enable Database Prefill
 
@@ -213,14 +247,15 @@ Copy templates from the package to your project:
 
 ```bash
 mkdir -p templates/django_forms_workflows
-cp -r venv/lib/python3.10/site-packages/django_forms_workflows/templates/* templates/django_forms_workflows/
+python -c "import django_forms_workflows, os; print(os.path.dirname(django_forms_workflows.__file__))"
+# Copy from the path printed above/templates/ to your templates/django_forms_workflows/
 ```
 
 Then customize as needed!
 
 ### Add Celery for Background Tasks
 
-For email notifications and scheduled tasks:
+For async email notifications, escalation reminders, and webhook delivery:
 
 ```bash
 pip install celery redis
@@ -229,11 +264,15 @@ pip install celery redis
 ```python
 # settings.py
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 ```
 
 ```bash
 # Run Celery worker
 celery -A your_project worker -l info
+
+# Run Celery beat scheduler (for reminders and escalation checks)
+celery -A your_project beat -l info
 ```
 
 ## Common Issues

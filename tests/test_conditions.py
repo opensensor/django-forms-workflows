@@ -168,3 +168,98 @@ class TestEvaluateConditions:
             ],
         }
         assert evaluate_conditions(cond, self.data) is False
+
+    def test_simple_single_condition_format(self):
+        """evaluate_conditions handles the shorthand {'field': ..., 'operator': ...}
+        format that omits the wrapping 'conditions' list."""
+        cond = {"field": "status", "operator": "equals", "value": "active"}
+        assert evaluate_conditions(cond, self.data) is True
+
+    def test_simple_single_condition_format_false(self):
+        cond = {"field": "status", "operator": "equals", "value": "inactive"}
+        assert evaluate_conditions(cond, self.data) is False
+
+    def test_no_field_no_conditions_is_unconditional(self):
+        """A dict with neither 'field' nor 'conditions' keys is unconditional."""
+        assert evaluate_conditions({"operator": "AND"}, self.data) is True
+
+    def test_or_all_true_short_circuits(self):
+        """OR operator returns True when all conditions are True."""
+        cond = {
+            "operator": "OR",
+            "conditions": [
+                {"field": "status", "operator": "equals", "value": "active"},
+                {"field": "dept", "operator": "equals", "value": "IT"},
+            ],
+        }
+        assert evaluate_conditions(cond, self.data) is True
+
+
+# ── Additional _is_empty_value edge cases ─────────────────────────────────
+
+
+class TestIsEmptyValueEdgeCases:
+    def test_whitespace_only_string_is_empty(self):
+        from django_forms_workflows.conditions import _is_empty_value
+
+        assert _is_empty_value("   \t\n") is True
+
+    def test_zero_is_not_empty(self):
+        from django_forms_workflows.conditions import _is_empty_value
+
+        # Numeric zero should not be treated as empty (it's not None/blank/list)
+        assert _is_empty_value(0) is False
+
+    def test_false_is_not_empty(self):
+        from django_forms_workflows.conditions import _is_empty_value
+
+        assert _is_empty_value(False) is False
+
+
+# ── _evaluate_single: in operator edge cases ──────────────────────────────
+
+
+class TestEvaluateSingleInOperator:
+    def test_in_list_case_insensitive(self):
+        from django_forms_workflows.conditions import _evaluate_single
+
+        cond = {"field": "dept", "operator": "in", "value": ["IT", "HR"]}
+        assert _evaluate_single(cond, {"dept": "it"}) is True
+
+    def test_in_comma_string(self):
+        from django_forms_workflows.conditions import _evaluate_single
+
+        cond = {"field": "dept", "operator": "in", "value": "IT, HR, Finance"}
+        assert _evaluate_single(cond, {"dept": "Finance"}) is True
+
+    def test_in_missing_field_returns_false(self):
+        from django_forms_workflows.conditions import _evaluate_single
+
+        cond = {"field": "missing_field", "operator": "in", "value": ["a", "b"]}
+        assert _evaluate_single(cond, {}) is False
+
+
+# ── _coerce_numeric edge cases ────────────────────────────────────────────
+
+
+class TestCoerceNumericEdgeCases:
+    def test_float_string(self):
+        from decimal import Decimal
+
+        from django_forms_workflows.conditions import _coerce_numeric
+
+        assert _coerce_numeric("3.14") == Decimal("3.14")
+
+    def test_integer_value(self):
+        from decimal import Decimal
+
+        from django_forms_workflows.conditions import _coerce_numeric
+
+        assert _coerce_numeric(42) == Decimal("42")
+
+    def test_negative_number(self):
+        from decimal import Decimal
+
+        from django_forms_workflows.conditions import _coerce_numeric
+
+        assert _coerce_numeric("-5") == Decimal("-5")

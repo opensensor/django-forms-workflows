@@ -4,29 +4,33 @@
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
-[![Django Version](https://img.shields.io/badge/django-5.1%2B-green)](https://www.djangoproject.com/)
-[![Version](https://img.shields.io/badge/version-0.16.0-orange)](https://github.com/opensensor/django-forms-workflows)
+[![Django Version](https://img.shields.io/badge/django-5.2%2B-green)](https://www.djangoproject.com/)
+[![Version](https://img.shields.io/badge/version-0.35.11-orange)](https://github.com/opensensor/django-forms-workflows)
 
 ## Overview
 
 Django Forms Workflows bridges the gap between simple form libraries (like Crispy Forms) and expensive SaaS solutions (like JotForm, Formstack). It provides:
 
-- 📝 **Database-Driven Forms** — Define forms in the database, not code. 15+ field types, validation rules, and conditional logic.
-- 🔄 **Multi-Stage Approval Workflows** — Sequential, parallel, or hybrid approval flows with configurable stages.
+- 📝 **Database-Driven Forms** — Define forms in the database, not code. 25+ field types including calculated/formula fields and spreadsheet uploads.
+- 🔄 **Multi-Stage Approval Workflows** — Sequential, parallel, or hybrid approval flows with configurable stages and conditional trigger logic.
+- ↩️ **Send Back for Correction** — Approvers can return a submission to any prior stage without terminating the workflow.
+- 🎯 **Dynamic Assignees** — Resolve individual approvers at submit time from form field values (email, username, full name, or LDAP lookup).
 - 🔀 **Sub-Workflows** — Spawn child workflows from a parent submission (e.g. one form creates N payment approvals).
 - 🔌 **External Data Integration** — Prefill fields from LDAP, databases, REST APIs, or the Django user model.
 - ⚡ **Post-Submission Actions** — Trigger emails, database writes, LDAP updates, or custom Python handlers on submit/approve/reject.
 - 🔄 **Cross-Instance Sync** — Push/pull form definitions between environments directly from the Django Admin.
 - 🔒 **Enterprise Security** — LDAP/AD & SSO authentication, RBAC, complete audit trails.
 - 📁 **Managed File Uploads** — File uploads with approval, rejection, and version tracking per submission.
+- 🧮 **Formula Fields** — Calculated fields that compute values live from other field values using a template formula.
 - 🏠 **Self-Hosted** — No SaaS fees, full data control.
 
 ## Key Features
 
 ### 🎯 No-Code Form Creation
 Business users create and modify forms through Django Admin:
-- 15+ field types (text, email, select, radio, checkbox, date, time, datetime, decimal, number, phone, URL, file, textarea, hidden, section headers)
-- Field ordering with drag-and-drop
+- **25+ field types:** text, email, phone, select, radio, checkbox, checkboxes, multiselect, date, time, datetime, decimal, currency, number, URL, file, multi-file, textarea, hidden, section headers, **calculated/formula**, **spreadsheet upload (CSV/Excel)**, country picker, US state picker
+- Field ordering with explicit `order` integer
+- Column-width layout per field: full, half, one-third, one-quarter
 - Validation rules (required, regex, min/max length, min/max value)
 - Conditional field visibility (`show_if_field` / `show_if_value`)
 - Custom help text, placeholders, and CSS classes
@@ -37,12 +41,16 @@ Business users create and modify forms through Django Admin:
 Flexible approval engine built on `WorkflowStage` records:
 - Each stage has its own approval groups and logic (`any` / `all` / `sequence`)
 - Stages execute in order; next stage unlocks when the current one completes
+- **Conditional stages** — each stage can carry `trigger_conditions` JSON; stages whose conditions don't match the submission data are automatically skipped
+- **Workflow-level trigger conditions** — entire parallel approval tracks are skipped when their workflow `trigger_conditions` don't match (e.g. only trigger a Finance track when `amount > 10000`)
+- **Dynamic individual assignees** — set `assignee_form_field` + `assignee_lookup_type` (`email` / `username` / `full_name` / `ldap`) on a stage to resolve the approver from a form field value at runtime; falls back to group tasks when the value cannot be resolved
+- **Send Back for Correction** — approvers can return a submission to any prior stage that has `allow_send_back` enabled without terminating the workflow; full audit entry recorded
 - Stage-specific form fields (e.g. approver notes, signature date) appear only during that stage
-- Configurable stage labels (e.g. "Sign Off" instead of "Approve")
+- Configurable approval deadline (`approval_deadline_days`) sets `due_date` on created tasks
 - Email notifications and configurable reminder cadence (`daily` / `weekly` / `none`)
 - Escalation routing when a form field exceeds a threshold (e.g. amount > $5 000)
 - Rejection handling with per-stage or global rejection semantics
-- Complete audit trail on every approval, rejection, and status change
+- Complete audit trail on every approval, rejection, send-back, and status change
 
 ### 🔀 Sub-Workflows
 Spawn child workflow instances from a parent submission:
@@ -50,6 +58,26 @@ Spawn child workflow instances from a parent submission:
 - `count_field` controls how many sub-workflows to create (driven by a form field value)
 - `data_prefix` slices the parent's form data to populate each child
 - Triggered `on_approval`, `on_submit`, or `manual`
+- `detached` mode lets child instances complete independently of the parent
+- Parent submission status reflects aggregate child completion when not detached
+- Sub-workflows support the same send-back mechanism via `handle_sub_workflow_send_back`
+
+See [Sub-Workflows Guide](docs/SUB_WORKFLOWS.md) for a full walkthrough.
+
+### 🧮 Calculated / Formula Fields
+Auto-compute field values from other field inputs:
+- `field_type = "calculated"` with a `formula` template string (e.g. `{first_name} {last_name}`)
+- Live client-side evaluation updates the read-only field as the user types
+- Authoritative server-side re-evaluation on submit prevents tampering
+- Available in both regular form submission and approval step forms
+
+See [Calculated Fields Guide](docs/CALCULATED_FIELDS.md).
+
+### 📊 Spreadsheet Upload Fields
+Accept CSV or Excel files as structured form input:
+- `field_type = "spreadsheet"` with accept `.csv`, `.xls`, `.xlsx`
+- Parsed and stored as `{"headers": [...], "rows": [{...}, ...]}` in `form_data`
+- Available during initial submission and approval step forms
 
 ### 🔌 Configurable Prefill Sources
 Populate form fields automatically from reusable `PrefillSource` records:
@@ -144,6 +172,10 @@ python manage.py migrate django_forms_workflows
 
 ```python
 FORMS_WORKFLOWS = {
+    # Branding — replaces "Django Forms Workflows" across all templates
+    "SITE_NAME": "Acme Corp Workflows",
+
+    # LDAP attribute sync on every login
     "LDAP_SYNC": {
         "enabled": True,
         "attributes": {
@@ -154,7 +186,7 @@ FORMS_WORKFLOWS = {
     },
 }
 
-# Cross-instance sync
+# Cross-instance form sync
 FORMS_SYNC_API_TOKEN = "shared-secret"
 FORMS_SYNC_REMOTES = {
     "production": {
@@ -162,6 +194,19 @@ FORMS_SYNC_REMOTES = {
         "token": "prod-token",
     },
 }
+
+# Context processor — injects site_name into every template
+TEMPLATES = [
+    {
+        "OPTIONS": {
+            "context_processors": [
+                # ... standard processors ...
+                "django_forms_workflows.context_processors.forms_workflows",
+            ]
+        }
+    }
+]
+```
 ```
 
 ## Architecture
@@ -232,9 +277,12 @@ graph TB
 ## Requirements
 
 - Python 3.10+
-- Django 5.1+
+- Django 5.2+
 - PostgreSQL, MySQL, or SQLite (PostgreSQL recommended for production)
 - Optional: Celery 5.0+ with Redis/Valkey for background task processing
+- Optional: `openpyxl` for Excel spreadsheet field support (`pip install django-forms-workflows[excel]`)
+- Optional: `django-auth-ldap` for LDAP/AD integration (`pip install django-forms-workflows[ldap]`)
+- Optional: WeasyPrint for PDF export (`pip install django-forms-workflows[pdf]`)
 
 ## Testing
 
@@ -244,7 +292,7 @@ pip install pytest pytest-django
 python -m pytest tests/ -v
 ```
 
-The test suite covers models, forms, workflow engine, sync API, post-submission action executor, views, signals, and utilities — 150+ tests.
+The test suite covers models, forms, workflow engine (including dynamic assignees, conditional stages, multi-workflow parallel tracks, sub-workflows), sync API, post-submission action executor, views, signals, conditions, and utilities — **298 tests**.
 
 ## Contributing
 
@@ -262,33 +310,44 @@ GNU Lesser General Public License v3.0 (LGPLv3) — see [LICENSE](LICENSE) for d
 
 ## Roadmap
 
-### ✅ Delivered
-- [x] Database-driven form definitions with 15+ field types
-- [x] Dynamic form rendering with Crispy Forms
-- [x] Multi-stage approval workflows (AND/OR/sequential approval chains)
-- [x] Sub-workflow support
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rationale and implementation notes.
+
+### ✅ Delivered (v0.35)
+- [x] Database-driven form definitions with 25+ field types
+- [x] Dynamic form rendering with Crispy Forms + Bootstrap 5
+- [x] Multi-stage approval workflows (any/all/sequence logic per stage)
+- [x] Conditional workflow & stage trigger logic
+- [x] Dynamic individual assignee resolution (email / username / full name / LDAP)
+- [x] Send Back for Correction (return to any prior stage without terminating)
+- [x] Sub-workflow support (spawn N child instances from a parent)
+- [x] Calculated / formula fields with live client-side evaluation
+- [x] Spreadsheet upload fields (CSV, XLS, XLSX)
 - [x] LDAP/AD integration with profile sync
-- [x] SSO attribute mapping
-- [x] Configurable prefill sources (user, LDAP, database, API)
-- [x] Post-submission actions with conditional execution & retries
+- [x] SSO attribute mapping (SAML/OAuth)
+- [x] Configurable prefill sources (user, LDAP, database, API, system values)
+- [x] Post-submission actions with conditional execution, ordering & retries
 - [x] Cross-instance form sync (push/pull/JSON import-export)
-- [x] Managed file uploads with approval lifecycle
-- [x] Conditional field visibility (client-side)
+- [x] Managed file uploads with approval lifecycle and S3/Spaces presigned URLs
+- [x] Conditional field visibility (client-side JS, no page reload)
 - [x] Form templates and cloning
-- [x] Complete audit logging
-- [x] Comprehensive test suite (150+ tests)
+- [x] Nested category hierarchy with group-based access control
+- [x] WeasyPrint PDF export with multi-column layout
+- [x] Column-picker approval inbox with DataTables
+- [x] Complete audit logging (who, what, when, IP)
+- [x] Configurable site branding via `FORMS_WORKFLOWS['SITE_NAME']`
+- [x] Comprehensive test suite (298 tests)
 
-### 🚧 In Progress
-- [ ] Dashboard analytics
-- [ ] REST API for form submission
-- [ ] Webhook support
+### 🚧 Near-term (next 1–3 releases)
+- [ ] REST API for programmatic form submission and status polling
+- [ ] Webhook delivery on workflow events (submit / approve / reject)
+- [ ] Dashboard analytics (submission counts, approval times, bottleneck stages)
 
-### 📋 Planned
-- [ ] Custom field types (signature, location, barcode)
-- [ ] Advanced reporting and export
-- [ ] Form versioning with diff tracking
-- [ ] Multi-tenancy support
-- [ ] Plugin / handler marketplace
+### 📋 Planned (medium-term)
+- [ ] Signature field type (drawn or typed)
+- [ ] Form versioning — immutable snapshots with diff viewer
+- [ ] Advanced reporting and bulk export (Excel/CSV with field filters)
+- [ ] Multi-tenancy support (organisation-scoped form libraries)
+- [ ] Plugin / custom handler marketplace
 
 ## Credits
 

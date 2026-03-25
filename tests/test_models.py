@@ -674,3 +674,119 @@ class TestSubWorkflowModels:
         assert "payment_amount_1" in data
         assert "other_field" not in data
         assert "payment_type_2" not in data  # wrong index
+
+
+# ── NotificationLog ───────────────────────────────────────────────────────
+
+
+class TestNotificationLog:
+    def test_create_sent_log(self, submission):
+        from django_forms_workflows.models import NotificationLog
+
+        log = NotificationLog.objects.create(
+            notification_type="approval_request",
+            submission=submission,
+            recipient_email="approver@example.com",
+            subject="Please review: Test Form",
+            status="sent",
+        )
+        assert log.status == "sent"
+        assert log.notification_type == "approval_request"
+        # __str__ includes status display and recipient
+        s = str(log)
+        assert "Sent" in s
+        assert "approver@example.com" in s
+
+    def test_create_failed_log(self, submission):
+        from django_forms_workflows.models import NotificationLog
+
+        log = NotificationLog.objects.create(
+            notification_type="rejection_notification",
+            submission=submission,
+            recipient_email="user@example.com",
+            subject="Your request was rejected",
+            status="failed",
+            error_message="SMTP connection refused",
+        )
+        assert log.status == "failed"
+        assert "Failed" in str(log)
+        assert log.error_message == "SMTP connection refused"
+
+    def test_null_submission_allowed(self, db):
+        from django_forms_workflows.models import NotificationLog
+
+        # submission=None is allowed (SET_NULL)
+        log = NotificationLog.objects.create(
+            notification_type="other",
+            submission=None,
+            recipient_email="admin@example.com",
+            subject="Orphaned notification",
+            status="skipped",
+        )
+        assert log.submission is None
+
+    def test_ordering_newest_first(self, submission):
+        from django_forms_workflows.models import NotificationLog
+
+        log1 = NotificationLog.objects.create(
+            notification_type="submission_created",
+            submission=submission,
+            recipient_email="a@example.com",
+            subject="First",
+            status="sent",
+        )
+        log2 = NotificationLog.objects.create(
+            notification_type="approval_notification",
+            submission=submission,
+            recipient_email="b@example.com",
+            subject="Second",
+            status="sent",
+        )
+        logs = list(NotificationLog.objects.filter(submission=submission))
+        # Newest first (ordering = ["-created_at"])
+        assert logs[0].pk == log2.pk
+        assert logs[1].pk == log1.pk
+
+    def test_all_notification_types_valid(self, db):
+        from django_forms_workflows.models import NotificationLog
+
+        valid_types = [t[0] for t in NotificationLog.NOTIFICATION_TYPES]
+        for nt in valid_types:
+            log = NotificationLog.objects.create(
+                notification_type=nt,
+                recipient_email=f"{nt}@example.com",
+                subject=f"Test {nt}",
+                status="sent",
+            )
+            assert log.notification_type == nt
+
+
+# ── WorkflowStage trigger_conditions ────────────────────────────────────
+
+
+class TestWorkflowStageTriggerConditions:
+    def test_stage_with_trigger_conditions(self, workflow):
+        """WorkflowStage can store and retrieve trigger_conditions JSON."""
+        stage = workflow.stages.first()
+        conditions = {
+            "operator": "AND",
+            "conditions": [
+                {"field": "department", "operator": "equals", "value": "hr"}
+            ],
+        }
+        stage.trigger_conditions = conditions
+        stage.save()
+        stage.refresh_from_db()
+        assert stage.trigger_conditions == conditions
+        assert stage.trigger_conditions["conditions"][0]["field"] == "department"
+
+    def test_stage_null_trigger_conditions(self, workflow):
+        """Default trigger_conditions is None — stage runs unconditionally."""
+        stage = workflow.stages.first()
+        assert stage.trigger_conditions is None
+
+    def test_stage_order_used_as_stage_number(self, staged_workflow):
+        """WorkflowStage.order determines the stage_number used in approval tasks."""
+        stages = list(staged_workflow.stages.order_by("order"))
+        assert stages[0].order == 1
+        assert stages[1].order == 2

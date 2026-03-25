@@ -285,8 +285,21 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "decimal":
-            if widget_attrs:
-                field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
+            widget_attrs.setdefault("inputmode", "decimal")
+            widget_attrs.setdefault("step", "any")
+            field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.DecimalField(
+                min_value=field_def.min_value,
+                max_value=field_def.max_value,
+                decimal_places=2,
+                **field_args,
+            )
+
+        elif field_def.field_type == "currency":
+            widget_attrs.setdefault("inputmode", "decimal")
+            widget_attrs.setdefault("step", "0.01")
+            widget_attrs["data-input-type"] = "currency"
+            field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
             self.fields[field_def.field_name] = forms.DecimalField(
                 min_value=field_def.min_value,
                 max_value=field_def.max_value,
@@ -867,8 +880,19 @@ class ApprovalStepForm(forms.Form):
             self.fields[field_def.field_name] = forms.IntegerField(**field_args)
 
         elif field_def.field_type == "decimal":
-            if widget_attrs:
-                field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
+            widget_attrs.setdefault("inputmode", "decimal")
+            widget_attrs.setdefault("step", "any")
+            field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
+            self.fields[field_def.field_name] = forms.DecimalField(
+                decimal_places=2,
+                **field_args,
+            )
+
+        elif field_def.field_type == "currency":
+            widget_attrs.setdefault("inputmode", "decimal")
+            widget_attrs.setdefault("step", "0.01")
+            widget_attrs["data-input-type"] = "currency"
+            field_args["widget"] = forms.NumberInput(attrs=widget_attrs)
             self.fields[field_def.field_name] = forms.DecimalField(
                 decimal_places=2,
                 **field_args,

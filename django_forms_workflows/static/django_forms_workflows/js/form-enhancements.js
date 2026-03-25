@@ -1086,3 +1086,111 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = FormEnhancements;
 }
 
+/**
+ * Prevent scientific-notation characters (e, E, +) from being typed into
+ * number inputs.  HTML <input type="number"> allows these by default, which
+ * causes confusing entries like "1e3" in fields such as Department Number.
+ *
+ * Applied globally to all number inputs on the page (both form-enhancement
+ * forms and any other number fields rendered in the Django templates).
+ */
+(function () {
+    function blockSciNotationKeys(e) {
+        if (e.key === 'e' || e.key === 'E' || e.key === '+') {
+            e.preventDefault();
+        }
+    }
+
+    function applyToNumberInputs(root) {
+        root.querySelectorAll('input[type="number"]').forEach(function (el) {
+            el.removeEventListener('keydown', blockSciNotationKeys); // guard against double-binding
+            el.addEventListener('keydown', blockSciNotationKeys);
+        });
+    }
+
+    // Apply to inputs already in the DOM
+    document.addEventListener('DOMContentLoaded', function () {
+        applyToNumberInputs(document);
+    });
+
+    // Re-apply whenever new nodes are inserted (dynamic forms / HTMX / etc.)
+    if (typeof MutationObserver !== 'undefined') {
+        var observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    if (node.nodeType === 1) { // ELEMENT_NODE
+                        if (node.matches && node.matches('input[type="number"]')) {
+                            node.removeEventListener('keydown', blockSciNotationKeys);
+                            node.addEventListener('keydown', blockSciNotationKeys);
+                        } else if (node.querySelectorAll) {
+                            applyToNumberInputs(node);
+                        }
+                    }
+                });
+            });
+        });
+        document.addEventListener('DOMContentLoaded', function () {
+            observer.observe(document.body, { childList: true, subtree: true });
+        });
+    }
+}());
+
+/**
+ * Currency field enhancement.
+ *
+ * Any <input type="number" data-input-type="currency"> rendered by the
+ * currency field type is wrapped in a Bootstrap input-group that shows a
+ * leading "$" addon, giving users clear visual context.
+ *
+ *  Before:  <input type="number" data-input-type="currency" class="form-control" …>
+ *
+ *  After:   <div class="input-group">
+ *               <span class="input-group-text">$</span>
+ *               <input type="number" data-input-type="currency" class="form-control" …>
+ *           </div>
+ *
+ * The wrapper is only applied once (guarded by data-currency-wrapped).
+ */
+(function () {
+    function wrapCurrencyInputs(root) {
+        root.querySelectorAll('input[data-input-type="currency"]').forEach(function (input) {
+            if (input.dataset.currencyWrapped) return; // already wrapped
+            input.dataset.currencyWrapped = '1';
+
+            var wrapper = document.createElement('div');
+            wrapper.className = 'input-group';
+
+            var addon = document.createElement('span');
+            addon.className = 'input-group-text';
+            addon.textContent = '$';
+
+            input.parentNode.insertBefore(wrapper, input);
+            wrapper.appendChild(addon);
+            wrapper.appendChild(input);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        wrapCurrencyInputs(document);
+    });
+
+    if (typeof MutationObserver !== 'undefined') {
+        var currencyObserver = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    if (node.nodeType === 1) {
+                        if (node.matches && node.matches('input[data-input-type="currency"]')) {
+                            wrapCurrencyInputs(node.parentNode || document);
+                        } else if (node.querySelectorAll) {
+                            wrapCurrencyInputs(node);
+                        }
+                    }
+                });
+            });
+        });
+        document.addEventListener('DOMContentLoaded', function () {
+            currencyObserver.observe(document.body, { childList: true, subtree: true });
+        });
+    }
+}());
+

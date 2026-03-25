@@ -1935,6 +1935,53 @@ def get_file_url(file_info):
     return None
 
 
+def _get_choice_label(field, value):
+    """Resolve a stored field value to its human-readable display string.
+
+    Handles:
+    * ``currency`` fields – formats the raw Decimal/float as ``$1,234.56``.
+    * ``select`` / ``radio`` fields – maps the stored option *value* to its
+      human-readable *label* (e.g. ``"200"`` → ``"S26 - Payroll"``).
+    * ``multiselect`` / ``checkboxes`` fields – maps each element of the stored
+      list to its label.
+
+    Returns the original value unchanged when no transformation applies.
+    """
+    # --- Currency formatting ---------------------------------------------------
+    if field.field_type == "currency":
+        if value in (None, ""):
+            return value
+        try:
+            from decimal import Decimal, InvalidOperation
+
+            amt = Decimal(str(value))
+            return f"${amt:,.2f}"
+        except (InvalidOperation, TypeError, ValueError):
+            return value
+
+    # --- Choice-based fields ---------------------------------------------------
+    choices = field.choices
+    if not choices or not isinstance(choices, list):
+        return value
+
+    if field.field_type in ("select", "radio"):
+        str_val = str(value) if value is not None else ""
+        for choice in choices:
+            if str(choice.get("value", "")) == str_val:
+                return choice.get("label", value)
+        return value
+
+    if field.field_type in ("multiselect", "checkboxes"):
+        label_map = {
+            str(c.get("value", "")): c.get("label", c.get("value", "")) for c in choices
+        }
+        if isinstance(value, list):
+            return [label_map.get(str(v), v) for v in value]
+        return value
+
+    return value
+
+
 def _build_ordered_form_data(submission, form_data):
     """
     Return form data as an ordered list of dicts, respecting FormField.order.
@@ -1948,6 +1995,10 @@ def _build_ordered_form_data(submission, form_data):
       - ``label``: the human-readable field label
       - ``key``:   the field_name / dict key
       - ``value``: the resolved value (may be a file-info dict after URL resolution)
+
+    For choice-based fields (select, radio, multiselect, checkboxes) the stored
+    raw value is replaced by its human-readable label so the detail table shows
+    "S26 - Payroll" instead of "200".
     """
     if not form_data:
         return []
@@ -1965,7 +2016,7 @@ def _build_ordered_form_data(submission, form_data):
                 {
                     "label": field.field_label,
                     "key": key,
-                    "value": form_data[key],
+                    "value": _get_choice_label(field, form_data[key]),
                 }
             )
             seen_keys.add(key)
@@ -2055,7 +2106,7 @@ def _build_pdf_rows(submission):
         fd = {
             "label": field.field_label,
             "key": key,
-            "value": form_data[key],
+            "value": _get_choice_label(field, form_data[key]),
             "width": field.width,
         }
 
@@ -2128,7 +2179,8 @@ def _build_approval_step_sections(submission):
 
     form_data = _resolve_form_data_urls(submission.form_data or {})
 
-    # Fields keyed by workflow_stage_id.
+    # Fields keyed by workflow_stage_id.  Store enough metadata to resolve
+    # choice labels (select/radio/multiselect/checkboxes) at display time.
     fields_by_stage: dict = defaultdict(list)
     for field in (
         submission.form_definition.fields.filter(workflow_stage__isnull=False)
@@ -2136,7 +2188,12 @@ def _build_approval_step_sections(submission):
         .order_by("order")
     ):
         fields_by_stage[field.workflow_stage_id].append(
-            {"label": field.field_label, "key": field.field_name}
+            {
+                "label": field.field_label,
+                "key": field.field_name,
+                "field_type": field.field_type,
+                "choices": field.choices,
+            }
         )
 
     # All completed/rejected tasks ordered for display.
@@ -2166,11 +2223,37 @@ def _build_approval_step_sections(submission):
         for f in field_defs:
             lookup_key = f"{f['key']}_{swi_index}" if swi_index else f["key"]
             if lookup_key in form_data:
+                raw_value = form_data[lookup_key]
+                # Resolve choice label if applicable (e.g. select/radio fields
+                # store the option value, not the human-readable label).
+                field_type = f.get("field_type", "")
+                if field_type == "currency" and raw_value not in (None, ""):
+                    try:
+                        from decimal import Decimal, InvalidOperation
+
+                        raw_value = f"${Decimal(str(raw_value)):,.2f}"
+                    except (InvalidOperation, TypeError, ValueError):
+                        pass
+                elif f.get("choices") and isinstance(f["choices"], list):
+                    if field_type in ("select", "radio"):
+                        str_val = str(raw_value) if raw_value is not None else ""
+                        for choice in f["choices"]:
+                            if str(choice.get("value", "")) == str_val:
+                                raw_value = choice.get("label", raw_value)
+                                break
+                    elif field_type in ("multiselect", "checkboxes") and isinstance(
+                        raw_value, list
+                    ):
+                        label_map = {
+                            str(c.get("value", "")): c.get("label", c.get("value", ""))
+                            for c in f["choices"]
+                        }
+                        raw_value = [label_map.get(str(v), v) for v in raw_value]
                 visible_fields.append(
                     {
                         "label": f["label"],
                         "key": lookup_key,
-                        "value": form_data[lookup_key],
+                        "value": raw_value,
                     }
                 )
 

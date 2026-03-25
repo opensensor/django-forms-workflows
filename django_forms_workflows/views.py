@@ -1300,6 +1300,110 @@ def approve_submission(request, task_id):
             "sub_workflow_instance": task.sub_workflow_instance,
             # send-back targets (empty list → panel hidden in template)
             "send_back_stages": send_back_stages,
+            # reassign option
+            "allow_reassign": bool(
+                task.workflow_stage and task.workflow_stage.allow_reassign
+            ),
+        },
+    )
+
+
+@login_required
+def reassign_task(request, task_id):
+    """Reassign an approval task to another member of the stage's approval groups."""
+    task = get_object_or_404(ApprovalTask, id=task_id)
+
+    if task.status != "pending":
+        messages.warning(request, "This task has already been processed.")
+        return redirect("forms_workflows:approval_inbox")
+
+    stage = task.workflow_stage
+    if not stage or not stage.allow_reassign:
+        messages.error(request, "Reassignment is not enabled for this approval step.")
+        return redirect("forms_workflows:approval_inbox")
+
+    # Permission: current assignee, any member of the stage's approval groups,
+    # or superuser can reassign.
+    stage_groups = list(stage.approval_groups.all())
+    stage_group_ids = {g.pk for g in stage_groups}
+    can_reassign = (
+        task.assigned_to == request.user
+        or request.user.groups.filter(pk__in=stage_group_ids).exists()
+        or request.user.is_superuser
+    )
+    if not can_reassign:
+        messages.error(request, "You don't have permission to reassign this task.")
+        return redirect("forms_workflows:approval_inbox")
+
+    if request.method == "POST":
+        from django.contrib.auth import get_user_model
+
+        user_model = get_user_model()
+        new_assignee_id = request.POST.get("new_assignee_id", "").strip()
+        if not new_assignee_id:
+            messages.error(request, "Please select a user to reassign to.")
+            return redirect("forms_workflows:reassign_task", task_id=task_id)
+
+        try:
+            new_assignee = user_model.objects.get(pk=new_assignee_id)
+        except user_model.DoesNotExist:
+            messages.error(request, "Selected user not found.")
+            return redirect("forms_workflows:reassign_task", task_id=task_id)
+
+        # Validate the new assignee is in one of the stage's approval groups
+        if not new_assignee.groups.filter(pk__in=stage_group_ids).exists():
+            messages.error(
+                request,
+                "The selected user is not a member of any approval group for this stage.",
+            )
+            return redirect("forms_workflows:reassign_task", task_id=task_id)
+
+        old_assignee = task.assigned_to
+        task.assigned_to = new_assignee
+        task.save(update_fields=["assigned_to"])
+
+        AuditLog.objects.create(
+            action="reassign",
+            object_type="ApprovalTask",
+            object_id=task.id,
+            user=request.user,
+            user_ip=get_client_ip(request),
+            changes={
+                "old_assignee": old_assignee.username if old_assignee else None,
+                "new_assignee": new_assignee.username,
+                "submission_id": task.submission_id,
+            },
+        )
+
+        # Notify the new assignee
+        from .workflow_engine import _notify_task_request
+
+        _notify_task_request(task)
+
+        messages.success(
+            request,
+            f"Task reassigned to {new_assignee.get_full_name() or new_assignee.username}.",
+        )
+        return redirect("forms_workflows:approval_inbox")
+
+    # GET — show reassignment form with eligible users
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    eligible_users = (
+        user_model.objects.filter(groups__pk__in=stage_group_ids, is_active=True)
+        .distinct()
+        .order_by("last_name", "first_name", "username")
+    )
+
+    return render(
+        request,
+        "django_forms_workflows/reassign_task.html",
+        {
+            "task": task,
+            "submission": task.submission,
+            "stage": stage,
+            "eligible_users": eligible_users,
         },
     )
 

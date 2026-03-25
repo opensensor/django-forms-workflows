@@ -248,41 +248,234 @@ def _reject_submission(submission: FormSubmission, reason: str = "") -> None:
 
 
 def _resolve_dynamic_assignee(submission: FormSubmission, stage: WorkflowStage):
-    """Return the User whose email matches stage.assignee_email_field, or None.
+    """Return the User matching the form-field value on this stage, or None.
 
-    Looks up the email address stored in the submission's form_data under the
-    key given by ``stage.assignee_email_field``, then tries to find a unique
-    matching User.  Returns None if the field is not set, the value is empty /
-    not a valid email, or no unique user is found (logs a warning in that case).
+    Reads the value stored in ``submission.form_data[stage.assignee_form_field]``
+    and resolves it to a Django User according to ``stage.assignee_lookup_type``:
+
+    * ``email``     – ``User.objects.get(email__iexact=value)``
+    * ``username``  – ``User.objects.get(username__iexact=value)``
+    * ``full_name`` – splits on whitespace, matches first_name + last_name
+    * ``ldap``      – searches Active Directory by display name, auto-provisions
+                      the Django User if not yet in the local database
+
+    Returns ``None`` (falls back to group assignment) when the field is empty,
+    the value cannot be resolved, or no unique match is found.
     """
-    if not stage.assignee_email_field:
+    if not stage.assignee_form_field:
         return None
     form_data = submission.form_data or {}
-    email_value = str(form_data.get(stage.assignee_email_field, "")).strip()
-    if not email_value or "@" not in email_value:
+    field_value = str(form_data.get(stage.assignee_form_field, "")).strip()
+    if not field_value:
         return None
+
+    lookup_type = stage.assignee_lookup_type or "email"
     from django.contrib.auth import get_user_model
 
     user_model = get_user_model()
+
+    if lookup_type == "email":
+        return _lookup_by_email(user_model, field_value, stage, submission)
+    elif lookup_type == "username":
+        return _lookup_by_username(user_model, field_value, stage, submission)
+    elif lookup_type == "full_name":
+        return _lookup_by_full_name(user_model, field_value, stage, submission)
+    elif lookup_type == "ldap":
+        return _lookup_by_ldap(user_model, field_value, stage, submission)
+    else:
+        logger.warning(
+            "Unknown assignee_lookup_type '%s' on stage '%s'; "
+            "falling back to group assignment.",
+            lookup_type,
+            stage.name,
+        )
+        return None
+
+
+def _lookup_by_email(user_model, value, stage, submission):
+    """Resolve assignee by email address."""
+    if "@" not in value:
+        return None
     try:
-        return user_model.objects.get(email__iexact=email_value)
+        return user_model.objects.get(email__iexact=value)
     except user_model.DoesNotExist:
         logger.info(
-            "Dynamic assignee lookup: no user with email '%s' (stage '%s', submission %s); "
-            "falling back to group assignment.",
-            email_value,
+            "Dynamic assignee lookup (email): no user with email '%s' "
+            "(stage '%s', submission %s); falling back to group assignment.",
+            value,
             stage.name,
             submission.id,
         )
     except user_model.MultipleObjectsReturned:
         logger.warning(
-            "Dynamic assignee lookup: multiple users with email '%s' (stage '%s', submission %s); "
-            "falling back to group assignment.",
-            email_value,
+            "Dynamic assignee lookup (email): multiple users with email '%s' "
+            "(stage '%s', submission %s); falling back to group assignment.",
+            value,
             stage.name,
             submission.id,
         )
     return None
+
+
+def _lookup_by_username(user_model, value, stage, submission):
+    """Resolve assignee by username (sAMAccountName)."""
+    try:
+        return user_model.objects.get(username__iexact=value)
+    except user_model.DoesNotExist:
+        logger.info(
+            "Dynamic assignee lookup (username): no user '%s' "
+            "(stage '%s', submission %s); falling back to group assignment.",
+            value,
+            stage.name,
+            submission.id,
+        )
+    except user_model.MultipleObjectsReturned:
+        logger.warning(
+            "Dynamic assignee lookup (username): multiple users '%s' "
+            "(stage '%s', submission %s); falling back to group assignment.",
+            value,
+            stage.name,
+            submission.id,
+        )
+    return None
+
+
+def _lookup_by_full_name(user_model, value, stage, submission):
+    """Resolve assignee by full name (e.g. 'Jane Smith')."""
+    parts = value.split()
+    if len(parts) < 2:
+        # Try single-word match on last_name
+        try:
+            return user_model.objects.get(last_name__iexact=value)
+        except (user_model.DoesNotExist, user_model.MultipleObjectsReturned):
+            logger.info(
+                "Dynamic assignee lookup (full_name): cannot resolve single name '%s' "
+                "(stage '%s', submission %s); falling back to group assignment.",
+                value,
+                stage.name,
+                submission.id,
+            )
+            return None
+
+    first_name = parts[0]
+    last_name = " ".join(parts[1:])
+    try:
+        return user_model.objects.get(
+            first_name__iexact=first_name, last_name__iexact=last_name
+        )
+    except user_model.DoesNotExist:
+        logger.info(
+            "Dynamic assignee lookup (full_name): no user matching '%s %s' "
+            "(stage '%s', submission %s); falling back to group assignment.",
+            first_name,
+            last_name,
+            stage.name,
+            submission.id,
+        )
+    except user_model.MultipleObjectsReturned:
+        logger.warning(
+            "Dynamic assignee lookup (full_name): multiple users matching '%s %s' "
+            "(stage '%s', submission %s); falling back to group assignment.",
+            first_name,
+            last_name,
+            stage.name,
+            submission.id,
+        )
+    return None
+
+
+def _lookup_by_ldap(user_model, value, stage, submission):
+    """Resolve assignee via LDAP search by display name, with JIT user provisioning.
+
+    Searches Active Directory for users matching the display name.  If exactly
+    one match is found and the user does not yet exist in Django, the User
+    record is auto-created so they can later authenticate via SSO seamlessly.
+    """
+    try:
+        from .ldap_backend import search_ldap_users
+    except ImportError:
+        logger.warning(
+            "Dynamic assignee lookup (ldap): ldap_backend not available; "
+            "falling back to group assignment."
+        )
+        return None
+
+    results = search_ldap_users(value, max_results=5)
+    if not results:
+        logger.info(
+            "Dynamic assignee lookup (ldap): no LDAP results for '%s' "
+            "(stage '%s', submission %s); falling back to group assignment.",
+            value,
+            stage.name,
+            submission.id,
+        )
+        return None
+
+    # Try exact display-name match first, then fall back to first result
+    match = None
+    for r in results:
+        full = f"{r.get('first_name', '')} {r.get('last_name', '')}".strip()
+        if (
+            full.lower() == value.lower()
+            or r.get("username", "").lower() == value.lower()
+        ):
+            match = r
+            break
+    if match is None:
+        # Only use the single result if exactly one came back
+        if len(results) == 1:
+            match = results[0]
+        else:
+            logger.warning(
+                "Dynamic assignee lookup (ldap): %d results for '%s' but no exact match "
+                "(stage '%s', submission %s); falling back to group assignment.",
+                len(results),
+                value,
+                stage.name,
+                submission.id,
+            )
+            return None
+
+    username = match.get("username", "").strip()
+    if not username:
+        return None
+
+    # Get or JIT-create the Django User
+    try:
+        return user_model.objects.get(username__iexact=username)
+    except user_model.DoesNotExist:
+        # Auto-provision the user so the approval task can be assigned.
+        # When they later SSO in, the social-auth pipeline's
+        # link_to_existing_user step will match them by username.
+        user = user_model.objects.create(
+            username=username,
+            email=match.get("email", ""),
+            first_name=match.get("first_name", ""),
+            last_name=match.get("last_name", ""),
+            is_active=True,
+        )
+        # Create a profile if the model exists
+        try:
+            from .models import UserProfile
+
+            UserProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    "department": match.get("department", ""),
+                    "title": match.get("title", ""),
+                },
+            )
+        except Exception:
+            pass  # Profile creation is best-effort
+        logger.info(
+            "Dynamic assignee lookup (ldap): auto-provisioned user '%s' for "
+            "assignee '%s' (stage '%s', submission %s).",
+            username,
+            value,
+            stage.name,
+            submission.id,
+        )
+        return user
 
 
 def _notify_stage_form_field_recipients(
@@ -329,16 +522,31 @@ def _create_stage_tasks(
     is True, only the manager task is created; group tasks are created later when
     ``handle_approval`` processes that manager task.
 
-    Dynamic assignment: if ``stage.assignee_email_field`` is set, the engine
-    resolves the assignee by looking up the email stored in that form field and
-    creates a single ``assigned_to`` task instead of group tasks.  Falls back to
-    the normal group task path when the user cannot be resolved.
+    Dynamic assignment: if ``stage.assignee_form_field`` is set, the engine
+    resolves the assignee using the configured ``assignee_lookup_type`` (email,
+    username, full_name, or ldap) and creates a single ``assigned_to`` task
+    instead of group tasks.  Falls back to the normal group task path when the
+    user cannot be resolved.
     """
     stage_num = stage.order
     groups = list(stage.approval_groups.all().order_by("stageapprovalgroup__position"))
 
-    # --- Dynamic assignment (email field → User lookup) ----------------------
+    # --- Dynamic assignment (form field → User lookup) ------------------------
     dynamic_assignee = _resolve_dynamic_assignee(submission, stage)
+    if dynamic_assignee is not None:
+        # Optionally validate the resolved user belongs to a stage approval group
+        if stage.validate_assignee_group and groups:
+            group_ids = {g.pk for g in groups}
+            if not dynamic_assignee.groups.filter(pk__in=group_ids).exists():
+                logger.warning(
+                    "Dynamic assignee '%s' is not a member of any approval group "
+                    "for stage '%s' (submission %s); falling back to group assignment.",
+                    dynamic_assignee.username,
+                    stage.name,
+                    submission.id,
+                )
+                dynamic_assignee = None  # fall through to normal group assignment
+
     if dynamic_assignee is not None:
         task = ApprovalTask.objects.create(
             submission=submission,

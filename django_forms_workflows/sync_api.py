@@ -245,7 +245,11 @@ def _serialize_workflow_stage(stage):
         "requires_manager_approval": stage.requires_manager_approval,
         "approve_label": stage.approve_label,
         "trigger_conditions": stage.trigger_conditions,
-        "assignee_email_field": stage.assignee_email_field,
+        "assignee_form_field": stage.assignee_form_field,
+        "assignee_lookup_type": stage.assignee_lookup_type,
+        "validate_assignee_group": stage.validate_assignee_group,
+        "allow_reassign": stage.allow_reassign,
+        "allow_send_back": stage.allow_send_back,
         "form_field_notifications": [
             {
                 "notification_type": n.notification_type,
@@ -603,6 +607,16 @@ def import_form(form_data, conflict="update", category_cache=None):
 
         for idx, stage_data in enumerate(stages_data):
             stage_data = dict(stage_data)
+            # Backwards compat: old exports used assignee_email_field
+            if (
+                "assignee_email_field" in stage_data
+                and "assignee_form_field" not in stage_data
+            ):
+                stage_data["assignee_form_field"] = stage_data.pop(
+                    "assignee_email_field"
+                )
+            else:
+                stage_data.pop("assignee_email_field", None)
             stage_group_data = stage_data.pop("approval_groups", [])
             stage_notif_data = stage_data.pop("form_field_notifications", [])
             order = stage_data.get("order", idx + 1)

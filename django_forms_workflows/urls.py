@@ -61,6 +61,11 @@ urlpatterns = [
         views.approve_submission,
         name="approve_submission",
     ),
+    path(
+        "approvals/<int:task_id>/reassign/",
+        views.reassign_task,
+        name="reassign_task",
+    ),
     # Server-side DataTables AJAX endpoints
     path("my-submissions/data/", views.my_submissions_ajax, name="my_submissions_ajax"),
     path("approvals/data/", views.approval_inbox_ajax, name="approval_inbox_ajax"),

@@ -1,0 +1,83 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Reassign Task - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <h1 class="mb-4"><i class="bi bi-person-lines-fill"></i> Reassign Approval Task</h1>
+
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Task Details</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr>
+                        <th style="width:200px;">Form</th>
+                        <td>{{ submission.form_definition.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Submission</th>
+                        <td>#{{ submission.id }} — {{ submission.submitter.get_full_name|default:submission.submitter.username }}</td>
+                    </tr>
+                    <tr>
+                        <th>Approval Stage</th>
+                        <td>{{ stage.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Currently Assigned To</th>
+                        <td>
+                            {% if task.assigned_to %}
+                                {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
+                            {% else %}
+                                <span class="text-muted">Unassigned</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-info bg-opacity-10 border-info">
+                <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> Select New Assignee</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Choose a member of the approval group(s) for this stage.
+                    The selected person will receive a notification and become
+                    responsible for reviewing this submission.
+                </p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="new_assignee_id" class="form-label fw-semibold">
+                            Reassign to <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="new_assignee_id" name="new_assignee_id" required>
+                            <option value="">— select a person —</option>
+                            {% for user in eligible_users %}
+                            <option value="{{ user.pk }}"
+                                {% if user.pk == task.assigned_to_id %}selected{% endif %}>
+                                {{ user.get_full_name|default:user.username }}
+                                ({{ user.username }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-grid gap-2 d-md-block">
+                        <button type="submit" class="btn btn-info">
+                            <i class="bi bi-person-check"></i> Reassign Task
+                        </button>
+                        <a href="{% url 'forms_workflows:approve_submission' task.id %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

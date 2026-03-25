@@ -75,7 +75,11 @@ def _build_summary(forms_data):
                     f"Stages removed: {', '.join(n for _, n in removed_stages)}"
                 )
             stage_field_keys = [
-                "assignee_email_field",
+                "assignee_form_field",
+                "assignee_lookup_type",
+                "validate_assignee_group",
+                "allow_reassign",
+                "allow_send_back",
                 "approve_label",
                 "approval_logic",
             ]

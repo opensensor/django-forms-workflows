@@ -798,15 +798,36 @@ class WorkflowStage(models.Model):
             '"value": "..."}]}'
         ),
     )
-    assignee_email_field = models.CharField(
+    ASSIGNEE_LOOKUP_TYPES = [
+        ("email", "Email address"),
+        ("username", "Username (sAMAccountName)"),
+        ("full_name", "Full name (First Last)"),
+        ("ldap", "LDAP lookup by display name"),
+    ]
+
+    assignee_form_field = models.CharField(
         max_length=200,
         blank=True,
         default="",
         help_text=(
-            "Form field slug whose value is an email address. When set, the workflow "
-            "engine looks up the system user with that email and assigns this stage's "
-            "task directly to them (bypassing the approval groups). Falls back to "
-            "group assignment if the field is empty or no matching user is found."
+            "Form field slug whose submitted value identifies the assignee. "
+            "When set, the workflow engine resolves the assignee using the "
+            "lookup type below and assigns this stage's task directly to them "
+            "(bypassing the approval groups). Falls back to group assignment "
+            "if the field is empty or no matching user is found."
+        ),
+    )
+    assignee_lookup_type = models.CharField(
+        max_length=20,
+        choices=ASSIGNEE_LOOKUP_TYPES,
+        default="email",
+        help_text=(
+            "How to resolve the form field value to a system user. "
+            "'Email' looks up by email address. "
+            "'Username' looks up by sAMAccountName/username. "
+            "'Full name' matches against first + last name. "
+            "'LDAP lookup' searches Active Directory by display name and "
+            "auto-provisions the Django user if not yet in the system."
         ),
     )
     allow_send_back = models.BooleanField(
@@ -815,6 +836,23 @@ class WorkflowStage(models.Model):
             "Allow approvers at a later stage to return the submission to this stage "
             "for correction, without terminating the workflow. When enabled, this stage "
             "will appear as a 'Send Back' target option for all subsequent stages."
+        ),
+    )
+    validate_assignee_group = models.BooleanField(
+        default=True,
+        help_text=(
+            "When a dynamic assignee is resolved from a form field, require "
+            "that the user belongs to at least one of this stage's approval "
+            "groups. If unchecked, any resolved user can be assigned regardless "
+            "of group membership."
+        ),
+    )
+    allow_reassign = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow the assigned approver (or any member of the stage's approval "
+            "groups) to reassign this task to another member of the same "
+            "approval groups."
         ),
     )
 

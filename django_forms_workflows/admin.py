@@ -325,7 +325,9 @@ class WorkflowStageInline(nested_admin.NestedStackedInline):
         "approval_logic",
         "approve_label",
         "requires_manager_approval",
-        "assignee_email_field",
+        ("assignee_form_field", "assignee_lookup_type"),
+        "validate_assignee_group",
+        ("allow_reassign", "allow_send_back"),
         "trigger_conditions",
     )
 
@@ -626,6 +628,11 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                                 requires_manager_approval=stage.requires_manager_approval,
                                 approve_label=stage.approve_label,
                                 trigger_conditions=stage.trigger_conditions,
+                                assignee_form_field=stage.assignee_form_field,
+                                assignee_lookup_type=stage.assignee_lookup_type,
+                                validate_assignee_group=stage.validate_assignee_group,
+                                allow_reassign=stage.allow_reassign,
+                                allow_send_back=stage.allow_send_back,
                             )
                             for sag in StageApprovalGroup.objects.filter(
                                 stage=stage
@@ -1191,10 +1198,18 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
                 "classes": ("collapse",),
                 "description": (
                     "When set, the workflow engine resolves the task assignee by looking up "
-                    "the email address stored in this form field. Falls back to the configured "
-                    "approval groups if the field is empty or no matching user is found."
+                    "the value stored in the specified form field. The lookup type controls "
+                    "how the value is matched to a system user (email, username, full name, "
+                    "or LDAP search). Falls back to the configured approval groups if the "
+                    "field is empty or no matching user is found."
                 ),
-                "fields": ("assignee_email_field",),
+                "fields": (
+                    "assignee_form_field",
+                    "assignee_lookup_type",
+                    "validate_assignee_group",
+                    "allow_reassign",
+                    "allow_send_back",
+                ),
             },
         ),
         (

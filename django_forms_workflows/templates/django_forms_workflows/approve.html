@@ -399,6 +399,14 @@
         </div>
         {% endif %}
 
+        {% if allow_reassign %}
+        <div class="mt-3">
+            <a href="{% url 'forms_workflows:reassign_task' task.id %}" class="btn btn-outline-info">
+                <i class="bi bi-person-lines-fill"></i> Reassign to Another Approver
+            </a>
+        </div>
+        {% endif %}
+
         {% else %}
         <!-- Standard Approval (No Step Fields) -->
         <!-- Submission Data -->
@@ -619,6 +627,14 @@
                     </form>
                 </div>
             </div>
+        </div>
+        {% endif %}
+
+        {% if allow_reassign %}
+        <div class="mt-3">
+            <a href="{% url 'forms_workflows:reassign_task' task.id %}" class="btn btn-outline-info">
+                <i class="bi bi-person-lines-fill"></i> Reassign to Another Approver
+            </a>
         </div>
         {% endif %}
 

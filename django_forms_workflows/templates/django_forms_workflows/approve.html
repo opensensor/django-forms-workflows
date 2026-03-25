@@ -255,7 +255,10 @@
                 </div>
                 {% endif %}
                 {% if section.comments %}
-                <p class="mb-2 small fst-italic text-secondary">&#8220;{{ section.comments }}&#8221;</p>
+                <p class="mb-2 small fst-italic text-secondary">
+                    <span class="badge bg-warning text-dark me-1" title="This comment is visible to the submitter."><i class="bi bi-eye-fill"></i> Public</span>
+                    &#8220;{{ section.comments }}&#8221;
+                </p>
                 {% endif %}
                 {% if section.fields %}
                 <table class="table table-bordered table-sm mb-0">
@@ -333,8 +336,18 @@
                     <!-- Decision Section inline -->
                     <h6 class="mb-3"><i class="bi bi-clipboard-check"></i> Your Decision</h6>
                     <div class="mb-3">
-                        <label for="comments" class="form-label">Comments (Optional)</label>
-                        <textarea class="form-control" id="comments" name="comments" rows="2" placeholder="Add any comments about your decision..."></textarea>
+                        <label for="comments" class="form-label">
+                            Decision Comment
+                            <span class="badge bg-warning text-dark ms-1" title="This comment is visible to the submitter and all parties on the submission record.">
+                                <i class="bi bi-eye-fill"></i> Public
+                            </span>
+                        </label>
+                        <textarea class="form-control" id="comments" name="comments" rows="2" placeholder="Optional — visible to the submitter and all parties..."></textarea>
+                        <div class="form-text text-muted">
+                            <i class="bi bi-info-circle"></i>
+                            This comment is <strong>visible to the submitter</strong> and appears on the public submission record.
+                            For internal notes, add a private field to this approval step's configuration instead.
+                        </div>
                     </div>
                     <div class="d-grid gap-2 d-md-block">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
@@ -494,7 +507,10 @@
                             </div>
                             {% endif %}
                             {% if section.comments %}
-                            <p class="mb-0 mt-1 small fst-italic text-secondary">&#8220;{{ section.comments }}&#8221;</p>
+                            <p class="mb-0 mt-1 small fst-italic text-secondary">
+                                <span class="badge bg-warning text-dark me-1" title="This comment is visible to the submitter."><i class="bi bi-eye-fill"></i> Public</span>
+                                &#8220;{{ section.comments }}&#8221;
+                            </p>
                             {% endif %}
                         </div>
                     </div>
@@ -564,8 +580,18 @@
                 <form method="post" data-loading-message="Processing your decision...">
                     {% csrf_token %}
                     <div class="mb-3">
-                        <label for="comments" class="form-label">Comments (Optional)</label>
-                        <textarea class="form-control" id="comments" name="comments" rows="3" placeholder="Add any comments about your decision..."></textarea>
+                        <label for="comments" class="form-label">
+                            Decision Comment
+                            <span class="badge bg-warning text-dark ms-1" title="This comment is visible to the submitter and all parties on the submission record.">
+                                <i class="bi bi-eye-fill"></i> Public
+                            </span>
+                        </label>
+                        <textarea class="form-control" id="comments" name="comments" rows="3" placeholder="Optional — visible to the submitter and all parties..."></textarea>
+                        <div class="form-text text-muted">
+                            <i class="bi bi-info-circle"></i>
+                            This comment is <strong>visible to the submitter</strong> and appears on the public submission record.
+                            For internal notes, add a private field to this approval step's configuration instead.
+                        </div>
                     </div>
                     <div class="d-grid gap-2 d-md-block">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">

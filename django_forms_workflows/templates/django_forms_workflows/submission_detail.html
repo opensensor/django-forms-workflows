@@ -186,7 +186,10 @@
                             </div>
                             {% endif %}
                             {% if section.comments %}
-                            <p class="mb-0 mt-1 small fst-italic text-secondary">&#8220;{{ section.comments }}&#8221;</p>
+                            <p class="mb-0 mt-1 small fst-italic text-secondary">
+                                <span class="badge bg-warning text-dark me-1" title="This comment is visible to the submitter."><i class="bi bi-eye-fill"></i> Public</span>
+                                &#8220;{{ section.comments }}&#8221;
+                            </p>
                             {% endif %}
                         </div>
                     </div>
@@ -320,7 +323,7 @@
                                 <th>Status</th>
                                 <th>Completed By</th>
                                 <th>Completed At</th>
-                                <th>Comments</th>
+                                <th>Decision Comment <span class="badge bg-warning text-dark" title="Comments are visible to the submitter."><i class="bi bi-eye-fill"></i> Public</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -388,7 +391,7 @@
                                 <th>Status</th>
                                 <th>Completed By</th>
                                 <th>Completed At</th>
-                                <th>Comments</th>
+                                <th>Decision Comment <span class="badge bg-warning text-dark" title="Comments are visible to the submitter."><i class="bi bi-eye-fill"></i> Public</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -441,7 +444,7 @@
                                 <th>Status</th>
                                 <th>Completed By</th>
                                 <th>Completed At</th>
-                                <th>Comments</th>
+                                <th>Decision Comment <span class="badge bg-warning text-dark" title="Comments are visible to the submitter."><i class="bi bi-eye-fill"></i> Public</span></th>
                             </tr>
                         </thead>
                         <tbody>

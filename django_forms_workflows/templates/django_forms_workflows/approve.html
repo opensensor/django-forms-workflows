@@ -234,33 +234,84 @@
         {% endif %}
 
         <!-- Completed Approval Steps (show previous approvals) -->
-        {% for step in approval_steps %}
-            {% if step.is_completed %}
-            <div class="card mb-4 border-success">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="bi bi-check-circle"></i> Step {{ step.number }}: {{ step.group_name }}
-                        <span class="badge bg-light text-success float-end">Completed</span>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <table class="table table-bordered table-sm mb-0">
-                        {% for field_info in step.fields %}
-                            {% with field_name=field_info.field_name %}
-                                {% if field_name in form_data %}
-                                <tr>
-                                    <th style="width: 30%;">{{ field_info.field_label }}</th>
-                                    <td>{{ form_data|get_item:field_name }}</td>
-                                </tr>
-                                {% endif %}
-                            {% endwith %}
-                        {% empty %}
-                            <tr><td colspan="2" class="text-muted">No fields recorded for this step.</td></tr>
-                        {% endfor %}
-                    </table>
-                </div>
+        {% if approval_step_sections %}
+        {% for section in approval_step_sections %}
+        <div class="card mb-4 {% if section.status == 'approved' %}border-success{% elif section.status == 'rejected' %}border-danger{% endif %}">
+            <div class="card-header {% if section.status == 'approved' %}bg-success{% elif section.status == 'rejected' %}bg-danger{% else %}bg-secondary{% endif %} text-white">
+                <h5 class="mb-0">
+                    <i class="bi {% if section.status == 'approved' %}bi-check-circle{% elif section.status == 'rejected' %}bi-x-circle{% else %}bi-hourglass{% endif %}"></i>
+                    {{ section.step_name }}
+                    {% if section.status == 'approved' %}
+                    <span class="badge bg-light text-success float-end">Approved</span>
+                    {% elif section.status == 'rejected' %}
+                    <span class="badge bg-light text-danger float-end">Rejected</span>
+                    {% endif %}
+                </h5>
             </div>
-            {% endif %}
+            <div class="card-body">
+                {% if section.completed_by %}
+                <div class="text-muted small mb-2">
+                    by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
+                </div>
+                {% endif %}
+                {% if section.comments %}
+                <p class="mb-2 small fst-italic text-secondary">&#8220;{{ section.comments }}&#8221;</p>
+                {% endif %}
+                {% if section.fields %}
+                <table class="table table-bordered table-sm mb-0">
+                    {% for field in section.fields %}
+                    <tr>
+                        <th style="width: 30%;">{{ field.label }}</th>
+                        <td>
+                            {% if field.value.url %}
+                                {% if field.value.content_type and 'image' in field.value.content_type %}
+                                    <div class="mb-2">
+                                        <img src="{{ field.value.url }}" alt="{{ field.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
+                                    </div>
+                                {% endif %}
+                                <a href="{{ field.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-download"></i> {{ field.value.filename }}
+                                </a>
+                                <small class="text-muted ms-2">
+                                    {% if field.value.size %}({{ field.value.size|filesizeformat }}){% endif %}
+                                </small>
+                            {% elif field.value.path %}
+                                <span class="text-muted">{{ field.value.filename }}</span>
+                                <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                            {% elif field.value.0.filename %}
+                                <ul class="list-unstyled mb-0">
+                                {% for f in field.value %}
+                                    <li class="mb-1">
+                                        {% if f.url %}
+                                            {% if f.content_type and 'image' in f.content_type %}
+                                                <div class="mb-1">
+                                                    <img src="{{ f.url }}" alt="{{ f.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
+                                                </div>
+                                            {% endif %}
+                                            <a href="{{ f.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-download"></i> {{ f.filename }}
+                                            </a>
+                                            <small class="text-muted ms-2">{% if f.size %}({{ f.size|filesizeformat }}){% endif %}</small>
+                                        {% else %}
+                                            <span class="text-muted">{{ f.filename }}</span>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                            {% else %}
+                                {{ field.value }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">No fields recorded for this step.</p>
+                {% endif %}
+            </div>
+        </div>
         {% endfor %}
+        {% endif %}
 
         <!-- Approval Form with Step Fields -->
         <form method="post" enctype="multipart/form-data" data-loading-message="Processing your decision...">
@@ -348,22 +399,6 @@
         </div>
         {% endif %}
 
-        <!-- Future Steps Preview (greyed out) -->
-        {% for step in approval_steps %}
-            {% if step.number > current_step_number %}
-            <div class="card mb-4 border-secondary opacity-50">
-                <div class="card-header bg-light text-muted">
-                    <h5 class="mb-0"><i class="bi bi-hourglass"></i> Step {{ step.number }}: {{ step.group_name }}
-                        <span class="badge bg-secondary float-end">Pending</span>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted mb-0"><em>This step will be available after all previous steps are approved.</em></p>
-                </div>
-            </div>
-            {% endif %}
-        {% endfor %}
-
         {% else %}
         <!-- Standard Approval (No Step Fields) -->
         <!-- Submission Data -->
@@ -422,6 +457,92 @@
                     </li>
                 {% endfor %}
                 </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Prior Approval Step Responses (standard approval path) -->
+        {% if approval_step_sections %}
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Prior Approval Step Responses</h5>
+            </div>
+            <div class="card-body p-0">
+                {% for section in approval_step_sections %}
+                <div {% if not forloop.last %}class="border-bottom"{% endif %}>
+                    <div class="px-3 pt-3 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-2">
+                        <div>
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <h6 class="mb-0 fw-bold">{{ section.step_name }}</h6>
+                                {% if section.status == "approved" %}
+                                <span class="badge bg-success">&#10003; Approved</span>
+                                {% elif section.status == "rejected" %}
+                                <span class="badge bg-danger">&#10007; Rejected</span>
+                                {% endif %}
+                            </div>
+                            {% if section.completed_by %}
+                            <div class="text-muted small">
+                                by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
+                            </div>
+                            {% endif %}
+                            {% if section.comments %}
+                            <p class="mb-0 mt-1 small fst-italic text-secondary">&#8220;{{ section.comments }}&#8221;</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if section.fields %}
+                    <div class="px-3 pb-3">
+                        <table class="table table-bordered table-sm mb-0">
+                            {% for field in section.fields %}
+                            <tr>
+                                <th style="width: 30%;">{{ field.label }}</th>
+                                <td>
+                                    {% if field.value.url %}
+                                        {% if field.value.content_type and 'image' in field.value.content_type %}
+                                            <div class="mb-2">
+                                                <img src="{{ field.value.url }}" alt="{{ field.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
+                                            </div>
+                                        {% endif %}
+                                        <a href="{{ field.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-download"></i> {{ field.value.filename }}
+                                        </a>
+                                        <small class="text-muted ms-2">
+                                            {% if field.value.size %}({{ field.value.size|filesizeformat }}){% endif %}
+                                        </small>
+                                    {% elif field.value.path %}
+                                        <span class="text-muted">{{ field.value.filename }}</span>
+                                        <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                                    {% elif field.value.0.filename %}
+                                        <ul class="list-unstyled mb-0">
+                                        {% for f in field.value %}
+                                            <li class="mb-1">
+                                                {% if f.url %}
+                                                    {% if f.content_type and 'image' in f.content_type %}
+                                                        <div class="mb-1">
+                                                            <img src="{{ f.url }}" alt="{{ f.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
+                                                        </div>
+                                                    {% endif %}
+                                                    <a href="{{ f.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-download"></i> {{ f.filename }}
+                                                    </a>
+                                                    <small class="text-muted ms-2">{% if f.size %}({{ f.size|filesizeformat }}){% endif %}</small>
+                                                {% else %}
+                                                    <span class="text-muted">{{ f.filename }}</span>
+                                                {% endif %}
+                                            </li>
+                                        {% endfor %}
+                                        </ul>
+                                    {% else %}
+                                        {{ field.value }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
             </div>
         </div>
         {% endif %}

@@ -1268,6 +1268,10 @@ def approve_submission(request, task_id):
                 ).order_by("order")
             )
 
+    # Build completed approval step sections so stage 2+ approvers can see
+    # prior approval step field data (with file URLs resolved).
+    approval_step_sections = _build_approval_step_sections(submission)
+
     return render(
         request,
         "django_forms_workflows/approve.html",
@@ -1288,6 +1292,8 @@ def approve_submission(request, task_id):
             "form_data": form_data,
             "form_data_ordered": form_data_ordered,
             "resolved_attachments": resolved_attachments,
+            # prior approval step responses
+            "approval_step_sections": approval_step_sections,
             # custom button label
             "approve_label": approve_label,
             # sub-workflow context (None for regular tasks)

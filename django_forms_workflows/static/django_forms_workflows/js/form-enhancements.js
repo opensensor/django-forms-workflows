@@ -115,6 +115,8 @@ class FormEnhancements {
         } else if (field.type === 'radio') {
             const checked = this.form.querySelector(`input[name="${field.name}"]:checked`);
             return checked ? checked.value : null;
+        } else if (field.type === 'file') {
+            return field.files && field.files.length > 0 ? field.files : null;
         } else if (field.multiple) {
             const values = Array.from(field.selectedOptions).map(opt => opt.value);
             return values.length > 0 ? values : null;
@@ -444,6 +446,9 @@ class FormEnhancements {
     validateRule(value, rule) {
         switch (rule.type) {
             case 'required':
+                if (value instanceof FileList) {
+                    return value.length > 0;
+                }
                 return value !== null && value !== undefined && value !== '' &&
                        (!Array.isArray(value) || value.length > 0);
             case 'email':
@@ -465,6 +470,30 @@ class FormEnhancements {
                 return parseFloat(value) <= parseFloat(rule.value);
             case 'pattern':
                 return new RegExp(rule.value).test(value);
+            case 'file_type': {
+                // rule.value is a comma-separated list of allowed extensions (e.g. "pdf,doc,docx")
+                if (!value || !(value instanceof FileList) || value.length === 0) return true;
+                const allowed = rule.value.split(',').map(ext => ext.trim().toLowerCase().replace(/^\./, ''));
+                for (let i = 0; i < value.length; i++) {
+                    const fileName = value[i].name || '';
+                    const ext = fileName.split('.').pop().toLowerCase();
+                    if (!allowed.includes(ext)) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            case 'file_size': {
+                // rule.value is maximum size in MB
+                if (!value || !(value instanceof FileList) || value.length === 0) return true;
+                const maxBytes = rule.value * 1024 * 1024;
+                for (let i = 0; i < value.length; i++) {
+                    if (value[i].size > maxBytes) {
+                        return false;
+                    }
+                }
+                return true;
+            }
             case 'custom':
                 return rule.validator(value);
             default:

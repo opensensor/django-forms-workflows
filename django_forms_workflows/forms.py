@@ -13,7 +13,9 @@ from datetime import date, datetime
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML, Column, Div, Field, Layout, Row, Submit
 from django import forms
-from django.core.validators import RegexValidator
+from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator, RegexValidator
+from django.utils.deconstruct import deconstructible
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,52 @@ def _evaluate_formula(formula: str, data: dict) -> str:
         lambda m: str(data.get(m.group(1), "")),
         formula,
     )
+
+
+# ---------------------------------------------------------------------------
+# File upload validators
+# ---------------------------------------------------------------------------
+
+
+@deconstructible
+class MaxFileSizeValidator:
+    """Validate that a file does not exceed a given size in megabytes."""
+
+    message = "File size must not exceed %(max_size)s MB."
+    code = "file_too_large"
+
+    def __init__(self, max_size_mb):
+        self.max_size_mb = max_size_mb
+
+    def __call__(self, value):
+        if hasattr(value, "size") and value.size > self.max_size_mb * 1024 * 1024:
+            raise ValidationError(
+                self.message,
+                code=self.code,
+                params={"max_size": self.max_size_mb},
+            )
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, MaxFileSizeValidator)
+            and self.max_size_mb == other.max_size_mb
+        )
+
+
+def _build_file_validators(field_def):
+    """Return a list of validators for file fields based on field definition."""
+    validators = []
+    if field_def.allowed_extensions:
+        exts = [
+            e.strip().lower()
+            for e in field_def.allowed_extensions.split(",")
+            if e.strip()
+        ]
+        if exts:
+            validators.append(FileExtensionValidator(allowed_extensions=exts))
+    if field_def.max_file_size_mb:
+        validators.append(MaxFileSizeValidator(field_def.max_file_size_mb))
+    return validators
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +421,22 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "file":
-            self.fields[field_def.field_name] = forms.FileField(**field_args)
+            file_validators = _build_file_validators(field_def)
+            accept_attrs = {}
+            if field_def.allowed_extensions:
+                exts = ",".join(
+                    f".{e.strip()}"
+                    for e in field_def.allowed_extensions.split(",")
+                    if e.strip()
+                )
+                accept_attrs["accept"] = exts
+            self.fields[field_def.field_name] = forms.FileField(
+                validators=file_validators,
+                widget=forms.ClearableFileInput(attrs=accept_attrs)
+                if accept_attrs
+                else forms.ClearableFileInput(),
+                **field_args,
+            )
 
         elif field_def.field_type == "multifile":
             self.fields[field_def.field_name] = MultipleFileField(
@@ -679,6 +742,32 @@ class DynamicForm(forms.Form):
                     }
                 )
 
+            # File type / size validation rules
+            if field.field_type in ("file", "multifile") and field.allowed_extensions:
+                exts = [
+                    e.strip().lower()
+                    for e in field.allowed_extensions.split(",")
+                    if e.strip()
+                ]
+                if exts:
+                    readable = ", ".join(f".{e}" for e in exts)
+                    validation_rules.append(
+                        {
+                            "type": "file_type",
+                            "value": ",".join(exts),
+                            "message": f"Allowed file types: {readable}",
+                        }
+                    )
+
+            if field.field_type in ("file", "multifile") and field.max_file_size_mb:
+                validation_rules.append(
+                    {
+                        "type": "file_size",
+                        "value": field.max_file_size_mb,
+                        "message": f"File size must not exceed {field.max_file_size_mb} MB",
+                    }
+                )
+
             # Custom validation rules from field config
             if hasattr(field, "validation_rules") and field.validation_rules:
                 if isinstance(field.validation_rules, str):
@@ -940,6 +1029,7 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "file":
+            file_validators = _build_file_validators(field_def)
             accept_attrs = {}
             if field_def.allowed_extensions:
                 exts = ",".join(
@@ -952,6 +1042,7 @@ class ApprovalStepForm(forms.Form):
                 required=field_args.get("required", False),
                 label=field_def.field_label,
                 help_text=field_def.help_text,
+                validators=file_validators,
                 widget=forms.ClearableFileInput(attrs=accept_attrs),
             )
 

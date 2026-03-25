@@ -196,7 +196,49 @@
                             {% for field in section.fields %}
                             <tr>
                                 <th style="width: 30%;">{{ field.label }}</th>
-                                <td>{{ field.value }}</td>
+                                <td>
+                                    {% if field.value.url %}
+                                        {# Single file upload with URL #}
+                                        {% if field.value.content_type and 'image' in field.value.content_type %}
+                                            <div class="mb-2">
+                                                <img src="{{ field.value.url }}" alt="{{ field.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
+                                            </div>
+                                        {% endif %}
+                                        <a href="{{ field.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-download"></i> {{ field.value.filename }}
+                                        </a>
+                                        <small class="text-muted ms-2">
+                                            {% if field.value.size %}({{ field.value.size|filesizeformat }}){% endif %}
+                                        </small>
+                                    {% elif field.value.path %}
+                                        {# Single file with path but no URL #}
+                                        <span class="text-muted">{{ field.value.filename }}</span>
+                                        <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                                    {% elif field.value.0.filename %}
+                                        {# Multi-file upload: list of file dicts #}
+                                        <ul class="list-unstyled mb-0">
+                                        {% for f in field.value %}
+                                            <li class="mb-1">
+                                                {% if f.url %}
+                                                    {% if f.content_type and 'image' in f.content_type %}
+                                                        <div class="mb-1">
+                                                            <img src="{{ f.url }}" alt="{{ f.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
+                                                        </div>
+                                                    {% endif %}
+                                                    <a href="{{ f.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-download"></i> {{ f.filename }}
+                                                    </a>
+                                                    <small class="text-muted ms-2">{% if f.size %}({{ f.size|filesizeformat }}){% endif %}</small>
+                                                {% else %}
+                                                    <span class="text-muted">{{ f.filename }}</span>
+                                                {% endif %}
+                                            </li>
+                                        {% endfor %}
+                                        </ul>
+                                    {% else %}
+                                        {{ field.value }}
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </table>

@@ -24,6 +24,71 @@
                 {% crispy form %}
             </div>
         </div>
+
+        {% if form_def.allow_batch_import %}
+        {# ── Batch Import Panel ─────────────────────────────────────────────── #}
+        <div class="card mt-4 border-primary">
+            <div class="card-header bg-primary text-white d-flex align-items-center gap-2">
+                <i class="bi bi-table fs-5"></i>
+                <strong>Batch Import via Excel</strong>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">
+                    Need to submit multiple entries at once? Download the Excel template,
+                    fill in your data row by row, then upload it here.
+                    Each row will be validated with the same rules as the individual form.
+                </p>
+
+                {# Step 1 – Download template #}
+                <div class="d-flex align-items-start gap-3 mb-3 p-3 bg-light rounded border">
+                    <div class="fs-4 text-primary pt-1"><i class="bi bi-download"></i></div>
+                    <div>
+                        <strong>Step 1 — Download the template</strong>
+                        <p class="mb-1 text-muted small">
+                            The template is generated from the current form fields.
+                            <span class="text-danger fw-semibold">Red columns are required</span>;
+                            <span class="text-primary fw-semibold">blue columns are optional</span>.
+                            See the <em>Instructions</em> and <em>Choices&nbsp;Reference</em>
+                            sheets inside the workbook for guidance.
+                        </p>
+                        <a href="{% url 'forms_workflows:batch_template_download' form_def.slug %}"
+                           class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-file-earmark-excel"></i> Download Excel Template
+                        </a>
+                    </div>
+                </div>
+
+                {# Step 2 – Fill and upload #}
+                <div class="d-flex align-items-start gap-3 p-3 bg-light rounded border">
+                    <div class="fs-4 text-success pt-1"><i class="bi bi-upload"></i></div>
+                    <div class="flex-grow-1">
+                        <strong>Step 2 — Upload your completed file</strong>
+                        <p class="mb-2 text-muted small">
+                            Only <code>.xlsx</code> files are accepted.
+                            Rows that pass validation will be submitted immediately.
+                            Rows with errors will be listed so you can correct and re-upload.
+                        </p>
+                        <form method="post"
+                              action="{% url 'forms_workflows:batch_import_upload' form_def.slug %}"
+                              enctype="multipart/form-data"
+                              class="d-flex align-items-center gap-2 flex-wrap">
+                            {% csrf_token %}
+                            <input type="file"
+                                   name="batch_file"
+                                   accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                   class="form-control form-control-sm"
+                                   style="max-width: 320px;"
+                                   required>
+                            <button type="submit" class="btn btn-success btn-sm">
+                                <i class="bi bi-cloud-upload"></i> Upload &amp; Validate
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="mt-3">
             <a href="{% url 'forms_workflows:form_list' %}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to Forms

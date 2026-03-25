@@ -428,6 +428,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                     "allow_save_draft",
                     "allow_withdrawal",
                     "allow_resubmit",
+                    "allow_batch_import",
                 ),
             },
         ),

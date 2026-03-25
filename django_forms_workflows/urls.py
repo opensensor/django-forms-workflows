@@ -11,6 +11,17 @@ urlpatterns = [
     path("", views.form_list, name="form_list"),
     path("<slug:slug>/submit/", views.form_submit, name="form_submit"),
     path("<slug:slug>/auto-save/", views.form_auto_save, name="form_auto_save"),
+    # Batch import
+    path(
+        "<slug:slug>/batch-template/",
+        views.batch_template_download,
+        name="batch_template_download",
+    ),
+    path(
+        "<slug:slug>/batch-import/",
+        views.batch_import_upload,
+        name="batch_import_upload",
+    ),
     # User submissions
     path("my-submissions/", views.my_submissions, name="my_submissions"),
     path(

@@ -3267,6 +3267,433 @@ def my_submissions_ajax(request):
     )
 
 
+# ---------------------------------------------------------------------------
+# Batch Import: Excel template download
+# ---------------------------------------------------------------------------
+
+#: Field types excluded from the batch import template (can't be filled via Excel)
+_BATCH_EXCLUDED_TYPES = frozenset(
+    ["section", "file", "multifile", "calculated", "spreadsheet"]
+)
+
+#: Field types that accept multiple values (pipe-separated in the Excel template)
+_BATCH_MULTI_SELECT_TYPES = frozenset(["checkboxes", "multiselect", "multiselect_list"])
+
+
+def _get_batch_fields(form_def):
+    """Return the ordered queryset of FormFields eligible for batch import."""
+    return (
+        form_def.fields.filter(workflow_stage__isnull=True)
+        .exclude(field_type__in=_BATCH_EXCLUDED_TYPES)
+        .order_by("order", "field_name")
+    )
+
+
+def _parse_field_choices(field):
+    """Return a list of (value, label) tuples for select/radio/checkbox fields."""
+    choices_raw = field.choices
+    if not choices_raw:
+        return []
+    if isinstance(choices_raw, list):
+        result = []
+        for item in choices_raw:
+            if isinstance(item, dict):
+                result.append((str(item.get("value", "")), str(item.get("label", ""))))
+            else:
+                result.append((str(item), str(item)))
+        return result
+    if isinstance(choices_raw, str):
+        return [(c.strip(), c.strip()) for c in choices_raw.split(",") if c.strip()]
+    return []
+
+
+@login_required
+def batch_template_download(request, slug):
+    """Generate and download a dynamic Excel template for batch form submission.
+
+    The workbook contains three sheets:
+    - **Data** – one header row (field labels) with column widths and data-validation
+      hints; users fill the rows below.  Required columns are marked with an asterisk.
+    - **Instructions** – a human-readable guide explaining the file format and rules.
+    - **Choices Reference** – for every select / radio / checkbox field the allowed
+      values are listed so the user can copy them into the Data sheet.
+    """
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        messages.error(
+            request,
+            "Excel generation requires the openpyxl package. "
+            "Install it with: pip install openpyxl",
+        )
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
+
+    if not form_def.allow_batch_import:
+        messages.error(request, "Batch import is not enabled for this form.")
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    if not user_can_view_form(request.user, form_def) or not user_can_submit_form(
+        request.user, form_def
+    ):
+        messages.error(request, "You don't have permission to access this form.")
+        return redirect("forms_workflows:form_list")
+
+    fields = list(_get_batch_fields(form_def))
+    wb = openpyxl.Workbook()
+
+    # ── Sheet 1: Data ───────────────────────────────────────────────────────
+    ws_data = wb.active
+    ws_data.title = "Data"
+
+    header_fill_req = PatternFill("solid", fgColor="D32F2F")  # red – required
+    header_fill_opt = PatternFill("solid", fgColor="1565C0")  # blue – optional
+    header_font = Font(color="FFFFFF", bold=True, size=11)
+    thin_side = Side(style="thin", color="AAAAAA")
+    thin_border = Border(
+        left=thin_side, right=thin_side, top=thin_side, bottom=thin_side
+    )
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    choice_fields_with_choices = []  # collected for Choices Reference sheet
+
+    for col_idx, field in enumerate(fields, start=1):
+        is_req = field.required
+        label = field.field_label
+        header_text = f"{'* ' if is_req else ''}{label}\n({field.field_name})"
+
+        cell = ws_data.cell(row=1, column=col_idx, value=header_text)
+        cell.fill = header_fill_req if is_req else header_fill_opt
+        cell.font = header_font
+        cell.alignment = header_align
+        cell.border = thin_border
+
+        # Auto-size column (min 18, max 40 chars wide)
+        col_width = max(18, min(40, len(label) + 4))
+        ws_data.column_dimensions[get_column_letter(col_idx)].width = col_width
+
+        choices = _parse_field_choices(field)
+        if choices and field.field_type in (
+            "select",
+            "radio",
+            "checkboxes",
+            "multiselect",
+            "multiselect_list",
+        ):
+            choice_fields_with_choices.append((field, choices, col_idx))
+
+    # Freeze header row and set row height
+    ws_data.freeze_panes = "A2"
+    ws_data.row_dimensions[1].height = 40
+
+    # ── Sheet 2: Instructions ───────────────────────────────────────────────
+    ws_instr = wb.create_sheet("Instructions")
+    instr_title_font = Font(bold=True, size=14, color="1565C0")
+    instr_header_font = Font(bold=True, size=11)
+    instr_lines = [
+        ("Batch Import Instructions", instr_title_font),
+        (f"Form: {form_def.name}", instr_header_font),
+        ("", None),
+        ("How to fill out the Data sheet:", instr_header_font),
+        ("1. Fill in one submission per row starting from row 2.", None),
+        (
+            "2. Columns marked with * in RED are REQUIRED — you must provide a value.",
+            None,
+        ),
+        ("3. BLUE columns are optional — you may leave them blank.", None),
+        ("4. Date fields: use YYYY-MM-DD format (e.g. 2026-03-25).", None),
+        ("5. Date-time fields: use YYYY-MM-DD HH:MM format.", None),
+        ("6. Time fields: use HH:MM format (24-hour).", None),
+        ("7. Checkbox (single) fields: enter TRUE or FALSE.", None),
+        (
+            "8. Multiple-select fields: separate values with a pipe character |  "
+            "(e.g. Option A|Option B).",
+            None,
+        ),
+        (
+            "9. For select/radio/checkbox fields, see the 'Choices Reference' sheet "
+            "for the exact allowed values — copy and paste them to avoid errors.",
+            None,
+        ),
+        ("10. Do NOT modify the header row or add extra sheets.", None),
+        ("11. File upload fields are not supported in batch import.", None),
+        ("", None),
+        (
+            "After filling in the sheet, save the file and upload it on the form page.",
+            None,
+        ),
+        (
+            "Each row will be validated individually. A results summary will be displayed.",
+            None,
+        ),
+        ("", None),
+        (f"Generated: {timezone.now().strftime('%Y-%m-%d %H:%M')}", None),
+    ]
+    ws_instr.column_dimensions["A"].width = 80
+    for row_idx, (text, font) in enumerate(instr_lines, start=1):
+        cell = ws_instr.cell(row=row_idx, column=1, value=text)
+        if font:
+            cell.font = font
+        cell.alignment = Alignment(wrap_text=True)
+
+    # ── Sheet 3: Choices Reference ──────────────────────────────────────────
+    ws_choices = wb.create_sheet("Choices Reference")
+    ch_header_font = Font(bold=True, size=11, color="FFFFFF")
+    ch_fill = PatternFill("solid", fgColor="37474F")
+    ws_choices.column_dimensions["A"].width = 30
+    ws_choices.column_dimensions["B"].width = 20
+    ws_choices.column_dimensions["C"].width = 35
+
+    # Header row
+    for col_idx, heading in enumerate(
+        ["Field Label", "Field Name", "Allowed Values (copy exactly)"], start=1
+    ):
+        hcell = ws_choices.cell(row=1, column=col_idx, value=heading)
+        hcell.font = ch_header_font
+        hcell.fill = ch_fill
+        hcell.alignment = Alignment(horizontal="center")
+
+    choices_row = 2
+    for field, choices, _ in choice_fields_with_choices:
+        choice_values = " | ".join(v for v, _ in choices)
+        ws_choices.cell(row=choices_row, column=1, value=field.field_label)
+        ws_choices.cell(row=choices_row, column=2, value=field.field_name)
+        ws_choices.cell(row=choices_row, column=3, value=choice_values)
+        choices_row += 1
+
+    # ── Serve the workbook ──────────────────────────────────────────────────
+    import io
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    safe_slug = slug.replace("-", "_")
+    filename = f"batch_template_{safe_slug}.xlsx"
+    response = HttpResponse(
+        buffer.read(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Batch Import: Upload and validate
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_http_methods(["POST"])
+def batch_import_upload(request, slug):
+    """Accept an uploaded batch import Excel file, validate every row against
+    the form's rules (same as individual submission), and render a results page.
+
+    Rows that pass validation are saved as submitted FormSubmissions (and their
+    approval workflows started).  Rows with errors are reported back to the user
+    with precise row/column references so they can correct and re-upload.
+    """
+    try:
+        import openpyxl
+    except ImportError:
+        messages.error(
+            request,
+            "Excel processing requires the openpyxl package. "
+            "Install it with: pip install openpyxl",
+        )
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
+
+    if not form_def.allow_batch_import:
+        messages.error(request, "Batch import is not enabled for this form.")
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    if not user_can_view_form(request.user, form_def) or not user_can_submit_form(
+        request.user, form_def
+    ):
+        messages.error(request, "You don't have permission to submit this form.")
+        return redirect("forms_workflows:form_list")
+
+    uploaded_file = request.FILES.get("batch_file")
+    if not uploaded_file:
+        messages.error(request, "Please select an Excel file to upload.")
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    # ── Parse workbook ──────────────────────────────────────────────────────
+    try:
+        wb = openpyxl.load_workbook(uploaded_file, read_only=True, data_only=True)
+    except Exception as exc:
+        messages.error(request, f"Could not read Excel file: {exc}")
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 2:
+        messages.error(
+            request,
+            "The uploaded file has no data rows. "
+            "Please fill in at least one row below the header.",
+        )
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    # ── Map header columns to field names ───────────────────────────────────
+    header_row = rows[0]
+    eligible_fields = list(_get_batch_fields(form_def))
+    field_by_name = {f.field_name: f for f in eligible_fields}
+
+    # Build col_index → field_name mapping by parsing header text "(field_name)"
+    import re as _re
+
+    col_to_field = {}
+    col_labels = {}  # col_index → human label for error display
+    for col_idx, header_val in enumerate(header_row):
+        if header_val is None:
+            continue
+        raw = str(header_val).strip()
+        # Header format: "* Label\n(field_name)" or "Label\n(field_name)"
+        match = _re.search(r"\((\w+)\)", raw)
+        if match:
+            fn = match.group(1)
+            if fn in field_by_name:
+                col_to_field[col_idx] = fn
+                # Strip the asterisk/newline for a clean label
+                label_clean = (
+                    _re.sub(r"\([^)]+\)", "", raw).strip().lstrip("* ").strip()
+                )
+                col_labels[col_idx] = label_clean or fn
+
+    if not col_to_field:
+        messages.error(
+            request,
+            "No recognised field columns found. "
+            "Please download and use the official batch template.",
+        )
+        return redirect("forms_workflows:form_submit", slug=slug)
+
+    # ── Validate and submit each data row ───────────────────────────────────
+    results = []  # list of dicts per row
+    success_count = 0
+    error_count = 0
+
+    for data_row_idx, row in enumerate(rows[1:], start=2):
+        # Skip completely empty rows
+        if all(v is None or str(v).strip() == "" for v in row):
+            continue
+
+        # Build POST-like dict for DynamicForm
+        post_data = {}
+        for col_idx, field_name in col_to_field.items():
+            raw_val = row[col_idx] if col_idx < len(row) else None
+            field_obj = field_by_name[field_name]
+
+            if raw_val is None or str(raw_val).strip() == "":
+                cell_value = ""
+            else:
+                cell_value = str(raw_val).strip()
+
+            if field_obj.field_type in _BATCH_MULTI_SELECT_TYPES:
+                # Pipe-separated values → list
+                post_data[field_name] = [
+                    v.strip() for v in cell_value.split("|") if v.strip()
+                ]
+            elif field_obj.field_type == "checkbox":
+                # Normalise TRUE/FALSE
+                post_data[field_name] = (
+                    "true" if cell_value.lower() in ("true", "yes", "1") else ""
+                )
+            else:
+                post_data[field_name] = cell_value
+
+        # Run through DynamicForm validation (no files for batch)
+        form = DynamicForm(
+            form_definition=form_def,
+            user=request.user,
+            data=post_data,
+            files=None,
+        )
+
+        if form.is_valid():
+            # Create and save the submission
+            submission = FormSubmission(
+                form_definition=form_def,
+                submitter=request.user,
+                submission_ip=get_client_ip(request),
+                user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            )
+            submission.form_data = {}
+            submission.save()
+            submission.form_data = serialize_form_data(
+                form.cleaned_data, submission_id=submission.pk
+            )
+            submission.form_data = _re_evaluate_calculated_fields(
+                submission.form_data, form_def
+            )
+            submission.status = "submitted"
+            submission.submitted_at = timezone.now()
+            submission.save()
+
+            AuditLog.objects.create(
+                action="submit",
+                object_type="FormSubmission",
+                object_id=submission.id,
+                user=request.user,
+                user_ip=get_client_ip(request),
+                comments=f"Batch import — row {data_row_idx}",
+            )
+            create_approval_tasks(submission)
+
+            success_count += 1
+            results.append(
+                {
+                    "row": data_row_idx,
+                    "status": "success",
+                    "submission_id": submission.id,
+                    "errors": [],
+                }
+            )
+        else:
+            error_count += 1
+            # Build friendly error list with column references
+            field_errors = []
+            for field_name, error_list in form.errors.items():
+                # Reverse-map field_name → column label
+                col_label = field_name
+                for ci, fn in col_to_field.items():
+                    if fn == field_name:
+                        col_label = col_labels.get(ci, field_name)
+                        break
+                for err in error_list:
+                    field_errors.append(
+                        {"column": col_label, "field_name": field_name, "message": err}
+                    )
+            results.append(
+                {
+                    "row": data_row_idx,
+                    "status": "error",
+                    "submission_id": None,
+                    "errors": field_errors,
+                }
+            )
+
+    return render(
+        request,
+        "django_forms_workflows/batch_import_result.html",
+        {
+            "form_def": form_def,
+            "results": results,
+            "success_count": success_count,
+            "error_count": error_count,
+            "total_count": success_count + error_count,
+        },
+    )
+
+
 def create_approval_tasks(submission):
     """
     Create approval tasks based on workflow definition.

@@ -1,0 +1,155 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Batch Import Results – {{ form_def.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-10 mx-auto">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1 class="h2">
+        <i class="bi bi-table me-2"></i>Batch Import Results
+      </h1>
+      <span class="text-muted">{{ form_def.name }}</span>
+    </div>
+
+    {# ── Summary strip ── #}
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="card text-center border-secondary">
+          <div class="card-body py-2">
+            <div class="fs-1 fw-bold">{{ total_count }}</div>
+            <div class="text-muted small">Rows Processed</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center {% if success_count %}border-success{% else %}border-secondary{% endif %}">
+          <div class="card-body py-2">
+            <div class="fs-1 fw-bold {% if success_count %}text-success{% endif %}">{{ success_count }}</div>
+            <div class="text-muted small">Submitted Successfully</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center {% if error_count %}border-danger{% else %}border-secondary{% endif %}">
+          <div class="card-body py-2">
+            <div class="fs-1 fw-bold {% if error_count %}text-danger{% endif %}">{{ error_count }}</div>
+            <div class="text-muted small">Rows with Errors</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if success_count %}
+    <div class="alert alert-success d-flex align-items-center gap-2">
+      <i class="bi bi-check-circle-fill fs-5"></i>
+      <span>
+        <strong>{{ success_count }} row{{ success_count|pluralize }} submitted successfully</strong>
+        and will proceed through the normal approval workflow.
+      </span>
+    </div>
+    {% endif %}
+
+    {% if error_count %}
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+      <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+      <span>
+        <strong>{{ error_count }} row{{ error_count|pluralize }} could not be submitted</strong>
+        due to validation errors listed below.
+        Correct the highlighted cells in your file and re-upload.
+      </span>
+    </div>
+
+    <div class="card border-danger mb-4">
+      <div class="card-header bg-danger text-white">
+        <i class="bi bi-x-circle me-1"></i> Rows Requiring Correction
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-bordered table-hover mb-0 align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th style="width:90px;">Row #</th>
+                <th>Column</th>
+                <th>Validation Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for result in results %}
+                {% if result.status == "error" %}
+                  {% for err in result.errors %}
+                  <tr>
+                    {% if forloop.first %}
+                    <td rowspan="{{ result.errors|length }}" class="text-center fw-bold text-danger align-middle">
+                      {{ result.row }}
+                    </td>
+                    {% endif %}
+                    <td>
+                      <span class="badge bg-warning text-dark">{{ err.column }}</span>
+                      <code class="ms-1 small text-muted">{{ err.field_name }}</code>
+                    </td>
+                    <td class="text-danger">{{ err.message }}</td>
+                  </tr>
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if success_count %}
+    <div class="card border-success mb-4">
+      <div class="card-header bg-success text-white">
+        <i class="bi bi-check-circle me-1"></i> Successfully Submitted Rows
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-bordered mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width:90px;">Row #</th>
+                <th>Submission ID</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for result in results %}
+                {% if result.status == "success" %}
+                <tr>
+                  <td class="text-center fw-bold text-success">{{ result.row }}</td>
+                  <td>#{{ result.submission_id }}</td>
+                  <td>
+                    <a href="{% url 'forms_workflows:submission_detail' result.submission_id %}"
+                       class="btn btn-sm btn-outline-primary">
+                      <i class="bi bi-eye"></i> View
+                    </a>
+                  </td>
+                </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="d-flex gap-2 mt-2">
+      <a href="{% url 'forms_workflows:form_submit' form_def.slug %}"
+         class="btn btn-primary">
+        <i class="bi bi-upload"></i> Upload Another File
+      </a>
+      <a href="{% url 'forms_workflows:my_submissions' %}"
+         class="btn btn-outline-secondary">
+        <i class="bi bi-list-ul"></i> My Submissions
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+

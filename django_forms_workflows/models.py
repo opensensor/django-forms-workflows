@@ -169,6 +169,15 @@ class FormDefinition(models.Model):
             "or withdrawn submission"
         ),
     )
+    allow_batch_import = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow users to download a pre-filled Excel template and upload it to "
+            "submit multiple form entries at once. Each row is validated against the "
+            "same rules as the individual form. File upload fields are excluded from "
+            "batch import."
+        ),
+    )
     requires_login = models.BooleanField(
         default=True, help_text="Form requires authentication"
     )

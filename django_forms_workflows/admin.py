@@ -385,7 +385,13 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
         "created_at",
         "clone_link",
     )
-    list_filter = ("is_active", "is_listed", "requires_login", "category")
+    list_filter = (
+        "is_active",
+        "is_listed",
+        "requires_login",
+        "allow_batch_import",
+        "category",
+    )
     list_select_related = ["category"]
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
@@ -558,6 +564,8 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                         requires_login=form.requires_login,
                         allow_save_draft=form.allow_save_draft,
                         allow_withdrawal=form.allow_withdrawal,
+                        allow_resubmit=form.allow_resubmit,
+                        allow_batch_import=form.allow_batch_import,
                         created_by=request.user,
                     )
 

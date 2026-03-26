@@ -922,8 +922,7 @@ class FormEnhancements {
         indicator.className = 'auto-save-indicator';
         indicator.innerHTML = `
             <small class="text-muted">
-                <i class="bi bi-cloud-check"></i>
-                <span id="autoSaveStatus">Auto-save enabled</span>
+                <span id="autoSaveStatus"><i class="bi bi-cloud-check"></i> Auto-save enabled</span>
             </small>
         `;
 

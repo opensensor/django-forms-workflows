@@ -244,7 +244,12 @@ class DynamicForm(forms.Form):
         buttons = [Submit("submit", "Submit", css_class="btn btn-primary")]
         if form_definition.allow_save_draft:
             buttons.append(
-                Submit("save_draft", "Save Draft", css_class="btn btn-secondary ms-2")
+                Submit(
+                    "save_draft",
+                    "Save Draft",
+                    css_class="btn btn-secondary ms-2",
+                    formnovalidate="",  # bypass HTML5 required-field validation for drafts
+                )
             )
 
         layout_fields.append(Div(*buttons, css_class="mt-4"))

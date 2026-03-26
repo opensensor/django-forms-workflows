@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.6] - 2026-03-26
+
+### Fixed
+- **Double cloud icon after auto-save** — `createAutoSaveIndicator` placed a static `<i class="bi bi-cloud-check">` before the `#autoSaveStatus` span, then `performAutoSave` set `status.innerHTML` to another icon-plus-text string. Every status update resulted in two icons side by side. The static icon is removed; the span now owns the icon as part of its initial text.
+- **Save Draft blocked by HTML5 validation** — the Save Draft `Submit` button is a plain `type="submit"`, so the browser runs HTML5 `required`-field validation before the POST is sent, preventing a draft save until all required fields are filled. Added `formnovalidate=""` to the button so validation is bypassed for draft saves while still applying normally to the Submit button.
+
 ## [0.37.5] - 2026-03-26
 
 ### Fixed

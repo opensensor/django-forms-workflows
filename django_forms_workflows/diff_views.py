@@ -150,13 +150,17 @@ def _build_summary(forms_data):
             "description",
             "instructions",
             "is_active",
+            "is_listed",
             "allow_save_draft",
             "allow_withdrawal",
+            "allow_resubmit",
+            "allow_batch_import",
             "requires_login",
             "enable_multi_step",
             "enable_auto_save",
             "auto_save_interval",
             "pdf_generation",
+            "api_enabled",
         ]
         for key in meta_keys:
             if b_form.get(key) != o_form.get(key):

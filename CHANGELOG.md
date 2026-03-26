@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.3] - 2026-03-26
+
+### Fixed
+- **Cross-instance sync missing newer fields** — `sync_api.serialize_form` and `_serialize_field` were not including several fields added after the serializer was first written, meaning push/pull/diff silently dropped their values on the receiving instance:
+  - `FormDefinition.allow_batch_import` (spreadsheet/Excel batch upload toggle, migration 0062)
+  - `FormDefinition.is_listed` (hide-from-list-page flag, migration 0051)
+  - `FormDefinition.allow_resubmit` (re-submission from rejected/withdrawn, migration 0024)
+  - `FormDefinition.api_enabled` (REST API exposure flag, migration 0063)
+  - `FormField.formula` (formula expression for Calculated field types, migration 0056)
+  All five fields are now serialized on export and restored on import. The diff summary in `diff_views._build_summary` is also updated to detect changes to all four FormDefinition flags.
+
 ## [0.33.1] - 2026-03-23
 
 ### Fixed

@@ -95,11 +95,14 @@ class EmailHandler(BaseActionHandler):
             ]
             recipients.extend(static_emails)
 
-        # Add email from form field
+        # Add email(s) from form field — supports comma-separated addresses
         if self.action.email_to_field:
             field_email = self.get_form_field_value(self.action.email_to_field)
-            if field_email and isinstance(field_email, str) and "@" in field_email:
-                recipients.append(field_email.strip())
+            if field_email and isinstance(field_email, str):
+                for addr in field_email.split(","):
+                    addr = addr.strip()
+                    if addr and "@" in addr:
+                        recipients.append(addr)
 
         # Remove duplicates while preserving order
         seen = set()
@@ -127,11 +130,14 @@ class EmailHandler(BaseActionHandler):
             ]
             cc_list.extend(static_cc)
 
-        # Add CC from form field
+        # Add CC email(s) from form field — supports comma-separated addresses
         if self.action.email_cc_field:
             field_cc = self.get_form_field_value(self.action.email_cc_field)
-            if field_cc and isinstance(field_cc, str) and "@" in field_cc:
-                cc_list.append(field_cc.strip())
+            if field_cc and isinstance(field_cc, str):
+                for addr in field_cc.split(","):
+                    addr = addr.strip()
+                    if addr and "@" in addr:
+                        cc_list.append(addr)
 
         # Remove duplicates
         seen = set()

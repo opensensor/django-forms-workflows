@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.5] - 2026-03-26
+
+### Fixed
+- **`email_to_field` / `email_cc_field` now support comma-separated addresses** — `EmailActionHandler._get_recipients` and `_get_cc_list` previously appended the raw field value as a single address, silently discarding all but the first recipient when multiple addresses were entered. Both methods now split on commas and validate each address individually, so a faculty-emails field with `prof1@sjcme.edu, prof2@sjcme.edu` correctly delivers to all listed recipients.
+
 ## [0.36.4] - 2026-03-26
 
 ### Added

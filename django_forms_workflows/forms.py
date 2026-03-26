@@ -732,11 +732,16 @@ class DynamicForm(forms.Form):
         """
         import json
 
+        from django.urls import reverse
+
         config = {
             "autoSaveEnabled": getattr(self.form_definition, "enable_auto_save", True),
             "autoSaveInterval": getattr(self.form_definition, "auto_save_interval", 30)
             * 1000,  # Convert to ms
-            "autoSaveEndpoint": f"/forms/{self.form_definition.slug}/auto-save/",
+            "autoSaveEndpoint": reverse(
+                "forms_workflows:form_auto_save",
+                kwargs={"slug": self.form_definition.slug},
+            ),
             "multiStepEnabled": getattr(
                 self.form_definition, "enable_multi_step", False
             ),

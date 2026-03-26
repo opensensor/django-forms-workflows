@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.4] - 2026-03-26
+
+### Fixed
+- **Auto-save no longer always fails** — `get_enhancements_config` built the auto-save endpoint as `/forms/<slug>/auto-save/`, but the URL pattern is `/<slug>/auto-save/` (no `/forms/` prefix). Every fetch therefore hit a 404, which is a non-OK response, landing in the error branch and permanently displaying the "Save failed" indicator. The endpoint is now resolved with `django.urls.reverse("forms_workflows:form_auto_save", ...)` so it can never drift from the URL configuration again.
+
 ## [0.37.3] - 2026-03-26
 
 ### Fixed

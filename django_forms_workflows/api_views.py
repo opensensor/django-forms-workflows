@@ -284,7 +284,9 @@ def api_docs_view(request):
     """GET /api/docs/ — Swagger UI. Requires Django staff session."""
     from django.shortcuts import render
 
-    schema_url = request.build_absolute_uri("/").rstrip("/") + "/api/schema/"
+    # Use a root-relative URL so the browser inherits the page's scheme
+    # (avoids mixed-content errors when Django sits behind a TLS-terminating proxy).
+    schema_url = "/api/schema/"
     return render(
         request, "django_forms_workflows/api/docs.html", {"schema_url": schema_url}
     )

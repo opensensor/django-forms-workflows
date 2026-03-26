@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-03-26
+
+### Fixed
+- **`reviewer_groups` now visible in Approval History** — `completed_approvals` and `completed_approvals_ajax` previously built their base queryset exclusively from `ApprovalTask` records, so reviewer-group members were never shown any submissions (a form with zero approval steps produces no `ApprovalTask` rows). Both views now union the task-based results with all non-draft submissions for forms the user can review, matching the behaviour of My Submissions.
+
 ## [0.37.0] - 2026-03-26
 
 ### Added

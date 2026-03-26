@@ -1483,10 +1483,9 @@ def completed_approvals(request):
     Accepts an optional ``?category=<slug>`` query parameter and an optional
     ``?form=<slug>`` query parameter for narrowing the list.
     """
+    _history_statuses = ["approved", "pending_approval", "rejected", "withdrawn"]
     if request.user.is_superuser:
-        base_submissions = FormSubmission.objects.filter(
-            status__in=["approved", "pending_approval", "rejected", "withdrawn"]
-        )
+        base_submissions = FormSubmission.objects.filter(status__in=_history_statuses)
     else:
         user_groups = request.user.groups.all()
         # Filter on the ApprovalTask status rather than the FormSubmission status
@@ -1503,7 +1502,20 @@ def completed_approvals(request):
             .values_list("submission_id", flat=True)
             .distinct()
         )
-        base_submissions = FormSubmission.objects.filter(id__in=completed_task_sub_ids)
+        # Reviewer-group members see all non-draft submissions for forms they
+        # review, including those with zero approval steps (no ApprovalTasks).
+        reviewer_form_ids = (
+            FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+            .values_list("id", flat=True)
+            .distinct()
+        )
+        base_submissions = FormSubmission.objects.filter(
+            models.Q(id__in=completed_task_sub_ids)
+            | models.Q(
+                form_definition__in=reviewer_form_ids,
+                status__in=_history_statuses,
+            )
+        ).distinct()
 
     # --- Category counts (for the filter bar) ---
     raw_counts = (
@@ -2908,10 +2920,9 @@ def completed_approvals_ajax(request):
     status_filter = params.get("status", "").strip()
 
     # --- Base queryset (mirrors permission logic of completed_approvals view) ---
+    _history_statuses = ["approved", "pending_approval", "rejected", "withdrawn"]
     if request.user.is_superuser:
-        qs = FormSubmission.objects.filter(
-            status__in=["approved", "pending_approval", "rejected", "withdrawn"]
-        )
+        qs = FormSubmission.objects.filter(status__in=_history_statuses)
     else:
         user_groups = request.user.groups.all()
         sub_ids = (
@@ -2923,7 +2934,18 @@ def completed_approvals_ajax(request):
             .values_list("submission_id", flat=True)
             .distinct()
         )
-        qs = FormSubmission.objects.filter(id__in=sub_ids)
+        reviewer_form_ids = (
+            FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+            .values_list("id", flat=True)
+            .distinct()
+        )
+        qs = FormSubmission.objects.filter(
+            models.Q(id__in=sub_ids)
+            | models.Q(
+                form_definition__in=reviewer_form_ids,
+                status__in=_history_statuses,
+            )
+        ).distinct()
 
     records_total = qs.count()
 

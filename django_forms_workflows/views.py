@@ -854,19 +854,34 @@ def approval_inbox(request):
 
     total_tasks_count = base_tasks.count()
 
-    # --- Completed count for cross-tab badge ---
+    # --- Completed count for cross-tab badge (must mirror completed_approvals) ---
+    _history_statuses = ["approved", "pending_approval", "rejected", "withdrawn"]
     if request.user.is_superuser:
         completed_count = FormSubmission.objects.filter(
-            status__in=["approved", "rejected", "withdrawn"]
+            status__in=_history_statuses
         ).count()
     else:
+        _completed_task_sub_ids = (
+            ApprovalTask.objects.filter(
+                models.Q(assigned_to=request.user)
+                | models.Q(assigned_group__in=user_groups),
+                status__in=["pending", "approved", "rejected"],
+            )
+            .values_list("submission_id", flat=True)
+            .distinct()
+        )
+        _reviewer_form_ids = (
+            FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+            .values_list("id", flat=True)
+            .distinct()
+        )
         completed_count = (
             FormSubmission.objects.filter(
-                status__in=["approved", "rejected", "withdrawn"]
-            )
-            .filter(
-                models.Q(approval_tasks__assigned_to=request.user)
-                | models.Q(approval_tasks__assigned_group__in=user_groups)
+                models.Q(id__in=_completed_task_sub_ids)
+                | models.Q(
+                    form_definition__in=_reviewer_form_ids,
+                    status__in=_history_statuses,
+                )
             )
             .distinct()
             .count()

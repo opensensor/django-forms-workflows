@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.3] - 2026-03-26
+
+### Fixed
+- **Approval History cross-tab badge now matches actual page count** — The "Approval History" badge displayed on the Pending tab was computed with stale logic (only approved/rejected/withdrawn statuses, only ApprovalTask-assigned submissions). After the v0.37.0–v0.37.2 changes the Approval History page itself counts more submissions (pending_approval included, reviewer_groups included), causing the badge to read 2 while the page showed 4. The `completed_count` query in `approval_inbox` now mirrors `base_submissions` in `completed_approvals` exactly, so both sides of the tab bar always agree.
+
 ## [0.37.2] - 2026-03-26
 
 ### Fixed

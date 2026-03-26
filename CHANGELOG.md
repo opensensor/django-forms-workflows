@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.5] - 2026-03-26
+
+### Fixed
+- **Auto-save 500 on first save** — `form_auto_save` used `get_or_create` without including `form_data` in `defaults`. Because `form_data` is a NOT NULL `JSONField` with no database default, the INSERT on the very first autosave for a user raised an `IntegrityError`, which the broad `except Exception` block caught and returned as a 500. Switched to `update_or_create` with `form_data` included in `defaults`, which both fixes the NOT NULL violation and removes the now-redundant separate `.save()` call.
+- **Invalid `AuditLog` action value** — the auto-save view wrote `action="auto_save"`, which is not in `AuditLog.ACTION_TYPES`. Changed to the valid `"update"` choice.
+
 ## [0.37.4] - 2026-03-26
 
 ### Fixed

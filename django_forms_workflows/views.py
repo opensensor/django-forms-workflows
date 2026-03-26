@@ -367,24 +367,22 @@ def form_auto_save(request, slug):
         # Parse JSON data
         data = json.loads(request.body)
 
-        # Get or create draft
-        draft, created = FormSubmission.objects.get_or_create(
+        # Upsert draft — form_data must be in defaults so the INSERT on first
+        # save does not hit the NOT NULL constraint on that column.
+        draft, created = FormSubmission.objects.update_or_create(
             form_definition=form_def,
             submitter=request.user,
             status="draft",
             defaults={
+                "form_data": data,
                 "submission_ip": get_client_ip(request),
                 "user_agent": request.META.get("HTTP_USER_AGENT", ""),
             },
         )
 
-        # Update form data
-        draft.form_data = data
-        draft.save()
-
-        # Log audit
+        # Log audit — use "update" which is a valid ACTION_TYPES choice
         AuditLog.objects.create(
-            action="auto_save",
+            action="update",
             object_type="FormSubmission",
             object_id=draft.id,
             user=request.user,

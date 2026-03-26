@@ -415,16 +415,21 @@ def my_submissions(request):
     ``category_counts`` list so the UI can render a filter-pill bar showing
     how many submissions belong to each category.
     """
-    # Include submissions the user owns OR submissions for forms they can review.
-    reviewer_form_ids = (
-        FormDefinition.objects.filter(reviewer_groups__in=request.user.groups.all())
+    # Include submissions the user owns OR submissions for forms where the user
+    # is in reviewer_groups OR admin_groups (both mean "can view all submissions").
+    user_groups = request.user.groups.all()
+    privileged_form_ids = (
+        FormDefinition.objects.filter(
+            models.Q(reviewer_groups__in=user_groups)
+            | models.Q(admin_groups__in=user_groups)
+        )
         .values_list("id", flat=True)
         .distinct()
     )
     base_submissions = FormSubmission.objects.filter(
         models.Q(submitter=request.user)
         | models.Q(
-            form_definition__in=reviewer_form_ids,
+            form_definition__in=privileged_form_ids,
             status__in=[
                 "submitted",
                 "pending_approval",
@@ -868,8 +873,11 @@ def approval_inbox(request):
             .values_list("submission_id", flat=True)
             .distinct()
         )
-        _reviewer_form_ids = (
-            FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+        _privileged_form_ids = (
+            FormDefinition.objects.filter(
+                models.Q(reviewer_groups__in=user_groups)
+                | models.Q(admin_groups__in=user_groups)
+            )
             .values_list("id", flat=True)
             .distinct()
         )
@@ -877,7 +885,7 @@ def approval_inbox(request):
             FormSubmission.objects.filter(
                 models.Q(id__in=_completed_task_sub_ids)
                 | models.Q(
-                    form_definition__in=_reviewer_form_ids,
+                    form_definition__in=_privileged_form_ids,
                     status__in=_history_statuses,
                 )
             )
@@ -1513,17 +1521,20 @@ def completed_approvals(request):
             .values_list("submission_id", flat=True)
             .distinct()
         )
-        # Reviewer-group members see all non-draft submissions for forms they
-        # review, including those with zero approval steps (no ApprovalTasks).
-        reviewer_form_ids = (
-            FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+        # reviewer_groups and admin_groups members both see all non-draft
+        # submissions for their forms, including zero-approval-step forms.
+        privileged_form_ids = (
+            FormDefinition.objects.filter(
+                models.Q(reviewer_groups__in=user_groups)
+                | models.Q(admin_groups__in=user_groups)
+            )
             .values_list("id", flat=True)
             .distinct()
         )
         base_submissions = FormSubmission.objects.filter(
             models.Q(id__in=completed_task_sub_ids)
             | models.Q(
-                form_definition__in=reviewer_form_ids,
+                form_definition__in=privileged_form_ids,
                 status__in=_history_statuses,
             )
         ).distinct()
@@ -2945,15 +2956,18 @@ def completed_approvals_ajax(request):
             .values_list("submission_id", flat=True)
             .distinct()
         )
-        reviewer_form_ids = (
-            FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+        privileged_form_ids = (
+            FormDefinition.objects.filter(
+                models.Q(reviewer_groups__in=user_groups)
+                | models.Q(admin_groups__in=user_groups)
+            )
             .values_list("id", flat=True)
             .distinct()
         )
         qs = FormSubmission.objects.filter(
             models.Q(id__in=sub_ids)
             | models.Q(
-                form_definition__in=reviewer_form_ids,
+                form_definition__in=privileged_form_ids,
                 status__in=_history_statuses,
             )
         ).distinct()
@@ -3211,15 +3225,19 @@ def my_submissions_ajax(request):
     category_slug = params.get("category", "").strip()
     form_slug = params.get("form", "").strip()
 
-    reviewer_form_ids = (
-        FormDefinition.objects.filter(reviewer_groups__in=request.user.groups.all())
+    _user_groups = request.user.groups.all()
+    privileged_form_ids = (
+        FormDefinition.objects.filter(
+            models.Q(reviewer_groups__in=_user_groups)
+            | models.Q(admin_groups__in=_user_groups)
+        )
         .values_list("id", flat=True)
         .distinct()
     )
     qs = FormSubmission.objects.filter(
         models.Q(submitter=request.user)
         | models.Q(
-            form_definition__in=reviewer_form_ids,
+            form_definition__in=privileged_form_ids,
             status__in=[
                 "submitted",
                 "pending_approval",

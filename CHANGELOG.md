@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.7] - 2026-03-26
+
+### Fixed
+- **`admin_groups` members now see submissions in list views** — `admin_groups` is documented as "Groups that can view all submissions", but the list-view queries in `my_submissions`, `my_submissions_ajax`, `completed_approvals`, and `completed_approvals_ajax` only checked `reviewer_groups`. Members of `admin_groups` could access an individual submission detail page (if they knew the URL) but the submissions never appeared in any list. All five queryset sites (including the cross-tab `completed_count` badge in `approval_inbox`) now union `admin_groups` with `reviewer_groups` when building the set of privileged form IDs, so both groups behave consistently throughout the application.
+
 ## [0.37.6] - 2026-03-26
 
 ### Fixed

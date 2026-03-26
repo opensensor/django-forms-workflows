@@ -986,8 +986,16 @@ class FormEnhancements {
             const formData = new FormData(this.form);
             const data = {};
 
-            // Convert FormData to JSON
+            // Keys that must never be stored as form data
+            const AUTOSAVE_SKIP_KEYS = new Set([
+                'csrfmiddlewaretoken',
+                'save_draft',
+                'submit',
+            ]);
+
+            // Convert FormData to JSON, skipping internal browser/Django fields
             for (const [key, value] of formData.entries()) {
+                if (AUTOSAVE_SKIP_KEYS.has(key)) continue;
                 if (data[key]) {
                     // Handle multiple values (checkboxes, multi-select)
                     if (Array.isArray(data[key])) {

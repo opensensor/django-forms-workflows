@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.8] - 2026-03-26
+
+### Fixed
+- **CSRF token stored in draft/auto-save form data** — `performAutoSave()` iterated `FormData` without filtering, so the hidden `csrfmiddlewaretoken` input (plus any submit button names) was included in the JSON payload sent to the server and persisted in `FormSubmission.form_data`. Fixed in two places: the JS loop now skips a `AUTOSAVE_SKIP_KEYS` set (`csrfmiddlewaretoken`, `save_draft`, `submit`) before building the data object; the `form_auto_save` view also strips the same keys server-side as defense-in-depth.
+- **Save Draft blocked when required fields are empty** — the `form_submit` view called `form.is_valid()` unconditionally before checking for `save_draft`, so any partially-filled form (with empty required fields) failed validation and the draft was never saved. The draft-save path is now checked first: if `save_draft` is present in `request.POST`, the raw POST data is collected (excluding the same skip-list of keys), stored directly via `update_or_create`, and an early redirect issued — `is_valid()` is only called on the full-submission path. The `formnovalidate` attribute on the button continues to prevent the browser's own HTML5 validation from blocking the POST.
+
+### Changed
+- **README** — version badge updated to 0.37.8; REST API and bulk export moved from Roadmap into Delivered; four-tier RBAC (`reviewer_groups` / `admin_groups`) and improved auto-save/draft behaviour added to Delivered; comparison table gains REST API and bulk export rows; Near-term roadmap trimmed accordingly; advanced reporting kept in Planned.
+
 ## [0.37.7] - 2026-03-26
 
 ### Fixed

@@ -5,7 +5,7 @@
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![Django Version](https://img.shields.io/badge/django-5.2%2B-green)](https://www.djangoproject.com/)
-[![Version](https://img.shields.io/badge/version-0.35.11-orange)](https://github.com/opensensor/django-forms-workflows)
+[![Version](https://img.shields.io/badge/version-0.37.8-orange)](https://github.com/opensensor/django-forms-workflows)
 
 ## Overview
 
@@ -19,7 +19,8 @@ Django Forms Workflows bridges the gap between simple form libraries (like Crisp
 - 🔌 **External Data Integration** — Prefill fields from LDAP, databases, REST APIs, or the Django user model.
 - ⚡ **Post-Submission Actions** — Trigger emails, database writes, LDAP updates, or custom Python handlers on submit/approve/reject.
 - 🔄 **Cross-Instance Sync** — Push/pull form definitions between environments directly from the Django Admin.
-- 🔒 **Enterprise Security** — LDAP/AD & SSO authentication, RBAC, complete audit trails.
+- 🔒 **Enterprise Security** — LDAP/AD & SSO authentication, RBAC with four permission tiers, complete audit trails.
+- 🌐 **REST API** — Opt-in Bearer-token API: list forms, fetch field schema, submit (or save draft), poll status. OpenAPI 3.0 schema + Swagger UI included.
 - 📁 **Managed File Uploads** — File uploads with approval, rejection, and version tracking per submission.
 - 🧮 **Formula Fields** — Calculated fields that compute values live from other field values using a template formula.
 - 🏠 **Self-Hosted** — No SaaS fees, full data control.
@@ -124,7 +125,11 @@ Move form definitions between environments from the Django Admin:
 ### 🔒 Enterprise-Ready Security
 - LDAP/Active Directory authentication with auto-sync of profile attributes
 - SSO integration (SAML, OAuth) with attribute mapping to `UserProfile`
-- Role-based access: `submit_groups` and `view_groups` on `FormDefinition`
+- Role-based access — four permission tiers on `FormDefinition`:
+  - `submit_groups` — can see and submit the form
+  - `view_groups` — prerequisite gate for form access
+  - `reviewer_groups` — read-only view of all submissions and approval history
+  - `admin_groups` — full administrative view of all submissions
 - Group-based approval routing via `WorkflowStage.approval_groups`
 - Complete audit logging (`AuditLog` — who, what, when, IP address)
 - `UserProfile` auto-created on first login with LDAP/SSO sync
@@ -268,6 +273,8 @@ graph TB
 | Sub-workflows | ✅ | ❌ | ❌ | ❌ |
 | Post-submission actions | ✅ | ❌ | ⚠️ | ❌ |
 | External data prefill | ✅ | ❌ | ⚠️ | ❌ |
+| REST API (Bearer token) | ✅ | ❌ | ✅ | ❌ |
+| Bulk export (Excel / CSV) | ✅ | ❌ | ✅ | ❌ |
 | Cross-instance sync | ✅ | ❌ | ❌ | ❌ |
 | LDAP/AD + SSO integration | ✅ | ❌ | ❌ | ❌ |
 | Managed file uploads | ✅ | ❌ | ✅ | ❌ |
@@ -312,7 +319,7 @@ GNU Lesser General Public License v3.0 (LGPLv3) — see [LICENSE](LICENSE) for d
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rationale and implementation notes.
 
-### ✅ Delivered (v0.35)
+### ✅ Delivered (through v0.37)
 - [x] Database-driven form definitions with 25+ field types
 - [x] Dynamic form rendering with Crispy Forms + Bootstrap 5
 - [x] Multi-stage approval workflows (any/all/sequence logic per stage)
@@ -336,16 +343,19 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 - [x] Complete audit logging (who, what, when, IP)
 - [x] Configurable site branding via `FORMS_WORKFLOWS['SITE_NAME']`
 - [x] Comprehensive test suite (298 tests)
+- [x] REST API — Bearer-token authenticated endpoints: list forms, fetch field schema, submit (JSON or multipart, including `?draft=1`), poll submission status; OpenAPI 3.0 schema + Swagger UI
+- [x] Bulk export — Excel and CSV export of submission data from the approval inbox (`allow_bulk_export` / `allow_bulk_pdf_export` per workflow)
+- [x] Four-tier RBAC — `submit_groups`, `view_groups`, `reviewer_groups` (read-only submission history), `admin_groups` (full submission view) with consistent enforcement across all list and detail views
+- [x] Auto-save with configurable interval; Save Draft bypasses required-field validation without storing browser internals (CSRF token, button names)
 
 ### 🚧 Near-term (next 1–3 releases)
-- [ ] REST API for programmatic form submission and status polling
 - [ ] Webhook delivery on workflow events (submit / approve / reject)
 - [ ] Dashboard analytics (submission counts, approval times, bottleneck stages)
 
 ### 📋 Planned (medium-term)
 - [ ] Signature field type (drawn or typed)
 - [ ] Form versioning — immutable snapshots with diff viewer
-- [ ] Advanced reporting and bulk export (Excel/CSV with field filters)
+- [ ] Advanced reporting (submission analytics, bottleneck analysis, custom report builder)
 - [ ] Multi-tenancy support (organisation-scoped form libraries)
 - [ ] Plugin / custom handler marketplace
 

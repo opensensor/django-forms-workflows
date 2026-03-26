@@ -263,6 +263,44 @@ def form_submit(request, slug):
     ).first()
 
     if request.method == "POST":
+        # ------------------------------------------------------------------ #
+        # Draft save: bypass all validation and store raw POST data.          #
+        # Must be checked BEFORE form.is_valid() so that partially-filled     #
+        # forms (with empty required fields) can still be saved as drafts.    #
+        # ------------------------------------------------------------------ #
+        if "save_draft" in request.POST:
+            _skip = {"csrfmiddlewaretoken", "save_draft", "submit"}
+            raw_data = {}
+            for k in request.POST:
+                if k in _skip:
+                    continue
+                values = request.POST.getlist(k)
+                raw_data[k] = values[0] if len(values) == 1 else values
+
+            draft_obj, created = FormSubmission.objects.update_or_create(
+                form_definition=form_def,
+                submitter=request.user,
+                status="draft",
+                defaults={
+                    "form_data": raw_data,
+                    "submission_ip": get_client_ip(request),
+                    "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+                },
+            )
+            AuditLog.objects.create(
+                action="update" if not created else "create",
+                object_type="FormSubmission",
+                object_id=draft_obj.id,
+                user=request.user,
+                user_ip=get_client_ip(request),
+                comments="Saved as draft",
+            )
+            messages.success(request, "Draft saved successfully.")
+            return redirect("forms_workflows:my_submissions")
+
+        # ------------------------------------------------------------------ #
+        # Full submission: validate then save.                                #
+        # ------------------------------------------------------------------ #
         form = DynamicForm(
             form_definition=form_def,
             user=request.user,
@@ -292,38 +330,23 @@ def form_submit(request, slug):
                 submission.form_data, form_def
             )
 
-            if "save_draft" in request.POST:
-                submission.status = "draft"
-                submission.save()
-                messages.success(request, "Draft saved successfully.")
+            submission.status = "submitted"
+            submission.submitted_at = timezone.now()
+            submission.save()
+            messages.success(request, "Form submitted successfully.")
 
-                # Log audit
-                AuditLog.objects.create(
-                    action="update" if draft else "create",
-                    object_type="FormSubmission",
-                    object_id=submission.id,
-                    user=request.user,
-                    user_ip=get_client_ip(request),
-                    comments="Saved as draft",
-                )
-            else:
-                submission.status = "submitted"
-                submission.submitted_at = timezone.now()
-                submission.save()
-                messages.success(request, "Form submitted successfully.")
+            # Log audit
+            AuditLog.objects.create(
+                action="submit",
+                object_type="FormSubmission",
+                object_id=submission.id,
+                user=request.user,
+                user_ip=get_client_ip(request),
+                comments="Form submitted",
+            )
 
-                # Log audit
-                AuditLog.objects.create(
-                    action="submit",
-                    object_type="FormSubmission",
-                    object_id=submission.id,
-                    user=request.user,
-                    user_ip=get_client_ip(request),
-                    comments="Form submitted",
-                )
-
-                # Create approval tasks if workflow requires approval
-                create_approval_tasks(submission)
+            # Create approval tasks if workflow requires approval
+            create_approval_tasks(submission)
 
             return redirect("forms_workflows:my_submissions")
     else:
@@ -364,8 +387,11 @@ def form_auto_save(request, slug):
         )
 
     try:
-        # Parse JSON data
-        data = json.loads(request.body)
+        # Parse JSON data and strip any browser/Django meta-keys that should
+        # never be stored as form data (defense-in-depth alongside the JS fix).
+        _auto_save_skip = {"csrfmiddlewaretoken", "save_draft", "submit"}
+        raw = json.loads(request.body)
+        data = {k: v for k, v in raw.items() if k not in _auto_save_skip}
 
         # Upsert draft — form_data must be in defaults so the INSERT on first
         # save does not hit the NOT NULL constraint on that column.

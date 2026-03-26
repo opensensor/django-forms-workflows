@@ -89,10 +89,16 @@
         </div>
         {% endif %}
 
-        <div class="mt-3">
+        <div class="mt-3 d-flex gap-2 align-items-center">
             <a href="{% url 'forms_workflows:form_list' %}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to Forms
             </a>
+            {% if is_draft and draft_id %}
+            <a href="{% url 'forms_workflows:discard_draft' draft_id %}"
+               class="btn btn-outline-danger ms-auto">
+                <i class="bi bi-trash3"></i> Discard Draft
+            </a>
+            {% endif %}
         </div>
     </div>
 </div>

@@ -367,6 +367,7 @@ def form_submit(request, slug):
             "form_def": form_def,
             "form": form,
             "is_draft": draft is not None,
+            "draft_id": draft.id if draft else None,
             "form_enhancements_config": form_enhancements_config,
         },
     )
@@ -1750,6 +1751,45 @@ def withdraw_submission(request, submission_id):
     return render(
         request,
         "django_forms_workflows/withdraw_confirm.html",
+        {"submission": submission},
+    )
+
+
+@login_required
+def discard_draft(request, submission_id):
+    """Permanently delete a draft submission owned by the current user."""
+    submission = get_object_or_404(FormSubmission, id=submission_id)
+
+    # Only the submitter may discard their own draft
+    if submission.submitter != request.user:
+        return HttpResponseForbidden("You can only discard your own drafts.")
+
+    # Must actually be a draft
+    if submission.status != "draft":
+        messages.error(request, "Only drafts can be discarded.")
+        return redirect(
+            "forms_workflows:submission_detail", submission_id=submission_id
+        )
+
+    if request.method == "POST":
+        form_name = submission.form_definition.name
+        submission.delete()
+
+        AuditLog.objects.create(
+            action="update",
+            object_type="FormSubmission",
+            object_id=submission_id,
+            user=request.user,
+            user_ip=get_client_ip(request),
+            comments=f'Draft discarded for form "{form_name}"',
+        )
+
+        messages.success(request, "Draft discarded.")
+        return redirect("forms_workflows:my_submissions")
+
+    return render(
+        request,
+        "django_forms_workflows/discard_draft_confirm.html",
         {"submission": submission},
     )
 
@@ -3332,9 +3372,14 @@ def my_submissions_ajax(request):
             submit_url = reverse(
                 "forms_workflows:form_submit", args=[sub.form_definition.slug]
             )
+            discard_url = reverse("forms_workflows:discard_draft", args=[sub.id])
             actions_parts.append(
                 f'<a href="{submit_url}" class="btn btn-sm btn-outline-secondary">'
                 f'<i class="bi bi-pencil"></i> Continue</a>'
+            )
+            actions_parts.append(
+                f'<a href="{discard_url}" class="btn btn-sm btn-outline-danger">'
+                f'<i class="bi bi-trash3"></i> Discard</a>'
             )
         if (
             sub.status in ("submitted", "pending_approval")

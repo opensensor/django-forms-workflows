@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.9] - 2026-03-26
+
+### Added
+- **Discard Draft** — users can now permanently delete a draft they no longer want.
+  - New `discard_draft` view at `submissions/<id>/discard/` (GET shows confirmation, POST deletes and audits).
+  - New URL name `forms_workflows:discard_draft`.
+  - New `discard_draft_confirm.html` confirmation page matching the style of the existing `withdraw_confirm.html`.
+  - **"Discard Draft" button** on the form submission page, shown in the bottom bar alongside "Back to Forms" whenever the user is editing an existing draft (`is_draft=True`). The view now passes `draft_id` to the template so the button can link to the correct URL.
+  - **"Discard" action button** in the My Submissions DataTable, shown next to "Continue" for every draft row.
+
 ## [0.37.8] - 2026-03-26
 
 ### Fixed

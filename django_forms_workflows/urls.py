@@ -35,6 +35,11 @@ urlpatterns = [
         name="withdraw_submission",
     ),
     path(
+        "submissions/<int:submission_id>/discard/",
+        views.discard_draft,
+        name="discard_draft",
+    ),
+    path(
         "submissions/<int:submission_id>/resubmit/",
         views.resubmit_submission,
         name="resubmit_submission",

@@ -1,0 +1,41 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Discard Draft - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6 mx-auto">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-trash3"></i> Discard Draft
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Are you sure you want to permanently discard this draft? This cannot be undone.</p>
+                <div class="alert alert-danger">
+                    <strong>Form:</strong> {{ submission.form_definition.name }}<br>
+                    <strong>Last saved:</strong> {{ submission.updated_at|date:"Y-m-d H:i" }}
+                </div>
+                <p class="text-muted">
+                    <small><i class="bi bi-info-circle"></i>
+                    All saved progress will be deleted. You can start a new draft at any time.</small>
+                </p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2 d-md-block">
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash3"></i> Yes, Discard Draft
+                        </button>
+                        <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}"
+                           class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

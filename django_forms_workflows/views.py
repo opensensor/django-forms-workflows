@@ -417,7 +417,25 @@ def my_submissions(request):
     ``category_counts`` list so the UI can render a filter-pill bar showing
     how many submissions belong to each category.
     """
-    base_submissions = FormSubmission.objects.filter(submitter=request.user)
+    # Include submissions the user owns OR submissions for forms they can review.
+    reviewer_form_ids = (
+        FormDefinition.objects.filter(reviewer_groups__in=request.user.groups.all())
+        .values_list("id", flat=True)
+        .distinct()
+    )
+    base_submissions = FormSubmission.objects.filter(
+        models.Q(submitter=request.user)
+        | models.Q(
+            form_definition__in=reviewer_form_ids,
+            status__in=[
+                "submitted",
+                "pending_approval",
+                "approved",
+                "rejected",
+                "withdrawn",
+            ],
+        )
+    ).distinct()
 
     # --- Category counts (for the filter bar) ---
     raw_counts = (
@@ -542,14 +560,17 @@ def submission_detail(request, submission_id):
     """View submission details"""
     submission = get_object_or_404(FormSubmission, id=submission_id)
 
-    # Check permissions - user must be submitter, approver, or admin
+    # Check permissions - user must be submitter, approver, admin, or reviewer
+    form_def_early = submission.form_definition
+    is_reviewer = request.user.groups.filter(
+        id__in=form_def_early.reviewer_groups.all()
+    ).exists()
     can_view = (
         submission.submitter == request.user
         or request.user.is_superuser
         or user_can_approve(request.user, submission)
-        or request.user.groups.filter(
-            id__in=submission.form_definition.admin_groups.all()
-        ).exists()
+        or request.user.groups.filter(id__in=form_def_early.admin_groups.all()).exists()
+        or is_reviewer
     )
 
     if not can_view:
@@ -743,15 +764,17 @@ def submission_detail(request, submission_id):
         request.user.is_superuser
         or user_can_approve(request.user, submission)
         or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+        or is_reviewer
     )
 
     # Privacy: hide approval history from the submitter when configured.
-    # Approvers and admins always see the full history.
+    # Approvers, admins, and reviewers always see the full history.
     is_submitter_only = (
         submission.submitter == request.user
         and not request.user.is_superuser
         and not user_can_approve(request.user, submission)
         and not request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+        and not is_reviewer
     )
     hide_approval_history = bool(
         workflow and workflow.hide_approval_history and is_submitter_only
@@ -1424,6 +1447,9 @@ def sub_workflow_detail(request, instance_id):
         or request.user.groups.filter(
             id__in=submission.form_definition.admin_groups.all()
         ).exists()
+        or request.user.groups.filter(
+            id__in=submission.form_definition.reviewer_groups.all()
+        ).exists()
     )
     if not can_view:
         messages.error(request, "You don't have permission to view this.")
@@ -1789,6 +1815,7 @@ def submission_pdf(request, submission_id):
         or request.user.is_superuser
         or user_can_approve(request.user, submission)
         or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+        or request.user.groups.filter(id__in=form_def.reviewer_groups.all()).exists()
     )
     if not can_view:
         return HttpResponseForbidden(
@@ -2555,6 +2582,9 @@ def bulk_export_submissions(request):
             or request.user.groups.filter(
                 id__in=sub.form_definition.admin_groups.all()
             ).exists()
+            or request.user.groups.filter(
+                id__in=sub.form_definition.reviewer_groups.all()
+            ).exists()
         )
         if can_view:
             allowed.append(sub)
@@ -2737,6 +2767,9 @@ def bulk_export_submissions_pdf(request):
             or user_can_approve(request.user, sub)
             or request.user.groups.filter(
                 id__in=sub.form_definition.admin_groups.all()
+            ).exists()
+            or request.user.groups.filter(
+                id__in=sub.form_definition.reviewer_groups.all()
             ).exists()
         )
         if can_view:
@@ -3145,7 +3178,24 @@ def my_submissions_ajax(request):
     category_slug = params.get("category", "").strip()
     form_slug = params.get("form", "").strip()
 
-    qs = FormSubmission.objects.filter(submitter=request.user)
+    reviewer_form_ids = (
+        FormDefinition.objects.filter(reviewer_groups__in=request.user.groups.all())
+        .values_list("id", flat=True)
+        .distinct()
+    )
+    qs = FormSubmission.objects.filter(
+        models.Q(submitter=request.user)
+        | models.Q(
+            form_definition__in=reviewer_form_ids,
+            status__in=[
+                "submitted",
+                "pending_approval",
+                "approved",
+                "rejected",
+                "withdrawn",
+            ],
+        )
+    ).distinct()
     records_total = qs.count()
 
     if category_slug:

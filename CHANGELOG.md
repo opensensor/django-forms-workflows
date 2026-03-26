@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-03-26
+
+### Added
+- **`reviewer_groups` permission level on `FormDefinition`** — a new M2M field that grants named groups read-only access to all submissions and their full approval history for a form, without the management capabilities of `admin_groups`.
+  - Members of a `reviewer_groups` group will see all submitted/pending/approved/rejected/withdrawn submissions for that form under **My Submissions** (alongside their own), so they can navigate to them without needing a direct URL.
+  - The full approval history is always visible to reviewers even when `hide_approval_history` is enabled on the workflow (matching the behaviour for approvers and admins).
+  - Access is enforced consistently across `submission_detail`, `sub_workflow_detail`, `submission_pdf`, `bulk_export_submissions`, `bulk_export_submissions_pdf`, and the `user_can_view_submission` utility.
+  - The field is exposed in Django Admin under the **Access Control** fieldset with a horizontal filter widget, and is preserved when cloning a form.
+  - Migration `0064_add_reviewer_groups` adds the underlying join table.
+
 ## [0.36.5] - 2026-03-26
 
 ### Fixed

@@ -398,7 +398,12 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at", "updated_at", "created_by")
     inlines = [FormFieldInline, WorkflowDefinitionInline]
-    filter_horizontal = ("submit_groups", "view_groups", "admin_groups")
+    filter_horizontal = (
+        "submit_groups",
+        "view_groups",
+        "admin_groups",
+        "reviewer_groups",
+    )
     change_form_template = "admin/django_forms_workflows/formdef_change_form.html"
     actions = ["clone_forms", "diff_forms", "export_as_json"]
 
@@ -424,6 +429,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                     "submit_groups",
                     "view_groups",
                     "admin_groups",
+                    "reviewer_groups",
                 ),
             },
         ),
@@ -614,6 +620,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                     cloned_form.submit_groups.set(form.submit_groups.all())
                     cloned_form.view_groups.set(form.view_groups.all())
                     cloned_form.admin_groups.set(form.admin_groups.all())
+                    cloned_form.reviewer_groups.set(form.reviewer_groups.all())
 
                     # Clone workflows, stages, and stage approval groups
                     for wf in form.workflows.all():

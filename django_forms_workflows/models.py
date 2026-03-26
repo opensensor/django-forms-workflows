@@ -156,6 +156,15 @@ class FormDefinition(models.Model):
         blank=True,
         help_text="Groups that can view all submissions",
     )
+    reviewer_groups = models.ManyToManyField(
+        Group,
+        related_name="can_review_forms",
+        blank=True,
+        help_text=(
+            "Groups that can view all submissions and full approval history for this form. "
+            "Unlike admin groups, reviewers cannot manage the form itself."
+        ),
+    )
 
     # Behavior
     allow_save_draft = models.BooleanField(

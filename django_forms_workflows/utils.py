@@ -264,6 +264,12 @@ def user_can_view_submission(user, submission: FormSubmission) -> bool:
     ).exists():
         return True
 
+    # Reviewers can view submissions and approval history
+    if user.groups.filter(
+        id__in=submission.form_definition.reviewer_groups.all()
+    ).exists():
+        return True
+
     return False
 
 

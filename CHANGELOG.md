@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.4] - 2026-03-26
+
+### Added
+- **Dynamic dropdown choices from database** — select, multiselect, multiselect_list, radio, and checkboxes fields can now have their options populated live from any SQL query defined in `FORMS_WORKFLOWS_DATABASE_QUERIES`. Mark a query with `"return_choices": True` (and no user parameter) to return multiple rows; each row's first column becomes the option value and the second column (if present) becomes the display label. Wire it up by pointing the field's PrefillSource at the query key — the stored `choices` JSON is used as a fallback if the DB is unavailable.
+- `DatabaseDataSource.execute_choices_query(query_key)` — new method that executes a choices query without a user parameter and returns `[(value, label), ...]`.
+- `_get_choices_from_prefill_source(field_def)` — new helper on both form classes that detects `return_choices` queries and calls `execute_choices_query`; returns `None` when not applicable so callers fall back to stored choices.
+- `execute_custom_query` now warns and returns `None` if called on a `return_choices` query, preventing accidental single-value use.
+
 ## [0.36.3] - 2026-03-26
 
 ### Fixed

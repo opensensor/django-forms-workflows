@@ -276,6 +276,31 @@ class DynamicForm(forms.Form):
 
         return []
 
+    def _get_choices_from_prefill_source(self, field_def):
+        """
+        Return a list of (value, label) tuples from a database choices query when the
+        field's PrefillSource points to a query with ``return_choices=True``.
+
+        Returns None if the field has no such source (so the caller can fall back to
+        the stored ``field_def.choices``). Returns [] if the query ran but was empty.
+        """
+        prefill_key = field_def.get_prefill_source_key()
+        if not prefill_key or not prefill_key.startswith("dbquery."):
+            return None
+
+        query_key = prefill_key[len("dbquery.") :]
+
+        from django.conf import settings
+
+        queries = getattr(settings, "FORMS_WORKFLOWS_DATABASE_QUERIES", {})
+        if not queries.get(query_key, {}).get("return_choices"):
+            return None
+
+        from .data_sources import DatabaseDataSource
+
+        source = DatabaseDataSource()
+        return source.execute_choices_query(query_key)
+
     def add_field(self, field_def, initial_data):
         """Add a field to the form based on field definition"""
 
@@ -402,19 +427,34 @@ class DynamicForm(forms.Form):
             self.fields[field_def.field_name] = forms.URLField(**field_args)
 
         elif field_def.field_type == "select":
-            choices = [("", "-- Select --")] + self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = [("", "-- Select --")] + (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.ChoiceField(
                 choices=choices, **field_args
             )
 
         elif field_def.field_type == "multiselect":
-            choices = self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices, widget=forms.CheckboxSelectMultiple, **field_args
             )
 
         elif field_def.field_type == "multiselect_list":
-            choices = self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.SelectMultiple(attrs={"class": "form-select"}),
@@ -422,7 +462,12 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "radio":
-            choices = self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.ChoiceField(
                 choices=choices, widget=forms.RadioSelect, **field_args
             )
@@ -436,7 +481,12 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "checkboxes":
-            choices = self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.CheckboxSelectMultiple,
@@ -1057,7 +1107,12 @@ class ApprovalStepForm(forms.Form):
             self.fields[field_def.field_name] = forms.EmailField(**field_args)
 
         elif field_def.field_type == "select":
-            choices = [("", "-- Select --")] + self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = [("", "-- Select --")] + (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             if widget_attrs:
                 field_args["widget"] = forms.Select(attrs=widget_attrs)
             self.fields[field_def.field_name] = forms.ChoiceField(
@@ -1065,7 +1120,12 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "multiselect":
-            choices = self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.CheckboxSelectMultiple,
@@ -1073,7 +1133,12 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "multiselect_list":
-            choices = self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.SelectMultiple(attrs={"class": "form-select"}),
@@ -1081,7 +1146,12 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "radio":
-            choices = self._parse_choices(field_def.choices)
+            _db_choices = self._get_choices_from_prefill_source(field_def)
+            choices = (
+                _db_choices
+                if _db_choices is not None
+                else self._parse_choices(field_def.choices)
+            )
             self.fields[field_def.field_name] = forms.ChoiceField(
                 choices=choices,
                 widget=forms.RadioSelect(attrs=widget_attrs),
@@ -1194,6 +1264,29 @@ class ApprovalStepForm(forms.Form):
         if isinstance(choices, str):
             return [(c.strip(), c.strip()) for c in choices.split(",") if c.strip()]
         return []
+
+    def _get_choices_from_prefill_source(self, field_def):
+        """
+        Return (value, label) tuples from a database choices query when the field's
+        PrefillSource points to a query with ``return_choices=True``, or None if the
+        field has no such source (so the caller falls back to stored choices).
+        """
+        prefill_key = field_def.get_prefill_source_key()
+        if not prefill_key or not prefill_key.startswith("dbquery."):
+            return None
+
+        query_key = prefill_key[len("dbquery.") :]
+
+        from django.conf import settings
+
+        queries = getattr(settings, "FORMS_WORKFLOWS_DATABASE_QUERIES", {})
+        if not queries.get(query_key, {}).get("return_choices"):
+            return None
+
+        from .data_sources import DatabaseDataSource
+
+        source = DatabaseDataSource()
+        return source.execute_choices_query(query_key)
 
     def _build_layout_fields(self, field_defs):
         """Convert a list of field definitions into crispy layout elements,

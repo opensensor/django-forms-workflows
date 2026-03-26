@@ -428,6 +428,16 @@ class DatabaseDataSource(DataSource):
                 )
                 return None
 
+            # Choices queries (return_choices=True) return multiple rows for
+            # populating dropdown options and require no user parameter.
+            # Use execute_choices_query() for those instead.
+            if query_config.get("return_choices"):
+                logger.warning(
+                    f"Database query '{query_key}' has return_choices=True. "
+                    "Use execute_choices_query() to get dropdown options."
+                )
+                return None
+
             # Get user's lookup value
             user_id = self._get_user_id(user, user_field)
             if not user_id:
@@ -459,6 +469,76 @@ class DatabaseDataSource(DataSource):
 
         except Exception as e:
             logger.error(f"Error executing custom query '{query_key}': {e}")
+            return None
+
+    def execute_choices_query(self, query_key: str) -> list[tuple] | None:
+        """
+        Execute a reference-data query and return all rows as (value, label) tuples
+        for populating dropdown / select / radio field options.
+
+        Unlike execute_custom_query(), this method requires no user parameter and
+        always fetches all rows. The query config must have ``return_choices: True``.
+
+        If the query returns two columns, the first is used as the option value and
+        the second as the display label. If only one column is returned, both value
+        and label are set to that column's value.
+
+        Args:
+            query_key: Key from FORMS_WORKFLOWS_DATABASE_QUERIES setting.
+
+        Returns:
+            List of (value, label) tuples, or None on configuration/query error.
+        """
+        try:
+            queries = getattr(settings, "FORMS_WORKFLOWS_DATABASE_QUERIES", {})
+            if query_key not in queries:
+                logger.error(
+                    f"Database query key '{query_key}' not found in "
+                    "FORMS_WORKFLOWS_DATABASE_QUERIES setting"
+                )
+                return None
+
+            query_config = queries[query_key]
+
+            if not query_config.get("return_choices"):
+                logger.error(
+                    f"Database query '{query_key}' does not have return_choices=True. "
+                    "Use execute_custom_query() for single-value prefill queries."
+                )
+                return None
+
+            query_text = query_config.get("query")
+            db_alias = query_config.get("db_alias")
+
+            if not query_text or not db_alias:
+                logger.error(
+                    f"Database choices query '{query_key}' missing 'query' or 'db_alias'"
+                )
+                return None
+
+            databases = getattr(settings, "DATABASES", {})
+            if db_alias not in databases:
+                logger.error(f"Database alias '{db_alias}' not configured")
+                return None
+
+            with connections[db_alias].cursor() as cursor:
+                cursor.execute(query_text)
+                rows = cursor.fetchall()
+
+            results = []
+            for row in rows:
+                if len(row) >= 2:
+                    value = str(row[0] or "").strip()
+                    label = str(row[1] or "").strip()
+                else:
+                    value = label = str(row[0] or "").strip()
+                if value:
+                    results.append((value, label))
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Error executing choices query '{query_key}': {e}")
             return None
 
     def is_available(self) -> bool:

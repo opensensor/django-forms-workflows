@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.2] - 2026-03-26
+
+### Fixed
+- **Pending approvals now appear in Approval History** — `completed_approvals` and `completed_approvals_ajax` previously only matched `ApprovalTask` rows with status `approved` or `rejected`, so a submission still awaiting action (task status `pending`) was visible on the Pending tab but invisible on the History tab when filtered to "pending approval". The task-status filter now includes `"pending"`, making the two tabs consistent for approvers.
+
 ## [0.37.1] - 2026-03-26
 
 ### Fixed

@@ -1023,6 +1023,108 @@ class StageFormFieldNotification(models.Model):
         return f"{self.get_notification_type_display()} → field '{self.email_field}'"
 
 
+class WorkflowNotification(models.Model):
+    """
+    A granular notification rule attached to a **WorkflowDefinition** that fires
+    at workflow-level events (submission received, final approval, final rejection,
+    or withdrawal).
+
+    This is the workflow-definition equivalent of ``StageFormFieldNotification``:
+    each rule is fully independent so you can configure, for example:
+
+    * A separate email to ``advisor_email`` only when the workflow is *approved*.
+    * A static CC to ``registrar@example.edu`` on *every* submission.
+    * A conditional alert to ``dean@example.edu`` only when
+      ``department == "Graduate Studies"`` and the workflow is *rejected*.
+
+    Recipients are the union of:
+
+    * ``email_field`` — slug of the form field whose value is the recipient email
+      (resolved from ``form_data`` at send time, varies per submission).
+    * ``static_emails`` — comma-separated fixed addresses always included.
+
+    At least one of the two must be provided.
+
+    ``conditions`` (same JSON format as ``WorkflowStage.trigger_conditions``)
+    are evaluated against ``form_data`` before sending; leave blank to always send.
+
+    ``subject_template`` supports ``{form_name}`` and ``{submission_id}``
+    placeholders.
+    """
+
+    NOTIFICATION_TYPES = [
+        ("submission_received", "Submission Received"),
+        ("approval_notification", "Submission Approved (final)"),
+        ("rejection_notification", "Submission Rejected (final)"),
+        ("withdrawal_notification", "Submission Withdrawn"),
+    ]
+
+    workflow = models.ForeignKey(
+        "WorkflowDefinition",
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    notification_type = models.CharField(
+        max_length=30,
+        choices=NOTIFICATION_TYPES,
+        default="approval_notification",
+        help_text="Which workflow event triggers this notification.",
+    )
+    email_field = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=(
+            "Slug of the form field whose value is the recipient email address. "
+            "Resolved from the submission's form_data at send time. "
+            "Leave blank if you only need static recipients."
+        ),
+    )
+    static_emails = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text=(
+            "Comma-separated list of fixed email addresses to notify. "
+            "Can be combined with Email Field to notify both static and dynamic addresses."
+        ),
+    )
+    subject_template = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=(
+            "Custom subject line. Leave blank to use the default for the event type. "
+            "Supports {form_name} and {submission_id} placeholders."
+        ),
+    )
+    conditions = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Optional conditions evaluated against form_data before sending. "
+            "Same format as stage trigger_conditions. Leave blank to always send."
+        ),
+    )
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Workflow Notification"
+        verbose_name_plural = "Workflow Notifications"
+
+    def __str__(self) -> str:
+        recipient_desc = (
+            self.email_field
+            or (
+                self.static_emails[:40] + "…"
+                if len(self.static_emails) > 40
+                else self.static_emails
+            )
+            or "(no recipients)"
+        )
+        return f"{self.get_notification_type_display()} → {recipient_desc}"
+
+
 class PendingNotification(models.Model):
     """
     Queue of notifications waiting to be sent as part of a batch digest.

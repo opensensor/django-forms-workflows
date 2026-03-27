@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.12] - 2026-03-27
+
+### Added
+- **`WorkflowNotification` model** — granular, per-event notification rules attached directly to a `WorkflowDefinition` (the workflow-definition-level equivalent of `StageFormFieldNotification`).  Each rule is fully independent and supports:
+  - **Four trigger events**: `submission_received`, `approval_notification` (final approval), `rejection_notification` (final rejection), `withdrawal_notification`.
+  - **Dynamic recipients** via `email_field` — slug of the form field whose submitted value is the recipient email (varies per submission, e.g. `advisor_email`).
+  - **Static recipients** via `static_emails` — comma-separated fixed addresses.  Both fields can be combined; the union is notified.
+  - **Conditional sending** via `conditions` — same JSON format as `WorkflowStage.trigger_conditions`; evaluated against `form_data` before dispatch.  Leave blank to always send.
+  - **Custom subject** via `subject_template` — supports `{form_name}` and `{submission_id}` placeholders; falls back to a sensible default.
+  - **Separate email per recipient** — each rule fires its own message so different recipient groups receive tailored content rather than being bundled onto the submitter's notification.
+  - Multiple independent rules per workflow — approve to one address, reject to a different one, CC a third party on all events, etc.
+- **`WorkflowNotificationInline`** admin inline — added to both `WorkflowDefinitionInline` (FormDefinition change page) and `WorkflowDefinitionAdmin` (standalone WorkflowDefinition change page).
+- **`send_workflow_definition_notifications` Celery task** — dispatches the new rules; called automatically from all three workflow-engine notification hooks (`_notify_submission_created_immediate`, `_notify_final_approval`, `_notify_rejection`) and from the `withdraw_submission` view.
+- **`send_withdrawal_notification` Celery task** — sends a withdrawal confirmation email to the submitter (and `additional_notify_emails`), respecting the existing `notify_on_withdrawal` flag.  Previously the flag existed on the model but no email was ever dispatched on withdrawal.
+- **`withdrawal_notification.html` email template** — new template matching the visual style of the existing approval/rejection templates.
+- **Migration `0065_workflownotification`**.
+
 ## [0.37.11] - 2026-03-27
 
 ### Added

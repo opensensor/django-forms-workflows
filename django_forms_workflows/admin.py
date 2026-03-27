@@ -41,6 +41,7 @@ from .models import (
     SubWorkflowInstance,
     UserProfile,
     WorkflowDefinition,
+    WorkflowNotification,
     WorkflowStage,
 )
 
@@ -336,13 +337,32 @@ class WorkflowStageInline(nested_admin.NestedStackedInline):
     )
 
 
+class WorkflowNotificationInline(nested_admin.NestedTabularInline):
+    """Inline for configuring granular workflow-level notification rules.
+
+    Each rule fires at a workflow-conclusion event (submission received, final
+    approval, final rejection, or withdrawal) and can target dynamic recipients
+    (from a form field) and/or static addresses, with optional conditions.
+    """
+
+    model = WorkflowNotification
+    extra = 0
+    fields = (
+        "notification_type",
+        "email_field",
+        "static_emails",
+        "subject_template",
+        "conditions",
+    )
+
+
 class WorkflowDefinitionInline(nested_admin.NestedStackedInline):
     """Inline for editing a WorkflowDefinition directly from the FormDefinition
     change page."""
 
     model = WorkflowDefinition
     extra = 0
-    inlines = [WorkflowStageInline]
+    inlines = [WorkflowStageInline, WorkflowNotificationInline]
     fields = [
         "name_label",
         "requires_approval",
@@ -1283,7 +1303,7 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
 
 @admin.register(WorkflowDefinition)
 class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
-    inlines = [WorkflowStageInline]
+    inlines = [WorkflowStageInline, WorkflowNotificationInline]
     list_display = (
         "form_definition",
         "requires_approval",

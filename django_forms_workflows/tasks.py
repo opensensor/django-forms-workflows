@@ -30,6 +30,7 @@ from .models import (
     NotificationLog,
     PendingNotification,
     StageFormFieldNotification,
+    WorkflowNotification,
 )
 
 logger = logging.getLogger(__name__)
@@ -978,3 +979,151 @@ def send_submission_form_field_notifications(
             notification_type=notification_type,
             submission_id=submission_id,
         )
+
+
+@shared_task(name="django_forms_workflows.send_withdrawal_notification")
+def send_withdrawal_notification(submission_id: int) -> None:
+    """Notify the submitter (and optional additional emails) that their submission was withdrawn."""
+    submission = FormSubmission.objects.select_related(
+        "form_definition", "submitter"
+    ).get(id=submission_id)
+    workflow = getattr(submission.form_definition, "workflow", None)
+    if (
+        workflow
+        and hasattr(workflow, "notify_on_withdrawal")
+        and not workflow.notify_on_withdrawal
+    ):
+        return
+
+    submission_url = _abs(
+        reverse("forms_workflows:submission_detail", args=[submission.id])
+    )
+    context = {"submission": submission, "submission_url": submission_url}
+    subject = (
+        f"Submission Withdrawn: {submission.form_definition.name} (ID {submission.id})"
+    )
+    recipients = [getattr(submission.submitter, "email", "")]
+    if workflow and getattr(workflow, "additional_notify_emails", ""):
+        recipients.extend(
+            [
+                e.strip()
+                for e in workflow.additional_notify_emails.split(",")
+                if e.strip()
+            ]
+        )
+    _send_html_email(
+        subject,
+        recipients,
+        "emails/withdrawal_notification.html",
+        context,
+        notification_type="withdrawal_notification",
+        submission_id=submission_id,
+    )
+
+
+@shared_task(name="django_forms_workflows.send_workflow_definition_notifications")
+def send_workflow_definition_notifications(
+    submission_id: int, notification_type: str
+) -> None:
+    """Send granular WorkflowNotification rules for the given workflow event.
+
+    Called for ``submission_received``, ``approval_notification``,
+    ``rejection_notification``, and ``withdrawal_notification`` events.
+
+    For each ``WorkflowNotification`` record attached to the form's workflow(s)
+    whose ``notification_type`` matches:
+
+    1. Evaluates optional ``conditions`` against ``form_data`` — skips if not met.
+    2. Resolves recipients from ``email_field`` (dynamic, per-submission) and/or
+       ``static_emails`` (fixed addresses).
+    3. Sends one email per recipient using the appropriate template, with a
+       custom or default subject line.
+
+    Each rule fires as a **separate email** so different recipient groups get
+    tailored messages rather than being bundled onto the same notification.
+    """
+    template_map = {
+        "submission_received": "emails/submission_notification.html",
+        "approval_notification": "emails/approval_notification.html",
+        "rejection_notification": "emails/rejection_notification.html",
+        "withdrawal_notification": "emails/withdrawal_notification.html",
+    }
+    template = template_map.get(notification_type)
+    if not template:
+        logger.warning(
+            "send_workflow_definition_notifications: unknown notification_type '%s'",
+            notification_type,
+        )
+        return
+
+    submission = FormSubmission.objects.select_related(
+        "form_definition", "submitter"
+    ).get(id=submission_id)
+    form_data = submission.form_data or {}
+    form_name = submission.form_definition.name
+    submission_url, _ = _build_form_field_notification_context(submission)
+
+    default_subjects = {
+        "submission_received": f"Submission Received: {form_name} (ID {submission.id})",
+        "approval_notification": f"Submission Approved: {form_name} (ID {submission.id})",
+        "rejection_notification": f"Submission Rejected: {form_name} (ID {submission.id})",
+        "withdrawal_notification": f"Submission Withdrawn: {form_name} (ID {submission.id})",
+    }
+
+    notifications = WorkflowNotification.objects.filter(
+        workflow__form_definition=submission.form_definition,
+        notification_type=notification_type,
+    ).select_related("workflow")
+
+    for notif in notifications:
+        # Evaluate optional conditions
+        if notif.conditions:
+            try:
+                from .conditions import evaluate_conditions
+
+                if not evaluate_conditions(notif.conditions, form_data):
+                    logger.info(
+                        "WorkflowNotification %s skipped: conditions not met "
+                        "(submission %s, type %s)",
+                        notif.id,
+                        submission.id,
+                        notification_type,
+                    )
+                    continue
+            except Exception:
+                logger.warning(
+                    "WorkflowNotification %s: error evaluating conditions; skipping.",
+                    notif.id,
+                    exc_info=True,
+                )
+                continue
+
+        # Resolve recipients (dynamic + static)
+        recipients = _collect_notification_recipients(notif, form_data)
+        if not recipients:
+            logger.info(
+                "WorkflowNotification %s: no recipients resolved for submission %s; skipping.",
+                notif.id,
+                submission.id,
+            )
+            continue
+
+        subject = (
+            notif.subject_template.format(
+                form_name=form_name, submission_id=submission.id
+            )
+            if notif.subject_template
+            else default_subjects[notification_type]
+        )
+        context = {"submission": submission, "submission_url": submission_url}
+
+        # Send one email per recipient so each message is independent
+        for recipient in recipients:
+            _send_html_email(
+                subject,
+                [recipient],
+                template,
+                context,
+                notification_type=notification_type,
+                submission_id=submission_id,
+            )

@@ -83,6 +83,7 @@ def _notify_submission_created_immediate(submission: FormSubmission) -> None:
     except Exception:  # ImportError or other
         logger.warning("Notification tasks not available for submission_created")
     _notify_form_field_recipients_for_submission(submission, "submission_received")
+    _notify_workflow_level_recipients(submission, "submission_received")
 
 
 def _notify_task_request(task: ApprovalTask) -> None:
@@ -125,6 +126,7 @@ def _notify_final_approval(submission: FormSubmission) -> None:
     except Exception:
         logger.warning("Notification tasks not available for approval_notification")
     _notify_form_field_recipients_for_submission(submission, "approval_notification")
+    _notify_workflow_level_recipients(submission, "approval_notification")
 
 
 def _notify_rejection(submission: FormSubmission) -> None:
@@ -135,6 +137,7 @@ def _notify_rejection(submission: FormSubmission) -> None:
     except Exception:
         logger.warning("Notification tasks not available for rejection_notification")
     _notify_form_field_recipients_for_submission(submission, "rejection_notification")
+    _notify_workflow_level_recipients(submission, "rejection_notification")
 
 
 def _notify_form_field_recipients_for_submission(
@@ -155,6 +158,27 @@ def _notify_form_field_recipients_for_submission(
     except Exception:
         logger.warning(
             "Could not dispatch form-field '%s' notifications for submission %s",
+            notification_type,
+            submission.id,
+        )
+
+
+def _notify_workflow_level_recipients(
+    submission: FormSubmission,
+    notification_type: str,
+) -> None:
+    """Dispatch ``WorkflowNotification`` rules for a workflow-conclusion event.
+
+    Fires ``send_workflow_definition_notifications`` asynchronously (or
+    synchronously if Celery is unavailable) for the given event type.
+    """
+    try:
+        from .tasks import send_workflow_definition_notifications
+
+        send_workflow_definition_notifications.delay(submission.id, notification_type)
+    except Exception:
+        logger.warning(
+            "Could not dispatch WorkflowNotification '%s' rules for submission %s",
             notification_type,
             submission.id,
         )

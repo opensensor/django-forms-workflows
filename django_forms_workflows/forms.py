@@ -261,6 +261,10 @@ class DynamicForm(forms.Form):
         self.helper.attrs = {
             "data-form-enhancements": "true",
             "data-form-slug": form_definition.slug,
+            # Disable browser-native HTML5 validation so ALL server-side errors
+            # are shown simultaneously instead of the browser stopping at the
+            # first failing field and displaying a single tooltip bubble.
+            "novalidate": True,
         }
 
     def _parse_choices(self, choices):
@@ -1508,6 +1512,7 @@ class ApprovalStepForm(forms.Form):
 
         self.helper.layout = Layout(*layout_fields)
         self.helper.form_id = f"approval_form_{self.submission.pk}"
+        self.helper.attrs = {"novalidate": True}
 
     def get_updated_form_data(self):
         """

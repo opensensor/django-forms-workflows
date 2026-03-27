@@ -19,6 +19,16 @@
                 {{ form_def.instructions|safe }}
             </div>
         {% endif %}
+        {% if form.errors %}
+        <div class="alert alert-danger d-flex align-items-center gap-2" role="alert" id="form-error-summary">
+            <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0"></i>
+            <span>
+                <strong>{{ form.errors|length }} field{{ form.errors|length|pluralize }} need{{ form.errors|length|pluralize:"s," }} attention.</strong>
+                Each problem is highlighted in red below — please review and correct all errors before submitting.
+            </span>
+        </div>
+        {% endif %}
+
         <div class="card">
             <div class="card-body">
                 {% crispy form %}
@@ -107,6 +117,17 @@
 {% block extra_js %}
 <script src="{% static 'django_forms_workflows/js/form-enhancements.js' %}"></script>
 <script>
+    // Scroll to the error summary banner (or first invalid field) after
+    // server-side validation returns errors.
+    (function () {
+        const summary = document.getElementById('form-error-summary');
+        const firstInvalid = document.querySelector('.is-invalid');
+        const target = summary || firstInvalid;
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    })();
+
     document.addEventListener('DOMContentLoaded', function() {
         const formElement = document.querySelector('[data-form-enhancements="true"]');
         if (formElement) {

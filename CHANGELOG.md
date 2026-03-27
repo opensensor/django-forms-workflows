@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.13] - 2026-03-27
+
+### Fixed
+- **`WorkflowNotification` admin integration** — multiple improvements:
+  - `WorkflowNotificationInline` changed from `NestedTabularInline` to `NestedStackedInline` with a proper two-fieldset layout so the `conditions` JSON field is fully editable and the `Conditions (optional)` fieldset collapses for cleaner UX.
+  - Added standalone `@admin.register(WorkflowNotification)` (`WorkflowNotificationAdmin`) with `list_display`, `list_filter`, `search_fields`, and `autocomplete_fields` — notification rules can now be searched, filtered, and managed independently of their parent workflow.
+  - Added `notification_rule_count` column (blue badge) to `WorkflowDefinitionAdmin.list_display` and `hide_approval_history` to `list_filter`.
+  - Renamed the legacy "Notifications" fieldset to **"Legacy Notifications (submitter + additional emails)"** and added a description explaining the difference between the legacy toggles and the new granular `WorkflowNotification` inline rows.
+- **`hide_approval_history` not passed to email template contexts** — added `_get_hide_approval_history()` helper and wired the flag into every notification task's template context: `send_rejection_notification`, `send_approval_notification`, `send_submission_notification`, `send_withdrawal_notification`, `send_submission_form_field_notifications`, and `send_workflow_definition_notifications`.
+- **`rejection_notification.html` ignored `hide_approval_history`** — the rejection-reason comments block (which exposed `ApprovalTask.comments` and thus implicit approval-step identity) is now wrapped in `{% if not hide_approval_history %}`.  When the flag is set, the submitter receives the rejection status without any stage-level detail.
+
 ## [0.37.12] - 2026-03-27
 
 ### Added

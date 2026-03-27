@@ -55,6 +55,7 @@ class FormFieldInline(nested_admin.NestedStackedInline):
     ordering = ("order",)
     fk_name = "form_definition"
     classes = ("collapse",)
+    readonly_fields = ("conditional_rules_summary",)
     fieldsets = (
         (
             None,
@@ -93,8 +94,11 @@ class FormFieldInline(nested_admin.NestedStackedInline):
         (
             "Conditional display",
             {
-                "classes": ("collapse",),
-                "fields": ("conditional_rules",),
+                "fields": ("conditional_rules_summary", "conditional_rules"),
+                "description": (
+                    "The summary shows the currently saved rules at a glance. "
+                    "Edit the raw JSON below to add or modify rules."
+                ),
             },
         ),
         (
@@ -105,6 +109,75 @@ class FormFieldInline(nested_admin.NestedStackedInline):
             },
         ),
     )
+
+    @admin.display(description="Conditional rules (summary)")
+    def conditional_rules_summary(self, obj):
+        result = _render_conditional_rules(obj.conditional_rules)
+        return result or "No conditional rules configured."
+
+
+def _render_conditional_rules(rules) -> str:
+    """Return a colour-coded HTML summary of a ``conditional_rules`` value.
+
+    Used as a read-only admin display for both the inline and the standalone
+    ``FormFieldAdmin``.  Returns an empty string when there are no rules.
+
+    Each rule is rendered as a coloured badge for its action followed by the
+    human-readable condition expression:
+
+        [SHOW]    when  ``first_enrollment`` equals ``Yes``
+        [REQUIRE] when  ``first_enrollment`` equals ``Yes``
+    """
+    import json
+
+    if not rules:
+        return ""
+    if isinstance(rules, str):
+        try:
+            rules = json.loads(rules)
+        except (json.JSONDecodeError, TypeError):
+            return format_html('<span style="color:#dc3545">⚠ Invalid JSON</span>')
+    if isinstance(rules, dict):
+        rules = [rules]
+    if not isinstance(rules, list):
+        return ""
+
+    _badge_styles = {
+        "show": "background:#198754;color:#fff",  # green
+        "hide": "background:#dc3545;color:#fff",  # red
+        "require": "background:#0d6efd;color:#fff",  # blue
+        "enable": "background:#6c757d;color:#fff",  # grey
+    }
+
+    parts = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        action = rule.get("action", "show")
+        badge_style = _badge_styles.get(action, "background:#6c757d;color:#fff")
+        conditions = rule.get("conditions") or []
+        op = rule.get("operator", "AND")
+        if isinstance(conditions, list) and conditions:
+            cond_strs = [
+                f"<code>{c.get('field', '?')}</code> {c.get('operator', '=')} "
+                f"<code>{c.get('value', '?')}</code>"
+                for c in conditions
+                if isinstance(c, dict)
+            ]
+            cond_html = f" <small style='color:#6c757d'>{op}</small> ".join(cond_strs)
+        else:
+            cond_html = "<em style='color:#999'>(no conditions — always applies)</em>"
+        parts.append(
+            f'<div style="margin:3px 0;line-height:1.6">'
+            f'<span style="{badge_style};padding:1px 7px;border-radius:3px;'
+            f'font-size:11px;font-weight:700;letter-spacing:.5px">'
+            f"{action.upper()}</span>"
+            f"&nbsp;&nbsp;when &nbsp;{cond_html}</div>"
+        )
+
+    from django.utils.safestring import mark_safe
+
+    return mark_safe("".join(parts)) if parts else ""
 
 
 @admin.register(FormField)
@@ -119,6 +192,7 @@ class FormFieldAdmin(admin.ModelAdmin):
         "form_definition",
         "required",
         "readonly",
+        "conditional_rules_summary",
         "workflow_stage",
         "order",
     ]
@@ -132,6 +206,7 @@ class FormFieldAdmin(admin.ModelAdmin):
     search_fields = ["field_name", "field_label"]
     ordering = ["form_definition", "order"]
     autocomplete_fields = ["form_definition", "prefill_source_config", "workflow_stage"]
+    readonly_fields = ["conditional_rules_summary"]
 
     fieldsets = (
         (
@@ -173,6 +248,17 @@ class FormFieldAdmin(admin.ModelAdmin):
             {"fields": ("help_text", "placeholder"), "classes": ("collapse",)},
         ),
         (
+            "Conditional Display",
+            {
+                "fields": ("conditional_rules_summary", "conditional_rules"),
+                "description": (
+                    "Rules control when this field is shown, hidden, or required. "
+                    "The summary above reflects the current saved rules; "
+                    "edit the raw JSON below to change them."
+                ),
+            },
+        ),
+        (
             "File Upload",
             {
                 "fields": ("allowed_extensions", "max_file_size_mb"),
@@ -180,6 +266,13 @@ class FormFieldAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    @admin.display(description="Conditional rules")
+    def conditional_rules_summary(self, obj):
+        result = _render_conditional_rules(obj.conditional_rules)
+        return result or "—"
+
+    conditional_rules_summary.allow_tags = True  # Django <4 compat guard
 
 
 @admin.register(PrefillSource)
@@ -337,22 +430,41 @@ class WorkflowStageInline(nested_admin.NestedStackedInline):
     )
 
 
-class WorkflowNotificationInline(nested_admin.NestedTabularInline):
+class WorkflowNotificationInline(nested_admin.NestedStackedInline):
     """Inline for configuring granular workflow-level notification rules.
 
     Each rule fires at a workflow-conclusion event (submission received, final
     approval, final rejection, or withdrawal) and can target dynamic recipients
     (from a form field) and/or static addresses, with optional conditions.
+
+    Use one row per distinct recipient group / event combination.
     """
 
     model = WorkflowNotification
     extra = 0
-    fields = (
-        "notification_type",
-        "email_field",
-        "static_emails",
-        "subject_template",
-        "conditions",
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    ("notification_type", "email_field"),
+                    "static_emails",
+                    "subject_template",
+                )
+            },
+        ),
+        (
+            "Conditions (optional)",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "Leave blank to always send. "
+                    "Use the same JSON format as stage trigger_conditions — "
+                    'e.g. <code>{"operator":"AND","conditions":[{"field":"department","operator":"equals","value":"Graduate"}]}</code>'
+                ),
+                "fields": ("conditions",),
+            },
+        ),
     )
 
 
@@ -1307,11 +1419,14 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
     list_display = (
         "form_definition",
         "requires_approval",
+        "hide_approval_history",
+        "notification_rule_count",
         "allow_bulk_export",
         "allow_bulk_pdf_export",
     )
     list_filter = (
         "requires_approval",
+        "hide_approval_history",
         "allow_bulk_export",
         "allow_bulk_pdf_export",
     )
@@ -1342,9 +1457,19 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
             },
         ),
         (
-            "Notifications",
+            "Legacy Notifications (submitter + additional emails)",
             {
                 "classes": ("collapse",),
+                "description": (
+                    "<strong>These toggles control the built-in submitter notification emails</strong> "
+                    "(submission received, approved, rejected, withdrawn). "
+                    "They send one email to the submitter plus any addresses in "
+                    "<em>Additional notify emails</em>.<br><br>"
+                    "For <strong>granular, per-event, per-recipient rules</strong> — "
+                    "e.g. a separate email to an advisor only on approval, or a "
+                    "conditional alert to a department head — use the "
+                    "<strong>Workflow Notifications</strong> inline below instead."
+                ),
                 "fields": (
                     (
                         "notify_on_submission",
@@ -1385,6 +1510,86 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
             },
         ),
     )
+
+    @admin.display(description="Notification rules")
+    def notification_rule_count(self, obj):
+        count = obj.notifications.count()
+        if count == 0:
+            return "—"
+        return format_html(
+            '<span style="background:#0d6efd;color:#fff;padding:1px 8px;'
+            'border-radius:10px;font-size:12px;font-weight:600">{}</span>',
+            count,
+        )
+
+
+@admin.register(WorkflowNotification)
+class WorkflowNotificationAdmin(admin.ModelAdmin):
+    """Standalone admin for WorkflowNotification — searchable across all workflows."""
+
+    list_display = (
+        "workflow_form",
+        "notification_type",
+        "email_field",
+        "static_emails_truncated",
+        "has_conditions",
+        "subject_template_truncated",
+    )
+    list_filter = ("notification_type", "workflow__form_definition")
+    search_fields = (
+        "workflow__form_definition__name",
+        "email_field",
+        "static_emails",
+    )
+    autocomplete_fields = ("workflow",)
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "workflow",
+                    ("notification_type", "email_field"),
+                    "static_emails",
+                    "subject_template",
+                )
+            },
+        ),
+        (
+            "Conditions (optional)",
+            {
+                "description": (
+                    "Leave blank to always send. "
+                    "Use the same JSON format as stage trigger_conditions — "
+                    'e.g. <code>{"operator":"AND","conditions":[{"field":"department","operator":"equals","value":"Graduate"}]}</code>'
+                ),
+                "fields": ("conditions",),
+            },
+        ),
+    )
+
+    @admin.display(
+        description="Form / Workflow", ordering="workflow__form_definition__name"
+    )
+    def workflow_form(self, obj):
+        return obj.workflow.form_definition.name if obj.workflow_id else "—"
+
+    @admin.display(description="Static emails")
+    def static_emails_truncated(self, obj):
+        if not obj.static_emails:
+            return "—"
+        return obj.static_emails[:60] + ("…" if len(obj.static_emails) > 60 else "")
+
+    @admin.display(description="Conditions?", boolean=True)
+    def has_conditions(self, obj):
+        return bool(obj.conditions)
+
+    @admin.display(description="Subject template")
+    def subject_template_truncated(self, obj):
+        if not obj.subject_template:
+            return "—"
+        return obj.subject_template[:50] + (
+            "…" if len(obj.subject_template) > 50 else ""
+        )
 
 
 @admin.register(PostSubmissionAction)

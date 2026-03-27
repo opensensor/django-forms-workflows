@@ -78,6 +78,17 @@ def _abs(url_path: str) -> str:
     return url_path  # relative fallback
 
 
+def _get_hide_approval_history(submission: FormSubmission) -> bool:
+    """Return the workflow's ``hide_approval_history`` flag for a submission.
+
+    When ``True``, email templates must not expose approval-step names,
+    approver identities, or stage-level rejection comments to the submitter.
+    Defaults to ``False`` when no workflow is attached.
+    """
+    workflow = getattr(submission.form_definition, "workflow", None)
+    return bool(getattr(workflow, "hide_approval_history", False))
+
+
 def _site_name() -> str:
     """Return the configured site name, defaulting to 'Django Forms Workflows'."""
     cfg = getattr(settings, "FORMS_WORKFLOWS", {})
@@ -314,7 +325,12 @@ def send_rejection_notification(submission_id: int) -> None:
     submission_url = _abs(
         reverse("forms_workflows:submission_detail", args=[submission.id])
     )
-    context = {"submission": submission, "task": task, "submission_url": submission_url}
+    context = {
+        "submission": submission,
+        "task": task,
+        "submission_url": submission_url,
+        "hide_approval_history": _get_hide_approval_history(submission),
+    }
     subject = (
         f"Submission Rejected: {submission.form_definition.name} (ID {submission.id})"
     )
@@ -355,7 +371,11 @@ def send_approval_notification(submission_id: int) -> None:
     submission_url = _abs(
         reverse("forms_workflows:submission_detail", args=[submission.id])
     )
-    context = {"submission": submission, "submission_url": submission_url}
+    context = {
+        "submission": submission,
+        "submission_url": submission_url,
+        "hide_approval_history": _get_hide_approval_history(submission),
+    }
     subject = (
         f"Submission Approved: {submission.form_definition.name} (ID {submission.id})"
     )
@@ -394,7 +414,11 @@ def send_submission_notification(submission_id: int) -> None:
     submission_url = _abs(
         reverse("forms_workflows:submission_detail", args=[submission.id])
     )
-    context = {"submission": submission, "submission_url": submission_url}
+    context = {
+        "submission": submission,
+        "submission_url": submission_url,
+        "hide_approval_history": _get_hide_approval_history(submission),
+    }
     subject = (
         f"Submission Received: {submission.form_definition.name} (ID {submission.id})"
     )
@@ -970,7 +994,11 @@ def send_submission_form_field_notifications(
                 notification_type, f"{form_name} (ID {submission.id})"
             )
         )
-        context = {"submission": submission, "submission_url": submission_url}
+        context = {
+            "submission": submission,
+            "submission_url": submission_url,
+            "hide_approval_history": _get_hide_approval_history(submission),
+        }
         _send_html_email(
             subject,
             recipients,
@@ -998,7 +1026,11 @@ def send_withdrawal_notification(submission_id: int) -> None:
     submission_url = _abs(
         reverse("forms_workflows:submission_detail", args=[submission.id])
     )
-    context = {"submission": submission, "submission_url": submission_url}
+    context = {
+        "submission": submission,
+        "submission_url": submission_url,
+        "hide_approval_history": _get_hide_approval_history(submission),
+    }
     subject = (
         f"Submission Withdrawn: {submission.form_definition.name} (ID {submission.id})"
     )
@@ -1115,7 +1147,11 @@ def send_workflow_definition_notifications(
             if notif.subject_template
             else default_subjects[notification_type]
         )
-        context = {"submission": submission, "submission_url": submission_url}
+        context = {
+            "submission": submission,
+            "submission_url": submission_url,
+            "hide_approval_history": _get_hide_approval_history(submission),
+        }
 
         # Send one email per recipient so each message is independent
         for recipient in recipients:

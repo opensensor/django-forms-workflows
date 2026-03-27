@@ -1536,6 +1536,7 @@ class WorkflowNotificationAdmin(admin.ModelAdmin):
         "subject_template_truncated",
     )
     list_filter = ("notification_type", "workflow__form_definition")
+    list_select_related = ("workflow__form_definition",)
     search_fields = (
         "workflow__form_definition__name",
         "email_field",

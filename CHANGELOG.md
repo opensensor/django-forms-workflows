@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.14] - 2026-03-27
+
+### Fixed
+- **Double `workflow` DB query in 4 notification tasks** — `send_rejection_notification`, `send_approval_notification`, `send_submission_notification`, and `send_withdrawal_notification` each already resolve `workflow = getattr(submission.form_definition, "workflow", None)` for the toggle check. The subsequent `_get_hide_approval_history(submission)` call was redundantly calling `workflows.first()` a second time. The flag is now read directly from the local `workflow` variable with `bool(getattr(workflow, "hide_approval_history", False))`.
+- **Extra `workflow` fetch in `send_submission_form_field_notifications` and `send_workflow_definition_notifications`** — neither task had a local `workflow` variable, so every iteration of their notification loop called `_get_hide_approval_history(submission)` → `workflows.first()`. Both tasks now resolve `workflow` once at the top and pre-compute `hide_approval_history` before the loop; the per-notif context dict reads the pre-computed value.
+- **`WorkflowNotificationAdmin` list page N+1** — `workflow_form()` accessed `obj.workflow.form_definition.name` without any join, causing 2 extra queries per row. Added `list_select_related = ("workflow__form_definition",)` so the list page is served in a single query.
+
 ## [0.37.13] - 2026-03-27
 
 ### Fixed

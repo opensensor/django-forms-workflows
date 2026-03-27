@@ -329,7 +329,9 @@ def send_rejection_notification(submission_id: int) -> None:
         "submission": submission,
         "task": task,
         "submission_url": submission_url,
-        "hide_approval_history": _get_hide_approval_history(submission),
+        "hide_approval_history": bool(
+            getattr(workflow, "hide_approval_history", False)
+        ),
     }
     subject = (
         f"Submission Rejected: {submission.form_definition.name} (ID {submission.id})"
@@ -374,7 +376,9 @@ def send_approval_notification(submission_id: int) -> None:
     context = {
         "submission": submission,
         "submission_url": submission_url,
-        "hide_approval_history": _get_hide_approval_history(submission),
+        "hide_approval_history": bool(
+            getattr(workflow, "hide_approval_history", False)
+        ),
     }
     subject = (
         f"Submission Approved: {submission.form_definition.name} (ID {submission.id})"
@@ -417,7 +421,9 @@ def send_submission_notification(submission_id: int) -> None:
     context = {
         "submission": submission,
         "submission_url": submission_url,
-        "hide_approval_history": _get_hide_approval_history(submission),
+        "hide_approval_history": bool(
+            getattr(workflow, "hide_approval_history", False)
+        ),
     }
     subject = (
         f"Submission Received: {submission.form_definition.name} (ID {submission.id})"
@@ -955,6 +961,9 @@ def send_submission_form_field_notifications(
     form_data = submission.form_data or {}
     form_name = submission.form_definition.name
     submission_url, _ = _build_form_field_notification_context(submission)
+    # Resolve once — reused for hide_approval_history below.
+    workflow = getattr(submission.form_definition, "workflow", None)
+    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
 
     notifications = StageFormFieldNotification.objects.filter(
         stage__workflow__form_definition=submission.form_definition,
@@ -997,7 +1006,7 @@ def send_submission_form_field_notifications(
         context = {
             "submission": submission,
             "submission_url": submission_url,
-            "hide_approval_history": _get_hide_approval_history(submission),
+            "hide_approval_history": hide_approval_history,
         }
         _send_html_email(
             subject,
@@ -1029,7 +1038,9 @@ def send_withdrawal_notification(submission_id: int) -> None:
     context = {
         "submission": submission,
         "submission_url": submission_url,
-        "hide_approval_history": _get_hide_approval_history(submission),
+        "hide_approval_history": bool(
+            getattr(workflow, "hide_approval_history", False)
+        ),
     }
     subject = (
         f"Submission Withdrawn: {submission.form_definition.name} (ID {submission.id})"
@@ -1094,6 +1105,9 @@ def send_workflow_definition_notifications(
     form_data = submission.form_data or {}
     form_name = submission.form_definition.name
     submission_url, _ = _build_form_field_notification_context(submission)
+    # Resolve once — reused for hide_approval_history in every email context below.
+    workflow = getattr(submission.form_definition, "workflow", None)
+    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
 
     default_subjects = {
         "submission_received": f"Submission Received: {form_name} (ID {submission.id})",
@@ -1150,7 +1164,7 @@ def send_workflow_definition_notifications(
         context = {
             "submission": submission,
             "submission_url": submission_url,
-            "hide_approval_history": _get_hide_approval_history(submission),
+            "hide_approval_history": hide_approval_history,
         }
 
         # Send one email per recipient so each message is independent

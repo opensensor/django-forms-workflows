@@ -211,26 +211,31 @@ class DynamicForm(forms.Form):
                         )
                     )
                     i += 1
-            elif field.width == "third":
+            elif field.width in ("third", "fourth"):
+                # Collect consecutive same-width fields (up to 3 for third, 4 for fourth)
+                # into a single Row so they sit side-by-side.
+                col_class = "col-md-4" if field.width == "third" else "col-md-3"
+                max_per_row = 3 if field.width == "third" else 4
+                group = []
+                while (
+                    i < len(fields)
+                    and len(group) < max_per_row
+                    and fields[i].width == field.width
+                    and fields[i].field_type != "section"
+                ):
+                    group.append(fields[i])
+                    i += 1
                 layout_fields.append(
-                    Div(
-                        Row(
-                            Column(Field(field.field_name), css_class="col-md-4"),
-                        ),
-                        css_class=f"field-wrapper field-{field.field_name}",
+                    Row(
+                        *[
+                            Div(
+                                Field(f.field_name),
+                                css_class=f"{col_class} field-wrapper field-{f.field_name}",
+                            )
+                            for f in group
+                        ]
                     )
                 )
-                i += 1
-            elif field.width == "fourth":
-                layout_fields.append(
-                    Div(
-                        Row(
-                            Column(Field(field.field_name), css_class="col-md-3"),
-                        ),
-                        css_class=f"field-wrapper field-{field.field_name}",
-                    )
-                )
-                i += 1
             else:
                 layout_fields.append(
                     Div(

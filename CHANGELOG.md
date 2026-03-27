@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.15] - 2026-03-27
+
+### Fixed
+- **`third`/`fourth` width fields rendering on separate lines** — The `_setup_layout` method now collects consecutive same-width fields into a shared `Row` (up to 3 for `third`/`col-md-4`, up to 4 for `fourth`/`col-md-3`), exactly like the existing `half` grouping logic. Previously each field got its own `Row`, forcing them onto individual lines regardless of width.
+
+### Added
+- **`WorkflowNotification.notify_submitter`** — New boolean field (default `False`). When checked, the submission's submitter email is always included as a recipient alongside any `email_field` or `static_emails`. This is the replacement for the legacy `notify_on_*` flags.
+- **Schema migration `0066`** — Adds `notify_submitter` to `WorkflowNotification`.
+- **Data migration `0067`** — Converts existing `WorkflowDefinition.notify_on_*` flags into `WorkflowNotification` rows with `notify_submitter=True` and `static_emails` copied from `additional_notify_emails`. Idempotent: skips if a matching row already exists.
+- **`_collect_notification_recipients` handles `notify_submitter`** — Passes through a `submission` parameter; prepends `submission.submitter.email` when `notify_submitter=True`.
+- **Legacy tasks defer to `WorkflowNotification`** — `send_rejection_notification`, `send_approval_notification`, `send_submission_notification`, and `send_withdrawal_notification` now check for an existing `WorkflowNotification` row with `notify_submitter=True` for the matching event type. If found, they return early to avoid sending duplicate emails alongside the new system.
+- **Admin updates** — `WorkflowNotificationInline` and `WorkflowNotificationAdmin` both expose `notify_submitter` in fieldsets and list view. The legacy notifications fieldset is now labelled `⚠️ Deprecated` with an explanatory banner directing admins to the new `WorkflowNotification` inline.
+- **`WorkflowNotification.clean()` validation** — Raises `ValidationError` if none of `notify_submitter`, `email_field`, or `static_emails` is set.
+
 ## [0.37.14] - 2026-03-27
 
 ### Fixed

@@ -447,8 +447,8 @@ class WorkflowNotificationInline(nested_admin.NestedStackedInline):
             None,
             {
                 "fields": (
-                    ("notification_type", "email_field"),
-                    "static_emails",
+                    ("notification_type", "notify_submitter"),
+                    ("email_field", "static_emails"),
                     "subject_template",
                 )
             },
@@ -1457,18 +1457,18 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
             },
         ),
         (
-            "Legacy Notifications (submitter + additional emails)",
+            "⚠️ Deprecated — Legacy Notifications (submitter + additional emails)",
             {
                 "classes": ("collapse",),
                 "description": (
-                    "<strong>These toggles control the built-in submitter notification emails</strong> "
-                    "(submission received, approved, rejected, withdrawn). "
-                    "They send one email to the submitter plus any addresses in "
-                    "<em>Additional notify emails</em>.<br><br>"
-                    "For <strong>granular, per-event, per-recipient rules</strong> — "
-                    "e.g. a separate email to an advisor only on approval, or a "
-                    "conditional alert to a department head — use the "
-                    "<strong>Workflow Notifications</strong> inline below instead."
+                    "<strong style='color:#b45309;'>DEPRECATED.</strong> "
+                    "These flags are superseded by the <strong>Workflow Notifications</strong> inline below. "
+                    "A data migration has already converted enabled flags into WorkflowNotification rows "
+                    "with <em>Notify submitter</em> checked — those rows now control submitter emails for this workflow. "
+                    "The legacy flags are skipped automatically whenever a matching WorkflowNotification row exists.<br><br>"
+                    "You can safely leave these enabled for now; they will be removed in a future release. "
+                    "To fully migrate, disable each flag here and confirm that a corresponding "
+                    "Workflow Notification row (with <em>Notify submitter</em> = ✓) is configured below."
                 ),
                 "fields": (
                     (
@@ -1530,12 +1530,13 @@ class WorkflowNotificationAdmin(admin.ModelAdmin):
     list_display = (
         "workflow_form",
         "notification_type",
+        "notify_submitter",
         "email_field",
         "static_emails_truncated",
         "has_conditions",
         "subject_template_truncated",
     )
-    list_filter = ("notification_type", "workflow__form_definition")
+    list_filter = ("notification_type", "notify_submitter", "workflow__form_definition")
     list_select_related = ("workflow__form_definition",)
     search_fields = (
         "workflow__form_definition__name",
@@ -1549,8 +1550,8 @@ class WorkflowNotificationAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "workflow",
-                    ("notification_type", "email_field"),
-                    "static_emails",
+                    ("notification_type", "notify_submitter"),
+                    ("email_field", "static_emails"),
                     "subject_template",
                 )
             },

@@ -1039,11 +1039,12 @@ class WorkflowNotification(models.Model):
 
     Recipients are the union of:
 
+    * ``notify_submitter`` — if True, the person who submitted the form is always included.
     * ``email_field`` — slug of the form field whose value is the recipient email
       (resolved from ``form_data`` at send time, varies per submission).
     * ``static_emails`` — comma-separated fixed addresses always included.
 
-    At least one of the two must be provided.
+    At least one of the three must be set.
 
     ``conditions`` (same JSON format as ``WorkflowStage.trigger_conditions``)
     are evaluated against ``form_data`` before sending; leave blank to always send.
@@ -1069,6 +1070,13 @@ class WorkflowNotification(models.Model):
         choices=NOTIFICATION_TYPES,
         default="approval_notification",
         help_text="Which workflow event triggers this notification.",
+    )
+    notify_submitter = models.BooleanField(
+        default=False,
+        help_text=(
+            "If checked, the person who submitted the form is always included as a recipient. "
+            "Use this to replace the legacy 'notify on …' flags with a fully-configurable rule."
+        ),
     )
     email_field = models.CharField(
         max_length=200,
@@ -1112,16 +1120,33 @@ class WorkflowNotification(models.Model):
         verbose_name = "Workflow Notification"
         verbose_name_plural = "Workflow Notifications"
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if (
+            not self.notify_submitter
+            and not self.email_field
+            and not self.static_emails
+        ):
+            raise ValidationError(
+                "At least one recipient source must be set: "
+                "'Notify submitter', 'Email field', or 'Static emails'."
+            )
+
     def __str__(self) -> str:
-        recipient_desc = (
-            self.email_field
-            or (
+        parts = []
+        if self.notify_submitter:
+            parts.append("submitter")
+        if self.email_field:
+            parts.append(f"field:{self.email_field}")
+        if self.static_emails:
+            trimmed = (
                 self.static_emails[:40] + "…"
                 if len(self.static_emails) > 40
                 else self.static_emails
             )
-            or "(no recipients)"
-        )
+            parts.append(trimmed)
+        recipient_desc = ", ".join(parts) if parts else "(no recipients)"
         return f"{self.get_notification_type_display()} → {recipient_desc}"
 
 

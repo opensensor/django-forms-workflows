@@ -136,6 +136,79 @@ class MultipleFileField(forms.FileField):
         raise forms.ValidationError(self.error_messages["required"])
 
 
+# ---------------------------------------------------------------------------
+# Phone number normalisation
+# ---------------------------------------------------------------------------
+
+
+def _normalize_phone_number(raw: str) -> str:
+    """Parse *raw* and return a consistently formatted phone string.
+
+    Accepted inputs (all produce the same normalised output):
+        2065551234          → (206) 555-1234
+        206 555 1234        → (206) 555-1234
+        206-555-1234        → (206) 555-1234
+        206.555.1234        → (206) 555-1234
+        (206) 555-1234      → (206) 555-1234   (pass-through)
+        12065551234         → +1 (206) 555-1234
+        +12065551234        → +1 (206) 555-1234
+        +1 206 555 1234     → +1 (206) 555-1234
+        +1 (206) 555-1234   → +1 (206) 555-1234 (pass-through)
+        +44 7911 123456     → +44 (791) 111-2345 (best-effort for non-NANP)
+
+    Raises ``forms.ValidationError`` when the input cannot be normalised.
+    """
+    raw = raw.strip()
+
+    has_plus = raw.startswith("+")
+    digits = re.sub(r"\D", "", raw)
+
+    country_code: str | None = None
+    local_digits: str
+
+    if has_plus and len(digits) > 10:
+        # Everything before the last 10 digits is the country code.
+        cc_len = len(digits) - 10
+        country_code = digits[:cc_len]
+        local_digits = digits[cc_len:]
+    elif len(digits) == 11 and digits[0] == "1":
+        # NANP with implicit country code: 1XXXXXXXXXX
+        country_code = "1"
+        local_digits = digits[1:]
+    elif len(digits) == 10:
+        local_digits = digits
+    else:
+        raise forms.ValidationError(
+            "Enter a valid phone number. "
+            "Examples: 2065551234, (206) 555-1234, or +1 (206) 555-1234."
+        )
+
+    if len(local_digits) != 10:
+        raise forms.ValidationError(
+            "Phone number must contain 10 local digits. "
+            "Examples: 2065551234 or +1 (206) 555-1234."
+        )
+
+    local_fmt = f"({local_digits[0:3]}) {local_digits[3:6]}-{local_digits[6:10]}"
+    return f"+{country_code} {local_fmt}" if country_code else local_fmt
+
+
+class PhoneFormField(forms.CharField):
+    """CharField that auto-normalises phone numbers via ``_normalize_phone_number``.
+
+    Users may type in any common format (digits only, dashes, dots, spaces,
+    parentheses, with or without a country code).  The value stored in the
+    submission is always the canonical ``(NXX) NXX-XXXX`` or
+    ``+CC (NXX) NXX-XXXX`` form.
+    """
+
+    def clean(self, value):
+        value = super().clean(value)
+        if not value:
+            return value
+        return _normalize_phone_number(value)
+
+
 class DynamicForm(forms.Form):
     """
     Dynamically generated form based on FormDefinition.
@@ -200,7 +273,7 @@ class DynamicForm(forms.Form):
                                 Field(next_field.field_name),
                                 css_class=f"col-md-6 field-wrapper field-{next_field.field_name}",
                             ),
-                            css_class="align-items-end",
+                            css_class="align-items-start",
                         )
                     )
                     i += 2
@@ -235,7 +308,7 @@ class DynamicForm(forms.Form):
                             )
                             for f in group
                         ],
-                        css_class="align-items-end",
+                        css_class="align-items-start",
                     )
                 )
             else:
@@ -353,32 +426,21 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "phone":
-            # Format: optional country code (+## ) then (###) ###-####
-            # Examples: (555) 867-5309  |  +1 (555) 867-5309  |  +44 (555) 867-5309
-            _phone_pattern = r"(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}"
+            # Accepts any common format; normalised to (NXX) NXX-XXXX on clean().
             widget_attrs.update(
                 {
                     "type": "tel",
                     "inputmode": "tel",
-                    "pattern": _phone_pattern,
-                    "placeholder": widget_attrs.get("placeholder", "(555) 867-5309"),
+                    "placeholder": widget_attrs.get(
+                        "placeholder", "e.g. 2065551234 or (206) 555-1234"
+                    ),
                 }
             )
-            field = forms.CharField(
-                max_length=20,
+            self.fields[field_def.field_name] = PhoneFormField(
+                max_length=25,
                 widget=forms.TextInput(attrs=widget_attrs),
                 **field_args,
             )
-            field.validators.append(
-                RegexValidator(
-                    regex=r"^(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}$",
-                    message=(
-                        "Enter a phone number in the format (555) 867-5309 "
-                        "or +1 (555) 867-5309 for international numbers."
-                    ),
-                )
-            )
-            self.fields[field_def.field_name] = field
 
         elif field_def.field_type == "textarea":
             widget_attrs["rows"] = 4
@@ -1159,31 +1221,21 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "phone":
-            # Format: optional country code (+## ) then (###) ###-####
-            _phone_pattern = r"(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}"
+            # Accepts any common format; normalised to (NXX) NXX-XXXX on clean().
             widget_attrs.update(
                 {
                     "type": "tel",
                     "inputmode": "tel",
-                    "pattern": _phone_pattern,
-                    "placeholder": widget_attrs.get("placeholder", "(555) 867-5309"),
+                    "placeholder": widget_attrs.get(
+                        "placeholder", "e.g. 2065551234 or (206) 555-1234"
+                    ),
                 }
             )
-            field = forms.CharField(
-                max_length=20,
+            self.fields[field_def.field_name] = PhoneFormField(
+                max_length=25,
                 widget=forms.TextInput(attrs=widget_attrs),
                 **field_args,
             )
-            field.validators.append(
-                RegexValidator(
-                    regex=r"^(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}$",
-                    message=(
-                        "Enter a phone number in the format (555) 867-5309 "
-                        "or +1 (555) 867-5309 for international numbers."
-                    ),
-                )
-            )
-            self.fields[field_def.field_name] = field
 
         elif field_def.field_type == "textarea":
             widget_attrs["rows"] = 4

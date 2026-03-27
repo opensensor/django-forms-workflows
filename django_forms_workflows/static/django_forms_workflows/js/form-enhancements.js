@@ -1172,6 +1172,58 @@ if (typeof module !== 'undefined' && module.exports) {
 }());
 
 /**
+ * Shared-row label height equaliser.
+ *
+ * When two (or more) fields share a Bootstrap row (half-width or
+ * third/fourth-width layout), a label that wraps onto a second line makes
+ * the inputs in that row appear misaligned.  This IIFE walks every `.row`
+ * that contains multiple `.field-wrapper` columns and sets `min-height` on
+ * each label to match the tallest one in the row, so all inputs start at
+ * the same vertical position.
+ *
+ * It runs once after DOMContentLoaded and again on window resize
+ * (debounced) so the result stays correct across viewport sizes.
+ */
+(function () {
+    function equalizeRowLabelHeights() {
+        document.querySelectorAll('.row').forEach(function (row) {
+            // Collect the first <label> from each direct field-wrapper column.
+            var labels = [];
+            row.querySelectorAll(':scope > [class*="col-"] > .field-wrapper label').forEach(function (lbl) {
+                // Only take the first label per wrapper (ignore nested radio/checkbox labels).
+                var wrapper = lbl.closest('.field-wrapper');
+                if (wrapper && wrapper.parentElement.parentElement === row) {
+                    if (!labels.find(function (l) { return l.closest('.field-wrapper') === wrapper; })) {
+                        labels.push(lbl);
+                    }
+                }
+            });
+
+            // Reset before measuring so a shrink is reflected correctly.
+            labels.forEach(function (lbl) { lbl.style.minHeight = ''; });
+
+            if (labels.length < 2) return;
+
+            var maxH = 0;
+            labels.forEach(function (lbl) { maxH = Math.max(maxH, lbl.offsetHeight); });
+
+            if (maxH > 0) {
+                labels.forEach(function (lbl) { lbl.style.minHeight = maxH + 'px'; });
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        equalizeRowLabelHeights();
+        var _resizeTimer;
+        window.addEventListener('resize', function () {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(equalizeRowLabelHeights, 120);
+        });
+    });
+}());
+
+/**
  * Currency field enhancement.
  *
  * Any <input type="number" data-input-type="currency"> rendered by the

@@ -687,17 +687,35 @@ class DynamicForm(forms.Form):
         """
 
         # Check if we have saved data
-        if initial_data and field_def.field_name in initial_data:
-            return initial_data[field_def.field_name]
+        saved_value = None
+        has_saved = bool(initial_data and field_def.field_name in initial_data)
+        if has_saved:
+            saved_value = initial_data[field_def.field_name]
+            # Non-empty saved value always wins — it represents explicit user input
+            if saved_value:
+                return saved_value
+            # Empty saved value: only skip prefill when the field has no prefill
+            # source configured.  If a prefill source IS configured we fall through
+            # so that a draft that was auto-saved before the prefill ran (or while
+            # the user's email was temporarily unset) doesn't permanently suppress
+            # the prefill value.
+            if not field_def.prefill_source_config_id:
+                return saved_value  # "" — no prefill available
 
         # Handle prefill sources using data source abstraction
         # Use the new get_prefill_source_key method which handles both
         # the new prefill_source_config and legacy prefill_source
         prefill_key = field_def.get_prefill_source_key()
         if prefill_key and self.user:
-            return self._get_prefill_value(prefill_key, field_def.prefill_source_config)
+            prefill_value = self._get_prefill_value(
+                prefill_key, field_def.prefill_source_config
+            )
+            if prefill_value:
+                return prefill_value
 
-        # Default value
+        # Fall back to empty saved value, default value, or ""
+        if has_saved:
+            return saved_value  # already confirmed empty above
         return field_def.default_value or ""
 
     def _get_prefill_value(self, prefill_source, prefill_config=None):

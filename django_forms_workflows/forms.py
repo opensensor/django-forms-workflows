@@ -342,11 +342,15 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "phone":
+            # Format: optional country code (+## ) then (###) ###-####
+            # Examples: (555) 867-5309  |  +1 (555) 867-5309  |  +44 (555) 867-5309
+            _phone_pattern = r"(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}"
             widget_attrs.update(
                 {
                     "type": "tel",
                     "inputmode": "tel",
-                    "pattern": r"[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}",
+                    "pattern": _phone_pattern,
+                    "placeholder": widget_attrs.get("placeholder", "(555) 867-5309"),
                 }
             )
             field = forms.CharField(
@@ -356,8 +360,11 @@ class DynamicForm(forms.Form):
             )
             field.validators.append(
                 RegexValidator(
-                    regex=r"^\+?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$",
-                    message="Enter a valid phone number (e.g. 555-555-5555 or +1 555 555 5555).",
+                    regex=r"^(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}$",
+                    message=(
+                        "Enter a phone number in the format (555) 867-5309 "
+                        "or +1 (555) 867-5309 for international numbers."
+                    ),
                 )
             )
             self.fields[field_def.field_name] = field
@@ -1141,11 +1148,14 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "phone":
+            # Format: optional country code (+## ) then (###) ###-####
+            _phone_pattern = r"(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}"
             widget_attrs.update(
                 {
                     "type": "tel",
                     "inputmode": "tel",
-                    "pattern": r"[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}",
+                    "pattern": _phone_pattern,
+                    "placeholder": widget_attrs.get("placeholder", "(555) 867-5309"),
                 }
             )
             field = forms.CharField(
@@ -1155,8 +1165,11 @@ class ApprovalStepForm(forms.Form):
             )
             field.validators.append(
                 RegexValidator(
-                    regex=r"^\+?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$",
-                    message="Enter a valid phone number (e.g. 555-555-5555 or +1 555 555 5555).",
+                    regex=r"^(\+[0-9]{1,3} )?\([0-9]{3}\) [0-9]{3}-[0-9]{4}$",
+                    message=(
+                        "Enter a phone number in the format (555) 867-5309 "
+                        "or +1 (555) 867-5309 for international numbers."
+                    ),
                 )
             )
             self.fields[field_def.field_name] = field

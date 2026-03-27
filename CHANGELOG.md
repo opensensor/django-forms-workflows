@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.11] - 2026-03-27
+
+### Added
+- **Phone field format** — `phone` field type now enforces the `(###) ###-####` format with an optional international country-code prefix (`+## `). The HTML `pattern` attribute, the server-side `RegexValidator`, the placeholder, and the error message all reflect the new format. Valid examples: `(555) 867-5309`, `+1 (555) 867-5309`, `+44 (555) 867-5309`.
+- **Discard Draft on submission detail page** — when a user views their own draft via `submission_detail`, the action bar now shows a **Continue Editing** button (links back to the form to resume editing) and a **Discard Draft** button (links to the existing confirmation page at `submissions/<id>/discard/`). Both buttons are only shown when `submission.submitter == user`.
+
 ## [0.37.10] - 2026-03-27
 
 ### Added

@@ -483,10 +483,22 @@
 
 
         <!-- Actions -->
-        <div class="mt-3">
+        <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
             <a href="{% url 'forms_workflows:my_submissions' %}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to My Submissions
             </a>
+            {% if submission.status == 'draft' %}
+                {% if submission.submitter == user %}
+                    <a href="{% url 'forms_workflows:form_submit' submission.form_definition.slug %}"
+                       class="btn btn-primary">
+                        <i class="bi bi-pencil"></i> Continue Editing
+                    </a>
+                    <a href="{% url 'forms_workflows:discard_draft' submission.id %}"
+                       class="btn btn-outline-danger">
+                        <i class="bi bi-trash"></i> Discard Draft
+                    </a>
+                {% endif %}
+            {% endif %}
             {% if submission.status == 'submitted' or submission.status == 'pending_approval' %}
                 {% if submission.form_definition.allow_withdrawal and submission.submitter == user %}
                     <a href="{% url 'forms_workflows:withdraw_submission' submission.id %}" class="btn btn-outline-danger">
@@ -501,7 +513,6 @@
                     </a>
                 {% endif %}
             {% endif %}
-
         </div>
     </div>
 </div>

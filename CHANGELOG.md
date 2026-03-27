@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.17] - 2026-03-27
+
+### Fixed
+- **Row field vertical alignment** — When fields sharing a row have labels of different lengths (e.g. one wraps to two lines), the input controls no longer drift to different heights. Both the `half`-width paired row and the `third`/`fourth`-width grouped row now emit `align-items-end` on the Bootstrap row element so all inputs in a shared row land on the same baseline.
+
 ## [0.37.16] - 2026-03-27
 
 ### Removed

@@ -200,6 +200,7 @@ class DynamicForm(forms.Form):
                                 Field(next_field.field_name),
                                 css_class=f"col-md-6 field-wrapper field-{next_field.field_name}",
                             ),
+                            css_class="align-items-end",
                         )
                     )
                     i += 2
@@ -233,7 +234,8 @@ class DynamicForm(forms.Form):
                                 css_class=f"{col_class} field-wrapper field-{f.field_name}",
                             )
                             for f in group
-                        ]
+                        ],
+                        css_class="align-items-end",
                     )
                 )
             else:

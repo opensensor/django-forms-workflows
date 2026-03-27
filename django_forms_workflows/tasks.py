@@ -246,19 +246,18 @@ def _compute_scheduled_for(workflow, submission=None):
 
 
 def _queue_submission_notifications(submission, workflow) -> None:
-    """Queue a submission_received PendingNotification for each recipient."""
-    if not getattr(workflow, "notify_on_submission", True):
-        return
+    """Queue a submission_received PendingNotification for each recipient.
+
+    Recipients are resolved from WorkflowNotification rows with notify_submitter=True
+    or static_emails/email_field configured. The legacy notify_on_* flags and
+    additional_notify_emails have been removed; all submitter notifications are now
+    configured via WorkflowNotification rows (created by migration 0067).
+    """
     scheduled_for = _compute_scheduled_for(workflow, submission)
-    recipients: list[str] = []
     submitter_email = getattr(getattr(submission, "submitter", None), "email", "")
+    recipients: list[str] = []
     if submitter_email:
         recipients.append(submitter_email)
-    extra = getattr(workflow, "additional_notify_emails", "") or ""
-    for e in extra.split(","):
-        e = e.strip()
-        if e:
-            recipients.append(e)
     for email in recipients:
         PendingNotification.objects.create(
             workflow=workflow,
@@ -300,191 +299,6 @@ def _queue_approval_request_notifications(task, workflow) -> None:
         "Queued approval_request batch notification for task %s (due %s)",
         task.id,
         scheduled_for,
-    )
-
-
-@shared_task(name="django_forms_workflows.send_rejection_notification")
-def send_rejection_notification(submission_id: int) -> None:
-    """Notify submitter (and optional additional emails) that their submission was rejected.
-
-    Deprecated: if a WorkflowNotification row with notify_submitter=True exists for this
-    workflow and event type, the new send_workflow_definition_notifications task handles it
-    and this task exits early to avoid duplicate emails.
-    """
-    submission = FormSubmission.objects.select_related(
-        "form_definition", "submitter"
-    ).get(id=submission_id)
-    workflow = getattr(submission.form_definition, "workflow", None)
-    if (
-        workflow
-        and hasattr(workflow, "notify_on_rejection")
-        and not workflow.notify_on_rejection
-    ):
-        return
-    # Defer to WorkflowNotification if the new system is configured for the submitter.
-    if (
-        workflow
-        and WorkflowNotification.objects.filter(
-            workflow=workflow,
-            notification_type="rejection_notification",
-            notify_submitter=True,
-        ).exists()
-    ):
-        return
-
-    task = (
-        submission.approval_tasks.filter(status="rejected")
-        .order_by("-completed_at")
-        .first()
-    )
-    submission_url = _abs(
-        reverse("forms_workflows:submission_detail", args=[submission.id])
-    )
-    context = {
-        "submission": submission,
-        "task": task,
-        "submission_url": submission_url,
-        "hide_approval_history": bool(
-            getattr(workflow, "hide_approval_history", False)
-        ),
-    }
-    subject = (
-        f"Submission Rejected: {submission.form_definition.name} (ID {submission.id})"
-    )
-
-    recipients = [getattr(submission.submitter, "email", "")]
-    if workflow and getattr(workflow, "additional_notify_emails", ""):
-        recipients.extend(
-            [
-                e.strip()
-                for e in workflow.additional_notify_emails.split(",")
-                if e.strip()
-            ]
-        )
-
-    _send_html_email(
-        subject,
-        recipients,
-        "emails/rejection_notification.html",
-        context,
-        notification_type="rejection_notification",
-        submission_id=submission_id,
-    )
-
-
-@shared_task(name="django_forms_workflows.send_approval_notification")
-def send_approval_notification(submission_id: int) -> None:
-    """Notify submitter (and optional additional emails) that their submission was approved.
-
-    Deprecated: defers to WorkflowNotification when notify_submitter rows exist.
-    """
-    submission = FormSubmission.objects.select_related(
-        "form_definition", "submitter"
-    ).get(id=submission_id)
-    workflow = getattr(submission.form_definition, "workflow", None)
-    if (
-        workflow
-        and hasattr(workflow, "notify_on_approval")
-        and not workflow.notify_on_approval
-    ):
-        return
-    # Defer to WorkflowNotification if the new system is configured for the submitter.
-    if (
-        workflow
-        and WorkflowNotification.objects.filter(
-            workflow=workflow,
-            notification_type="approval_notification",
-            notify_submitter=True,
-        ).exists()
-    ):
-        return
-    submission_url = _abs(
-        reverse("forms_workflows:submission_detail", args=[submission.id])
-    )
-    context = {
-        "submission": submission,
-        "submission_url": submission_url,
-        "hide_approval_history": bool(
-            getattr(workflow, "hide_approval_history", False)
-        ),
-    }
-    subject = (
-        f"Submission Approved: {submission.form_definition.name} (ID {submission.id})"
-    )
-    recipients = [getattr(submission.submitter, "email", "")]
-    if workflow and getattr(workflow, "additional_notify_emails", ""):
-        recipients.extend(
-            [
-                e.strip()
-                for e in workflow.additional_notify_emails.split(",")
-                if e.strip()
-            ]
-        )
-    _send_html_email(
-        subject,
-        recipients,
-        "emails/approval_notification.html",
-        context,
-        notification_type="approval_notification",
-        submission_id=submission_id,
-    )
-
-
-@shared_task(name="django_forms_workflows.send_submission_notification")
-def send_submission_notification(submission_id: int) -> None:
-    """Notify submitter (and optional additional emails) that their submission was received.
-
-    Deprecated: defers to WorkflowNotification when notify_submitter rows exist.
-    """
-    submission = FormSubmission.objects.select_related(
-        "form_definition", "submitter"
-    ).get(id=submission_id)
-    workflow = getattr(submission.form_definition, "workflow", None)
-    if (
-        workflow
-        and hasattr(workflow, "notify_on_submission")
-        and not workflow.notify_on_submission
-    ):
-        return
-    # Defer to WorkflowNotification if the new system is configured for the submitter.
-    if (
-        workflow
-        and WorkflowNotification.objects.filter(
-            workflow=workflow,
-            notification_type="submission_received",
-            notify_submitter=True,
-        ).exists()
-    ):
-        return
-    submission_url = _abs(
-        reverse("forms_workflows:submission_detail", args=[submission.id])
-    )
-    context = {
-        "submission": submission,
-        "submission_url": submission_url,
-        "hide_approval_history": bool(
-            getattr(workflow, "hide_approval_history", False)
-        ),
-    }
-    subject = (
-        f"Submission Received: {submission.form_definition.name} (ID {submission.id})"
-    )
-    recipients = [getattr(submission.submitter, "email", "")]
-    if workflow and getattr(workflow, "additional_notify_emails", ""):
-        recipients.extend(
-            [
-                e.strip()
-                for e in workflow.additional_notify_emails.split(",")
-                if e.strip()
-            ]
-        )
-    _send_html_email(
-        subject,
-        recipients,
-        "emails/submission_notification.html",
-        context,
-        notification_type="submission_created",
-        submission_id=submission_id,
     )
 
 
@@ -653,10 +467,12 @@ def check_approval_deadlines() -> str:
                             status="skipped"
                         )
                         try:
-                            send_approval_notification.delay(submission.id)
+                            send_workflow_definition_notifications.delay(
+                                submission.id, "approval_notification"
+                            )
                         except Exception:
                             logger.debug(
-                                "Could not enqueue send_approval_notification for submission %s",
+                                "Could not enqueue approval notification for submission %s",
                                 submission.id,
                                 exc_info=True,
                             )
@@ -1064,65 +880,6 @@ def send_submission_form_field_notifications(
             notification_type=notification_type,
             submission_id=submission_id,
         )
-
-
-@shared_task(name="django_forms_workflows.send_withdrawal_notification")
-def send_withdrawal_notification(submission_id: int) -> None:
-    """Notify the submitter (and optional additional emails) that their submission was withdrawn.
-
-    Deprecated: defers to WorkflowNotification when notify_submitter rows exist.
-    """
-    submission = FormSubmission.objects.select_related(
-        "form_definition", "submitter"
-    ).get(id=submission_id)
-    workflow = getattr(submission.form_definition, "workflow", None)
-    if (
-        workflow
-        and hasattr(workflow, "notify_on_withdrawal")
-        and not workflow.notify_on_withdrawal
-    ):
-        return
-    # Defer to WorkflowNotification if the new system is configured for the submitter.
-    if (
-        workflow
-        and WorkflowNotification.objects.filter(
-            workflow=workflow,
-            notification_type="withdrawal_notification",
-            notify_submitter=True,
-        ).exists()
-    ):
-        return
-
-    submission_url = _abs(
-        reverse("forms_workflows:submission_detail", args=[submission.id])
-    )
-    context = {
-        "submission": submission,
-        "submission_url": submission_url,
-        "hide_approval_history": bool(
-            getattr(workflow, "hide_approval_history", False)
-        ),
-    }
-    subject = (
-        f"Submission Withdrawn: {submission.form_definition.name} (ID {submission.id})"
-    )
-    recipients = [getattr(submission.submitter, "email", "")]
-    if workflow and getattr(workflow, "additional_notify_emails", ""):
-        recipients.extend(
-            [
-                e.strip()
-                for e in workflow.additional_notify_emails.split(",")
-                if e.strip()
-            ]
-        )
-    _send_html_email(
-        subject,
-        recipients,
-        "emails/withdrawal_notification.html",
-        context,
-        notification_type="withdrawal_notification",
-        submission_id=submission_id,
-    )
 
 
 @shared_task(name="django_forms_workflows.send_workflow_definition_notifications")

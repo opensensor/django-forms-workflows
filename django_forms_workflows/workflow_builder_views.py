@@ -258,10 +258,6 @@ def convert_workflow_to_visual(workflow, form_definition):
             "send_reminder_after_days": workflow.send_reminder_after_days,
             "auto_approve_after_days": workflow.auto_approve_after_days,
             "notification_cadence": workflow.notification_cadence,
-            "notify_on_submission": workflow.notify_on_submission,
-            "notify_on_approval": workflow.notify_on_approval,
-            "notify_on_rejection": workflow.notify_on_rejection,
-            "notify_on_withdrawal": workflow.notify_on_withdrawal,
         },
     }
     nodes.append(settings_node)
@@ -523,10 +519,6 @@ def convert_visual_to_workflow(workflow_data, form_definition):
     wf_defaults = {
         "requires_approval": settings_data.get("requires_approval", requires_approval),
         "visual_workflow_data": workflow_data,
-        "notify_on_submission": settings_data.get("notify_on_submission", True),
-        "notify_on_approval": settings_data.get("notify_on_approval", True),
-        "notify_on_rejection": settings_data.get("notify_on_rejection", True),
-        "notify_on_withdrawal": settings_data.get("notify_on_withdrawal", True),
         "notification_cadence": settings_data.get("notification_cadence", "immediate"),
     }
 

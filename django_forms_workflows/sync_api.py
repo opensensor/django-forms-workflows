@@ -291,12 +291,6 @@ def _serialize_workflow(wf):
         "approval_deadline_days": wf.approval_deadline_days,
         "send_reminder_after_days": wf.send_reminder_after_days,
         "auto_approve_after_days": wf.auto_approve_after_days,
-        # Notification flags
-        "notify_on_submission": wf.notify_on_submission,
-        "notify_on_approval": wf.notify_on_approval,
-        "notify_on_rejection": wf.notify_on_rejection,
-        "notify_on_withdrawal": wf.notify_on_withdrawal,
-        "additional_notify_emails": wf.additional_notify_emails,
         # Notification cadence
         "notification_cadence": wf.notification_cadence,
         "notification_cadence_day": wf.notification_cadence_day,

@@ -122,11 +122,6 @@ def _build_summary(forms_data):
             wf_setting_keys = [
                 "requires_approval",
                 "name_label",
-                "notify_on_submission",
-                "notify_on_approval",
-                "notify_on_rejection",
-                "notify_on_withdrawal",
-                "additional_notify_emails",
                 "hide_approval_history",
                 "collapse_parallel_stages",
                 "allow_bulk_export",

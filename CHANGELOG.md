@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.16] - 2026-03-27
+
+### Removed
+- **`WorkflowDefinition.notify_on_submission/approval/rejection/withdrawal`** — four legacy boolean columns dropped from the database (migration `0068`). All submitter notifications are now configured via `WorkflowNotification` rows with `notify_submitter=True` (created by migration `0067` for every previously-enabled flag).
+- **`WorkflowDefinition.additional_notify_emails`** — legacy comma-separated CC field dropped. Static addresses have been migrated to `WorkflowNotification.static_emails`.
+- **`send_rejection_notification`, `send_approval_notification`, `send_submission_notification`, `send_withdrawal_notification` Celery tasks** — fully removed. These are replaced by `send_workflow_definition_notifications` which handles all workflow-level submitter and additional-recipient emails via `WorkflowNotification` rules.
+- **Legacy call sites** in `workflow_engine.py` (`_notify_submission_created_immediate`, `_notify_final_approval`, `_notify_rejection`) and `views.py` (withdrawal) — the `try/except` blocks that imported and dispatched the removed tasks are gone; those functions now call only `_notify_workflow_level_recipients` (→ `send_workflow_definition_notifications`).
+- **Auto-approval task** (`check_auto_approve_deadlines`) now calls `send_workflow_definition_notifications.delay(submission_id, "approval_notification")` instead of the removed `send_approval_notification`.
+- **Admin deprecated fieldset** for legacy notifications removed from `WorkflowDefinitionAdmin`.
+- **`diff_views`, `form_builder_views`, `sync_api`, `workflow_builder_views`** — all references to the five dropped columns removed.
+- **`tests/test_builders.py`** — assertions about `notify_on_*` fields removed.
+- **`workflows/` management commands and `create_test_form_with_db_prefill.py`** — legacy field kwargs removed from all `WorkflowDefinition.objects.create()` calls.
+
 ## [0.37.15] - 2026-03-27
 
 ### Fixed

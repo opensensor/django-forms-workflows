@@ -174,10 +174,6 @@ class TestConvertVisualToWorkflow:
                 "send_reminder_after_days": 3,
                 "auto_approve_after_days": "",
                 "notification_cadence": "weekly",
-                "notify_on_submission": True,
-                "notify_on_approval": False,
-                "notify_on_rejection": True,
-                "notify_on_withdrawal": False,
             }
         )
         wf = convert_visual_to_workflow(visual, form_definition)
@@ -185,7 +181,6 @@ class TestConvertVisualToWorkflow:
         assert wf.send_reminder_after_days == 3
         assert wf.auto_approve_after_days is None
         assert wf.notification_cadence == "weekly"
-        assert wf.notify_on_approval is False
 
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()

@@ -481,13 +481,6 @@ class WorkflowDefinitionInline(nested_admin.NestedStackedInline):
         "hide_approval_history",
         "collapse_parallel_stages",
         "trigger_conditions",
-        (
-            "notify_on_submission",
-            "notify_on_approval",
-            "notify_on_rejection",
-            "notify_on_withdrawal",
-        ),
-        "additional_notify_emails",
         "notification_cadence",
         (
             "notification_cadence_day",
@@ -768,11 +761,6 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                             approval_deadline_days=wf.approval_deadline_days,
                             send_reminder_after_days=wf.send_reminder_after_days,
                             auto_approve_after_days=wf.auto_approve_after_days,
-                            notify_on_submission=wf.notify_on_submission,
-                            notify_on_approval=wf.notify_on_approval,
-                            notify_on_rejection=wf.notify_on_rejection,
-                            notify_on_withdrawal=wf.notify_on_withdrawal,
-                            additional_notify_emails=wf.additional_notify_emails,
                             notification_cadence=wf.notification_cadence,
                             notification_cadence_day=wf.notification_cadence_day,
                             notification_cadence_time=wf.notification_cadence_time,
@@ -1453,31 +1441,6 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
                     "approval_deadline_days",
                     "send_reminder_after_days",
                     "auto_approve_after_days",
-                ),
-            },
-        ),
-        (
-            "⚠️ Deprecated — Legacy Notifications (submitter + additional emails)",
-            {
-                "classes": ("collapse",),
-                "description": (
-                    "<strong style='color:#b45309;'>DEPRECATED.</strong> "
-                    "These flags are superseded by the <strong>Workflow Notifications</strong> inline below. "
-                    "A data migration has already converted enabled flags into WorkflowNotification rows "
-                    "with <em>Notify submitter</em> checked — those rows now control submitter emails for this workflow. "
-                    "The legacy flags are skipped automatically whenever a matching WorkflowNotification row exists.<br><br>"
-                    "You can safely leave these enabled for now; they will be removed in a future release. "
-                    "To fully migrate, disable each flag here and confirm that a corresponding "
-                    "Workflow Notification row (with <em>Notify submitter</em> = ✓) is configured below."
-                ),
-                "fields": (
-                    (
-                        "notify_on_submission",
-                        "notify_on_approval",
-                        "notify_on_rejection",
-                        "notify_on_withdrawal",
-                    ),
-                    "additional_notify_emails",
                 ),
             },
         ),

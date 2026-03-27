@@ -648,16 +648,6 @@ class WorkflowDefinition(models.Model):
         null=True, blank=True, help_text="Auto-approve if no response (use carefully)"
     )
 
-    # Notifications
-    notify_on_submission = models.BooleanField(default=True)
-    notify_on_approval = models.BooleanField(default=True)
-    notify_on_rejection = models.BooleanField(default=True)
-    notify_on_withdrawal = models.BooleanField(default=True)
-
-    additional_notify_emails = models.TextField(
-        blank=True, help_text="Comma-separated emails for all notifications"
-    )
-
     # Notification Batching
     NOTIFICATION_CADENCE_CHOICES = [
         ("immediate", "Immediate (send right away)"),

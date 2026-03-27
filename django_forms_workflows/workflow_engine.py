@@ -76,12 +76,6 @@ def _notify_submission_created(submission: FormSubmission) -> None:
 
 
 def _notify_submission_created_immediate(submission: FormSubmission) -> None:
-    try:  # defer import to avoid hard Celery dependency at import time
-        from .tasks import send_submission_notification
-
-        send_submission_notification.delay(submission.id)
-    except Exception:  # ImportError or other
-        logger.warning("Notification tasks not available for submission_created")
     _notify_form_field_recipients_for_submission(submission, "submission_received")
     _notify_workflow_level_recipients(submission, "submission_received")
 
@@ -119,23 +113,11 @@ def _notify_task_request_immediate(task: ApprovalTask) -> None:
 
 
 def _notify_final_approval(submission: FormSubmission) -> None:
-    try:
-        from .tasks import send_approval_notification
-
-        send_approval_notification.delay(submission.id)
-    except Exception:
-        logger.warning("Notification tasks not available for approval_notification")
     _notify_form_field_recipients_for_submission(submission, "approval_notification")
     _notify_workflow_level_recipients(submission, "approval_notification")
 
 
 def _notify_rejection(submission: FormSubmission) -> None:
-    try:
-        from .tasks import send_rejection_notification
-
-        send_rejection_notification.delay(submission.id)
-    except Exception:
-        logger.warning("Notification tasks not available for rejection_notification")
     _notify_form_field_recipients_for_submission(submission, "rejection_notification")
     _notify_workflow_level_recipients(submission, "rejection_notification")
 
@@ -826,7 +808,7 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
     """
     workflows = list(submission.form_definition.workflows.all())
 
-    # Always notify submission was received (respects notify_on_submission flag)
+    # Notify submission was received via WorkflowNotification rules.
     _notify_submission_created(submission)
 
     # Execute on_submit actions

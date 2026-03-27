@@ -1745,12 +1745,10 @@ def withdraw_submission(request, submission_id):
             comments="Submission withdrawn by submitter",
         )
 
-        # Send withdrawal notifications (submitter + WorkflowNotification rules)
+        # Send withdrawal notifications via WorkflowNotification rules.
         try:
-            from .tasks import send_withdrawal_notification
             from .workflow_engine import _notify_workflow_level_recipients
 
-            send_withdrawal_notification.delay(submission.id)
             _notify_workflow_level_recipients(submission, "withdrawal_notification")
         except Exception:
             logger.warning(

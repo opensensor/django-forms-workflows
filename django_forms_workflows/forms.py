@@ -730,6 +730,99 @@ class DynamicForm(forms.Form):
 
         return ""
 
+    def clean(self):
+        """
+        Cross-field validation that respects conditional visibility rules.
+
+        Fields hidden by their ``conditional_rules`` are excluded from
+        required-field enforcement so that a JS-bypass cannot trick the
+        server into rejecting valid submissions where a field was never
+        shown.
+
+        Rule ``action`` semantics:
+
+        * ``show``    – field is visible only when the condition IS met;
+                        hidden (and required errors cleared) otherwise.
+        * ``hide``    – field is hidden when the condition IS met;
+                        visible otherwise.
+        * ``require`` – field becomes required when the condition IS met,
+                        even if its database ``required`` flag is ``False``.
+        * ``enable``  – informational only; no server-side effect here.
+
+        Hidden fields are also dropped from ``cleaned_data`` so that their
+        values are not persisted in the submission.
+        """
+        import json
+
+        from .conditions import evaluate_conditions
+
+        cleaned_data = super().clean()
+
+        for field_def in (
+            self.form_definition.fields.exclude(field_type="section")
+            .filter(workflow_stage__isnull=True)
+            .order_by("order")
+        ):
+            if not field_def.conditional_rules:
+                continue
+
+            # JSONField may already be a dict/list; handle string fallback too.
+            rules = field_def.conditional_rules
+            if isinstance(rules, str):
+                try:
+                    rules = json.loads(rules)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        "Could not parse conditional_rules for field %s",
+                        field_def.field_name,
+                    )
+                    continue
+
+            if not rules:
+                continue
+
+            # Normalise to a list so both single-rule and multi-rule configs
+            # are processed uniformly.
+            rule_list = rules if isinstance(rules, list) else [rules]
+
+            field_is_hidden = False
+            field_becomes_required = False
+
+            for rule in rule_list:
+                if not isinstance(rule, dict):
+                    continue
+
+                action = rule.get("action", "show")
+                condition_met = evaluate_conditions(rule, cleaned_data)
+
+                if action == "show" and not condition_met:
+                    field_is_hidden = True
+                elif action == "hide" and condition_met:
+                    field_is_hidden = True
+                elif action == "require" and condition_met:
+                    field_becomes_required = True
+
+            if field_is_hidden:
+                # Clear any errors raised during per-field validation.
+                if field_def.field_name in self._errors:
+                    del self._errors[field_def.field_name]
+                # Drop the value so hidden data is not stored in the submission.
+                cleaned_data.pop(field_def.field_name, None)
+
+            elif field_becomes_required:
+                # The field is visible and conditionally required.
+                value = cleaned_data.get(field_def.field_name)
+                if not value:
+                    self.add_error(
+                        field_def.field_name,
+                        ValidationError(
+                            f"{field_def.field_label} is required.",
+                            code="required",
+                        ),
+                    )
+
+        return cleaned_data
+
     def get_enhancements_config(self):
         """
         Generate JavaScript configuration for form enhancements.

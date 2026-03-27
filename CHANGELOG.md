@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.10] - 2026-03-27
+
+### Added
+- **Server-side conditional validation** — `DynamicForm.clean()` now evaluates each field's `conditional_rules` against the submitted data and applies the correct server-side behaviour:
+  - Fields with `action: show` whose condition is **not** met are treated as hidden: any required-field error is cleared and the field value is removed from `cleaned_data` so it is never persisted.
+  - Fields with `action: hide` whose condition **is** met are handled identically.
+  - Fields with `action: require` whose condition **is** met are enforced as required even when the database field has `required=False`, closing the JS-bypass loophole described in the admin note.
+  - Both single-rule (`{}`) and multi-rule (`[…]`) `conditional_rules` formats are supported.
+- **Tests** — `TestDynamicFormConditionalValidation` added to `tests/test_forms.py` covering all four action/condition combinations plus list-format rules and the `cleaned_data` drop behaviour (7 new tests, all passing).
+
 ## [0.37.9] - 2026-03-26
 
 ### Added

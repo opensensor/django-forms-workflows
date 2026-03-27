@@ -203,6 +203,239 @@ class TestDynamicFormPrefill:
         assert form.fields["defaulted"].initial == "fallback"
 
 
+class TestDynamicFormConditionalValidation:
+    """Tests for the server-side clean() conditional validation logic."""
+
+    def _make_trigger_field(self, form_definition, choices=None):
+        return FormField.objects.create(
+            form_definition=form_definition,
+            field_name="travel_type",
+            field_label="Type of Travel",
+            field_type="select",
+            order=1,
+            required=True,
+            choices=choices
+            or [
+                {"value": "domestic", "label": "Domestic"},
+                {"value": "international", "label": "International"},
+            ],
+        )
+
+    def test_hidden_field_bypasses_required(self, form_definition, user):
+        """A required field with a 'show' rule is not enforced when hidden."""
+        self._make_trigger_field(form_definition)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="advisor",
+            field_label="Advisor",
+            field_type="text",
+            order=2,
+            required=False,  # DB flag is False; frontend enforces via 'require' rule
+            conditional_rules={
+                "operator": "AND",
+                "conditions": [
+                    {
+                        "field": "travel_type",
+                        "operator": "equals",
+                        "value": "international",
+                    }
+                ],
+                "action": "show",
+            },
+        )
+        # Submit with domestic – advisor field should be hidden, no error expected.
+        form = DynamicForm(
+            form_definition,
+            user=user,
+            data={"travel_type": "domestic", "advisor": ""},
+        )
+        assert form.is_valid(), form.errors
+
+    def test_visible_field_enforces_required(self, form_definition, user):
+        """When the show condition IS met the field must still validate normally."""
+        self._make_trigger_field(form_definition)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="advisor",
+            field_label="Advisor",
+            field_type="text",
+            order=2,
+            required=True,
+            conditional_rules={
+                "operator": "AND",
+                "conditions": [
+                    {
+                        "field": "travel_type",
+                        "operator": "equals",
+                        "value": "international",
+                    }
+                ],
+                "action": "show",
+            },
+        )
+        # Submit with international but leave advisor empty – should fail.
+        form = DynamicForm(
+            form_definition,
+            user=user,
+            data={"travel_type": "international", "advisor": ""},
+        )
+        assert not form.is_valid()
+        assert "advisor" in form.errors
+
+    def test_hide_action_clears_required_error(self, form_definition, user):
+        """A 'hide' rule removes required errors when the hide condition is met."""
+        self._make_trigger_field(form_definition)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="visa_number",
+            field_label="Visa Number",
+            field_type="text",
+            order=2,
+            required=True,
+            conditional_rules={
+                "operator": "AND",
+                "conditions": [
+                    {
+                        "field": "travel_type",
+                        "operator": "equals",
+                        "value": "domestic",
+                    }
+                ],
+                "action": "hide",
+            },
+        )
+        # domestic → visa_number is hidden → required error should be suppressed.
+        form = DynamicForm(
+            form_definition,
+            user=user,
+            data={"travel_type": "domestic", "visa_number": ""},
+        )
+        assert form.is_valid(), form.errors
+
+    def test_require_action_enforces_required(self, form_definition, user):
+        """A 'require' rule adds a required error when its condition is met."""
+        self._make_trigger_field(form_definition)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="admissions_counselor",
+            field_label="Admissions Counselor",
+            field_type="text",
+            order=2,
+            required=False,  # not required by default
+            conditional_rules={
+                "operator": "AND",
+                "conditions": [
+                    {
+                        "field": "travel_type",
+                        "operator": "equals",
+                        "value": "international",
+                    }
+                ],
+                "action": "require",
+            },
+        )
+        # international → counselor becomes required → missing value should fail.
+        form = DynamicForm(
+            form_definition,
+            user=user,
+            data={"travel_type": "international", "admissions_counselor": ""},
+        )
+        assert not form.is_valid()
+        assert "admissions_counselor" in form.errors
+
+    def test_require_action_not_enforced_when_hidden(self, form_definition, user):
+        """A 'require' rule is not enforced when its condition is not met."""
+        self._make_trigger_field(form_definition)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="admissions_counselor",
+            field_label="Admissions Counselor",
+            field_type="text",
+            order=2,
+            required=False,
+            conditional_rules={
+                "operator": "AND",
+                "conditions": [
+                    {
+                        "field": "travel_type",
+                        "operator": "equals",
+                        "value": "international",
+                    }
+                ],
+                "action": "require",
+            },
+        )
+        # domestic → counselor is NOT required → should pass without a value.
+        form = DynamicForm(
+            form_definition,
+            user=user,
+            data={"travel_type": "domestic", "admissions_counselor": ""},
+        )
+        assert form.is_valid(), form.errors
+
+    def test_hidden_field_dropped_from_cleaned_data(self, form_definition, user):
+        """Hidden fields must not appear in cleaned_data after validation."""
+        self._make_trigger_field(form_definition)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="advisor",
+            field_label="Advisor",
+            field_type="text",
+            order=2,
+            required=False,
+            conditional_rules={
+                "operator": "AND",
+                "conditions": [
+                    {
+                        "field": "travel_type",
+                        "operator": "equals",
+                        "value": "international",
+                    }
+                ],
+                "action": "show",
+            },
+        )
+        form = DynamicForm(
+            form_definition,
+            user=user,
+            data={"travel_type": "domestic", "advisor": "some value"},
+        )
+        assert form.is_valid(), form.errors
+        assert "advisor" not in form.cleaned_data
+
+    def test_list_of_rules_all_evaluated(self, form_definition, user):
+        """conditional_rules stored as a list: all rules are checked."""
+        self._make_trigger_field(form_definition)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="special_field",
+            field_label="Special Field",
+            field_type="text",
+            order=2,
+            required=True,
+            conditional_rules=[
+                {
+                    "operator": "AND",
+                    "conditions": [
+                        {
+                            "field": "travel_type",
+                            "operator": "equals",
+                            "value": "international",
+                        }
+                    ],
+                    "action": "show",
+                }
+            ],
+        )
+        # domestic → field hidden → no required error.
+        form = DynamicForm(
+            form_definition,
+            user=user,
+            data={"travel_type": "domestic", "special_field": ""},
+        )
+        assert form.is_valid(), form.errors
+
+
 class TestDynamicFormValidation:
     def test_regex_validation(self, form_definition, user):
         FormField.objects.create(

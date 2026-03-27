@@ -245,29 +245,58 @@ def _compute_scheduled_for(workflow, submission=None):
     return _at_time(now + timedelta(days=1))
 
 
-def _queue_submission_notifications(submission, workflow) -> None:
-    """Queue a submission_received PendingNotification for each recipient.
+def _queue_workflow_level_notifications(
+    submission, workflow, notification_type: str
+) -> None:
+    """Queue a PendingNotification row per resolved recipient for a WorkflowNotification event.
 
-    Recipients are resolved from WorkflowNotification rows with notify_submitter=True
-    or static_emails/email_field configured. The legacy notify_on_* flags and
-    additional_notify_emails have been removed; all submitter notifications are now
-    configured via WorkflowNotification rows (created by migration 0067).
+    Evaluates every WorkflowNotification rule attached to *workflow* for
+    *notification_type*, respects conditions, and resolves recipients via
+    ``_collect_notification_recipients`` (notify_submitter + email_field + static_emails).
+    One PendingNotification row is created per recipient per matching rule so that
+    ``send_batched_notifications`` can group them into a single digest email.
     """
+    from .conditions import evaluate_conditions
+
     scheduled_for = _compute_scheduled_for(workflow, submission)
-    submitter_email = getattr(getattr(submission, "submitter", None), "email", "")
-    recipients: list[str] = []
-    if submitter_email:
-        recipients.append(submitter_email)
-    for email in recipients:
-        PendingNotification.objects.create(
-            workflow=workflow,
-            notification_type="submission_received",
-            submission=submission,
-            recipient_email=email,
-            scheduled_for=scheduled_for,
+    form_data = submission.form_data or {}
+
+    notifications = WorkflowNotification.objects.filter(
+        workflow=workflow,
+        notification_type=notification_type,
+    )
+
+    queued = 0
+    for notif in notifications:
+        if notif.conditions:
+            try:
+                if not evaluate_conditions(notif.conditions, form_data):
+                    continue
+            except Exception:
+                logger.warning(
+                    "WorkflowNotification %s: condition error during batch queueing; skipping.",
+                    notif.id,
+                    exc_info=True,
+                )
+                continue
+
+        recipients = _collect_notification_recipients(
+            notif, form_data, submission=submission
         )
+        for email in recipients:
+            PendingNotification.objects.create(
+                workflow=workflow,
+                notification_type=notification_type,
+                submission=submission,
+                recipient_email=email,
+                scheduled_for=scheduled_for,
+            )
+            queued += 1
+
     logger.info(
-        "Queued submission_received batch notification for submission %s (due %s)",
+        "Queued %d %s batch notification(s) for submission %s (due %s)",
+        queued,
+        notification_type,
         submission.id,
         scheduled_for,
     )
@@ -575,6 +604,21 @@ def send_batched_notifications() -> str:
                 _dispatch_submission_digest(recipient_email, notifications)
             elif notification_type == "approval_request":
                 _dispatch_approval_digest(recipient_email, notifications)
+            elif notification_type in (
+                "approval_notification",
+                "rejection_notification",
+                "withdrawal_notification",
+            ):
+                _dispatch_conclusion_digest(
+                    recipient_email, notifications, notification_type
+                )
+            else:
+                logger.warning(
+                    "send_batched_notifications: unknown type %r for %s; skipping.",
+                    notification_type,
+                    recipient_email,
+                )
+                continue
             ids = [n.id for n in notifications]
             PendingNotification.objects.filter(id__in=ids).update(sent=True)
             sent_count += len(ids)
@@ -654,6 +698,50 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> None
         "count": count,
         "items": items,
         "notification_type": "approval_request",
+    }
+    _send_html_email(
+        subject,
+        [recipient_email],
+        "emails/notification_digest.html",
+        context,
+        notification_type="batched",
+    )
+
+
+_CONCLUSION_VERB: dict[str, tuple[str, str]] = {
+    "approval_notification": ("approved", "Approvals"),
+    "rejection_notification": ("rejected", "Rejections"),
+    "withdrawal_notification": ("withdrawn", "Withdrawals"),
+}
+
+
+def _dispatch_conclusion_digest(
+    recipient_email: str, notifications: list, notification_type: str
+) -> None:
+    """Send a digest of approval/rejection/withdrawal events to one recipient."""
+    sample = notifications[0]
+    workflow = sample.workflow
+    form_name = workflow.form_definition.name
+    count = len(notifications)
+    verb, label = _CONCLUSION_VERB.get(notification_type, ("processed", "Updates"))
+    submissions = [
+        {
+            "submission": n.submission,
+            "submission_url": _abs(
+                reverse("forms_workflows:submission_detail", args=[n.submission.id])
+            ),
+        }
+        for n in notifications
+        if n.submission
+    ]
+    subject = f"{count} submission{'s' if count != 1 else ''} {verb} — {form_name}"
+    context = {
+        "form_name": form_name,
+        "count": count,
+        "submissions": submissions,
+        "notification_type": notification_type,
+        "verb": verb,
+        "label": label,
     }
     _send_html_email(
         subject,

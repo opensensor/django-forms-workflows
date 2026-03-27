@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-03-27
+
+### Added
+- **Batching for all WorkflowNotification event types** — `notification_cadence` now applies to every workflow-conclusion event (`approval_notification`, `rejection_notification`, `withdrawal_notification`) in addition to the existing `submission_received`. Previously only `submission_received` and `approval_request` were batched; the other three always fired immediately regardless of cadence.
+- **`_queue_workflow_level_notifications(submission, workflow, notification_type)`** — replaces the old `_queue_submission_notifications` helper. Resolves every matching `WorkflowNotification` rule (evaluating conditions and all three recipient sources — `notify_submitter`, `email_field`, `static_emails`) and creates one `PendingNotification` row per resolved recipient, correctly honouring per-rule conditions and the full recipient resolution logic.
+- **`_dispatch_conclusion_digest`** — new batch-dispatch function for `approval_notification`, `rejection_notification`, and `withdrawal_notification` digests, reusing the existing `notification_digest.html` template with a verb/label context (`approved`/`rejected`/`withdrawn`).
+- **`_notify_workflow_notification_with_cadence(submission, notification_type)`** — shared helper in `workflow_engine.py` that checks `notification_cadence` and either queues via `_queue_workflow_level_notifications` or fires `send_workflow_definition_notifications` immediately. Used by `_notify_submission_created`, `_notify_final_approval`, `_notify_rejection`, and the withdrawal view.
+
+### Changed
+- `PendingNotification.NOTIFICATION_TYPES` expanded with `approval_notification`, `rejection_notification`, `withdrawal_notification`.
+- `send_batched_notifications` dispatch block handles all five notification types; unknown types are logged and skipped rather than silently dropped.
+- Stage `StageFormFieldNotification` events always fire immediately regardless of cadence — this is unchanged and intentional.
+
 ## [0.37.17] - 2026-03-27
 
 ### Fixed

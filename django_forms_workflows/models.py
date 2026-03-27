@@ -1144,16 +1144,23 @@ class PendingNotification(models.Model):
     """
     Queue of notifications waiting to be sent as part of a batch digest.
 
-    When a WorkflowDefinition has a non-immediate notification_cadence, incoming
-    approval-request and submission-received events are stored here instead of
-    being emailed immediately.  The ``send_batched_notifications`` periodic task
-    finds due records, groups them by recipient + type, and sends a single digest
-    email per group.
+    When a WorkflowDefinition has a non-immediate notification_cadence, all
+    WorkflowNotification-level events (submission_received, approval_notification,
+    rejection_notification, withdrawal_notification) and approval_request events
+    are stored here instead of being emailed immediately.
+
+    The ``send_batched_notifications`` periodic task finds due records, groups them
+    by (recipient_email, notification_type, workflow_id), and sends one digest email
+    per group.  Stage form-field notifications (StageFormFieldNotification) always
+    fire immediately and are not stored here.
     """
 
     NOTIFICATION_TYPES = [
         ("submission_received", "Submission Received"),
         ("approval_request", "Approval Request"),
+        ("approval_notification", "Approval Notification"),
+        ("rejection_notification", "Rejection Notification"),
+        ("withdrawal_notification", "Withdrawal Notification"),
     ]
 
     workflow = models.ForeignKey(

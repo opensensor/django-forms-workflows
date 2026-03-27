@@ -52,7 +52,14 @@ logger = logging.getLogger(__name__)
 # ---- notification shims ----
 
 
-def _notify_submission_created(submission: FormSubmission) -> None:
+def _notify_workflow_notification_with_cadence(
+    submission: FormSubmission, notification_type: str
+) -> None:
+    """Route WorkflowNotification rules through the batch queue or fire immediately.
+
+    Stage form-field notifications (StageFormFieldNotification) are always dispatched
+    immediately by their own callers and are not affected by this function.
+    """
     workflow = getattr(submission.form_definition, "workflow", None)
     cadence = (
         getattr(workflow, "notification_cadence", "immediate")
@@ -62,22 +69,26 @@ def _notify_submission_created(submission: FormSubmission) -> None:
 
     if cadence != "immediate" and workflow is not None:
         try:
-            from .tasks import _queue_submission_notifications
+            from .tasks import _queue_workflow_level_notifications
 
-            _queue_submission_notifications(submission, workflow)
+            _queue_workflow_level_notifications(submission, workflow, notification_type)
         except Exception:
             logger.warning(
-                "Failed to queue batched submission notification; falling back to immediate"
+                "Failed to queue batched %s notification for submission %s; "
+                "falling back to immediate.",
+                notification_type,
+                submission.id,
             )
-            _notify_submission_created_immediate(submission)
+            _notify_workflow_level_recipients(submission, notification_type)
         return
 
-    _notify_submission_created_immediate(submission)
+    _notify_workflow_level_recipients(submission, notification_type)
 
 
-def _notify_submission_created_immediate(submission: FormSubmission) -> None:
+def _notify_submission_created(submission: FormSubmission) -> None:
+    # Stage form-field notifications always fire immediately regardless of cadence.
     _notify_form_field_recipients_for_submission(submission, "submission_received")
-    _notify_workflow_level_recipients(submission, "submission_received")
+    _notify_workflow_notification_with_cadence(submission, "submission_received")
 
 
 def _notify_task_request(task: ApprovalTask) -> None:
@@ -114,12 +125,12 @@ def _notify_task_request_immediate(task: ApprovalTask) -> None:
 
 def _notify_final_approval(submission: FormSubmission) -> None:
     _notify_form_field_recipients_for_submission(submission, "approval_notification")
-    _notify_workflow_level_recipients(submission, "approval_notification")
+    _notify_workflow_notification_with_cadence(submission, "approval_notification")
 
 
 def _notify_rejection(submission: FormSubmission) -> None:
     _notify_form_field_recipients_for_submission(submission, "rejection_notification")
-    _notify_workflow_level_recipients(submission, "rejection_notification")
+    _notify_workflow_notification_with_cadence(submission, "rejection_notification")
 
 
 def _notify_form_field_recipients_for_submission(

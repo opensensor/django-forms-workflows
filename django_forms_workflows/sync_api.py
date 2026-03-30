@@ -463,11 +463,20 @@ def build_export_payload(queryset):
         [_serialize_category(c) for c in all_categories]
     )
 
+    # Export all prefill sources so standalone sources and config changes
+    # propagate independently of whether any form field referencing them was
+    # included in the push/pull.
+    prefill_sources_payload = [
+        _serialize_prefill_source(ps)
+        for ps in PrefillSource.objects.order_by("order", "name")
+    ]
+
     return {
         "schema_version": SYNC_SCHEMA_VERSION,
         "exported_at": django_tz.now().isoformat(),
         "form_count": qs.count(),
         "categories": categories_payload,
+        "prefill_sources": prefill_sources_payload,
         "forms": [serialize_form(f) for f in qs],
     }
 
@@ -791,12 +800,15 @@ def import_payload(payload, conflict="update"):
     """
     category_cache = {}
 
-    # ── 1. Upsert all categories from the top-level list first ────────────────
-    top_level_cats = payload.get("categories", [])
-    for cat_data in _topo_sort_categories(top_level_cats):
+    # ── 1. Upsert all categories (parents before children) ────────────────────
+    for cat_data in _topo_sort_categories(payload.get("categories", [])):
         _get_or_create_category(cat_data, category_cache)
 
-    # ── 2. Import forms (per-form category data is now a no-op cache hit) ─────
+    # ── 2. Upsert all prefill sources ─────────────────────────────────────────
+    for ps_data in payload.get("prefill_sources", []):
+        _get_or_create_prefill_source(ps_data)
+
+    # ── 3. Import forms (category / prefill-source lookups are now cache hits) ─
     results = []
     for form_data in payload.get("forms", []):
         result = import_form(

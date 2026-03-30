@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.6] - 2026-03-30
+
+### Fixed
+- **Workflow-level submission/final-decision notifications dispatched too early** — Submission-received and workflow-level final approval/rejection notifications are now dispatched on transaction commit so Celery does not race uncommitted submission/task state. This restores `submission_received` notifications for active workflows like Online Tuition Remission where approval requests were being sent but workflow-level notifications were missing from the notification log.
+- **Final decision recipients now include dynamic advisor/counselor assignees** — Final approval and rejection notifications now include direct assignees from workflow tasks backed by `assignee_form_field`, ensuring assigned advisors/counselors receive the final decision email alongside the submitter and any configured recipients.
+- **Approval comment help text clarified** — The approval page still warns that decision comments are public, but no longer tells end users to add a private field they cannot configure themselves.
+
 ## [0.38.5] - 2026-03-30
 
 ### Fixed

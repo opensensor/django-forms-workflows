@@ -146,14 +146,28 @@ def _notify_form_field_recipients_for_submission(
     """
     try:
         from .tasks import send_submission_form_field_notifications
-
-        send_submission_form_field_notifications.delay(submission.id, notification_type)
     except Exception:
         logger.warning(
             "Could not dispatch form-field '%s' notifications for submission %s",
             notification_type,
             submission.id,
         )
+        return
+
+    def _dispatch() -> None:
+        try:
+            send_submission_form_field_notifications.delay(
+                submission.id, notification_type
+            )
+        except Exception:
+            logger.warning(
+                "Form-field '%s' notifications fell back to synchronous dispatch for submission %s",
+                notification_type,
+                submission.id,
+            )
+            send_submission_form_field_notifications(submission.id, notification_type)
+
+    transaction.on_commit(_dispatch)
 
 
 def _notify_workflow_level_recipients(
@@ -167,14 +181,28 @@ def _notify_workflow_level_recipients(
     """
     try:
         from .tasks import send_workflow_definition_notifications
-
-        send_workflow_definition_notifications.delay(submission.id, notification_type)
     except Exception:
         logger.warning(
             "Could not dispatch WorkflowNotification '%s' rules for submission %s",
             notification_type,
             submission.id,
         )
+        return
+
+    def _dispatch() -> None:
+        try:
+            send_workflow_definition_notifications.delay(
+                submission.id, notification_type
+            )
+        except Exception:
+            logger.warning(
+                "WorkflowNotification '%s' fell back to synchronous dispatch for submission %s",
+                notification_type,
+                submission.id,
+            )
+            send_workflow_definition_notifications(submission.id, notification_type)
+
+    transaction.on_commit(_dispatch)
 
 
 def _due_date_for(workflow: WorkflowDefinition):

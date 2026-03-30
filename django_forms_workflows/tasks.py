@@ -770,6 +770,7 @@ def _collect_notification_recipients(
 
     Combines (in order):
     - submission.submitter.email if notif.notify_submitter is True and submission is provided.
+    - Dynamic workflow assignee emails for final decision notifications.
     - The dynamic email read from form_data via notif.email_field (if set and valid).
     - All static emails from notif.static_emails (comma-separated, if set).
     """
@@ -778,6 +779,20 @@ def _collect_notification_recipients(
         submitter_email = getattr(getattr(submission, "submitter", None), "email", None)
         if submitter_email and submitter_email not in recipients:
             recipients.append(submitter_email)
+    if submission is not None and getattr(notif, "notification_type", None) in {
+        "approval_notification",
+        "rejection_notification",
+    }:
+        dynamic_assignee_emails = (
+            submission.approval_tasks.select_related("assigned_to", "workflow_stage")
+            .filter(assigned_to__isnull=False)
+            .exclude(workflow_stage__assignee_form_field__isnull=True)
+            .exclude(workflow_stage__assignee_form_field="")
+            .values_list("assigned_to__email", flat=True)
+        )
+        for email in dynamic_assignee_emails:
+            if email and email not in recipients:
+                recipients.append(email)
     if notif.email_field:
         dynamic = _get_form_field_email(form_data, notif.email_field)
         if dynamic and dynamic not in recipients:

@@ -222,6 +222,17 @@ class TestApproveSubmissionView:
         assert resp.status_code == 200
         assert b"Manager Review" in resp.content
 
+    def test_approve_comment_help_text_keeps_public_warning_only(
+        self, client, approver_user, approval_setup
+    ):
+        sub, task, _ = approval_setup
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        resp = client.get(url)
+
+        assert b"visible to the submitter" in resp.content
+        assert b"add a private field to this approval step" not in resp.content
+
     def test_approve_post(self, client, approver_user, approval_setup):
         sub, task, _ = approval_setup
         client.force_login(approver_user)

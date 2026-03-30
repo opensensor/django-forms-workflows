@@ -396,8 +396,43 @@ def serialize_form(form_definition):
     }
 
 
+def _topo_sort_categories(cat_data_list):
+    """Return *cat_data_list* sorted so parent categories precede their children.
+
+    Uses a simple repeated-pass approach — sufficient for the typical shallow
+    category hierarchy (1-2 levels).
+    """
+    sorted_cats = []
+    remaining = list(cat_data_list)
+    seen_slugs = set()
+    max_passes = len(remaining) + 1  # guard against circular refs
+    while remaining and max_passes:
+        max_passes -= 1
+        next_remaining = []
+        for cat in remaining:
+            parent_slug = cat.get("parent_slug")
+            if parent_slug is None or parent_slug in seen_slugs:
+                sorted_cats.append(cat)
+                seen_slugs.add(cat["slug"])
+            else:
+                next_remaining.append(cat)
+        remaining = next_remaining
+    # Append any unresolved (circular / missing parent) at the end
+    sorted_cats.extend(remaining)
+    return sorted_cats
+
+
 def build_export_payload(queryset):
-    """Build the full export payload dict for a queryset of FormDefinitions."""
+    """Build the full export payload dict for a queryset of FormDefinitions.
+
+    The payload includes a top-level ``"categories"`` list containing *all*
+    ``FormCategory`` objects so that:
+
+    * Newly created categories (with no forms yet) are always exported.
+    * Category renames, re-ordering, icon changes, and group-permission
+      changes propagate independently of whether any form in that category
+      was modified.
+    """
     qs = queryset.prefetch_related(
         "fields",
         "fields__prefill_source_config",
@@ -416,10 +451,23 @@ def build_export_payload(queryset):
         "category",
         "category__allowed_groups",
     )
+
+    # Export all categories (topologically sorted) so category-only changes
+    # propagate even when no form in that category was touched.
+    all_categories = (
+        FormCategory.objects.prefetch_related("allowed_groups")
+        .select_related("parent")
+        .order_by("order", "name")
+    )
+    categories_payload = _topo_sort_categories(
+        [_serialize_category(c) for c in all_categories]
+    )
+
     return {
         "schema_version": SYNC_SCHEMA_VERSION,
         "exported_at": django_tz.now().isoformat(),
         "form_count": qs.count(),
+        "categories": categories_payload,
         "forms": [serialize_form(f) for f in qs],
     }
 
@@ -732,10 +780,24 @@ def import_payload(payload, conflict="update"):
     """
     Import a full export payload (as returned by ``build_export_payload()``).
 
+    Categories in the top-level ``"categories"`` key are upserted first
+    (topologically, so parents precede children) so that:
+
+    * Standalone categories with no forms are created/updated.
+    * Category renames, ordering, icons, and group-permissions are applied
+      even when none of the category's forms are in the payload.
+
     Returns a list of ``(FormDefinition, action)`` tuples.
     """
-    results = []
     category_cache = {}
+
+    # ── 1. Upsert all categories from the top-level list first ────────────────
+    top_level_cats = payload.get("categories", [])
+    for cat_data in _topo_sort_categories(top_level_cats):
+        _get_or_create_category(cat_data, category_cache)
+
+    # ── 2. Import forms (per-form category data is now a no-op cache hit) ─────
+    results = []
     for form_data in payload.get("forms", []):
         result = import_form(
             form_data, conflict=conflict, category_cache=category_cache

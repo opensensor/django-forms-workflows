@@ -785,3 +785,228 @@ class TestEditableFormData:
         assert sub.form_data["email"] == "orig@example.com"
         task.refresh_from_db()
         assert task.status == "rejected"
+
+
+# ── ChangeHistory tracking ─────────────────────────────────────────────
+
+
+class TestChangeHistoryModel:
+    """Test the ChangeHistory model and its convenience methods."""
+
+    def test_log_create(self, form_definition):
+        from django_forms_workflows.models import ChangeHistory
+
+        entry = ChangeHistory.log_create(form_definition)
+        assert entry is not None
+        assert entry.action == "create"
+        assert entry.object_id == form_definition.pk
+        assert "Created" in entry.summary
+
+    def test_log_update(self, form_definition, user):
+        from django_forms_workflows.models import ChangeHistory
+
+        changes = {"name": {"old": "Old Name", "new": "New Name"}}
+        entry = ChangeHistory.log_update(form_definition, changes, user=user)
+        assert entry.action == "update"
+        assert entry.user == user
+        assert entry.changes["name"]["old"] == "Old Name"
+        assert entry.changes["name"]["new"] == "New Name"
+
+    def test_log_update_no_changes_returns_none(self, form_definition):
+        from django_forms_workflows.models import ChangeHistory
+
+        result = ChangeHistory.log_update(form_definition, {})
+        assert result is None
+
+    def test_log_delete(self, form_definition):
+        from django_forms_workflows.models import ChangeHistory
+
+        entry = ChangeHistory.log_delete(form_definition)
+        assert entry.action == "delete"
+
+    def test_log_json_diff(self, form_definition, user):
+        from django_forms_workflows.models import ChangeHistory, FormSubmission
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={"name": "Alice", "dept": "IT"},
+            status="submitted",
+        )
+        old = {"name": "Alice", "dept": "IT"}
+        new = {"name": "Bob", "dept": "IT"}
+        entry = ChangeHistory.log_json_diff(sub, "form_data", old, new, user=user)
+        assert entry is not None
+        assert "name" in entry.changes
+        assert "dept" not in entry.changes
+        assert entry.changes["name"]["old"] == "Alice"
+        assert entry.changes["name"]["new"] == "Bob"
+
+    def test_log_json_diff_no_changes_returns_none(self, form_definition, user):
+        from django_forms_workflows.models import ChangeHistory, FormSubmission
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={"name": "Alice"},
+            status="submitted",
+        )
+        result = ChangeHistory.log_json_diff(
+            sub, "form_data", {"name": "Alice"}, {"name": "Alice"}
+        )
+        assert result is None
+
+    def test_str_representation(self, form_definition, user):
+        from django_forms_workflows.models import ChangeHistory
+
+        entry = ChangeHistory.log_update(
+            form_definition,
+            {"name": {"old": "A", "new": "B"}},
+            user=user,
+        )
+        s = str(entry)
+        assert "Updated" in s
+        assert "1 field" in s
+
+
+class TestChangeHistoryAutoTracking:
+    """Signal-based auto-tracking of config model changes."""
+
+    def test_create_tracked(self, db):
+        """Creating a FormDefinition should auto-log a create event."""
+        from django_forms_workflows.models import ChangeHistory, FormDefinition
+
+        fd = FormDefinition.objects.create(
+            name="AutoTracked Form",
+            slug="auto-tracked",
+            is_active=True,
+        )
+        entries = ChangeHistory.objects.filter(
+            content_type__model="formdefinition",
+            object_id=fd.pk,
+            action="create",
+        )
+        assert entries.count() == 1
+
+    def test_update_tracked(self, form_definition):
+        """Updating a FormDefinition should log changed fields."""
+        from django_forms_workflows.models import ChangeHistory
+
+        form_definition.name = "Renamed Form"
+        form_definition.save()
+        entries = ChangeHistory.objects.filter(
+            content_type__model="formdefinition",
+            object_id=form_definition.pk,
+            action="update",
+        )
+        assert entries.count() >= 1
+        latest = entries.first()
+        assert "name" in latest.changes
+
+    def test_delete_tracked(self, db):
+        """Deleting a tracked model should log a delete event."""
+        from django_forms_workflows.models import ChangeHistory, FormDefinition
+
+        fd = FormDefinition.objects.create(
+            name="To Delete", slug="to-delete", is_active=True
+        )
+        fd_pk = fd.pk
+        fd.delete()
+        entries = ChangeHistory.objects.filter(
+            content_type__model="formdefinition",
+            object_id=fd_pk,
+            action="delete",
+        )
+        assert entries.count() == 1
+
+    def test_no_log_when_nothing_changed(self, form_definition):
+        """Saving without changes should not create an update entry."""
+        from django_forms_workflows.models import ChangeHistory
+
+        initial_count = ChangeHistory.objects.filter(
+            content_type__model="formdefinition",
+            object_id=form_definition.pk,
+            action="update",
+        ).count()
+        form_definition.save()  # no changes
+        final_count = ChangeHistory.objects.filter(
+            content_type__model="formdefinition",
+            object_id=form_definition.pk,
+            action="update",
+        ).count()
+        assert final_count == initial_count
+
+
+class TestChangeHistoryFormDataEdit:
+    """form_data edits during approval should be logged."""
+
+    @pytest.fixture
+    def editable_setup(self, form_with_fields, user, approver_user, approval_group):
+        from django_forms_workflows.models import WorkflowDefinition, WorkflowStage
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Edit Stage",
+            order=1,
+            approval_logic="all",
+            allow_edit_form_data=True,
+        )
+        stage.approval_groups.add(approval_group)
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={
+                "full_name": "Original",
+                "email": "orig@example.com",
+                "department": "it",
+                "amount": "100",
+                "notes": "Original notes",
+            },
+            status="pending_approval",
+        )
+        task = ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            step_name="Edit Stage",
+            status="pending",
+            stage_number=1,
+            workflow_stage=stage,
+        )
+        approver_user.groups.add(approval_group)
+        return sub, task
+
+    def test_form_data_edit_logged(self, client, approver_user, editable_setup):
+        """Approving with edits should create a ChangeHistory entry."""
+        from django_forms_workflows.models import ChangeHistory
+
+        sub, task = editable_setup
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        client.post(
+            url,
+            {
+                "decision": "approve",
+                "comments": "Edited",
+                "full_name": "Edited Name",
+                "email": "edited@example.com",
+                "department": "hr",
+                "amount": "200",
+                "notes": "Edited notes",
+            },
+        )
+        entries = ChangeHistory.objects.filter(
+            content_type__model="formsubmission",
+            object_id=sub.pk,
+        )
+        # Should have at least one json diff entry
+        json_entries = [
+            e for e in entries if "form_data" in e.summary or "full_name" in e.changes
+        ]
+        assert len(json_entries) >= 1
+        entry = json_entries[0]
+        assert entry.changes["full_name"]["old"] == "Original"
+        assert entry.changes["full_name"]["new"] == "Edited Name"
+        assert entry.user == approver_user

@@ -1250,7 +1250,18 @@ def approve_submission(request, task_id):
             edited_data = serialize_form_data(
                 editable_form.cleaned_data, submission_id=submission.id
             )
+            # Log the form_data diff before overwriting
+            old_form_data = dict(submission.form_data)
             submission.form_data.update(edited_data)
+            from .models import ChangeHistory
+
+            ChangeHistory.log_json_diff(
+                submission,
+                "form_data",
+                old_form_data,
+                submission.form_data,
+                user=request.user,
+            )
             submission.save()
 
         # Update task

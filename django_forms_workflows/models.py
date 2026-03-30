@@ -4,12 +4,17 @@ Django Forms Workflows - Core Models
 Database-driven form definitions with approval workflows and external data integration.
 """
 
+import logging
 import uuid
 
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 
 class FormCategory(models.Model):
@@ -242,6 +247,13 @@ class FormDefinition(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+
+    # Change history (populated automatically by signals)
+    change_history = GenericRelation(
+        "django_forms_workflows.ChangeHistory",
+        content_type_field="content_type",
+        object_id_field="object_id",
     )
 
     class Meta:
@@ -599,6 +611,12 @@ class FormField(models.Model):
         null=True, blank=True, help_text="Maximum file size in MB"
     )
 
+    change_history = GenericRelation(
+        "django_forms_workflows.ChangeHistory",
+        content_type_field="content_type",
+        object_id_field="object_id",
+    )
+
     class Meta:
         ordering = ["order", "field_name"]
         unique_together = [["form_definition", "field_name"]]
@@ -742,6 +760,12 @@ class WorkflowDefinition(models.Model):
             "Allow users to select and bulk-export submissions for this form "
             "into a single merged PDF from the approval and submissions list views."
         ),
+    )
+
+    change_history = GenericRelation(
+        "django_forms_workflows.ChangeHistory",
+        content_type_field="content_type",
+        object_id_field="object_id",
     )
 
     class Meta:
@@ -889,6 +913,12 @@ class WorkflowStage(models.Model):
             "inputs instead of a read-only table. Changes are saved when the "
             "approver approves the submission."
         ),
+    )
+
+    change_history = GenericRelation(
+        "django_forms_workflows.ChangeHistory",
+        content_type_field="content_type",
+        object_id_field="object_id",
     )
 
     class Meta:
@@ -1613,6 +1643,12 @@ class FormSubmission(models.Model):
     # Tracking
     submission_ip = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
+
+    change_history = GenericRelation(
+        "django_forms_workflows.ChangeHistory",
+        content_type_field="content_type",
+        object_id_field="object_id",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -2786,3 +2822,155 @@ class APIToken(models.Model):
     def __str__(self):
         status = "active" if self.is_active else "revoked"
         return f"{self.name} ({self.user.username}) [{status}]"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Change History — lightweight model-level change tracking
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ChangeHistory(models.Model):
+    """
+    Records field-level changes to tracked models.
+
+    Each row represents a single save/update event and stores a JSON dict of
+    changed fields: ``{"field_name": {"old": ..., "new": ...}}``.
+
+    Usage
+    -----
+    **Automatic**: Add ``change_history = GenericRelation(ChangeHistory)``
+    to any model and register it with ``track_model_changes()`` in
+    ``apps.py``/``signals.py``.  Changes are captured via ``pre_save`` /
+    ``post_save`` signals.
+
+    **Manual** (for JSONField diffs like ``FormSubmission.form_data``):
+        ``ChangeHistory.log_json_diff(instance, field, old, new, user=…)``
+    """
+
+    ACTION_CHOICES = [
+        ("create", "Created"),
+        ("update", "Updated"),
+        ("delete", "Deleted"),
+    ]
+
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        related_name="change_history",
+    )
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="change_history_entries",
+    )
+
+    # JSON dict of changed fields: {field: {old, new}}
+    changes = models.JSONField(
+        default=dict,
+        blank=True,
+        encoder=DjangoJSONEncoder,
+        help_text="Field-level diffs: {field_name: {old: …, new: …}}",
+    )
+    # Optional human-readable summary
+    summary = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["-timestamp"]
+        verbose_name = "change history"
+        verbose_name_plural = "change history"
+        indexes = [
+            models.Index(
+                fields=["content_type", "object_id", "-timestamp"],
+                name="chghist_ct_obj_ts",
+            ),
+        ]
+
+    def __str__(self):
+        model_name = self.content_type.model if self.content_type_id else "?"
+        who = self.user.get_full_name() or self.user.username if self.user else "system"
+        n = len(self.changes) if self.changes else 0
+        return (
+            f"{self.get_action_display()} {model_name} #{self.object_id} "
+            f"({n} field{'s' if n != 1 else ''}) by {who}"
+        )
+
+    # ── Convenience constructors ────────────────────────────────────────
+
+    @classmethod
+    def log_json_diff(cls, instance, field_name, old_value, new_value, user=None):
+        """
+        Compare two JSON-serialisable values and log the per-key diff.
+
+        Useful for ``FormSubmission.form_data`` edits where the column is a
+        single JSONField but we want per-key granularity.
+        """
+        if not isinstance(old_value, dict) or not isinstance(new_value, dict):
+            changes = {field_name: {"old": old_value, "new": new_value}}
+        else:
+            changes = {}
+            all_keys = set(old_value.keys()) | set(new_value.keys())
+            for key in sorted(all_keys):
+                old_v = old_value.get(key)
+                new_v = new_value.get(key)
+                if old_v != new_v:
+                    changes[key] = {"old": old_v, "new": new_v}
+
+        if not changes:
+            return None  # nothing changed
+
+        ct = ContentType.objects.get_for_model(instance)
+        return cls.objects.create(
+            content_type=ct,
+            object_id=instance.pk,
+            action="update",
+            user=user,
+            changes=changes,
+            summary=f"Edited {field_name} ({len(changes)} field{'s' if len(changes) != 1 else ''} changed)",
+        )
+
+    @classmethod
+    def log_create(cls, instance, user=None):
+        """Record a model creation event."""
+        ct = ContentType.objects.get_for_model(instance)
+        return cls.objects.create(
+            content_type=ct,
+            object_id=instance.pk,
+            action="create",
+            user=user,
+            summary=f"Created {ct.model} #{instance.pk}",
+        )
+
+    @classmethod
+    def log_update(cls, instance, changes, user=None):
+        """Record a model update with field-level diffs."""
+        if not changes:
+            return None
+        ct = ContentType.objects.get_for_model(instance)
+        n = len(changes)
+        return cls.objects.create(
+            content_type=ct,
+            object_id=instance.pk,
+            action="update",
+            user=user,
+            changes=changes,
+            summary=f"Updated {n} field{'s' if n != 1 else ''} on {ct.model} #{instance.pk}",
+        )
+
+    @classmethod
+    def log_delete(cls, instance, user=None):
+        """Record a model deletion event."""
+        ct = ContentType.objects.get_for_model(instance)
+        return cls.objects.create(
+            content_type=ct,
+            object_id=instance.pk,
+            action="delete",
+            user=user,
+            summary=f"Deleted {ct.model} #{instance.pk}",
+        )

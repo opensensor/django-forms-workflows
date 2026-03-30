@@ -225,6 +225,35 @@ def is_sso_authentication(request):
     return False
 
 
+# ============================================================
+# Change-History Tracking (configuration models)
+# ============================================================
+
+
+def register_change_tracking():
+    """Register configuration models for automatic change tracking."""
+    from django_forms_workflows.history import track_model_changes
+    from django_forms_workflows.models import (
+        FormDefinition,
+        FormField,
+        FormSubmission,
+        WorkflowDefinition,
+        WorkflowStage,
+    )
+
+    for model in (
+        FormDefinition,
+        FormField,
+        WorkflowDefinition,
+        WorkflowStage,
+        FormSubmission,
+    ):
+        track_model_changes(model)
+
+
+register_change_tracking()
+
+
 @receiver(user_logged_in)
 def sync_sso_on_login(sender, user, request, **kwargs):
     """

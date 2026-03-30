@@ -12,6 +12,7 @@ import nested_admin
 from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin
 from django.contrib.auth.models import Group
+from django.contrib.contenttypes.admin import GenericTabularInline
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -23,6 +24,7 @@ from .models import (
     APIToken,
     ApprovalTask,
     AuditLog,
+    ChangeHistory,
     FileUploadConfig,
     FileWorkflowHook,
     FormCategory,
@@ -46,6 +48,51 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ── Change History inline (read-only, for tracked models) ───────────────
+
+
+class ChangeHistoryInline(GenericTabularInline):
+    model = ChangeHistory
+    ct_field = "content_type"
+    ct_fk_field = "object_id"
+    fields = ("timestamp", "action", "user", "summary", "changes_preview")
+    readonly_fields = ("timestamp", "action", "user", "summary", "changes_preview")
+    extra = 0
+    max_num = 0  # prevent adding new rows
+    ordering = ("-timestamp",)
+    classes = ("collapse",)
+    verbose_name = "Change History Entry"
+    verbose_name_plural = "Change History"
+
+    def changes_preview(self, obj):
+        """Show a compact summary of changed fields."""
+        if not obj.changes:
+            return "—"
+        parts = []
+        for key, diff in list(obj.changes.items())[:8]:
+            old = diff.get("old", "")
+            new = diff.get("new", "")
+            # Truncate long values (e.g. base64 signatures)
+            old_s = str(old)[:60] + "…" if len(str(old)) > 60 else str(old)
+            new_s = str(new)[:60] + "…" if len(str(new)) > 60 else str(new)
+            parts.append(f"<b>{key}</b>: {old_s} → {new_s}")
+        html = "<br>".join(parts)
+        if len(obj.changes) > 8:
+            html += f"<br><i>… and {len(obj.changes) - 8} more</i>"
+        return mark_safe(html)
+
+    changes_preview.short_description = "Changes"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 # Inline for form fields when editing a form definition
@@ -523,7 +570,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at", "updated_at", "created_by")
-    inlines = [FormFieldInline, WorkflowDefinitionInline]
+    inlines = [FormFieldInline, WorkflowDefinitionInline, ChangeHistoryInline]
     filter_horizontal = (
         "submit_groups",
         "view_groups",
@@ -1350,7 +1397,11 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
     list_select_related = ("workflow", "workflow__form_definition")
     search_fields = ("name", "workflow__form_definition__name")
     ordering = ("workflow", "order")
-    inlines = [StageApprovalGroupInline, StageFormFieldNotificationInline]
+    inlines = [
+        StageApprovalGroupInline,
+        StageFormFieldNotificationInline,
+        ChangeHistoryInline,
+    ]
     fieldsets = (
         (
             None,
@@ -1415,7 +1466,7 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
 
 @admin.register(WorkflowDefinition)
 class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
-    inlines = [WorkflowStageInline, WorkflowNotificationInline]
+    inlines = [WorkflowStageInline, WorkflowNotificationInline, ChangeHistoryInline]
     list_display = (
         "form_definition",
         "requires_approval",
@@ -1774,6 +1825,7 @@ class FormSubmissionAdmin(admin.ModelAdmin):
     )
     raw_id_fields = ("submitter",)
     readonly_fields = ("created_at", "submitted_at", "completed_at")
+    inlines = [ChangeHistoryInline]
 
 
 @admin.register(ApprovalTask)
@@ -2412,3 +2464,37 @@ class APITokenAdmin(admin.ModelAdmin):
     def short_token(self, obj):
         token_str = str(obj.token)
         return f"{token_str[:8]}…"
+
+
+@admin.register(ChangeHistory)
+class ChangeHistoryAdmin(admin.ModelAdmin):
+    list_display = (
+        "timestamp",
+        "action",
+        "content_type",
+        "object_id",
+        "user",
+        "summary",
+    )
+    list_filter = ("action", "content_type", "timestamp")
+    date_hierarchy = "timestamp"
+    search_fields = ("summary", "user__username", "user__first_name", "user__last_name")
+    readonly_fields = (
+        "content_type",
+        "object_id",
+        "action",
+        "timestamp",
+        "user",
+        "summary",
+        "changes",
+    )
+    ordering = ("-timestamp",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser

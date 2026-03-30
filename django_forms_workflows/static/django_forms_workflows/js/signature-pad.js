@@ -1,16 +1,23 @@
 /**
- * Signature Pad — lightweight canvas-based signature capture.
+ * Signature Pad — lightweight, responsive canvas-based signature capture.
  *
  * For every <input type="hidden" data-signature-field="FIELD_NAME"> this
  * script injects a visible canvas, a "Clear" button, and optional label /
  * help text.  When the user draws on the canvas the base64 PNG data URI is
  * written back to the hidden input so it is submitted with the form.
  *
+ * The canvas fills 100% of its container width and uses a 2× backing store
+ * on high-DPI screens for crisp signatures.
+ *
  * Usage:  include this script on any page that renders a form with
  *         signature fields.  It auto-initialises on DOMContentLoaded.
  */
 (function () {
     'use strict';
+
+    // Logical (CSS) height of the signing area — the canvas will always be
+    // as wide as its container and this many CSS-pixels tall.
+    var CANVAS_CSS_HEIGHT = 140;
 
     function initSignaturePad(hiddenInput) {
         var fieldName = hiddenInput.getAttribute('data-signature-field');
@@ -24,11 +31,9 @@
         var wrapper = document.createElement('div');
         wrapper.className = 'signature-pad-wrapper mb-3';
 
-        // Label (pulled from the hidden input's associated <label> if any)
+        // Label — reuse the existing <label> created by crispy-forms
         var existingLabel = document.querySelector('label[for="id_' + fieldName + '"]');
         if (!existingLabel) {
-            // Crispy forms may not produce a label for hidden inputs, so we
-            // look for one in the parent .mb-3 / .field-wrapper container.
             var parent = hiddenInput.closest('.field-wrapper, .mb-3');
             if (parent) existingLabel = parent.querySelector('label');
         }
@@ -38,26 +43,24 @@
         label.textContent = existingLabel ? existingLabel.textContent : 'Signature';
         if (hiddenInput.required) {
             var asterisk = document.createElement('span');
-            asterisk.className = 'text-danger';
+            asterisk.className = 'asteriskField';
             asterisk.textContent = ' *';
             label.appendChild(asterisk);
         }
         wrapper.appendChild(label);
 
-        // Canvas container (gives the border / background)
+        // Canvas container — will stretch to 100% of wrapper width via CSS
         var canvasContainer = document.createElement('div');
         canvasContainer.className = 'signature-pad-canvas-container';
         wrapper.appendChild(canvasContainer);
 
         var canvas = document.createElement('canvas');
-        canvas.width = 500;
-        canvas.height = 160;
         canvas.className = 'signature-pad-canvas';
         canvasContainer.appendChild(canvas);
 
         // Buttons
         var btnBar = document.createElement('div');
-        btnBar.className = 'signature-pad-buttons mt-1';
+        btnBar.className = 'signature-pad-buttons';
         var clearBtn = document.createElement('button');
         clearBtn.type = 'button';
         clearBtn.className = 'btn btn-sm btn-outline-secondary';
@@ -65,24 +68,57 @@
         btnBar.appendChild(clearBtn);
         wrapper.appendChild(btnBar);
 
-        // Help text
+        // Help text (from the form field's help_text)
         var helpText = hiddenInput.getAttribute('data-help-text');
         if (helpText) {
             var helpEl = document.createElement('div');
-            helpEl.className = 'form-text text-muted';
+            helpEl.className = 'signature-pad-help';
             helpEl.textContent = helpText;
             wrapper.appendChild(helpEl);
         }
 
-        // Insert the wrapper right before the hidden input
+        // Insert the wrapper where the hidden input is, then nest the
+        // hidden input inside so it stays grouped.
         hiddenInput.parentNode.insertBefore(wrapper, hiddenInput);
-        // Move the hidden input inside the wrapper so it stays grouped
         wrapper.appendChild(hiddenInput);
-        // Hide the original label (if any) since we created our own
         if (existingLabel) existingLabel.style.display = 'none';
 
-        // ── Drawing logic ──────────────────────────────────────────────────
+        // ── Responsive canvas sizing ───────────────────────────────────────
         var ctx = canvas.getContext('2d');
+        var dpr = window.devicePixelRatio || 1;
+
+        function sizeCanvas() {
+            var containerWidth = canvasContainer.clientWidth || 300;
+            // Set the backing-store size (physical pixels)
+            canvas.width  = containerWidth * dpr;
+            canvas.height = CANVAS_CSS_HEIGHT * dpr;
+            // Keep CSS size matched to container
+            canvas.style.width  = '100%';
+            canvas.style.height = CANVAS_CSS_HEIGHT + 'px';
+            // Scale context so drawing coordinates match CSS pixels
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        sizeCanvas();
+
+        // Re-size on window resize (debounced)
+        var resizeTimer;
+        window.addEventListener('resize', function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                // Preserve current drawing
+                var imageData = canvas.toDataURL('image/png');
+                sizeCanvas();
+                if (hasStrokes) {
+                    var img = new Image();
+                    img.onload = function () {
+                        ctx.drawImage(img, 0, 0, canvasContainer.clientWidth, CANVAS_CSS_HEIGHT);
+                    };
+                    img.src = imageData;
+                }
+            }, 150);
+        });
+
+        // ── Drawing logic ──────────────────────────────────────────────────
         var drawing = false;
         var hasStrokes = false;
 
@@ -97,8 +133,8 @@
                 clientY = e.clientY;
             }
             return {
-                x: (clientX - rect.left) * (canvas.width / rect.width),
-                y: (clientY - rect.top) * (canvas.height / rect.height)
+                x: (clientX - rect.left) * (canvas.width / dpr / rect.width),
+                y: (clientY - rect.top)  * (canvas.height / dpr / rect.height)
             };
         }
 
@@ -128,7 +164,6 @@
             e.preventDefault();
             drawing = false;
             ctx.closePath();
-            // Write the data URI into the hidden input
             if (hasStrokes) {
                 hiddenInput.value = canvas.toDataURL('image/png');
             }
@@ -147,7 +182,7 @@
 
         // Clear button
         clearBtn.addEventListener('click', function () {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
             hiddenInput.value = '';
             hasStrokes = false;
         });

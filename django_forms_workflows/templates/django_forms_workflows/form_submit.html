@@ -114,25 +114,6 @@
 </div>
 {% endblock %}
 
-{% block extra_css %}
-<style>
-    .signature-pad-canvas-container {
-        border: 1px solid #ced4da;
-        border-radius: .375rem;
-        background: #fff;
-        display: inline-block;
-        cursor: crosshair;
-        touch-action: none;
-    }
-    .signature-pad-canvas {
-        display: block;
-        width: 100%;
-        max-width: 500px;
-        height: auto;
-    }
-</style>
-{% endblock %}
-
 {% block extra_js %}
 <script src="{% static 'django_forms_workflows/js/form-enhancements.js' %}"></script>
 <script src="{% static 'django_forms_workflows/js/signature-pad.js' %}"></script>

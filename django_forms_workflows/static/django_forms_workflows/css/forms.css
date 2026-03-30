@@ -1,0 +1,131 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   forms.css — Alignment, spacing & responsive polish for django-forms-workflows
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Side-by-side field alignment ────────────────────────────────────────
+   When two half-width fields sit in a .row, the shorter one needs to
+   bottom-align its input with the taller one regardless of label length,
+   help-text presence, or wrapped text.  We use flex-column + stretch so
+   the label area grows evenly and the input sits at a consistent position. */
+
+.row.align-items-start > [class*="col-"] > .mb-3,
+.row.align-items-start > .field-wrapper > .mb-3 {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.row.align-items-start > [class*="col-"] > .mb-3 > label,
+.row.align-items-start > .field-wrapper > .mb-3 > label {
+    flex-shrink: 0;
+}
+.row.align-items-start > [class*="col-"] > .mb-3 > .form-control,
+.row.align-items-start > [class*="col-"] > .mb-3 > .form-select,
+.row.align-items-start > .field-wrapper > .mb-3 > .form-control,
+.row.align-items-start > .field-wrapper > .mb-3 > .form-select {
+    margin-top: auto;        /* push the input to the bottom of the cell */
+}
+/* Help text sits *after* the input and shouldn't shift it up */
+.row.align-items-start > [class*="col-"] > .mb-3 > .form-text,
+.row.align-items-start > .field-wrapper > .mb-3 > .form-text {
+    flex-shrink: 0;
+    min-height: 1.4em;       /* reserve space even when empty for alignment */
+}
+
+/* ── Consistent field spacing ────────────────────────────────────────── */
+
+.field-wrapper {
+    margin-bottom: 1rem;
+}
+/* Slightly more breathing room between label and input */
+.field-wrapper label.form-label,
+.field-wrapper label.form-check-label {
+    margin-bottom: 0.375rem;
+    font-weight: 500;
+}
+/* Help text polish */
+.field-wrapper .form-text {
+    font-size: 0.8125rem;
+    margin-top: 0.375rem;
+    line-height: 1.4;
+}
+
+/* ── Responsive stacking ─────────────────────────────────────────────── */
+
+@media (max-width: 767.98px) {
+    /* Stack side-by-side fields vertically on mobile */
+    .row > [class*="col-md-"] {
+        margin-bottom: 0.75rem;
+    }
+    /* Give the form card a tighter horizontal padding on small screens */
+    .card-body {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+/* ── Signature Pad ───────────────────────────────────────────────────── */
+
+.signature-pad-wrapper {
+    margin-top: 0.25rem;
+}
+.signature-pad-wrapper > label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+.signature-pad-canvas-container {
+    display: block;
+    width: 100%;
+    border: 2px solid #dee2e6;
+    border-radius: 0.5rem;
+    background: #fafbfc;
+    cursor: crosshair;
+    touch-action: none;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+.signature-pad-canvas-container:hover,
+.signature-pad-canvas-container:active {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+.signature-pad-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+}
+.signature-pad-buttons {
+    margin-top: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+.signature-pad-help {
+    font-size: 0.8125rem;
+    color: #6c757d;
+    margin-top: 0.375rem;
+}
+
+/* ── Form submit button row ──────────────────────────────────────────── */
+
+.form-actions {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e9ecef;
+}
+
+/* ── Checkbox / radio alignment ──────────────────────────────────────── */
+
+.form-check {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+/* ── Required field asterisk ─────────────────────────────────────────── */
+
+.asteriskField {
+    color: #dc3545;
+    font-weight: 600;
+    margin-left: 0.15em;
+}
+

@@ -5,25 +5,6 @@
 
 {% block title %}Approve Submission #{{ submission.id }} - {{ site_name }}{% endblock %}
 
-{% block extra_css %}
-<style>
-    .signature-pad-canvas-container {
-        border: 1px solid #ced4da;
-        border-radius: .375rem;
-        background: #fff;
-        display: inline-block;
-        cursor: crosshair;
-        touch-action: none;
-    }
-    .signature-pad-canvas {
-        display: block;
-        width: 100%;
-        max-width: 500px;
-        height: auto;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="row">
     <div class="col-lg-10 mx-auto">

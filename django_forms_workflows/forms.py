@@ -664,10 +664,11 @@ class DynamicForm(forms.Form):
             # data URI from an HTML canvas.  A hidden input stores the value;
             # the visible canvas widget is injected by JavaScript keyed on
             # the ``data-signature-field`` attribute.
+            sig_attrs = {"data-signature-field": field_def.field_name}
+            if field_def.help_text:
+                sig_attrs["data-help-text"] = field_def.help_text
             self.fields[field_def.field_name] = forms.CharField(
-                widget=forms.HiddenInput(
-                    attrs={"data-signature-field": field_def.field_name}
-                ),
+                widget=forms.HiddenInput(attrs=sig_attrs),
                 required=field_def.required,
                 label=field_def.field_label,
                 help_text=field_def.help_text,
@@ -1459,10 +1460,11 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "signature":
+            sig_attrs = {"data-signature-field": field_def.field_name}
+            if field_def.help_text:
+                sig_attrs["data-help-text"] = field_def.help_text
             self.fields[field_def.field_name] = forms.CharField(
-                widget=forms.HiddenInput(
-                    attrs={"data-signature-field": field_def.field_name}
-                ),
+                widget=forms.HiddenInput(attrs=sig_attrs),
                 required=field_args.get("required", False),
                 label=field_def.field_label,
                 help_text=field_def.help_text,

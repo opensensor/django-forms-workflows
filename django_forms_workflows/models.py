@@ -452,6 +452,7 @@ class FormField(models.Model):
         ("spreadsheet", "Spreadsheet Upload (CSV / Excel)"),
         ("country", "Country Picker"),
         ("us_state", "US State Picker"),
+        ("signature", "Signature"),
     ]
 
     # Relationship

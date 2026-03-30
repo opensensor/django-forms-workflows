@@ -1,4 +1,5 @@
 {% extends 'django_forms_workflows/base.html' %}
+{% load forms_workflows_tags %}
 
 {% block title %}Submission #{{ submission.id }} - {{ site_name }}{% endblock %}
 
@@ -104,6 +105,9 @@
                                     {# Single file with path but no URL #}
                                     <span class="text-muted">{{ entry.value.filename }}</span>
                                     <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                                {% elif entry.value|is_signature %}
+                                    {# Signature — inline base64 image #}
+                                    <img src="{{ entry.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
                                 {% elif entry.value.0.filename %}
                                     {# Multi-file upload: list of file dicts #}
                                     <ul class="list-unstyled mb-0">
@@ -217,6 +221,9 @@
                                         {# Single file with path but no URL #}
                                         <span class="text-muted">{{ field.value.filename }}</span>
                                         <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                                    {% elif field.value|is_signature %}
+                                        {# Signature — inline base64 image #}
+                                        <img src="{{ field.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
                                     {% elif field.value.0.filename %}
                                         {# Multi-file upload: list of file dicts #}
                                         <ul class="list-unstyled mb-0">

@@ -552,7 +552,7 @@ def my_submissions(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile"])
+                .exclude(field_type__in=["section", "file", "multifile", "signature"])
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -971,7 +971,7 @@ def approval_inbox(request):
             form_def_obj = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=form_def_obj)
-                .exclude(field_type__in=["section", "file", "multifile"])
+                .exclude(field_type__in=["section", "file", "multifile", "signature"])
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -1668,7 +1668,7 @@ def completed_approvals(request):
             form_def_obj = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=form_def_obj)
-                .exclude(field_type__in=["section", "file", "multifile"])
+                .exclude(field_type__in=["section", "file", "multifile", "signature"])
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -2016,7 +2016,7 @@ def submission_pdf(request, submission_id):
 
 # Field types where free-text search makes no sense (binary / structural)
 _NONSEARCHABLE_FIELD_TYPES = frozenset(
-    {"section", "file", "multifile", "hidden", "checkbox"}
+    {"section", "file", "multifile", "hidden", "checkbox", "signature"}
 )
 
 
@@ -3105,7 +3105,7 @@ def completed_approvals_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile"])
+                .exclude(field_type__in=["section", "file", "multifile", "signature"])
                 .order_by("order")
                 .values("field_name")
             )
@@ -3233,7 +3233,7 @@ def approval_inbox_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile"])
+                .exclude(field_type__in=["section", "file", "multifile", "signature"])
                 .order_by("order")
                 .values("field_name")
             )
@@ -3372,7 +3372,7 @@ def my_submissions_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile"])
+                .exclude(field_type__in=["section", "file", "multifile", "signature"])
                 .order_by("order")
                 .values("field_name")
             )
@@ -3476,7 +3476,7 @@ def my_submissions_ajax(request):
 
 #: Field types excluded from the batch import template (can't be filled via Excel)
 _BATCH_EXCLUDED_TYPES = frozenset(
-    ["section", "file", "multifile", "calculated", "spreadsheet"]
+    ["section", "file", "multifile", "calculated", "spreadsheet", "signature"]
 )
 
 #: Field types that accept multiple values (pipe-separated in the Excel template)

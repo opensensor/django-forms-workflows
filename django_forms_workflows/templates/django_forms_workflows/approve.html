@@ -1,8 +1,28 @@
 {% extends 'django_forms_workflows/base.html' %}
+{% load static %}
 {% load crispy_forms_tags %}
 {% load forms_workflows_tags %}
 
 {% block title %}Approve Submission #{{ submission.id }} - {{ site_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .signature-pad-canvas-container {
+        border: 1px solid #ced4da;
+        border-radius: .375rem;
+        background: #fff;
+        display: inline-block;
+        cursor: crosshair;
+        touch-action: none;
+    }
+    .signature-pad-canvas {
+        display: block;
+        width: 100%;
+        max-width: 500px;
+        height: auto;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -180,6 +200,9 @@
                                     </a>
                                 {% elif entry.value.path %}
                                     <span class="text-muted">{{ entry.value.filename }}</span>
+                                {% elif entry.value|is_signature %}
+                                    {# Signature — inline base64 image #}
+                                    <img src="{{ entry.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
                                 {% elif entry.value.0.filename %}
                                     {# Multi-file upload: list of file dicts #}
                                     <ul class="list-unstyled mb-0">
@@ -281,6 +304,8 @@
                             {% elif field.value.path %}
                                 <span class="text-muted">{{ field.value.filename }}</span>
                                 <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                            {% elif field.value|is_signature %}
+                                <img src="{{ field.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
                             {% elif field.value.0.filename %}
                                 <ul class="list-unstyled mb-0">
                                 {% for f in field.value %}
@@ -449,6 +474,8 @@
                                     {# File upload with path but no URL #}
                                     <span class="text-muted">{{ entry.value.filename }}</span>
                                     <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                                {% elif entry.value|is_signature %}
+                                    <img src="{{ entry.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
                                 {% else %}
                                     {{ entry.value }}
                                 {% endif %}
@@ -535,6 +562,8 @@
                                     {% elif field.value.path %}
                                         <span class="text-muted">{{ field.value.filename }}</span>
                                         <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+                                    {% elif field.value|is_signature %}
+                                        <img src="{{ field.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
                                     {% elif field.value.0.filename %}
                                         <ul class="list-unstyled mb-0">
                                         {% for f in field.value %}
@@ -667,5 +696,6 @@
 </div>
 {% endblock %}
 
-
-
+{% block extra_js %}
+<script src="{% static 'django_forms_workflows/js/signature-pad.js' %}"></script>
+{% endblock %}

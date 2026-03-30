@@ -659,6 +659,21 @@ class DynamicForm(forms.Form):
                 **field_args,
             )
 
+        elif field_def.field_type == "signature":
+            # The signature is captured client-side as a base64-encoded PNG
+            # data URI from an HTML canvas.  A hidden input stores the value;
+            # the visible canvas widget is injected by JavaScript keyed on
+            # the ``data-signature-field`` attribute.
+            self.fields[field_def.field_name] = forms.CharField(
+                widget=forms.HiddenInput(
+                    attrs={"data-signature-field": field_def.field_name}
+                ),
+                required=field_def.required,
+                label=field_def.field_label,
+                help_text=field_def.help_text,
+                initial=initial,
+            )
+
         elif field_def.field_type == "hidden":
             self.fields[field_def.field_name] = forms.CharField(
                 widget=forms.HiddenInput(), required=False, initial=initial
@@ -1441,6 +1456,17 @@ class ApprovalStepForm(forms.Form):
                 choices=state_choices,
                 widget=forms.Select(attrs={"class": "form-select"}),
                 **field_args,
+            )
+
+        elif field_def.field_type == "signature":
+            self.fields[field_def.field_name] = forms.CharField(
+                widget=forms.HiddenInput(
+                    attrs={"data-signature-field": field_def.field_name}
+                ),
+                required=field_args.get("required", False),
+                label=field_def.field_label,
+                help_text=field_def.help_text,
+                initial=field_args["initial"],
             )
 
         else:

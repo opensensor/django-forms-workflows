@@ -477,3 +477,137 @@ class TestBuildApprovalStepSections:
         assert len(sections) == 1
         assert sections[0]["status"] == "approved"
         assert sections[0]["comments"] == "All good"
+
+
+# ── Signature field integration ────────────────────────────────────────
+
+SAMPLE_SIGNATURE = (
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf"
+    "FcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+
+class TestSignatureFieldSubmission:
+    """End-to-end: submit a form with a signature field and view it."""
+
+    @pytest.fixture
+    def sig_form(self, form_definition):
+        from django_forms_workflows.models import FormField
+
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="full_name",
+            field_label="Full Name",
+            field_type="text",
+            order=1,
+            required=True,
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="sig",
+            field_label="Your Signature",
+            field_type="signature",
+            order=2,
+            required=True,
+        )
+        return form_definition
+
+    def test_submit_with_signature(self, auth_client, sig_form):
+        url = reverse("forms_workflows:form_submit", args=[sig_form.slug])
+        data = {"full_name": "Jane Doe", "sig": SAMPLE_SIGNATURE}
+        resp = auth_client.post(url, data)
+        assert resp.status_code in (200, 302)
+        sub = FormSubmission.objects.filter(form_definition=sig_form).first()
+        assert sub is not None
+        assert sub.form_data["sig"].startswith("data:image/png;base64,")
+
+    def test_submission_detail_shows_signature(self, auth_client, sig_form, user):
+        sub = FormSubmission.objects.create(
+            form_definition=sig_form,
+            submitter=user,
+            form_data={"full_name": "Jane Doe", "sig": SAMPLE_SIGNATURE},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:submission_detail", args=[sub.pk])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+        content = resp.content.decode()
+        # The signature should render as an <img> tag with the data URI
+        assert 'src="data:image/png;base64,' in content
+        assert 'alt="Signature"' in content
+
+
+class TestSerializeSignatureData:
+    """serialize_form_data should pass signature data URI strings through."""
+
+    def test_signature_passthrough(self):
+        from django_forms_workflows.views import serialize_form_data
+
+        data = {"name": "Test", "sig": SAMPLE_SIGNATURE}
+        result = serialize_form_data(data)
+        assert result["sig"] == SAMPLE_SIGNATURE
+        assert result["name"] == "Test"
+
+
+class TestResolveSignatureData:
+    """_resolve_form_data_urls should leave signature data URIs untouched."""
+
+    def test_signature_not_resolved_as_file(self):
+        from django_forms_workflows.views import _resolve_form_data_urls
+
+        data = {"sig": SAMPLE_SIGNATURE, "name": "Alice"}
+        result = _resolve_form_data_urls(data)
+        assert result["sig"] == SAMPLE_SIGNATURE
+
+
+class TestBuildPdfRowsSignature:
+    """_build_pdf_rows should include signature fields."""
+
+    def test_signature_in_pdf_rows(self, form_definition, user):
+        from django_forms_workflows.models import FormField
+        from django_forms_workflows.views import _build_pdf_rows
+
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="name",
+            field_label="Name",
+            field_type="text",
+            order=1,
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="sig",
+            field_label="Signature",
+            field_type="signature",
+            order=2,
+        )
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={"name": "Bob", "sig": SAMPLE_SIGNATURE},
+            status="submitted",
+        )
+        rows = _build_pdf_rows(sub)
+        sig_values = [
+            f["value"]
+            for row in rows
+            if row.get("fields")
+            for f in row["fields"]
+            if f["key"] == "sig"
+        ]
+        assert len(sig_values) == 1
+        assert sig_values[0] == SAMPLE_SIGNATURE
+
+
+class TestSignatureExcludedFromExportSearch:
+    """Signature fields should be excluded from search and batch exports."""
+
+    def test_excluded_from_nonsearchable(self):
+        from django_forms_workflows.views import _NONSEARCHABLE_FIELD_TYPES
+
+        assert "signature" in _NONSEARCHABLE_FIELD_TYPES
+
+    def test_excluded_from_batch(self):
+        from django_forms_workflows.views import _BATCH_EXCLUDED_TYPES
+
+        assert "signature" in _BATCH_EXCLUDED_TYPES

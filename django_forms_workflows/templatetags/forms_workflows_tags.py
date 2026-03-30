@@ -8,6 +8,12 @@ register = template.Library()
 
 
 @register.filter
+def is_signature(value):
+    """Return True if *value* looks like a signature data-URI (PNG)."""
+    return isinstance(value, str) and value.startswith("data:image/png;base64,")
+
+
+@register.filter
 def get_item(dictionary, key):
     """
     Get an item from a dictionary by key.

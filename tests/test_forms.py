@@ -810,3 +810,107 @@ class TestFileValidationRulesInConfig:
         for r in rules:
             for rule in r["rules"]:
                 assert rule["type"] not in ("file_type", "file_size")
+
+
+# ── Signature field ─────────────────────────────────────────────────────
+
+
+class TestSignatureFieldDynamicForm:
+    """Tests for signature field type in DynamicForm."""
+
+    SAMPLE_SIGNATURE = (
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf"
+        "FcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
+
+    def test_signature_field_created(self, form_definition, user):
+        """A signature field should produce a CharField with HiddenInput."""
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="sig",
+            field_label="Your Signature",
+            field_type="signature",
+            order=1,
+            required=True,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert "sig" in form.fields
+        field = form.fields["sig"]
+        assert field.required is True
+        assert field.label == "Your Signature"
+        # Widget should be HiddenInput with the data-signature-field attr
+        assert field.widget.attrs.get("data-signature-field") == "sig"
+
+    def test_signature_field_not_required(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="opt_sig",
+            field_label="Optional Signature",
+            field_type="signature",
+            order=1,
+            required=False,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert form.fields["opt_sig"].required is False
+
+    def test_signature_valid_with_data(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="sig",
+            field_label="Signature",
+            field_type="signature",
+            order=1,
+            required=True,
+        )
+        form = DynamicForm(
+            form_definition, user=user, data={"sig": self.SAMPLE_SIGNATURE}
+        )
+        assert form.is_valid(), form.errors
+
+    def test_signature_invalid_when_required_and_empty(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="sig",
+            field_label="Signature",
+            field_type="signature",
+            order=1,
+            required=True,
+        )
+        form = DynamicForm(form_definition, user=user, data={"sig": ""})
+        assert not form.is_valid()
+        assert "sig" in form.errors
+
+
+class TestSignatureFieldApprovalStepForm:
+    """Signature field in ApprovalStepForm."""
+
+    def test_signature_in_approval_form(
+        self, form_definition, submission, approval_group, user
+    ):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(workflow=wf, name="Sign", order=1)
+        stage.approval_groups.add(approval_group)
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            step_name="Sign",
+            status="pending",
+            workflow_stage=stage,
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="approver_sig",
+            field_label="Approver Signature",
+            field_type="signature",
+            order=200,
+            workflow_stage=stage,
+            required=False,
+        )
+        form = ApprovalStepForm(form_definition, submission, task, user=user)
+        assert "approver_sig" in form.fields
+        assert (
+            form.fields["approver_sig"].widget.attrs.get("data-signature-field")
+            == "approver_sig"
+        )

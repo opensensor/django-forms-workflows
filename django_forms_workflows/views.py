@@ -1923,12 +1923,15 @@ def submission_pdf(request, submission_id):
     form_def = submission.form_definition
 
     # --- permission check (same as submission_detail) ---
+    is_reviewer = request.user.groups.filter(
+        id__in=form_def.reviewer_groups.all()
+    ).exists()
     can_view = (
         submission.submitter == request.user
         or request.user.is_superuser
         or user_can_approve(request.user, submission)
         or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
-        or request.user.groups.filter(id__in=form_def.reviewer_groups.all()).exists()
+        or is_reviewer
     )
     if not can_view:
         return HttpResponseForbidden(
@@ -1941,17 +1944,31 @@ def submission_pdf(request, submission_id):
         return HttpResponseForbidden("PDF generation is not enabled for this form.")
 
     if pdf_setting == "post_approval" and submission.status != "approved":
-        # Approvers, admins, and superusers may download pending submissions.
-        # Only the submitter themselves must wait until the form is approved.
+        # Approvers, admins, reviewers, and superusers may download pending
+        # submissions.  Only the submitter themselves must wait until approved.
         is_elevated = (
             request.user.is_superuser
             or user_can_approve(request.user, submission)
             or request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+            or is_reviewer
         )
         if not is_elevated:
             return HttpResponseForbidden(
                 "PDF is only available after the submission has been approved."
             )
+
+    # --- privacy: mirror hide_approval_history logic from submission_detail ---
+    workflow = getattr(form_def, "workflow", None)
+    is_submitter_only = (
+        submission.submitter == request.user
+        and not request.user.is_superuser
+        and not user_can_approve(request.user, submission)
+        and not request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+        and not is_reviewer
+    )
+    hide_approval_history = bool(
+        workflow and workflow.hide_approval_history and is_submitter_only
+    )
 
     # --- build width-aware row groups for PDF layout ---
     pdf_rows = _build_pdf_rows(submission)
@@ -1967,6 +1984,7 @@ def submission_pdf(request, submission_id):
             "form_def": form_def,
             "pdf_rows": pdf_rows,
             "approval_step_sections": approval_step_sections,
+            "hide_approval_history": hide_approval_history,
             "resolved_attachments": _resolve_attachments(submission.attachments),
             "request": request,
         },

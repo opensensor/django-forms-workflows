@@ -260,6 +260,78 @@ class TestApproveSubmissionView:
         resp = client.get(url)
         assert "approval_step_sections" in resp.context
 
+    def test_send_back_option_shown_for_prior_send_back_stage(
+        self,
+        client,
+        form_with_fields,
+        user,
+        approver_user,
+        approval_group,
+        second_approval_group,
+    ):
+        from django_forms_workflows.models import WorkflowDefinition, WorkflowStage
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, requires_approval=True
+        )
+        stage1 = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Manager Review",
+            order=1,
+            approval_logic="all",
+            allow_send_back=True,
+        )
+        stage1.approval_groups.add(approval_group)
+        stage2 = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Finance Review",
+            order=2,
+            approval_logic="all",
+        )
+        stage2.approval_groups.add(second_approval_group)
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={
+                "full_name": "Test User",
+                "email": "test@example.com",
+                "department": "it",
+                "amount": "500.00",
+                "notes": "Review please",
+            },
+            status="pending_approval",
+        )
+
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            step_name="Manager Review",
+            status="approved",
+            stage_number=1,
+            workflow_stage=stage1,
+        )
+        task = ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=second_approval_group,
+            step_name="Finance Review",
+            status="pending",
+            stage_number=2,
+            workflow_stage=stage2,
+        )
+
+        approver_user.groups.add(second_approval_group)
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        resp = client.get(url)
+
+        assert resp.status_code == 200
+        assert "send_back_stages" in resp.context
+        assert [stage.name for stage in resp.context["send_back_stages"]] == [
+            "Manager Review"
+        ]
+        assert b"Send Back for Correction" in resp.content
+
 
 # ── save_draft ──────────────────────────────────────────────────────────
 

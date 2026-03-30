@@ -52,6 +52,10 @@ class TestConvertWorkflowToVisual:
         self, staged_workflow, form_definition, approval_group, second_approval_group
     ):
         """Staged workflow generates stage nodes (not legacy approval_config)."""
+        first_stage = staged_workflow.stages.order_by("order").first()
+        first_stage.allow_send_back = True
+        first_stage.save(update_fields=["allow_send_back"])
+
         result = convert_workflow_to_visual(staged_workflow, form_definition)
         types = [n["type"] for n in result["nodes"]]
 
@@ -67,6 +71,33 @@ class TestConvertWorkflowToVisual:
         assert len(stage_nodes) == 2
         assert stage_nodes[0]["data"]["name"] == "Manager Review"
         assert stage_nodes[1]["data"]["name"] == "Finance Review"
+        assert stage_nodes[0]["data"]["allow_send_back"] is True
+
+    def test_backfills_send_back_flag_from_saved_visual_data(
+        self, staged_workflow, form_definition
+    ):
+        stage = staged_workflow.stages.order_by("order").first()
+        stage.allow_send_back = True
+        stage.save(update_fields=["allow_send_back"])
+        staged_workflow.visual_workflow_data = {
+            "nodes": [
+                {
+                    "id": "node_1",
+                    "type": "stage",
+                    "data": {
+                        "stage_id": stage.id,
+                        "name": stage.name,
+                        "order": stage.order,
+                    },
+                }
+            ],
+            "connections": [],
+        }
+        staged_workflow.save(update_fields=["visual_workflow_data"])
+
+        result = convert_workflow_to_visual(staged_workflow, form_definition)
+
+        assert result["nodes"][0]["data"]["allow_send_back"] is True
 
     def test_workflow_with_no_stages_has_no_stage_nodes(self, form_definition, db):
         """Workflow without stages produces no stage nodes."""
@@ -116,6 +147,7 @@ class TestConvertVisualToWorkflow:
                     "order": 1,
                     "approval_logic": "all",
                     "requires_manager_approval": True,
+                    "allow_send_back": True,
                     "approve_label": "Sign Off",
                     "approval_groups": [
                         {"id": approval_group.id, "name": approval_group.name}
@@ -130,6 +162,7 @@ class TestConvertVisualToWorkflow:
         assert stages[0].name == "Review"
         assert stages[0].approval_logic == "all"
         assert stages[0].requires_manager_approval is True
+        assert stages[0].allow_send_back is True
         assert stages[0].approve_label == "Sign Off"
         assert list(stages[0].approval_groups.values_list("id", flat=True)) == [
             approval_group.id
@@ -253,6 +286,7 @@ class TestWorkflowBuilderViews:
                             "order": 1,
                             "approval_logic": "all",
                             "requires_manager_approval": False,
+                            "allow_send_back": True,
                             "approve_label": "Confirm",
                             "approval_groups": [
                                 {
@@ -279,6 +313,7 @@ class TestWorkflowBuilderViews:
         stages = list(wf.stages.order_by("order"))
         assert len(stages) == 1
         assert stages[0].name == "Sign Off"
+        assert stages[0].allow_send_back is True
 
 
 # ── Form builder view tests ─────────────────────────────────────────────────

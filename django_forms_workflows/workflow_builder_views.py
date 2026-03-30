@@ -166,11 +166,24 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     Reads WorkflowStage records to build stage nodes.
     """
+    stage_defaults = {
+        stage.id: {"allow_send_back": stage.allow_send_back}
+        for stage in workflow.stages.all()
+    }
+
     # Check if visual workflow data exists AND has the correct format (nodes array)
     if workflow.visual_workflow_data:
         visual_data = workflow.visual_workflow_data
         # Check if it has the new format with nodes array
         if isinstance(visual_data, dict) and "nodes" in visual_data:
+            for node in visual_data.get("nodes", []):
+                if node.get("type") != "stage":
+                    continue
+                stage_id = node.get("data", {}).get("stage_id")
+                defaults = stage_defaults.get(stage_id)
+                if defaults:
+                    for key, value in defaults.items():
+                        node.setdefault("data", {}).setdefault(key, value)
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
         # Old format (e.g., stages array) - regenerate
@@ -295,6 +308,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "order": stage.order,
                         "approval_logic": stage.approval_logic,
                         "requires_manager_approval": stage.requires_manager_approval,
+                        "allow_send_back": stage.allow_send_back,
                         "approve_label": stage.approve_label or "",
                         "approval_groups": [
                             {"id": g.id, "name": g.name} for g in stage_groups
@@ -326,6 +340,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                             "order": stage.order,
                             "approval_logic": stage.approval_logic,
                             "requires_manager_approval": stage.requires_manager_approval,
+                            "allow_send_back": stage.allow_send_back,
                             "approve_label": stage.approve_label or "",
                             "approval_groups": [
                                 {"id": g.id, "name": g.name} for g in stage_groups
@@ -550,6 +565,7 @@ def convert_visual_to_workflow(workflow_data, form_definition):
             "order": sdata.get("order", idx),
             "approval_logic": sdata.get("approval_logic", "all"),
             "requires_manager_approval": sdata.get("requires_manager_approval", False),
+            "allow_send_back": sdata.get("allow_send_back", False),
             "approve_label": sdata.get("approve_label", ""),
         }
 

@@ -259,6 +259,7 @@
 </ul>
 {% endif %}
 
+{% if not hide_approval_history %}
 {% for section in approval_step_sections %}
 <div class="step-section-header">
     <span class="step-name-cell">{{ section.step_name }}</span>
@@ -291,6 +292,7 @@
 </table>
 {% endif %}
 {% endfor %}
+{% endif %}
 
 </body>
 </html>

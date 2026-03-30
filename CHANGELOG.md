@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.5] - 2026-03-30
+
+### Fixed
+- **Send-back stage actions missing from approval workflows** — The visual workflow builder now round-trips the stage-level `allow_send_back` flag, so stages configured as send-back targets persist correctly and the approval UI once again shows **Send Back for Correction** where applicable. Older saved visual workflow JSON is backfilled from `WorkflowStage.allow_send_back` to avoid silently losing the button on existing workflows.
+- **Submission PDF visibility/privacy alignment** — Reviewer-group members are now treated like other elevated users for `post_approval` PDF access, and submitter-only PDF views now respect `WorkflowDefinition.hide_approval_history` so approval-step details are hidden consistently in generated PDFs.
+
 ## [0.38.0] - 2026-03-27
 
 ### Added

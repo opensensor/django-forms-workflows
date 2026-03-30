@@ -335,6 +335,7 @@ class WorkflowBuilder {
                     order: 1,
                     approval_logic: 'all',
                     requires_manager_approval: false,
+                    allow_send_back: false,
                     approve_label: '',
                     approval_groups: [],
                 };
@@ -540,6 +541,18 @@ class WorkflowBuilder {
                         <i class="bi bi-person-badge"></i> <strong>Require Manager Approval</strong>
                     </label>
                 </div>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="stage_allow_send_back_${node.id}"
+                           name="allow_send_back" ${data.allow_send_back ? 'checked' : ''}
+                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <label class="form-check-label" for="stage_allow_send_back_${node.id}">
+                        <i class="bi bi-arrow-return-left"></i> <strong>Allow Send Back to This Stage</strong>
+                    </label>
+                </div>
+                <small class="text-muted">Later stages can return submissions here for correction without rejecting the workflow.</small>
             </div>
 
             <hr />
@@ -1110,6 +1123,7 @@ class WorkflowBuilder {
         node.data.order = parseInt(container.querySelector('input[name="order"]').value) || 1;
         node.data.approve_label = container.querySelector('input[name="approve_label"]').value;
         node.data.requires_manager_approval = container.querySelector(`#stage_requires_manager_${nodeId}`).checked;
+        node.data.allow_send_back = container.querySelector(`#stage_allow_send_back_${nodeId}`).checked;
 
         const groupSelect = container.querySelector(`#stage_groups_${nodeId}`);
         node.data.approval_groups = Array.from(groupSelect.selectedOptions).map(opt => ({
@@ -1328,6 +1342,7 @@ class WorkflowBuilder {
             case 'stage':
                 const stageParts = [];
                 if (node.data.requires_manager_approval) stageParts.push('Manager');
+                if (node.data.allow_send_back) stageParts.push('Send Back target');
                 if (node.data.approval_groups && node.data.approval_groups.length > 0) {
                     const gc = node.data.approval_groups.length;
                     stageParts.push(`${gc} group${gc > 1 ? 's' : ''} (${node.data.approval_logic || 'all'})`);

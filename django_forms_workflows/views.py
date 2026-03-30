@@ -1053,7 +1053,15 @@ def approve_submission(request, task_id):
         .exists()
     )
 
+    # Check if this stage allows editing the original submission data.
+    allow_edit_form_data = bool(
+        task.workflow_stage_id
+        and task.workflow_stage
+        and task.workflow_stage.allow_edit_form_data
+    )
+
     approval_step_form = None
+    editable_form = None
 
     if request.method == "POST":
         decision = request.POST.get("decision")
@@ -1147,20 +1155,32 @@ def approve_submission(request, task_id):
                     request, "Please correct the errors in the approval fields."
                 )
                 _fd = _resolve_form_data_urls(submission.form_data)
+                _ctx = {
+                    "task": task,
+                    "submission": submission,
+                    "approval_step_form": approval_step_form,
+                    "has_approval_step_fields": has_approval_step_fields,
+                    "allow_edit_form_data": allow_edit_form_data,
+                    "form_data": _fd,
+                    "form_data_ordered": _build_ordered_form_data(submission, _fd),
+                    "resolved_attachments": _resolve_attachments(
+                        submission.attachments
+                    ),
+                }
+                if allow_edit_form_data:
+                    from .forms import DynamicForm
+
+                    _ctx["editable_form"] = DynamicForm(
+                        form_def,
+                        user=request.user,
+                        initial_data=submission.form_data,
+                        data=request.POST,
+                        files=request.FILES,
+                    )
                 return render(
                     request,
                     "django_forms_workflows/approve.html",
-                    {
-                        "task": task,
-                        "submission": submission,
-                        "approval_step_form": approval_step_form,
-                        "has_approval_step_fields": has_approval_step_fields,
-                        "form_data": _fd,
-                        "form_data_ordered": _build_ordered_form_data(submission, _fd),
-                        "resolved_attachments": _resolve_attachments(
-                            submission.attachments
-                        ),
-                    },
+                    _ctx,
                 )
 
             # Update submission form_data with approval step fields.
@@ -1179,6 +1199,58 @@ def approve_submission(request, task_id):
                     for k, v in updated_data.items()
                 }
             submission.form_data = updated_data
+            submission.save()
+
+        # If this stage allows editing form data, validate and merge on approve
+        if allow_edit_form_data and decision == "approve":
+            from .forms import DynamicForm
+
+            editable_form = DynamicForm(
+                form_def,
+                user=request.user,
+                initial_data=submission.form_data,
+                data=request.POST,
+                files=request.FILES,
+            )
+            if not editable_form.is_valid():
+                messages.error(
+                    request, "Please correct the errors in the submission data."
+                )
+                _fd = _resolve_form_data_urls(submission.form_data)
+                _ctx = {
+                    "task": task,
+                    "submission": submission,
+                    "editable_form": editable_form,
+                    "allow_edit_form_data": allow_edit_form_data,
+                    "has_approval_step_fields": has_approval_step_fields,
+                    "form_data": _fd,
+                    "form_data_ordered": _build_ordered_form_data(submission, _fd),
+                    "resolved_attachments": _resolve_attachments(
+                        submission.attachments
+                    ),
+                }
+                if has_approval_step_fields:
+                    from .forms import ApprovalStepForm
+
+                    _ctx["approval_step_form"] = ApprovalStepForm(
+                        form_definition=field_form_def,
+                        submission=submission,
+                        approval_task=task,
+                        user=request.user,
+                        data=request.POST,
+                        files=request.FILES,
+                    )
+                return render(
+                    request,
+                    "django_forms_workflows/approve.html",
+                    _ctx,
+                )
+            # Merge edited fields into submission data, preserving any
+            # approval-step fields that are not part of the original form.
+            edited_data = serialize_form_data(
+                editable_form.cleaned_data, submission_id=submission.id
+            )
+            submission.form_data.update(edited_data)
             submission.save()
 
         # Update task
@@ -1236,6 +1308,16 @@ def approve_submission(request, task_id):
             submission=submission,
             approval_task=task,
             user=request.user,
+        )
+
+    # Build the editable form data form if the stage allows it
+    if allow_edit_form_data:
+        from .forms import DynamicForm
+
+        editable_form = DynamicForm(
+            form_def,
+            user=request.user,
+            initial_data=submission.form_data,
         )
 
     # Build approval progress context from workflow stages
@@ -1355,6 +1437,8 @@ def approve_submission(request, task_id):
             "submission": submission,
             "approval_step_form": approval_step_form,
             "has_approval_step_fields": has_approval_step_fields,
+            "allow_edit_form_data": allow_edit_form_data,
+            "editable_form": editable_form,
             "approval_field_names": all_approval_field_names,
             # staged
             "approval_stages": approval_stages,

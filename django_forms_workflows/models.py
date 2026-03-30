@@ -881,6 +881,15 @@ class WorkflowStage(models.Model):
             "approval groups."
         ),
     )
+    allow_edit_form_data = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow approvers at this stage to edit the original form submission "
+            "data. When enabled, the submission fields are shown as editable "
+            "inputs instead of a read-only table. Changes are saved when the "
+            "approver approves the submission."
+        ),
+    )
 
     class Meta:
         ordering = ["order"]

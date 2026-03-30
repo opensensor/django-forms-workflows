@@ -611,3 +611,177 @@ class TestSignatureExcludedFromExportSearch:
         from django_forms_workflows.views import _BATCH_EXCLUDED_TYPES
 
         assert "signature" in _BATCH_EXCLUDED_TYPES
+
+
+# ── Editable form data in workflow stages ──────────────────────────────
+
+
+class TestEditableFormData:
+    """Tests for allow_edit_form_data on WorkflowStage."""
+
+    @pytest.fixture
+    def editable_setup(
+        self,
+        form_with_fields,
+        user,
+        approver_user,
+        approval_group,
+    ):
+        from django_forms_workflows.models import WorkflowDefinition, WorkflowStage
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Edit & Approve",
+            order=1,
+            approval_logic="all",
+            allow_edit_form_data=True,
+        )
+        stage.approval_groups.add(approval_group)
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={
+                "full_name": "Original Name",
+                "email": "orig@example.com",
+                "department": "it",
+                "amount": "500.00",
+                "notes": "Original notes",
+            },
+            status="pending_approval",
+        )
+        task = ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            step_name="Edit & Approve",
+            status="pending",
+            stage_number=1,
+            workflow_stage=stage,
+        )
+        approver_user.groups.add(approval_group)
+        return sub, task, stage
+
+    def test_default_is_false(self, db):
+        """allow_edit_form_data should default to False."""
+        from django_forms_workflows.models import WorkflowStage
+
+        stage = WorkflowStage()
+        assert stage.allow_edit_form_data is False
+
+    def test_editable_form_in_context(self, client, approver_user, editable_setup):
+        """GET should include editable_form in context when stage allows editing."""
+        sub, task, _ = editable_setup
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert resp.context["allow_edit_form_data"] is True
+        assert resp.context["editable_form"] is not None
+        # The editable form should contain the original submission fields
+        editable_form = resp.context["editable_form"]
+        assert "full_name" in editable_form.fields
+        assert "email" in editable_form.fields
+
+    def test_editable_form_shows_editable_label(
+        self, client, approver_user, editable_setup
+    ):
+        sub, task, _ = editable_setup
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        resp = client.get(url)
+        assert b"(Editable)" in resp.content
+
+    def test_no_editable_form_when_disabled(
+        self,
+        client,
+        form_with_fields,
+        user,
+        approver_user,
+        approval_group,
+    ):
+        """When allow_edit_form_data is False, editable_form should be None."""
+        from django_forms_workflows.models import WorkflowDefinition, WorkflowStage
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Normal Approve",
+            order=1,
+            approval_logic="all",
+            allow_edit_form_data=False,
+        )
+        stage.approval_groups.add(approval_group)
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={"full_name": "Test", "email": "t@e.com"},
+            status="pending_approval",
+        )
+        task = ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            step_name="Normal Approve",
+            status="pending",
+            stage_number=1,
+            workflow_stage=stage,
+        )
+        approver_user.groups.add(approval_group)
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert resp.context["allow_edit_form_data"] is False
+        assert resp.context["editable_form"] is None
+        assert b"(Editable)" not in resp.content
+
+    def test_approve_with_edited_data(self, client, approver_user, editable_setup):
+        """Approving with edited data should update the submission."""
+        sub, task, _ = editable_setup
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        resp = client.post(
+            url,
+            {
+                "decision": "approve",
+                "comments": "Edited and approved",
+                "full_name": "Edited Name",
+                "email": "edited@example.com",
+                "department": "hr",
+                "amount": "750.00",
+                "notes": "Edited notes",
+            },
+        )
+        assert resp.status_code == 302
+        sub.refresh_from_db()
+        assert sub.form_data["full_name"] == "Edited Name"
+        assert sub.form_data["email"] == "edited@example.com"
+        assert sub.form_data["notes"] == "Edited notes"
+        task.refresh_from_db()
+        assert task.status == "approved"
+
+    def test_reject_ignores_edited_data(self, client, approver_user, editable_setup):
+        """Rejecting should NOT apply edits from the editable form."""
+        sub, task, _ = editable_setup
+        client.force_login(approver_user)
+        url = reverse("forms_workflows:approve_submission", args=[task.pk])
+        resp = client.post(
+            url,
+            {
+                "decision": "reject",
+                "comments": "Rejected",
+                "full_name": "Should Not Save",
+                "email": "nosave@example.com",
+            },
+        )
+        assert resp.status_code == 302
+        sub.refresh_from_db()
+        # Original data should be preserved
+        assert sub.form_data["full_name"] == "Original Name"
+        assert sub.form_data["email"] == "orig@example.com"
+        task.refresh_from_db()
+        assert task.status == "rejected"

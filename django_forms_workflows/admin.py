@@ -426,6 +426,7 @@ class WorkflowStageInline(nested_admin.NestedStackedInline):
         ("assignee_form_field", "assignee_lookup_type"),
         "validate_assignee_group",
         ("allow_reassign", "allow_send_back"),
+        "allow_edit_form_data",
         "trigger_conditions",
     )
 
@@ -1381,6 +1382,17 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
                     "allow_reassign",
                     "allow_send_back",
                 ),
+            },
+        ),
+        (
+            "Editable Form Data",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "When enabled, approvers at this stage can edit the original "
+                    "submission data instead of viewing it read-only."
+                ),
+                "fields": ("allow_edit_form_data",),
             },
         ),
         (

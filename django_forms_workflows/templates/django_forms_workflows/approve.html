@@ -178,12 +178,15 @@
         </div>
 
         {% if has_approval_step_fields and approval_step_form %}
-        <!-- Submission Data Section (Read-only) -->
+        <!-- Submission Data Section -->
         <div class="card mb-4">
             <div class="card-header bg-secondary text-white">
-                <h5 class="mb-0"><i class="bi bi-file-text"></i> Submission Data</h5>
+                <h5 class="mb-0"><i class="bi bi-file-text"></i> Submission Data{% if allow_edit_form_data %} <small class="text-white-50">(Editable)</small>{% endif %}</h5>
             </div>
             <div class="card-body">
+                {% if allow_edit_form_data and editable_form %}
+                {{ editable_form|crispy }}
+                {% else %}
                 <table class="table table-bordered table-sm">
                     {% for entry in form_data_ordered %}
                         {% if entry.key not in approval_field_names %}
@@ -230,6 +233,7 @@
                         {% endif %}
                     {% endfor %}
                 </table>
+                {% endif %}
             </div>
         </div>
 
@@ -449,9 +453,12 @@
         <!-- Submission Data -->
         <div class="card mb-4">
             <div class="card-header bg-secondary text-white">
-                <h5 class="mb-0"><i class="bi bi-file-text"></i> Submission Data</h5>
+                <h5 class="mb-0"><i class="bi bi-file-text"></i> Submission Data{% if allow_edit_form_data %} <small class="text-white-50">(Editable)</small>{% endif %}</h5>
             </div>
             <div class="card-body">
+                {% if allow_edit_form_data and editable_form %}
+                {{ editable_form|crispy }}
+                {% else %}
                 <table class="table table-bordered">
                     {% for entry in form_data_ordered %}
                         <tr>
@@ -483,6 +490,7 @@
                         </tr>
                     {% endfor %}
                 </table>
+                {% endif %}
             </div>
         </div>
         {% if resolved_attachments %}

@@ -12,7 +12,6 @@ import nested_admin
 from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin
 from django.contrib.auth.models import Group
-from django.contrib.contenttypes.admin import GenericTabularInline
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
@@ -53,7 +52,7 @@ logger = logging.getLogger(__name__)
 # ── Change History inline (read-only, for tracked models) ───────────────
 
 
-class ChangeHistoryInline(GenericTabularInline):
+class ChangeHistoryInline(nested_admin.NestedGenericTabularInline):
     model = ChangeHistory
     ct_field = "content_type"
     ct_fk_field = "object_id"

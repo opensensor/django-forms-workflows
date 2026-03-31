@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.2] - 2026-03-31
+
+### Fixed
+- **WorkflowStage admin crash (`sortable_options`)** — `ChangeHistoryInline` used Django's `GenericTabularInline` but was included inside `NestedModelAdmin` views, causing `AttributeError: 'ChangeHistoryInline' object has no attribute 'sortable_options'`. Changed to `nested_admin.NestedGenericTabularInline` for compatibility.
+
 ## [0.42.1] - 2026-03-31
 
 ### Fixed

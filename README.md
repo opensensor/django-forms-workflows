@@ -350,14 +350,15 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 
 ### 🚧 Near-term (next 1–3 releases)
 - [ ] Webhook delivery on workflow events (submit / approve / reject)
-- [ ] Dashboard analytics (submission counts, approval times, bottleneck stages)
 
 ### 📋 Planned (medium-term)
-- [x] Signature field type (drawn or typed) — ✅ Shipped in v0.45.0
-- [ ] Form versioning — immutable snapshots with diff viewer
-- [ ] Advanced reporting (submission analytics, bottleneck analysis, custom report builder)
 - [ ] Multi-tenancy support (organisation-scoped form libraries)
 - [ ] Plugin / custom handler marketplace
+
+### ✅ Recently shipped
+- [x] Signature field type (drawn or typed) — ✅ Shipped in v0.45.0
+- [x] Form versioning — ChangeHistory tracking, sync API snapshots, admin diff viewer action — ✅ Shipped in v0.45.0
+- [x] Advanced reporting dashboard (submission analytics, approval times, bottleneck stages) — ✅ Shipped in v0.46.0
 
 ## Credits
 

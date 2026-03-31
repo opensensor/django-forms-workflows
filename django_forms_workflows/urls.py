@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 from . import views
+from .reporting_views import analytics_dashboard
 from .sso_backends import is_sso_available
 from .sync_views import sync_export_view, sync_import_view
 
@@ -82,6 +83,8 @@ urlpatterns = [
         views.reassign_task,
         name="reassign_task",
     ),
+    # Analytics dashboard
+    path("analytics/", analytics_dashboard, name="analytics_dashboard"),
     # Server-side DataTables AJAX endpoints
     path("my-submissions/data/", views.my_submissions_ajax, name="my_submissions_ajax"),
     path("approvals/data/", views.approval_inbox_ajax, name="approval_inbox_ajax"),

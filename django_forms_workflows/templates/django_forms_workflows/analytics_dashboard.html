@@ -1,0 +1,292 @@
+{% extends "django_forms_workflows/base.html" %}
+{% load static %}
+
+{% block title %}Analytics Dashboard — {{ site_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card { border-left: 4px solid; border-radius: 8px; }
+    .stat-card .stat-value { font-size: 2rem; font-weight: 700; }
+    .stat-card .stat-label { font-size: 0.85rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card.border-primary { border-left-color: #0d6efd !important; }
+    .stat-card.border-warning { border-left-color: #ffc107 !important; }
+    .stat-card.border-success { border-left-color: #198754 !important; }
+    .stat-card.border-danger  { border-left-color: #dc3545 !important; }
+    .stat-card.border-secondary { border-left-color: #6c757d !important; }
+    .chart-container { position: relative; height: 300px; }
+    .metric-table th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    {# ── Header + Filters ─────────────────────────────────────────────── #}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <h2 class="mb-0"><i class="bi bi-graph-up"></i> Analytics Dashboard</h2>
+        <form method="get" class="d-flex gap-2 align-items-center flex-wrap">
+            <select name="form" class="form-select form-select-sm" style="width: auto;">
+                <option value="">All Forms</option>
+                {% for slug, name in available_forms %}
+                    <option value="{{ slug }}" {% if slug == form_slug %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+            <select name="days" class="form-select form-select-sm" style="width: auto;">
+                <option value="30" {% if range_days == 30 %}selected{% endif %}>30 days</option>
+                <option value="90" {% if range_days == 90 %}selected{% endif %}>90 days</option>
+                <option value="180" {% if range_days == 180 %}selected{% endif %}>6 months</option>
+                <option value="365" {% if range_days == 365 %}selected{% endif %}>1 year</option>
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button>
+        </form>
+    </div>
+
+    {# ── Summary Cards ────────────────────────────────────────────────── #}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card border-primary p-3">
+                <div class="stat-value text-primary">{{ total_submissions }}</div>
+                <div class="stat-label">Total Submissions</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card border-warning p-3">
+                <div class="stat-value text-warning">{{ pending_count }}</div>
+                <div class="stat-label">Pending</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card border-success p-3">
+                <div class="stat-value text-success">{{ approved_count }}</div>
+                <div class="stat-label">Approved</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card border-danger p-3">
+                <div class="stat-value text-danger">{{ rejected_count }}</div>
+                <div class="stat-label">Rejected</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card border-secondary p-3">
+                <div class="stat-value text-secondary">{{ withdrawn_count }}</div>
+                <div class="stat-label">Withdrawn</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+            <div class="card stat-card border-danger p-3">
+                <div class="stat-value text-danger">{{ overdue_count }}</div>
+                <div class="stat-label">Overdue Tasks</div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Turnaround Cards ─────────────────────────────────────────────── #}
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card p-3 text-center">
+                <div class="stat-value text-info">{{ turnaround.avg }}</div>
+                <div class="stat-label">Avg Approval Time</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3 text-center">
+                <div class="stat-value text-success">{{ turnaround.fastest }}</div>
+                <div class="stat-label">Fastest Approval</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-3 text-center">
+                <div class="stat-value text-warning">{{ turnaround.slowest }}</div>
+                <div class="stat-label">Slowest Approval</div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Charts Row 1 ─────────────────────────────────────────────────── #}
+    <div class="row g-3 mb-4">
+        <div class="col-lg-8">
+            <div class="card p-3">
+                <h6 class="text-muted mb-3"><i class="bi bi-calendar-range"></i> Submissions Over Time</h6>
+                <div class="chart-container">
+                    <canvas id="dailyChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card p-3">
+                <h6 class="text-muted mb-3"><i class="bi bi-pie-chart"></i> Status Breakdown</h6>
+                <div class="chart-container">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Charts Row 2 ─────────────────────────────────────────────────── #}
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card p-3">
+                <h6 class="text-muted mb-3"><i class="bi bi-bar-chart"></i> Monthly Volume</h6>
+                <div class="chart-container">
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+    {# ── Tables Row ───────────────────────────────────────────────────── #}
+    <div class="row g-3 mb-4">
+        {# Bottleneck stages #}
+        <div class="col-lg-4">
+            <div class="card p-3">
+                <h6 class="text-muted mb-3"><i class="bi bi-exclamation-triangle text-warning"></i> Bottleneck Stages</h6>
+                {% if bottleneck_stages %}
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Stage</th><th>Form</th><th class="text-end">Pending</th></tr></thead>
+                    <tbody>
+                    {% for s in bottleneck_stages %}
+                        <tr>
+                            <td>{{ s.workflow_stage__name }}</td>
+                            <td class="text-muted small">{{ s.workflow_stage__workflow__form_definition__name }}</td>
+                            <td class="text-end"><span class="badge bg-warning text-dark">{{ s.pending }}</span></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}<p class="text-muted mb-0">No pending tasks right now 🎉</p>{% endif %}
+            </div>
+        </div>
+
+        {# Stage turnaround #}
+        <div class="col-lg-4">
+            <div class="card p-3">
+                <h6 class="text-muted mb-3"><i class="bi bi-clock-history"></i> Avg Turnaround by Stage</h6>
+                {% if stage_turnaround %}
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Stage</th><th class="text-end">Avg Time</th><th class="text-end">Tasks</th></tr></thead>
+                    <tbody>
+                    {% for s in stage_turnaround %}
+                        <tr>
+                            <td>{{ s.workflow_stage__name }}</td>
+                            <td class="text-end">{{ s.avg_display }}</td>
+                            <td class="text-end text-muted">{{ s.task_count }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}<p class="text-muted mb-0">No completed tasks yet.</p>{% endif %}
+            </div>
+        </div>
+
+        {# Top approvers #}
+        <div class="col-lg-4">
+            <div class="card p-3">
+                <h6 class="text-muted mb-3"><i class="bi bi-people"></i> Top Approvers</h6>
+                {% if top_approvers %}
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Approver</th><th class="text-end">Completed</th></tr></thead>
+                    <tbody>
+                    {% for a in top_approvers %}
+                        <tr>
+                            <td>
+                                {% if a.completed_by__first_name %}
+                                    {{ a.completed_by__first_name }} {{ a.completed_by__last_name }}
+                                {% else %}
+                                    {{ a.completed_by__username }}
+                                {% endif %}
+                            </td>
+                            <td class="text-end"><span class="badge bg-primary">{{ a.completed }}</span></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}<p class="text-muted mb-0">No approvals completed yet.</p>{% endif %}
+            </div>
+        </div>
+    </div>
+
+</div><!-- /container-fluid -->
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    'use strict';
+    var STATUS_COLORS = {
+        submitted: '#0dcaf0', pending_approval: '#ffc107',
+        approved: '#198754', rejected: '#dc3545', withdrawn: '#6c757d'
+    };
+
+    // Daily submissions line chart
+    var dailyData = {{ daily_submissions_json }};
+    new Chart(document.getElementById('dailyChart'), {
+        type: 'line',
+        data: {
+            labels: dailyData.map(function(d) { return d.day; }),
+            datasets: [{
+                label: 'Submissions',
+                data: dailyData.map(function(d) { return d.count; }),
+                borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.1)',
+                fill: true, tension: 0.3, pointRadius: 2
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false,
+            scales: { x: { ticks: { maxTicksLimit: 12 } } },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    // Status doughnut
+    var statusData = {{ status_breakdown_json }};
+    new Chart(document.getElementById('statusChart'), {
+        type: 'doughnut',
+        data: {
+            labels: statusData.map(function(d) { return d.status; }),
+            datasets: [{
+                data: statusData.map(function(d) { return d.count; }),
+                backgroundColor: statusData.map(function(d) { return STATUS_COLORS[d.status] || '#adb5bd'; })
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }
+        }
+    });
+
+    // Monthly bar chart
+    var monthlyData = {{ monthly_submissions_json }};
+    new Chart(document.getElementById('monthlyChart'), {
+        type: 'bar',
+        data: {
+            labels: monthlyData.map(function(d) { return d.month; }),
+            datasets: [{
+                label: 'Submissions',
+                data: monthlyData.map(function(d) { return d.count; }),
+                backgroundColor: '#0d6efd'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false,
+            scales: { x: { ticks: { maxTicksLimit: 12 } } },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    // By form horizontal bar
+    var byFormData = {{ by_form_json }};
+    new Chart(document.getElementById('byFormChart'), {
+        type: 'bar',
+        data: {
+            labels: byFormData.map(function(d) { return d.form_definition__name; }),
+            datasets: [{
+                label: 'Submissions',
+                data: byFormData.map(function(d) { return d.count; }),
+                backgroundColor: '#6610f2'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+            plugins: { legend: { display: false } }
+        }
+    });
+})();
+</script>
+{% endblock %}

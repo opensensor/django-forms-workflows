@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-03-31
+
+### Added
+- **Advanced reporting analytics dashboard** — New `/analytics/` page with:
+  - Summary cards: total submissions, pending, approved, rejected, withdrawn, overdue tasks
+  - Approval turnaround metrics: average, fastest, slowest
+  - **Charts** (via Chart.js): submissions over time (line), monthly volume (bar), submissions by form (horizontal bar), status breakdown (doughnut)
+  - **Bottleneck stages** table: stages with the most pending tasks
+  - **Stage turnaround** table: average approval time per stage
+  - **Top approvers** table: most active approvers in the period
+  - Filter by form and time range (30d / 90d / 6mo / 1yr)
+  - Nav link added for staff users (visible between Approvals and Admin)
+- **Form versioning marked as shipped** — ChangeHistory model, sync API snapshots, and admin diff viewer action provide full versioning capability.
+
 ## [0.45.0] - 2026-03-31
 
 ### Added

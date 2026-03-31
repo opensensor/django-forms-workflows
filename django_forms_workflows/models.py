@@ -1078,14 +1078,13 @@ class WorkflowNotification(models.Model):
     Recipients are the union of:
 
     * ``notify_submitter`` — if True, the person who submitted the form is always included.
-    * ``notify_assignees`` — if True, all dynamically-assigned workflow approvers
-      (resolved via ``assignee_form_field`` on any stage) are included.
-      Only effective for approval and rejection notifications.
+    * Dynamically-assigned approvers from stages with
+      ``notify_assignee_on_final_decision=True`` (automatic for approval/rejection).
     * ``email_field`` — slug of the form field whose value is the recipient email
       (resolved from ``form_data`` at send time, varies per submission).
     * ``static_emails`` — comma-separated fixed addresses always included.
 
-    At least one of the four must be set.
+    At least one of the three must be set.
 
     ``conditions`` (same JSON format as ``WorkflowStage.trigger_conditions``)
     are evaluated against ``form_data`` before sending; leave blank to always send.
@@ -1166,21 +1165,18 @@ class WorkflowNotification(models.Model):
 
         if (
             not self.notify_submitter
-            and not self.notify_assignees
             and not self.email_field
             and not self.static_emails
         ):
             raise ValidationError(
                 "At least one recipient source must be set: "
-                "'Notify submitter', 'Notify assignees', 'Email field', or 'Static emails'."
+                "'Notify submitter', 'Email field', or 'Static emails'."
             )
 
     def __str__(self) -> str:
         parts = []
         if self.notify_submitter:
             parts.append("submitter")
-        if self.notify_assignees:
-            parts.append("assignees")
         if self.email_field:
             parts.append(f"field:{self.email_field}")
         if self.static_emails:

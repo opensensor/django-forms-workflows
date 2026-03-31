@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.1] - 2026-03-31
+
+### Fixed
+- **WorkflowNotification `__str__` and `clean()` crash** — Removed stale references to a `notify_assignees` field that was never added to the model, causing `AttributeError` on any admin page that rendered a `WorkflowNotification` instance. Updated docstring to reflect the stage-level flag.
+
 ## [0.42.0] - 2026-03-31
 
 ### Added

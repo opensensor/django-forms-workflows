@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-03-31
+
+### Added
+- **Signature field: Type mode** — Users can now choose between Draw (freehand) and Type (name → cursive font) when signing. Four handwriting-style Google Fonts are available: Elegant (Dancing Script), Formal (Great Vibes), Casual (Caveat), Classic (Sacramento). The typed text is rendered onto the canvas so the stored value is always a base64 PNG data URI regardless of input method.
+
+### Fixed
+- **Signature canvas border visibility** — Reinforced the canvas container border with inline styles (`2px solid #6c757d`) and CSS `!important` to prevent framework overrides from making the drawing area invisible.
+
 ## [0.44.1] - 2026-03-31
 
 ### Fixed

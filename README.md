@@ -29,7 +29,7 @@ Django Forms Workflows bridges the gap between simple form libraries (like Crisp
 
 ### 🎯 No-Code Form Creation
 Business users create and modify forms through Django Admin:
-- **25+ field types:** text, email, phone, select, radio, checkbox, checkboxes, multiselect, date, time, datetime, decimal, currency, number, URL, file, multi-file, textarea, hidden, section headers, **calculated/formula**, **spreadsheet upload (CSV/Excel)**, country picker, US state picker
+- **25+ field types:** text, email, phone, select, radio, checkbox, checkboxes, multiselect, date, time, datetime, decimal, currency, number, URL, file, multi-file, textarea, hidden, section headers, **calculated/formula**, **spreadsheet upload (CSV/Excel)**, country picker, US state picker, **signature (draw or type)**
 - Field ordering with explicit `order` integer
 - Column-width layout per field: full, half, one-third, one-quarter
 - Validation rules (required, regex, min/max length, min/max value)
@@ -353,7 +353,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 - [ ] Dashboard analytics (submission counts, approval times, bottleneck stages)
 
 ### 📋 Planned (medium-term)
-- [ ] Signature field type (drawn or typed)
+- [x] Signature field type (drawn or typed) — ✅ Shipped in v0.45.0
 - [ ] Form versioning — immutable snapshots with diff viewer
 - [ ] Advanced reporting (submission analytics, bottleneck analysis, custom report builder)
 - [ ] Multi-tenancy support (organisation-scoped form libraries)

@@ -76,7 +76,7 @@
 .signature-pad-canvas-container {
     display: block;
     width: 100%;
-    border: 2px solid #adb5bd;
+    border: 2px solid #6c757d !important;
     border-radius: 0.5rem;
     background: #fafbfc;
     cursor: crosshair;
@@ -85,7 +85,7 @@
 }
 .signature-pad-canvas-container:hover,
 .signature-pad-canvas-container:active {
-    border-color: #86b7fe;
+    border-color: #86b7fe !important;
     box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
 }
 .signature-pad-canvas {
@@ -104,6 +104,22 @@
     font-size: 0.8125rem;
     color: #6c757d;
     margin-top: 0.375rem;
+}
+
+/* ── Signature Type mode ────────────────────────────────────────────── */
+
+.signature-mode-toggle {
+    display: flex;
+}
+.signature-type-controls {
+    margin-bottom: 0.5rem;
+}
+.signature-font-options {
+    margin-bottom: 0.25rem;
+}
+.signature-font-btn {
+    min-width: 5rem;
+    padding: 0.25rem 0.75rem;
 }
 
 /* ── Form submit button row ──────────────────────────────────────────── */

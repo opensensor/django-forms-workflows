@@ -788,6 +788,7 @@ def _collect_notification_recipients(
             .filter(assigned_to__isnull=False)
             .exclude(workflow_stage__assignee_form_field__isnull=True)
             .exclude(workflow_stage__assignee_form_field="")
+            .filter(workflow_stage__notify_assignee_on_final_decision=True)
             .values_list("assigned_to__email", flat=True)
         )
         for email in dynamic_assignee_emails:

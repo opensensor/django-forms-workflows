@@ -37,6 +37,7 @@ def test_final_decision_notifications_include_dynamic_assignee(
         approval_logic="all",
         assignee_form_field="advisor_email",
         assignee_lookup_type="email",
+        notify_assignee_on_final_decision=True,
     )
     WorkflowNotification.objects.create(
         workflow=workflow,

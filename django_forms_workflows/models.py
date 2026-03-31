@@ -880,6 +880,14 @@ class WorkflowStage(models.Model):
             "for sites where SSO does not populate first/last name."
         ),
     )
+    notify_assignee_on_final_decision = models.BooleanField(
+        default=False,
+        help_text=(
+            "Include this stage's dynamically-assigned approver as a recipient "
+            "on final approval/rejection notifications. Only effective when "
+            "assignee_form_field is set and a user was successfully resolved."
+        ),
+    )
     allow_send_back = models.BooleanField(
         default=False,
         help_text=(
@@ -1070,11 +1078,14 @@ class WorkflowNotification(models.Model):
     Recipients are the union of:
 
     * ``notify_submitter`` — if True, the person who submitted the form is always included.
+    * ``notify_assignees`` — if True, all dynamically-assigned workflow approvers
+      (resolved via ``assignee_form_field`` on any stage) are included.
+      Only effective for approval and rejection notifications.
     * ``email_field`` — slug of the form field whose value is the recipient email
       (resolved from ``form_data`` at send time, varies per submission).
     * ``static_emails`` — comma-separated fixed addresses always included.
 
-    At least one of the three must be set.
+    At least one of the four must be set.
 
     ``conditions`` (same JSON format as ``WorkflowStage.trigger_conditions``)
     are evaluated against ``form_data`` before sending; leave blank to always send.
@@ -1155,18 +1166,21 @@ class WorkflowNotification(models.Model):
 
         if (
             not self.notify_submitter
+            and not self.notify_assignees
             and not self.email_field
             and not self.static_emails
         ):
             raise ValidationError(
                 "At least one recipient source must be set: "
-                "'Notify submitter', 'Email field', or 'Static emails'."
+                "'Notify submitter', 'Notify assignees', 'Email field', or 'Static emails'."
             )
 
     def __str__(self) -> str:
         parts = []
         if self.notify_submitter:
             parts.append("submitter")
+        if self.notify_assignees:
+            parts.append("assignees")
         if self.email_field:
             parts.append(f"field:{self.email_field}")
         if self.static_emails:

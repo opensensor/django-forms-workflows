@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-03-31
+
+### Added
+- **Stage-level `notify_assignee_on_final_decision` flag** — New boolean field on `WorkflowStage` that controls whether a stage's dynamically-assigned approver (resolved via `assignee_form_field`) is included as a recipient on final approval/rejection notifications. Defaults to `False`, making dynamic assignee notification opt-in per stage rather than the previous unconditional inclusion. This gives administrators granular control over which stage assignees receive final decision emails.
+
 ## [0.38.6] - 2026-03-30
 
 ### Fixed

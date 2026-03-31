@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.3] - 2026-03-31
+
+### Fixed
+- **PDF/detail: stage-scoped section headers leaking into main form data** — Section-type fields with `workflow_stage_id` set (e.g. "ADMISSIONS COUNSELOR REVIEW", "HR REVIEW") were rendered in the main form data table because the section check fired before the stage-scope check. The `workflow_stage_id` filter now runs first, so stage section headers AND stage-scoped data fields are both excluded from the main table.
+- **`_build_ordered_form_data` also fixed** — The submission detail view's ordered form data builder now also excludes stage-scoped fields and their indexed variants from the main data, matching the PDF fix.
+- **Null-safe submitter check in `submission_detail`** — Fixed `submission.submitter == request.user` crash for anonymous submissions.
+
 ## [0.47.2] - 2026-03-31
 
 ### Fixed

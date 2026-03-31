@@ -839,7 +839,8 @@ def submission_detail(request, submission_id):
     # Privacy: hide approval history from the submitter when configured.
     # Approvers, admins, and reviewers always see the full history.
     is_submitter_only = (
-        submission.submitter == request.user
+        submission.submitter_id is not None
+        and submission.submitter_id == request.user.pk
         and not request.user.is_superuser
         and not user_can_approve(request.user, submission)
         and not request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
@@ -2442,12 +2443,22 @@ def _build_ordered_form_data(submission, form_data):
 
     ordered = []
     seen_keys = set()
+    stage_field_names: set = set()
 
-    # Walk fields in declared order (sections are skipped – they have no data)
+    # Walk fields in declared order.  Sections and stage-scoped fields are
+    # excluded — stage-scoped fields belong in their own approval-step
+    # sections, not the main form data table.
     for field in submission.form_definition.fields.exclude(
         field_type="section"
     ).order_by("order"):
         key = field.field_name
+
+        # Stage-scoped fields have their own sections
+        if field.workflow_stage_id is not None:
+            seen_keys.add(key)
+            stage_field_names.add(key)
+            continue
+
         if key in form_data:
             ordered.append(
                 {
@@ -2458,10 +2469,16 @@ def _build_ordered_form_data(submission, form_data):
             )
             seen_keys.add(key)
 
-    # Append any keys in form_data that aren't represented in field definitions
-    # (e.g. approval-step fields or legacy entries) so nothing is lost.
+    # Append any keys in form_data that aren't represented in field
+    # definitions (legacy entries, etc.) — but NOT stage-scoped fields.
+    def _is_stage_field(k):
+        if k in stage_field_names:
+            return True
+        parts = k.rsplit("_", 1)
+        return len(parts) == 2 and parts[1].isdigit() and parts[0] in stage_field_names
+
     for key, value in form_data.items():
-        if key not in seen_keys:
+        if key not in seen_keys and not _is_stage_field(key):
             ordered.append(
                 {
                     "label": key.replace("_", " ").title(),
@@ -2526,6 +2543,16 @@ def _build_pdf_rows(submission, hide_approval_history=False):
     stage_field_names: set = set()
 
     for field in submission.form_definition.fields.order_by("order"):
+        # Stage-scoped fields (including section headers) are rendered in
+        # their own dedicated approval-step sections — they must NOT appear
+        # in the main form data table.  This check MUST come before the
+        # section-type check below.
+        if field.workflow_stage_id is not None:
+            if field.field_type != "section":
+                seen_keys.add(field.field_name)
+                stage_field_names.add(field.field_name)
+            continue
+
         if field.field_type == "section":
             flush_half()
             flush_third()
@@ -2533,14 +2560,6 @@ def _build_pdf_rows(submission, hide_approval_history=False):
             continue
 
         key = field.field_name
-
-        # Stage-scoped fields are rendered in their own section (below the
-        # main data table) so they must NOT appear here.  Mark as seen so the
-        # fallback loop below cannot accidentally include them either.
-        if field.workflow_stage_id is not None:
-            seen_keys.add(key)
-            stage_field_names.add(key)
-            continue
 
         if key not in form_data:
             continue

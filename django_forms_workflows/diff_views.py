@@ -92,8 +92,12 @@ def _build_summary(forms_data):
                         diffs.append(
                             f"Stage '{key[1]}' {sk}: {bs.get(sk)!r} → {os_.get(sk)!r}"
                         )
-                b_notifs = bs.get("form_field_notifications", [])
-                o_notifs = os_.get("form_field_notifications", [])
+                b_notifs = bs.get(
+                    "notification_rules", bs.get("form_field_notifications", [])
+                )
+                o_notifs = os_.get(
+                    "notification_rules", os_.get("form_field_notifications", [])
+                )
                 if len(b_notifs) != len(o_notifs):
                     diffs.append(
                         f"Stage '{key[1]}' notifications: {len(b_notifs)} → {len(o_notifs)}"

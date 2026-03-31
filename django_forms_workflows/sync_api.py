@@ -35,10 +35,10 @@ from .models import (
     FormCategory,
     FormDefinition,
     FormField,
+    NotificationRule,
     PostSubmissionAction,
     PrefillSource,
     StageApprovalGroup,
-    StageFormFieldNotification,
     SubWorkflowDefinition,
     WorkflowDefinition,
     WorkflowStage,
@@ -251,15 +251,19 @@ def _serialize_workflow_stage(stage):
         "validate_assignee_group": stage.validate_assignee_group,
         "allow_reassign": stage.allow_reassign,
         "allow_send_back": stage.allow_send_back,
-        "form_field_notifications": [
+        "notification_rules": [
             {
-                "notification_type": n.notification_type,
-                "email_field": n.email_field,
-                "static_emails": n.static_emails,
-                "subject_template": n.subject_template,
-                "conditions": n.conditions,
+                "event": r.event,
+                "notify_submitter": r.notify_submitter,
+                "email_field": r.email_field,
+                "static_emails": r.static_emails,
+                "notify_stage_assignees": r.notify_stage_assignees,
+                "notify_stage_groups": r.notify_stage_groups,
+                "subject_template": r.subject_template,
+                "conditions": r.conditions,
+                "notify_groups": [g.name for g in r.notify_groups.all()],
             }
-            for n in stage.form_field_notifications.all()
+            for r in stage.notification_rules.all()
         ],
     }
 
@@ -441,7 +445,8 @@ def build_export_payload(queryset):
         "workflows__stages",
         "workflows__stages__stageapprovalgroup_set",
         "workflows__stages__stageapprovalgroup_set__group",
-        "workflows__stages__form_field_notifications",
+        "workflows__stages__notification_rules",
+        "workflows__stages__notification_rules__notify_groups",
         "workflows__sub_workflow_config",
         "workflows__sub_workflow_config__sub_workflow__form_definition",
         "post_actions",
@@ -678,7 +683,10 @@ def import_form(form_data, conflict="update", category_cache=None):
             else:
                 stage_data.pop("assignee_email_field", None)
             stage_group_data = stage_data.pop("approval_groups", [])
-            stage_notif_data = stage_data.pop("form_field_notifications", [])
+            stage_notif_data = stage_data.pop("notification_rules", [])
+            # Backward compat: legacy exports used "form_field_notifications"
+            if not stage_notif_data:
+                stage_notif_data = stage_data.pop("form_field_notifications", [])
             order = stage_data.get("order", idx + 1)
             name = stage_data.get("name", "")
             key = (order, name)
@@ -706,10 +714,19 @@ def import_form(form_data, conflict="update", category_cache=None):
                     stage=stage, group=group, position=position
                 )
 
-            # Sync stage-level conditional notifications
-            stage.form_field_notifications.all().delete()
+            # Sync stage-level notification rules
+            stage.notification_rules.all().delete()
             for notif in stage_notif_data:
-                StageFormFieldNotification.objects.create(stage=stage, **notif)
+                notif = dict(notif)  # don't mutate caller's dict
+                group_names = notif.pop("notify_groups", [])
+                # Backward compat: legacy exports used "notification_type"
+                if "notification_type" in notif and "event" not in notif:
+                    notif["event"] = notif.pop("notification_type")
+                rule = NotificationRule.objects.create(
+                    workflow=wf, stage=stage, **notif
+                )
+                for gname in group_names:
+                    rule.notify_groups.add(_get_or_create_group(gname))
 
             stage_order_map[order] = stage
 

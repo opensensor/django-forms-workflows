@@ -38,12 +38,10 @@ from .models import (
     PostSubmissionAction,
     PrefillSource,
     StageApprovalGroup,
-    StageFormFieldNotification,
     SubWorkflowDefinition,
     SubWorkflowInstance,
     UserProfile,
     WorkflowDefinition,
-    WorkflowNotification,
     WorkflowStage,
 )
 
@@ -444,75 +442,23 @@ class StageApprovalGroupInline(nested_admin.NestedTabularInline):
     autocomplete_fields = ("group",)
 
 
-class StageFormFieldNotificationInline(nested_admin.NestedTabularInline):
-    """Inline for configuring stage-level notifications (static and/or form-field driven)."""
-
-    model = StageFormFieldNotification
-    extra = 0
-    fields = (
-        "notification_type",
-        "email_field",
-        "static_emails",
-        "subject_template",
-        "conditions",
-    )
-
-
 class WorkflowStageInline(nested_admin.NestedStackedInline):
     """Inline for defining ordered stages on a WorkflowDefinition."""
 
     model = WorkflowStage
     extra = 0
     ordering = ("order",)
-    inlines = [StageApprovalGroupInline, StageFormFieldNotificationInline]
+    inlines = [StageApprovalGroupInline]
     fields = (
         ("order", "name"),
         "approval_logic",
         "approve_label",
         "requires_manager_approval",
         ("assignee_form_field", "assignee_lookup_type"),
-        ("validate_assignee_group", "notify_assignee_on_final_decision"),
+        "validate_assignee_group",
         ("allow_reassign", "allow_send_back"),
         "allow_edit_form_data",
         "trigger_conditions",
-    )
-
-
-class WorkflowNotificationInline(nested_admin.NestedStackedInline):
-    """Inline for configuring granular workflow-level notification rules.
-
-    Each rule fires at a workflow-conclusion event (submission received, final
-    approval, final rejection, or withdrawal) and can target dynamic recipients
-    (from a form field) and/or static addresses, with optional conditions.
-
-    Use one row per distinct recipient group / event combination.
-    """
-
-    model = WorkflowNotification
-    extra = 0
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": (
-                    ("notification_type", "notify_submitter"),
-                    ("email_field", "static_emails"),
-                    "subject_template",
-                )
-            },
-        ),
-        (
-            "Conditions (optional)",
-            {
-                "classes": ("collapse",),
-                "description": (
-                    "Leave blank to always send. "
-                    "Use the same JSON format as stage trigger_conditions — "
-                    'e.g. <code>{"operator":"AND","conditions":[{"field":"department","operator":"equals","value":"Graduate"}]}</code>'
-                ),
-                "fields": ("conditions",),
-            },
-        ),
     )
 
 
@@ -564,7 +510,7 @@ class WorkflowDefinitionInline(nested_admin.NestedStackedInline):
 
     model = WorkflowDefinition
     extra = 0
-    inlines = [WorkflowStageInline, NotificationRuleInline, WorkflowNotificationInline]
+    inlines = [WorkflowStageInline, NotificationRuleInline]
     fields = [
         "name_label",
         "requires_approval",
@@ -1441,7 +1387,6 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
     ordering = ("workflow", "order")
     inlines = [
         StageApprovalGroupInline,
-        StageFormFieldNotificationInline,
         ChangeHistoryInline,
     ]
     fieldsets = (
@@ -1472,7 +1417,6 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
                     "assignee_form_field",
                     "assignee_lookup_type",
                     "validate_assignee_group",
-                    "notify_assignee_on_final_decision",
                     "allow_reassign",
                     "allow_send_back",
                 ),
@@ -1512,7 +1456,6 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
     inlines = [
         WorkflowStageInline,
         NotificationRuleInline,
-        WorkflowNotificationInline,
         ChangeHistoryInline,
     ]
     list_display = (
@@ -1597,23 +1540,32 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
         )
 
 
-@admin.register(WorkflowNotification)
-class WorkflowNotificationAdmin(admin.ModelAdmin):
-    """Standalone admin for WorkflowNotification — searchable across all workflows."""
+@admin.register(NotificationRule)
+class NotificationRuleAdmin(admin.ModelAdmin):
+    """Standalone admin for NotificationRule — searchable across all workflows."""
 
     list_display = (
         "workflow_form",
-        "notification_type",
+        "event",
+        "stage_name",
         "notify_submitter",
+        "notify_stage_assignees",
+        "notify_stage_groups",
         "email_field",
         "static_emails_truncated",
         "has_conditions",
-        "subject_template_truncated",
     )
-    list_filter = ("notification_type", "notify_submitter", "workflow__form_definition")
-    list_select_related = ("workflow__form_definition",)
+    list_filter = (
+        "event",
+        "notify_submitter",
+        "notify_stage_assignees",
+        "notify_stage_groups",
+        "workflow__form_definition",
+    )
+    list_select_related = ("workflow__form_definition", "stage")
     search_fields = (
         "workflow__form_definition__name",
+        "stage__name",
         "email_field",
         "static_emails",
     )
@@ -1624,8 +1576,14 @@ class WorkflowNotificationAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "workflow",
-                    ("notification_type", "notify_submitter"),
+                    ("event", "stage"),
+                    (
+                        "notify_submitter",
+                        "notify_stage_assignees",
+                        "notify_stage_groups",
+                    ),
                     ("email_field", "static_emails"),
+                    "notify_groups",
                     "subject_template",
                 )
             },
@@ -1649,6 +1607,10 @@ class WorkflowNotificationAdmin(admin.ModelAdmin):
     def workflow_form(self, obj):
         return obj.workflow.form_definition.name if obj.workflow_id else "—"
 
+    @admin.display(description="Stage", ordering="stage__name")
+    def stage_name(self, obj):
+        return obj.stage.name if obj.stage_id else "— (all stages)"
+
     @admin.display(description="Static emails")
     def static_emails_truncated(self, obj):
         if not obj.static_emails:
@@ -1658,14 +1620,6 @@ class WorkflowNotificationAdmin(admin.ModelAdmin):
     @admin.display(description="Conditions?", boolean=True)
     def has_conditions(self, obj):
         return bool(obj.conditions)
-
-    @admin.display(description="Subject template")
-    def subject_template_truncated(self, obj):
-        if not obj.subject_template:
-            return "—"
-        return obj.subject_template[:50] + (
-            "…" if len(obj.subject_template) > 50 else ""
-        )
 
 
 @admin.register(PostSubmissionAction)

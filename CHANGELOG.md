@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-03-31
+
+### Added
+- **Standalone `NotificationRuleAdmin`** — Full admin interface for NotificationRule with list display, filters, search, and fieldsets. Supports browsing notification rules across all workflows.
+
+### Changed
+- **Unified batching in `send_notification_rules`** — Cadence-aware dispatch now lives inside the unified task. Removed legacy `_queue_workflow_level_notifications` and `_queue_approval_request_notifications` functions. All batching (immediate, daily, weekly, monthly, form_field_date) flows through a single code path.
+- **Simplified `_notify_task_request`** — No longer has its own batching logic; delegates entirely to `_dispatch_notification_rules` + built-in `send_approval_request`.
+
+### Removed
+- **Legacy notification models** — Dropped `WorkflowNotification`, `StageFormFieldNotification`, and `WorkflowStage.notify_assignee_on_final_decision`. All configuration now uses `NotificationRule` exclusively. Legacy task stubs retained for in-flight Celery message compatibility.
+- **Legacy notification functions** — Removed `send_workflow_definition_notifications`, `send_stage_form_field_notifications`, `send_submission_form_field_notifications` implementations (stubs remain as no-ops for Celery compat).
+
+### Fixed
+- **Signature field border visibility** — Changed signature pad canvas border from `#dee2e6` (nearly invisible light gray) to `#adb5bd` (clearly visible medium gray) so users can see the signature area boundary.
+
 ## [0.43.0] - 2026-03-31
 
 ### Added

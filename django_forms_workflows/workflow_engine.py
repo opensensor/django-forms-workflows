@@ -57,12 +57,7 @@ def _dispatch_notification_rules(
 ) -> None:
     """Dispatch all NotificationRule records for the given event.
 
-    Also fires legacy task functions for backward compatibility with
-    existing WorkflowNotification / StageFormFieldNotification records
-    that have not yet been migrated or dropped.
-
     Uses Celery when available; falls back to synchronous dispatch.
-    Respects the workflow's ``notification_cadence`` for batching.
     """
     # --- Unified NotificationRule dispatch ---
     try:
@@ -87,50 +82,6 @@ def _dispatch_notification_rules(
             submission.id,
         )
 
-    # --- Legacy dispatch (backward compat until old models are dropped) ---
-    _legacy_event_map = {
-        "submission_received": "submission_received",
-        "workflow_approved": "approval_notification",
-        "workflow_denied": "rejection_notification",
-        "form_withdrawn": "withdrawal_notification",
-    }
-    legacy_type = _legacy_event_map.get(event)
-    if legacy_type:
-        # Legacy WorkflowNotification dispatch
-        try:
-            from .tasks import send_workflow_definition_notifications
-
-            def _fire_legacy_wn() -> None:
-                try:
-                    send_workflow_definition_notifications.delay(
-                        submission.id, legacy_type
-                    )
-                except Exception:
-                    send_workflow_definition_notifications(submission.id, legacy_type)
-
-            transaction.on_commit(_fire_legacy_wn)
-        except Exception:
-            pass
-
-        # Legacy StageFormFieldNotification dispatch
-        if legacy_type != "withdrawal_notification":
-            try:
-                from .tasks import send_submission_form_field_notifications
-
-                def _fire_legacy_sfn() -> None:
-                    try:
-                        send_submission_form_field_notifications.delay(
-                            submission.id, legacy_type
-                        )
-                    except Exception:
-                        send_submission_form_field_notifications(
-                            submission.id, legacy_type
-                        )
-
-                transaction.on_commit(_fire_legacy_sfn)
-            except Exception:
-                pass
-
 
 def _notify_submission_created(submission: FormSubmission) -> None:
     _dispatch_notification_rules(submission, "submission_received")
@@ -139,30 +90,11 @@ def _notify_submission_created(submission: FormSubmission) -> None:
 def _notify_task_request(task: ApprovalTask) -> None:
     """Fire approval_request notifications for a newly activated task.
 
-    Dispatches both the unified NotificationRule path and the legacy
-    send_approval_request task (which handles the built-in approval
-    request email to the assigned approver).
+    Dispatches NotificationRule records (handles cadence/batching internally)
+    and the built-in send_approval_request email to the assigned approver.
     """
     _dispatch_notification_rules(task.submission, "approval_request", task_id=task.id)
-    # Legacy: direct approval request email to the assigned user/group
-    workflow = getattr(task.submission.form_definition, "workflow", None)
-    cadence = (
-        getattr(workflow, "notification_cadence", "immediate")
-        if workflow
-        else "immediate"
-    )
-    if cadence != "immediate" and workflow is not None:
-        try:
-            from .tasks import _queue_approval_request_notifications
-
-            _queue_approval_request_notifications(task, workflow)
-        except Exception:
-            _notify_task_request_immediate(task)
-    else:
-        _notify_task_request_immediate(task)
-
-
-def _notify_task_request_immediate(task: ApprovalTask) -> None:
+    # Built-in approval request email to assigned user/group
     try:
         from .tasks import send_approval_request
 
@@ -561,36 +493,6 @@ def _lookup_by_ldap(user_model, value, stage, submission):
     return user
 
 
-def _notify_stage_form_field_recipients(
-    task: ApprovalTask,
-    stage: WorkflowStage,
-    submission: FormSubmission,
-) -> None:
-    """Dispatch StageFormFieldNotification emails for a stage that just activated.
-
-    Only ``approval_request`` type notifications are fired here (at stage
-    activation time). ``submission_received``, ``approval_notification``, and
-    ``rejection_notification`` types are handled by the workflow finalisation
-    hooks that already exist; this function is intentionally scoped to the
-    activation moment so callers remain simple.
-    """
-    notifications = list(
-        stage.form_field_notifications.filter(notification_type="approval_request")
-    )
-    if not notifications:
-        return
-    try:
-        from .tasks import send_stage_form_field_notifications
-
-        send_stage_form_field_notifications.delay(task.id)
-    except Exception:
-        logger.warning(
-            "Could not dispatch form-field notifications for stage '%s' task %s",
-            stage.name,
-            task.id,
-        )
-
-
 def _create_stage_tasks(
     submission: FormSubmission,
     stage: WorkflowStage,
@@ -641,7 +543,6 @@ def _create_stage_tasks(
             due_date=due_date,
         )
         _notify_task_request(task)
-        _notify_stage_form_field_recipients(task, stage, submission)
         return
 
     # --- Manager-first ordering ----------------------------------------------
@@ -691,7 +592,6 @@ def _create_stage_tasks(
             due_date=due_date,
         )
         _notify_task_request(task)
-        _notify_stage_form_field_recipients(task, stage, submission)
     else:
         # "all" or "any" → parallel tasks for every group in this stage
         first_task = None
@@ -708,9 +608,6 @@ def _create_stage_tasks(
             _notify_task_request(task)
             if first_task is None:
                 first_task = task
-        # Fire form-field notifications once for the stage (using first task for context)
-        if first_task is not None:
-            _notify_stage_form_field_recipients(first_task, stage, submission)
 
 
 def _try_finalize_all_tracks(submission: FormSubmission) -> None:
@@ -835,7 +732,7 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
     """
     workflows = list(submission.form_definition.workflows.all())
 
-    # Notify submission was received via WorkflowNotification rules.
+    # Notify submission was received via NotificationRule records.
     _notify_submission_created(submission)
 
     # Execute on_submit actions

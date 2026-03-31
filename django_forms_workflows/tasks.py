@@ -30,8 +30,6 @@ from .models import (
     NotificationLog,
     NotificationRule,
     PendingNotification,
-    StageFormFieldNotification,
-    WorkflowNotification,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,17 +75,6 @@ def _abs(url_path: str) -> str:
     if base:
         return f"{base}{url_path}"
     return url_path  # relative fallback
-
-
-def _get_hide_approval_history(submission: FormSubmission) -> bool:
-    """Return the workflow's ``hide_approval_history`` flag for a submission.
-
-    When ``True``, email templates must not expose approval-step names,
-    approver identities, or stage-level rejection comments to the submitter.
-    Defaults to ``False`` when no workflow is attached.
-    """
-    workflow = getattr(submission.form_definition, "workflow", None)
-    return bool(getattr(workflow, "hide_approval_history", False))
 
 
 def _site_name() -> str:
@@ -244,92 +231,6 @@ def _compute_scheduled_for(workflow, submission=None):
 
     # Fallback for unknown cadences
     return _at_time(now + timedelta(days=1))
-
-
-def _queue_workflow_level_notifications(
-    submission, workflow, notification_type: str
-) -> None:
-    """Queue a PendingNotification row per resolved recipient for a WorkflowNotification event.
-
-    Evaluates every WorkflowNotification rule attached to *workflow* for
-    *notification_type*, respects conditions, and resolves recipients via
-    ``_collect_notification_recipients`` (notify_submitter + email_field + static_emails).
-    One PendingNotification row is created per recipient per matching rule so that
-    ``send_batched_notifications`` can group them into a single digest email.
-    """
-    from .conditions import evaluate_conditions
-
-    scheduled_for = _compute_scheduled_for(workflow, submission)
-    form_data = submission.form_data or {}
-
-    notifications = WorkflowNotification.objects.filter(
-        workflow=workflow,
-        notification_type=notification_type,
-    )
-
-    queued = 0
-    for notif in notifications:
-        if notif.conditions:
-            try:
-                if not evaluate_conditions(notif.conditions, form_data):
-                    continue
-            except Exception:
-                logger.warning(
-                    "WorkflowNotification %s: condition error during batch queueing; skipping.",
-                    notif.id,
-                    exc_info=True,
-                )
-                continue
-
-        recipients = _collect_notification_recipients(
-            notif, form_data, submission=submission
-        )
-        for email in recipients:
-            PendingNotification.objects.create(
-                workflow=workflow,
-                notification_type=notification_type,
-                submission=submission,
-                recipient_email=email,
-                scheduled_for=scheduled_for,
-            )
-            queued += 1
-
-    logger.info(
-        "Queued %d %s batch notification(s) for submission %s (due %s)",
-        queued,
-        notification_type,
-        submission.id,
-        scheduled_for,
-    )
-
-
-def _queue_approval_request_notifications(task, workflow) -> None:
-    """Queue approval_request PendingNotifications for the task's recipients."""
-    scheduled_for = _compute_scheduled_for(workflow, task.submission)
-    recipients: list[tuple[str, object]] = []  # (email, approver_user_or_None)
-
-    if task.assigned_to and getattr(task.assigned_to, "email", None):
-        recipients.append((task.assigned_to.email, task.assigned_to))
-    elif task.assigned_group:
-        for user in task.assigned_group.user_set.all():
-            email = getattr(user, "email", None)
-            if email:
-                recipients.append((email, user))
-
-    for email, _approver in recipients:
-        PendingNotification.objects.create(
-            workflow=workflow,
-            notification_type="approval_request",
-            submission=task.submission,
-            approval_task=task,
-            recipient_email=email,
-            scheduled_for=scheduled_for,
-        )
-    logger.info(
-        "Queued approval_request batch notification for task %s (due %s)",
-        task.id,
-        scheduled_for,
-    )
 
 
 @shared_task(name="django_forms_workflows.send_approval_request")
@@ -769,8 +670,7 @@ def _collect_notification_recipients(
 ) -> list[str]:
     """Return the deduplicated list of recipient emails for a notification rule.
 
-    Works with both legacy models (WorkflowNotification / StageFormFieldNotification)
-    and the unified NotificationRule.  Combines all recipient sources additively:
+    Combines all recipient sources from a NotificationRule additively:
 
     1. notify_submitter  → submission.submitter.email
     2. email_field       → form_data[slug] (dynamic per submission)
@@ -884,286 +784,43 @@ def _build_form_field_notification_context(
     return submission_url, approval_url
 
 
+# Legacy task stubs — kept only so in-flight Celery messages don't fail on
+# upgrade.  New code uses send_notification_rules exclusively.
+
+
 @shared_task(name="django_forms_workflows.send_stage_form_field_notifications")
-def send_stage_form_field_notifications(task_id: int) -> None:
-    """Send approval_request emails to form-field-specified addresses for a stage.
-
-    Fires when a workflow stage activates.  For each StageFormFieldNotification
-    record on the stage with notification_type='approval_request', reads the
-    email address from the submission's form_data, evaluates any conditions, and
-    sends the appropriate template email.
-    """
-    task = ApprovalTask.objects.select_related(
-        "submission__form_definition",
-        "submission__submitter",
-        "workflow_stage",
-    ).get(id=task_id)
-
-    if not task.workflow_stage:
-        return
-
-    stage = task.workflow_stage
-    submission = task.submission
-    form_data = submission.form_data or {}
-    form_name = submission.form_definition.name
-    submission_url, approval_url = _build_form_field_notification_context(
-        submission, task
+def send_stage_form_field_notifications(task_id: int) -> None:  # noqa: ARG001
+    logger.info(
+        "Legacy send_stage_form_field_notifications called (task_id=%s); "
+        "no-op — use NotificationRule instead.",
+        task_id,
     )
-
-    notifications = StageFormFieldNotification.objects.filter(
-        stage=stage, notification_type="approval_request"
-    )
-
-    for notif in notifications:
-        if notif.conditions:
-            try:
-                from .conditions import evaluate_conditions
-
-                if not evaluate_conditions(notif.conditions, form_data):
-                    logger.info(
-                        "Stage notification %s skipped: conditions not met (submission %s)",
-                        notif.id,
-                        submission.id,
-                    )
-                    continue
-            except Exception:
-                logger.warning(
-                    "Stage notification %s: error evaluating conditions; skipping.",
-                    notif.id,
-                )
-                continue
-
-        recipients = _collect_notification_recipients(notif, form_data)
-        if not recipients:
-            logger.info(
-                "Stage notification %s: no recipients resolved (email_field='%s', static_emails='%s'); skipping.",
-                notif.id,
-                notif.email_field,
-                notif.static_emails,
-            )
-            continue
-
-        subject = (
-            notif.subject_template.format(
-                form_name=form_name, submission_id=submission.id
-            )
-            if notif.subject_template
-            else f"Action Required: {form_name} (ID {submission.id})"
-        )
-        context = {
-            "task": task,
-            "submission": submission,
-            "approval_url": approval_url,
-            "submission_url": submission_url,
-        }
-        _send_html_email(
-            subject,
-            recipients,
-            "emails/approval_request.html",
-            context,
-            notification_type="approval_request",
-            submission_id=submission.id,
-        )
 
 
 @shared_task(name="django_forms_workflows.send_submission_form_field_notifications")
 def send_submission_form_field_notifications(
-    submission_id: int, notification_type: str
+    submission_id: int,
+    notification_type: str,  # noqa: ARG001
 ) -> None:
-    """Send form-field notifications for submission-level events.
-
-    Called for submission_received, approval_notification, and
-    rejection_notification types.  Scans every stage on every workflow
-    attached to the form for matching StageFormFieldNotification records,
-    extracts the email from form_data, checks conditions, and dispatches.
-    """
-    template_map = {
-        "submission_received": "emails/submission_notification.html",
-        "approval_notification": "emails/approval_notification.html",
-        "rejection_notification": "emails/rejection_notification.html",
-    }
-    template = template_map.get(notification_type)
-    if not template:
-        return
-
-    submission = FormSubmission.objects.select_related(
-        "form_definition", "submitter"
-    ).get(id=submission_id)
-    form_data = submission.form_data or {}
-    form_name = submission.form_definition.name
-    submission_url, _ = _build_form_field_notification_context(submission)
-    # Resolve once — reused for hide_approval_history below.
-    workflow = getattr(submission.form_definition, "workflow", None)
-    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
-
-    notifications = StageFormFieldNotification.objects.filter(
-        stage__workflow__form_definition=submission.form_definition,
-        notification_type=notification_type,
-    ).select_related("stage")
-
-    default_subjects = {
-        "submission_received": f"Submission Received: {form_name} (ID {submission.id})",
-        "approval_notification": f"Submission Approved: {form_name} (ID {submission.id})",
-        "rejection_notification": f"Submission Rejected: {form_name} (ID {submission.id})",
-    }
-
-    for notif in notifications:
-        if notif.conditions:
-            try:
-                from .conditions import evaluate_conditions
-
-                if not evaluate_conditions(notif.conditions, form_data):
-                    continue
-            except Exception:
-                logger.warning(
-                    "Stage notification %s: error evaluating conditions; skipping.",
-                    notif.id,
-                )
-                continue
-
-        recipients = _collect_notification_recipients(notif, form_data)
-        if not recipients:
-            continue
-
-        subject = (
-            notif.subject_template.format(
-                form_name=form_name, submission_id=submission.id
-            )
-            if notif.subject_template
-            else default_subjects.get(
-                notification_type, f"{form_name} (ID {submission.id})"
-            )
-        )
-        context = {
-            "submission": submission,
-            "submission_url": submission_url,
-            "hide_approval_history": hide_approval_history,
-        }
-        _send_html_email(
-            subject,
-            recipients,
-            template,
-            context,
-            notification_type=notification_type,
-            submission_id=submission_id,
-        )
+    logger.info(
+        "Legacy send_submission_form_field_notifications called "
+        "(submission_id=%s, type=%s); no-op — use NotificationRule instead.",
+        submission_id,
+        notification_type,
+    )
 
 
 @shared_task(name="django_forms_workflows.send_workflow_definition_notifications")
 def send_workflow_definition_notifications(
-    submission_id: int, notification_type: str
+    submission_id: int,
+    notification_type: str,  # noqa: ARG001
 ) -> None:
-    """Send granular WorkflowNotification rules for the given workflow event.
-
-    Called for ``submission_received``, ``approval_notification``,
-    ``rejection_notification``, and ``withdrawal_notification`` events.
-
-    For each ``WorkflowNotification`` record attached to the form's workflow(s)
-    whose ``notification_type`` matches:
-
-    1. Evaluates optional ``conditions`` against ``form_data`` — skips if not met.
-    2. Resolves recipients from ``email_field`` (dynamic, per-submission) and/or
-       ``static_emails`` (fixed addresses).
-    3. Sends one email per recipient using the appropriate template, with a
-       custom or default subject line.
-
-    Each rule fires as a **separate email** so different recipient groups get
-    tailored messages rather than being bundled onto the same notification.
-    """
-    template_map = {
-        "submission_received": "emails/submission_notification.html",
-        "approval_notification": "emails/approval_notification.html",
-        "rejection_notification": "emails/rejection_notification.html",
-        "withdrawal_notification": "emails/withdrawal_notification.html",
-    }
-    template = template_map.get(notification_type)
-    if not template:
-        logger.warning(
-            "send_workflow_definition_notifications: unknown notification_type '%s'",
-            notification_type,
-        )
-        return
-
-    submission = FormSubmission.objects.select_related(
-        "form_definition", "submitter"
-    ).get(id=submission_id)
-    form_data = submission.form_data or {}
-    form_name = submission.form_definition.name
-    submission_url, _ = _build_form_field_notification_context(submission)
-    # Resolve once — reused for hide_approval_history in every email context below.
-    workflow = getattr(submission.form_definition, "workflow", None)
-    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
-
-    default_subjects = {
-        "submission_received": f"Submission Received: {form_name} (ID {submission.id})",
-        "approval_notification": f"Submission Approved: {form_name} (ID {submission.id})",
-        "rejection_notification": f"Submission Rejected: {form_name} (ID {submission.id})",
-        "withdrawal_notification": f"Submission Withdrawn: {form_name} (ID {submission.id})",
-    }
-
-    notifications = WorkflowNotification.objects.filter(
-        workflow__form_definition=submission.form_definition,
-        notification_type=notification_type,
-    ).select_related("workflow")
-
-    for notif in notifications:
-        # Evaluate optional conditions
-        if notif.conditions:
-            try:
-                from .conditions import evaluate_conditions
-
-                if not evaluate_conditions(notif.conditions, form_data):
-                    logger.info(
-                        "WorkflowNotification %s skipped: conditions not met "
-                        "(submission %s, type %s)",
-                        notif.id,
-                        submission.id,
-                        notification_type,
-                    )
-                    continue
-            except Exception:
-                logger.warning(
-                    "WorkflowNotification %s: error evaluating conditions; skipping.",
-                    notif.id,
-                    exc_info=True,
-                )
-                continue
-
-        # Resolve recipients (submitter + dynamic + static)
-        recipients = _collect_notification_recipients(
-            notif, form_data, submission=submission
-        )
-        if not recipients:
-            logger.info(
-                "WorkflowNotification %s: no recipients resolved for submission %s; skipping.",
-                notif.id,
-                submission.id,
-            )
-            continue
-
-        subject = (
-            notif.subject_template.format(
-                form_name=form_name, submission_id=submission.id
-            )
-            if notif.subject_template
-            else default_subjects[notification_type]
-        )
-        context = {
-            "submission": submission,
-            "submission_url": submission_url,
-            "hide_approval_history": hide_approval_history,
-        }
-
-        # Send one email per recipient so each message is independent
-        for recipient in recipients:
-            _send_html_email(
-                subject,
-                [recipient],
-                template,
-                context,
-                notification_type=notification_type,
-                submission_id=submission_id,
-            )
+    logger.info(
+        "Legacy send_workflow_definition_notifications called "
+        "(submission_id=%s, type=%s); no-op — use NotificationRule instead.",
+        submission_id,
+        notification_type,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1298,12 +955,37 @@ def send_notification_rules(
             except ApprovalTask.DoesNotExist:
                 pass
 
-        for recipient in recipients:
-            _send_html_email(
-                subject,
-                [recipient],
-                template,
-                context,
-                notification_type=event,
-                submission_id=submission_id,
+        # Check cadence — batch or send immediately
+        cadence = (
+            getattr(workflow, "notification_cadence", "immediate")
+            if workflow
+            else "immediate"
+        )
+        if cadence != "immediate" and workflow is not None:
+            scheduled_for = _compute_scheduled_for(workflow, submission)
+            for recipient in recipients:
+                PendingNotification.objects.create(
+                    workflow=workflow,
+                    notification_type=event,
+                    submission=submission,
+                    approval_task_id=task_id,
+                    recipient_email=recipient,
+                    scheduled_for=scheduled_for,
+                )
+            logger.info(
+                "Queued %d %s notification(s) for submission %s (due %s)",
+                len(recipients),
+                event,
+                submission.id,
+                scheduled_for,
             )
+        else:
+            for recipient in recipients:
+                _send_html_email(
+                    subject,
+                    [recipient],
+                    template,
+                    context,
+                    notification_type=event,
+                    submission_id=submission_id,
+                )

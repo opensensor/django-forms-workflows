@@ -83,6 +83,12 @@ urlpatterns = [
         views.reassign_task,
         name="reassign_task",
     ),
+    # Public form submission confirmation (no login required)
+    path(
+        "submitted/",
+        views.public_submission_confirmation,
+        name="public_submission_confirmation",
+    ),
     # Analytics dashboard
     path("analytics/", analytics_dashboard, name="analytics_dashboard"),
     # Server-side DataTables AJAX endpoints

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-03-31
+
+### Added
+- **Public form support** — Forms with `requires_login=False` are now fully accessible to anonymous (unauthenticated) users. Anonymous users can:
+  - Browse the form list (only public forms are shown)
+  - Submit public forms
+  - See a confirmation page after submission
+- **Rate limiting for anonymous submissions** — IP-based rate limiting using Django's cache framework prevents abuse. Configurable via `settings.FORMS_WORKFLOWS_PUBLIC_RATE_LIMIT` (default: `"10/hour"`). Format: `"<count>/<period>"` where period is `minute`, `hour`, or `day`. Returns a 429 page when exceeded.
+- **Anonymous submission handling** — `FormSubmission.submitter` is now nullable. Anonymous submissions store IP address and user agent for audit purposes. Auto-save and draft saving are disabled for anonymous users.
+
+### Changed
+- `FormSubmission.submitter` is now `null=True, blank=True` (migration included)
+- `AuditLog.user` is now `null=True, blank=True` for anonymous submission logging
+- `form_list` view no longer requires login — shows public forms to anonymous users, full list to authenticated users
+- `form_submit` view uses conditional authentication instead of `@login_required`
+- `form_auto_save` returns 403 for unauthenticated requests instead of redirecting to login
+- All templates (submission detail, approve, PDF, email, reassign) handle null submitter gracefully
+- Workflow engine guards `requires_manager_approval` against null submitter
+
 ## [0.46.0] - 2026-03-31
 
 ### Added

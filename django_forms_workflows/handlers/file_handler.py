@@ -312,9 +312,11 @@ class WebhookHandler:
                 "status": submission.status,
             },
             "user": {
-                "id": submission.submitter.id,
-                "username": submission.submitter.username,
-                "email": submission.submitter.email,
+                "id": submission.submitter.id if submission.submitter_id else None,
+                "username": submission.submitter.username
+                if submission.submitter_id
+                else "anonymous",
+                "email": submission.submitter.email if submission.submitter_id else "",
             },
         }
 

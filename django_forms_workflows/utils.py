@@ -36,16 +36,21 @@ def user_can_access_category(user, category) -> bool:
     return True
 
 
-def user_can_submit_form(user: User, form_def: FormDefinition) -> bool:
+def user_can_submit_form(user, form_def: FormDefinition) -> bool:
     """Return True if the user is allowed to submit the given form.
 
     Rules (applied in order):
+    0. Anonymous users may submit public forms (requires_login=False).
     1. Superusers and staff bypass all restrictions.
     2. The user must satisfy the form-level ``submit_groups`` restriction (if any).
     3. The user must satisfy the category-level ``allowed_groups`` restriction for
        every ancestor of the form's category (same hierarchy logic as the form
        list view).  This prevents bypassing category gates by knowing the URL.
     """
+    # Anonymous users can only submit public forms
+    if user is None or not getattr(user, "is_authenticated", False):
+        return not form_def.requires_login
+
     if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
         return True
 
@@ -303,3 +308,48 @@ def sync_ldap_groups():
         logger.warning("django-auth-ldap not installed, skipping group sync")
     except Exception as e:
         logger.error(f"Error syncing LDAP groups: {e}")
+
+
+# ── Public-form rate limiting ──────────────────────────────────────────────
+
+
+def _get_client_ip(request):
+    """Extract the real client IP, respecting X-Forwarded-For."""
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "0.0.0.0")
+
+
+def check_rate_limit(request, form_slug: str) -> bool:
+    """Return ``True`` if the request is within the rate limit.
+
+    Uses Django's cache framework (default cache).  The limit is read from
+    ``settings.FORMS_WORKFLOWS_PUBLIC_RATE_LIMIT`` and defaults to
+    ``"10/hour"``.  Format: ``"<max_requests>/<period>"`` where *period*
+    is one of ``minute``, ``hour``, ``day``.
+
+    The cache key is scoped to IP + form slug so one form's limit doesn't
+    affect another.
+    """
+    from django.conf import settings
+    from django.core.cache import cache
+
+    limit_str = getattr(settings, "FORMS_WORKFLOWS_PUBLIC_RATE_LIMIT", "10/hour")
+    try:
+        max_requests, period = limit_str.split("/")
+        max_requests = int(max_requests)
+    except (ValueError, AttributeError):
+        max_requests, period = 10, "hour"
+
+    period_seconds = {"minute": 60, "hour": 3600, "day": 86400}.get(period, 3600)
+
+    ip = _get_client_ip(request)
+    cache_key = f"forms_ratelimit:{ip}:{form_slug}"
+    current = cache.get(cache_key, 0)
+
+    if current >= max_requests:
+        return False  # rate limited
+
+    cache.set(cache_key, current + 1, timeout=period_seconds)
+    return True

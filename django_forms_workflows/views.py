@@ -23,7 +23,12 @@ from django.views.decorators.http import require_http_methods
 
 from .forms import DynamicForm
 from .models import ApprovalTask, AuditLog, FormDefinition, FormField, FormSubmission
-from .utils import user_can_approve, user_can_submit_form, user_can_view_form
+from .utils import (
+    check_rate_limit,
+    user_can_approve,
+    user_can_submit_form,
+    user_can_view_form,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +175,6 @@ def _build_grouped_forms(forms):
     return top_level
 
 
-@login_required
 def form_list(request):
     """List all active forms the current user has access to.
 
@@ -186,6 +190,8 @@ def form_list(request):
 
     Staff / superusers bypass both filters and see every active form.
 
+    Anonymous users only see forms with ``requires_login=False``.
+
     Context variables
     -----------------
     forms
@@ -193,7 +199,12 @@ def form_list(request):
     grouped_forms
         Ordered list of ``(FormCategory | None, [FormDefinition, ...])``.
     """
-    if request.user.is_staff or request.user.is_superuser:
+    if not request.user.is_authenticated:
+        # Anonymous users — only public forms
+        forms = FormDefinition.objects.filter(
+            is_active=True, is_listed=True, requires_login=False
+        ).select_related("category")
+    elif request.user.is_staff or request.user.is_superuser:
         forms = FormDefinition.objects.filter(
             is_active=True, is_listed=True
         ).select_related("category")
@@ -244,31 +255,49 @@ def form_list(request):
     )
 
 
-@login_required
 def form_submit(request, slug):
-    """Submit a form"""
+    """Submit a form — supports both authenticated and anonymous (public) access."""
     form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
+    is_anonymous = not request.user.is_authenticated
 
-    # Check permissions — view access is a prerequisite for submit access
-    if not user_can_view_form(request.user, form_def):
-        messages.error(request, "You don't have permission to access this form.")
-        return redirect("forms_workflows:form_list")
-    if not user_can_submit_form(request.user, form_def):
-        messages.error(request, "You don't have permission to submit this form.")
-        return redirect("forms_workflows:form_list")
+    # ── Authentication gate ─────────────────────────────────────────────
+    if is_anonymous:
+        if form_def.requires_login:
+            from django.contrib.auth.views import redirect_to_login
 
-    # Get draft if exists
-    draft = FormSubmission.objects.filter(
-        form_definition=form_def, submitter=request.user, status="draft"
-    ).first()
+            return redirect_to_login(request.get_full_path())
+    else:
+        # Authenticated permission checks
+        if not user_can_view_form(request.user, form_def):
+            messages.error(request, "You don't have permission to access this form.")
+            return redirect("forms_workflows:form_list")
+        if not user_can_submit_form(request.user, form_def):
+            messages.error(request, "You don't have permission to submit this form.")
+            return redirect("forms_workflows:form_list")
+
+    # Drafts are only available for authenticated users
+    draft = None
+    if not is_anonymous:
+        draft = FormSubmission.objects.filter(
+            form_definition=form_def, submitter=request.user, status="draft"
+        ).first()
+
+    user_or_none = request.user if not is_anonymous else None
 
     if request.method == "POST":
+        # ── Rate limit anonymous submissions ────────────────────────────
+        if is_anonymous and not check_rate_limit(request, slug):
+            return render(
+                request,
+                "django_forms_workflows/rate_limited.html",
+                {"form_def": form_def},
+                status=429,
+            )
+
         # ------------------------------------------------------------------ #
-        # Draft save: bypass all validation and store raw POST data.          #
-        # Must be checked BEFORE form.is_valid() so that partially-filled     #
-        # forms (with empty required fields) can still be saved as drafts.    #
+        # Draft save: only for authenticated users.                          #
         # ------------------------------------------------------------------ #
-        if "save_draft" in request.POST:
+        if "save_draft" in request.POST and not is_anonymous:
             _skip = {"csrfmiddlewaretoken", "save_draft", "submit"}
             raw_data = {}
             for k in request.POST:
@@ -303,29 +332,25 @@ def form_submit(request, slug):
         # ------------------------------------------------------------------ #
         form = DynamicForm(
             form_definition=form_def,
-            user=request.user,
+            user=user_or_none,
             data=request.POST,
             files=request.FILES,
         )
 
         if form.is_valid():
-            # Save submission first to get an ID for file storage paths
             submission = draft or FormSubmission(
                 form_definition=form_def,
-                submitter=request.user,
+                submitter=user_or_none,
                 submission_ip=get_client_ip(request),
                 user_agent=request.META.get("HTTP_USER_AGENT", ""),
             )
-            # Save to get ID (needed for file paths)
             if not submission.pk:
-                submission.form_data = {}  # Temporary empty data
+                submission.form_data = {}
                 submission.save()
 
-            # Serialize form data to JSON-compatible format (now with submission ID)
             submission.form_data = serialize_form_data(
                 form.cleaned_data, submission_id=submission.pk
             )
-            # Re-evaluate any calculated fields server-side (authoritative values)
             submission.form_data = _re_evaluate_calculated_fields(
                 submission.form_data, form_def
             )
@@ -333,30 +358,30 @@ def form_submit(request, slug):
             submission.status = "submitted"
             submission.submitted_at = timezone.now()
             submission.save()
-            messages.success(request, "Form submitted successfully.")
 
-            # Log audit
             AuditLog.objects.create(
                 action="submit",
                 object_type="FormSubmission",
                 object_id=submission.id,
-                user=request.user,
+                user=user_or_none,
                 user_ip=get_client_ip(request),
-                comments="Form submitted",
+                comments="Form submitted" + (" (anonymous)" if is_anonymous else ""),
             )
 
-            # Create approval tasks if workflow requires approval
             create_approval_tasks(submission)
 
+            if is_anonymous:
+                return redirect(
+                    "forms_workflows:public_submission_confirmation",
+                )
+
+            messages.success(request, "Form submitted successfully.")
             return redirect("forms_workflows:my_submissions")
     else:
         initial_data = draft.form_data if draft else None
         form = DynamicForm(
-            form_definition=form_def, user=request.user, initial_data=initial_data
+            form_definition=form_def, user=user_or_none, initial_data=initial_data
         )
-
-    # Get form enhancements configuration
-    import json
 
     form_enhancements_config = json.dumps(form.get_enhancements_config())
 
@@ -369,14 +394,24 @@ def form_submit(request, slug):
             "is_draft": draft is not None,
             "draft_id": draft.id if draft else None,
             "form_enhancements_config": form_enhancements_config,
+            "is_anonymous": is_anonymous,
         },
     )
 
 
-@login_required
+def public_submission_confirmation(request):
+    """Thank-you page shown after an anonymous (public) form submission."""
+    return render(request, "django_forms_workflows/public_submission_confirmation.html")
+
+
 @require_http_methods(["POST"])
 def form_auto_save(request, slug):
-    """Auto-save form draft via AJAX"""
+    """Auto-save form draft via AJAX (authenticated users only)."""
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {"success": False, "error": "Login required for draft saving"},
+            status=403,
+        )
     form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
 
     # Check permissions — view access is a prerequisite for submit access

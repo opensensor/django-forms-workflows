@@ -78,7 +78,7 @@
     </colgroup>
     <tr>
         <td class="meta-label">Submitted by</td>
-        <td class="meta-value">{{ item.submission.submitter.get_full_name|default:item.submission.submitter.username }}</td>
+        <td class="meta-value">{% if item.submission.submitter %}{{ item.submission.submitter.get_full_name|default:item.submission.submitter.username }}{% else %}Anonymous{% endif %}</td>
         <td class="meta-label">Date</td>
         <td class="meta-value">{{ item.submission.submitted_at|date:"N j, Y \a\t g:i a" }}</td>
     </tr>

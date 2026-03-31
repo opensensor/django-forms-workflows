@@ -1562,6 +1562,9 @@ class FormSubmission(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="form_submissions",
+        null=True,
+        blank=True,
+        help_text="Null for anonymous (public-form) submissions.",
     )
 
     # Submission Data
@@ -1604,7 +1607,8 @@ class FormSubmission(models.Model):
         verbose_name_plural = "Form Submissions"
 
     def __str__(self):
-        return f"{self.form_definition.name} - {self.submitter.username} - {self.get_status_display()}"
+        who = self.submitter.username if self.submitter_id else "Anonymous"
+        return f"{self.form_definition.name} - {who} - {self.get_status_display()}"
 
 
 class ApprovalTask(models.Model):
@@ -1730,8 +1734,13 @@ class AuditLog(models.Model):
     object_type = models.CharField(max_length=50)
     object_id = models.IntegerField()
 
-    # Who did it
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    # Who did it (null for anonymous / public-form submissions)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
     user_ip = models.GenericIPAddressField(null=True, blank=True)
 
     # Details

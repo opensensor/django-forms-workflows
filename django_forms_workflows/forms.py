@@ -322,7 +322,8 @@ class DynamicForm(forms.Form):
 
         # Add submit buttons
         buttons = [Submit("submit", "Submit", css_class="btn btn-primary")]
-        if form_definition.allow_save_draft:
+        # Save Draft is only available for authenticated users
+        if form_definition.allow_save_draft and user is not None:
             buttons.append(
                 Submit(
                     "save_draft",
@@ -946,8 +947,14 @@ class DynamicForm(forms.Form):
 
         from django.urls import reverse
 
+        # Disable auto-save for anonymous users (no drafts without a user)
+        auto_save_enabled = (
+            getattr(self.form_definition, "enable_auto_save", True)
+            and self.user is not None
+        )
+
         config = {
-            "autoSaveEnabled": getattr(self.form_definition, "enable_auto_save", True),
+            "autoSaveEnabled": auto_save_enabled,
             "autoSaveInterval": getattr(self.form_definition, "auto_save_interval", 30)
             * 1000,  # Convert to ms
             "autoSaveEndpoint": reverse(

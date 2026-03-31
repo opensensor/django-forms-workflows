@@ -33,10 +33,22 @@ def simple_form(form_with_fields):
 
 
 class TestFormListView:
-    def test_login_required(self, client, simple_form):
+    def test_anonymous_access_shows_public_forms_only(self, client, simple_form):
+        """Anonymous users can access the form list and see only public forms."""
         url = reverse("forms_workflows:form_list")
         resp = client.get(url)
-        assert resp.status_code == 302  # redirect to login
+        assert resp.status_code == 200
+        # simple_form has requires_login=True by default, so not visible
+        assert simple_form.name.encode() not in resp.content
+
+    def test_anonymous_sees_public_form(self, client, simple_form):
+        """Anonymous users see forms with requires_login=False."""
+        simple_form.requires_login = False
+        simple_form.save()
+        url = reverse("forms_workflows:form_list")
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert simple_form.name.encode() in resp.content
 
     def test_lists_active_forms(self, auth_client, simple_form):
         url = reverse("forms_workflows:form_list")

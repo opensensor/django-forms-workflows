@@ -702,9 +702,10 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
         """Show the most recent submission info."""
         last = obj.submissions.order_by("-created_at").first()
         if last:
+            who = last.submitter.username if last.submitter_id else "Anonymous"
             return format_html(
                 "{}<br><small>{}</small>",
-                last.submitter.username,
+                who,
                 last.created_at.strftime("%Y-%m-%d %H:%M"),
             )
         return "-"

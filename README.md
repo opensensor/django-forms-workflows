@@ -132,6 +132,7 @@ Move form definitions between environments from the Django Admin:
   - `admin_groups` — full administrative view of all submissions
 - Group-based approval routing via `WorkflowStage.approval_groups`
 - Complete audit logging (`AuditLog` — who, what, when, IP address)
+- **Public / anonymous forms** — mark any form as `requires_login=False` and anonymous users can submit it; IP-based rate limiting prevents abuse
 - `UserProfile` auto-created on first login with LDAP/SSO sync
 
 ## Quick Start

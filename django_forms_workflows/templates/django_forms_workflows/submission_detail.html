@@ -60,7 +60,7 @@
                 <div class="row">
                     <div class="col-md-6">
                         <p><strong>Form:</strong> {{ submission.form_definition.name }}</p>
-                        <p><strong>Submitter:</strong> {{ submission.submitter.get_full_name|default:submission.submitter.username }}</p>
+                        <p><strong>Submitter:</strong> {% if submission.submitter %}{{ submission.submitter.get_full_name|default:submission.submitter.username }}{% else %}Anonymous{% endif %}</p>
                         <p><strong>Created:</strong> {{ submission.created_at|date:"Y-m-d H:i" }}</p>
                     </div>
                     <div class="col-md-6">

@@ -19,7 +19,7 @@
                     </tr>
                     <tr>
                         <th>Submission</th>
-                        <td>#{{ submission.id }} — {{ submission.submitter.get_full_name|default:submission.submitter.username }}</td>
+                        <td>#{{ submission.id }} — {% if submission.submitter %}{{ submission.submitter.get_full_name|default:submission.submitter.username }}{% else %}Anonymous{% endif %}</td>
                     </tr>
                     <tr>
                         <th>Approval Stage</th>

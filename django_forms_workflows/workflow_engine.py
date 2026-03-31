@@ -552,7 +552,11 @@ def _create_stage_tasks(
             from .ldap_backend import get_user_manager
         except Exception:
             get_user_manager = None  # type: ignore
-        manager = get_user_manager(submission.submitter) if get_user_manager else None
+        manager = (
+            get_user_manager(submission.submitter)
+            if get_user_manager and submission.submitter_id
+            else None
+        )
         if manager:
             task = ApprovalTask.objects.create(
                 submission=submission,
@@ -1171,7 +1175,11 @@ def _create_sub_workflow_stage_tasks(
             from .ldap_backend import get_user_manager
         except Exception:
             get_user_manager = None  # type: ignore
-        manager = get_user_manager(submission.submitter) if get_user_manager else None
+        manager = (
+            get_user_manager(submission.submitter)
+            if get_user_manager and submission.submitter_id
+            else None
+        )
         if manager:
             task = ApprovalTask.objects.create(
                 submission=submission,

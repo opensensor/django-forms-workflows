@@ -299,6 +299,11 @@ def _lookup_by_full_name(user_model, value, stage, submission):
        last_name and does ``iexact`` lookups on both columns.  This requires
        that ``auth_user.first_name`` and ``auth_user.last_name`` are populated.
 
+    When multiple users share the same name, the function attempts to
+    disambiguate by narrowing the queryset to members of the stage's
+    approval groups (when ``validate_assignee_group`` is enabled).  If
+    exactly one match remains after filtering, that user is returned.
+
     .. important::
         For sites using **Google SSO exclusively**, Django's first_name /
         last_name fields are only populated when the Google SAML app is
@@ -317,43 +322,56 @@ def _lookup_by_full_name(user_model, value, stage, submission):
     """
     parts = value.split()
 
-    # --- 1. Django User table lookup (iexact on first_name + last_name) -----
+    # Build the base queryset for name matching
     if len(parts) >= 2:
         first_name = parts[0]
         last_name = " ".join(parts[1:])
-        try:
-            return user_model.objects.get(
-                first_name__iexact=first_name, last_name__iexact=last_name
-            )
-        except user_model.DoesNotExist:
-            pass  # fall through to LDAP
-        except user_model.MultipleObjectsReturned:
-            logger.warning(
-                "Dynamic assignee lookup (full_name): multiple users matching '%s %s' "
-                "(stage '%s', submission %s); falling back to group assignment.",
-                first_name,
-                last_name,
-                stage.name,
-                submission.id,
-            )
-            return None
+        qs = user_model.objects.filter(
+            first_name__iexact=first_name, last_name__iexact=last_name
+        )
     else:
-        # Single-word value: try last_name only
-        try:
-            return user_model.objects.get(last_name__iexact=value)
-        except user_model.DoesNotExist:
-            pass  # fall through to LDAP
-        except user_model.MultipleObjectsReturned:
-            logger.warning(
-                "Dynamic assignee lookup (full_name): multiple users with last_name '%s' "
-                "(stage '%s', submission %s); falling back to group assignment.",
-                value,
-                stage.name,
-                submission.id,
-            )
-            return None
+        first_name = None
+        last_name = value
+        qs = user_model.objects.filter(last_name__iexact=value)
 
-    # --- 2. LDAP fallback (queries AD by display name, JIT-provisions) -------
+    matches = list(qs[:3])  # fetch up to 3 to detect duplicates cheaply
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if len(matches) > 1:
+        # Multiple users share this name — try to disambiguate by
+        # restricting to members of the stage's approval groups.
+        approval_groups = list(stage.approval_groups.all())
+        if approval_groups:
+            group_ids = {g.pk for g in approval_groups}
+            narrowed = [
+                u for u in matches if u.groups.filter(pk__in=group_ids).exists()
+            ]
+            if len(narrowed) == 1:
+                logger.info(
+                    "Dynamic assignee lookup (full_name): multiple users matching '%s' "
+                    "but exactly one (%s) is in the stage approval groups "
+                    "(stage '%s', submission %s).",
+                    value,
+                    narrowed[0].username,
+                    stage.name,
+                    submission.id,
+                )
+                return narrowed[0]
+
+        # Still ambiguous — fall back to group assignment
+        logger.warning(
+            "Dynamic assignee lookup (full_name): multiple users matching '%s' "
+            "(stage '%s', submission %s); cannot disambiguate — "
+            "falling back to group assignment.",
+            value,
+            stage.name,
+            submission.id,
+        )
+        return None
+
+    # No match found — fall through to LDAP
     logger.info(
         "Dynamic assignee lookup (full_name): '%s' not found in Django User table "
         "(first_name/last_name may not be populated for SSO-only users); "

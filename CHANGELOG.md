@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.2] - 2026-03-31
+
+### Fixed
+- **Full name assignee lookup: disambiguate duplicate names** — When multiple Django users share the same first/last name (e.g. `lnickerson` and `logan.nickerson` both named "Logan Nickerson"), the lookup now narrows by stage approval group membership. If exactly one matching user is in the approval group, that user is assigned. If still ambiguous, falls back to group assignment with a warning log.
+
 ## [0.47.1] - 2026-03-31
 
 ### Fixed

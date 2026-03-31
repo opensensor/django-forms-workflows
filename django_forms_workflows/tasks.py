@@ -28,6 +28,7 @@ from .models import (
     ApprovalTask,
     FormSubmission,
     NotificationLog,
+    NotificationRule,
     PendingNotification,
     StageFormFieldNotification,
     WorkflowNotification,
@@ -768,40 +769,102 @@ def _collect_notification_recipients(
 ) -> list[str]:
     """Return the deduplicated list of recipient emails for a notification rule.
 
-    Combines (in order):
-    - submission.submitter.email if notif.notify_submitter is True and submission is provided.
-    - Dynamic workflow assignee emails for final decision notifications.
-    - The dynamic email read from form_data via notif.email_field (if set and valid).
-    - All static emails from notif.static_emails (comma-separated, if set).
+    Works with both legacy models (WorkflowNotification / StageFormFieldNotification)
+    and the unified NotificationRule.  Combines all recipient sources additively:
+
+    1. notify_submitter  → submission.submitter.email
+    2. email_field       → form_data[slug] (dynamic per submission)
+    3. static_emails     → comma-separated fixed addresses
+    4. notify_stage_assignees → ApprovalTask.assigned_to.email
+    5. notify_stage_groups    → all users in the stage's approval groups
+    6. notify_groups (M2M)    → all users in explicitly-listed groups
     """
     recipients: list[str] = []
+
+    def _add(email: str | None) -> None:
+        if email and email not in recipients:
+            recipients.append(email)
+
+    # 1. Submitter
     if getattr(notif, "notify_submitter", False) and submission is not None:
-        submitter_email = getattr(getattr(submission, "submitter", None), "email", None)
-        if submitter_email and submitter_email not in recipients:
-            recipients.append(submitter_email)
-    if submission is not None and getattr(notif, "notification_type", None) in {
-        "approval_notification",
-        "rejection_notification",
-    }:
-        dynamic_assignee_emails = (
+        _add(getattr(getattr(submission, "submitter", None), "email", None))
+
+    # 2. Email field (dynamic from form_data)
+    if notif.email_field:
+        _add(_get_form_field_email(form_data, notif.email_field))
+
+    # 3. Static emails
+    for addr in (notif.static_emails or "").split(","):
+        addr = addr.strip()
+        if addr and "@" in addr:
+            _add(addr)
+
+    # 4. Stage assignees (NotificationRule only)
+    if getattr(notif, "notify_stage_assignees", False) and submission is not None:
+        qs = (
             submission.approval_tasks.select_related("assigned_to", "workflow_stage")
             .filter(assigned_to__isnull=False)
             .exclude(workflow_stage__assignee_form_field__isnull=True)
             .exclude(workflow_stage__assignee_form_field="")
-            .filter(workflow_stage__notify_assignee_on_final_decision=True)
-            .values_list("assigned_to__email", flat=True)
         )
-        for email in dynamic_assignee_emails:
-            if email and email not in recipients:
-                recipients.append(email)
-    if notif.email_field:
-        dynamic = _get_form_field_email(form_data, notif.email_field)
-        if dynamic and dynamic not in recipients:
-            recipients.append(dynamic)
-    for addr in (notif.static_emails or "").split(","):
-        addr = addr.strip()
-        if addr and "@" in addr and addr not in recipients:
-            recipients.append(addr)
+        # If rule is stage-scoped, limit to that stage
+        if getattr(notif, "stage_id", None):
+            qs = qs.filter(workflow_stage_id=notif.stage_id)
+        for email in qs.values_list("assigned_to__email", flat=True):
+            _add(email)
+
+    # 5. Stage approval groups (NotificationRule only)
+    if getattr(notif, "notify_stage_groups", False) and submission is not None:
+        from django.contrib.auth import get_user_model
+
+        user_model = get_user_model()
+        # Determine which stages to include
+        if getattr(notif, "stage_id", None):
+            stage_ids = [notif.stage_id]
+        else:
+            # All stages in this workflow
+            from .models import WorkflowStage
+
+            stage_ids = list(
+                WorkflowStage.objects.filter(workflow_id=notif.workflow_id).values_list(
+                    "id", flat=True
+                )
+            )
+        from .models import StageApprovalGroup
+
+        group_ids = list(
+            StageApprovalGroup.objects.filter(stage_id__in=stage_ids).values_list(
+                "group_id", flat=True
+            )
+        )
+        if group_ids:
+            for email in (
+                user_model.objects.filter(groups__id__in=group_ids)
+                .exclude(email="")
+                .values_list("email", flat=True)
+                .distinct()
+            ):
+                _add(email)
+
+    # 6. Explicit notify_groups M2M (NotificationRule only)
+    if hasattr(notif, "notify_groups"):
+        try:
+            from django.contrib.auth import get_user_model
+
+            user_model = get_user_model()
+            group_ids = list(notif.notify_groups.values_list("id", flat=True))
+            if group_ids:
+                for email in (
+                    user_model.objects.filter(groups__id__in=group_ids)
+                    .exclude(email="")
+                    .values_list("email", flat=True)
+                    .distinct()
+                ):
+                    _add(email)
+        except ValueError:
+            # M2M not available (unsaved instance)
+            pass
+
     return recipients
 
 
@@ -1099,5 +1162,148 @@ def send_workflow_definition_notifications(
                 template,
                 context,
                 notification_type=notification_type,
+                submission_id=submission_id,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Unified NotificationRule dispatch
+# ---------------------------------------------------------------------------
+
+# Maps NotificationRule event types to email templates
+_EVENT_TEMPLATE_MAP: dict[str, str] = {
+    "submission_received": "emails/submission_notification.html",
+    "approval_request": "emails/approval_request.html",
+    "stage_decision": "emails/approval_notification.html",
+    "workflow_approved": "emails/approval_notification.html",
+    "workflow_denied": "emails/rejection_notification.html",
+    "form_withdrawn": "emails/withdrawal_notification.html",
+}
+
+_EVENT_DEFAULT_SUBJECTS: dict[str, str] = {
+    "submission_received": "Submission Received: {form_name} (ID {submission_id})",
+    "approval_request": "Action Required: {form_name} (ID {submission_id})",
+    "stage_decision": "Stage Decision: {form_name} (ID {submission_id})",
+    "workflow_approved": "Submission Approved: {form_name} (ID {submission_id})",
+    "workflow_denied": "Submission Rejected: {form_name} (ID {submission_id})",
+    "form_withdrawn": "Submission Withdrawn: {form_name} (ID {submission_id})",
+}
+
+
+@shared_task(name="django_forms_workflows.send_notification_rules")
+def send_notification_rules(
+    submission_id: int,
+    event: str,
+    task_id: int | None = None,
+) -> None:
+    """Unified notification dispatch for all NotificationRule records.
+
+    Queries all ``NotificationRule`` records matching the given ``event`` for
+    workflows attached to the submission's form definition.  For each rule:
+
+    1. Evaluates optional ``conditions`` against ``form_data``.
+    2. Resolves all recipient sources (submitter, email field, static,
+       stage assignees, stage groups, explicit groups).
+    3. Sends one email per recipient using the event's template.
+
+    Args:
+        submission_id: The FormSubmission to notify about.
+        event: The NotificationRule event type (e.g. ``workflow_approved``).
+        task_id: Optional ApprovalTask ID (used for approval_request context).
+    """
+    template = _EVENT_TEMPLATE_MAP.get(event)
+    if not template:
+        logger.warning("send_notification_rules: unknown event '%s'", event)
+        return
+
+    submission = FormSubmission.objects.select_related(
+        "form_definition", "submitter"
+    ).get(id=submission_id)
+    form_data = submission.form_data or {}
+    form_name = submission.form_definition.name
+    submission_url, approval_url = _build_form_field_notification_context(
+        submission,
+        ApprovalTask.objects.get(id=task_id) if task_id else None,
+    )
+
+    workflow = getattr(submission.form_definition, "workflow", None)
+    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
+
+    rules = (
+        NotificationRule.objects.filter(
+            workflow__form_definition=submission.form_definition,
+            event=event,
+        )
+        .select_related("workflow", "stage")
+        .prefetch_related("notify_groups")
+    )
+
+    default_subject_tpl = _EVENT_DEFAULT_SUBJECTS.get(
+        event, "{form_name} (ID {submission_id})"
+    )
+
+    for rule in rules:
+        # Evaluate optional conditions
+        if rule.conditions:
+            try:
+                from .conditions import evaluate_conditions
+
+                if not evaluate_conditions(rule.conditions, form_data):
+                    logger.info(
+                        "NotificationRule %s skipped: conditions not met "
+                        "(submission %s, event %s)",
+                        rule.id,
+                        submission.id,
+                        event,
+                    )
+                    continue
+            except Exception:
+                logger.warning(
+                    "NotificationRule %s: error evaluating conditions; skipping.",
+                    rule.id,
+                    exc_info=True,
+                )
+                continue
+
+        # Resolve recipients
+        recipients = _collect_notification_recipients(
+            rule, form_data, submission=submission
+        )
+        if not recipients:
+            logger.info(
+                "NotificationRule %s: no recipients resolved for submission %s; skipping.",
+                rule.id,
+                submission.id,
+            )
+            continue
+
+        subject = (
+            rule.subject_template.format(
+                form_name=form_name, submission_id=submission.id
+            )
+            if rule.subject_template
+            else default_subject_tpl.format(
+                form_name=form_name, submission_id=submission.id
+            )
+        )
+        context = {
+            "submission": submission,
+            "submission_url": submission_url,
+            "approval_url": approval_url,
+            "hide_approval_history": hide_approval_history,
+        }
+        if task_id:
+            try:
+                context["task"] = ApprovalTask.objects.get(id=task_id)
+            except ApprovalTask.DoesNotExist:
+                pass
+
+        for recipient in recipients:
+            _send_html_email(
+                subject,
+                [recipient],
+                template,
+                context,
+                notification_type=event,
                 submission_id=submission_id,
             )

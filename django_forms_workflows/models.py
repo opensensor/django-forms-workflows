@@ -969,6 +969,166 @@ class StageApprovalGroup(models.Model):
         return f"{self.group.name} (pos {self.position})"
 
 
+class NotificationRule(models.Model):
+    """
+    Unified notification rule for all workflow events.
+
+    Each rule specifies **when** to fire (event), **who** to send to
+    (recipient sources), and optional **conditions** evaluated against
+    form_data.  Multiple recipient sources are combined additively
+    and deduplicated.
+
+    Scope:
+      - ``stage`` is null  → workflow-level rule.  For recipient sources
+        like ``notify_stage_assignees`` / ``notify_stage_groups``, this
+        means *all* stages' assignees/groups are included.
+      - ``stage`` is set   → stage-scoped rule.  Recipient sources
+        reference only that specific stage.
+
+    Replaces the former ``WorkflowNotification``,
+    ``StageFormFieldNotification``, and
+    ``WorkflowStage.notify_assignee_on_final_decision``.
+    """
+
+    EVENT_TYPES = [
+        ("submission_received", "Submission Received"),
+        ("approval_request", "Approval Request (stage activated)"),
+        ("stage_decision", "Stage Decision (individual stage completed)"),
+        ("workflow_approved", "Workflow Approved (final decision)"),
+        ("workflow_denied", "Workflow Denied (final decision)"),
+        ("form_withdrawn", "Form Withdrawn"),
+    ]
+
+    workflow = models.ForeignKey(
+        "WorkflowDefinition",
+        on_delete=models.CASCADE,
+        related_name="notification_rules",
+    )
+    stage = models.ForeignKey(
+        "WorkflowStage",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notification_rules",
+        help_text=(
+            "Optional. When set, scopes this rule to a specific stage. "
+            "Recipient sources like 'Notify stage assignees' and "
+            "'Notify stage groups' will reference only this stage. "
+            "When blank, they reference all stages in the workflow."
+        ),
+    )
+    event = models.CharField(
+        max_length=30,
+        choices=EVENT_TYPES,
+        help_text="The workflow event that triggers this notification.",
+    )
+    conditions = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Optional conditions evaluated against form_data. "
+            "Uses the same format as stage trigger_conditions. "
+            "When set, the notification only fires if conditions are met."
+        ),
+    )
+    subject_template = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=(
+            "Custom email subject line. Supports {form_name} and "
+            "{submission_id} placeholders. Leave blank for the default."
+        ),
+    )
+
+    # ── Recipient sources (all optional, combined additively) ──
+
+    notify_submitter = models.BooleanField(
+        default=False,
+        help_text="Include the person who submitted the form.",
+    )
+    email_field = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=(
+            "Form field slug whose submitted value is an email address. "
+            "Resolved from form_data at send time (varies per submission)."
+        ),
+    )
+    static_emails = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text="Comma-separated fixed email addresses.",
+    )
+    notify_stage_assignees = models.BooleanField(
+        default=False,
+        help_text=(
+            "Include dynamically-assigned approvers. When a stage is "
+            "specified, only that stage's assignee is included. When no "
+            "stage is specified, assignees from all stages are included."
+        ),
+    )
+    notify_stage_groups = models.BooleanField(
+        default=False,
+        help_text=(
+            "Include all users in the stage's approval groups. When a "
+            "stage is specified, only that stage's groups are included. "
+            "When no stage is specified, groups from all stages are included."
+        ),
+    )
+    notify_groups = models.ManyToManyField(
+        Group,
+        blank=True,
+        related_name="notification_rules",
+        help_text=(
+            "Additional groups to notify, independent of stage assignment. "
+            "All users in these groups with a non-empty email will receive "
+            "the notification."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "Notification Rule"
+        verbose_name_plural = "Notification Rules"
+        ordering = ["workflow", "event", "stage"]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        has_recipients = (
+            self.notify_submitter
+            or self.email_field
+            or self.static_emails
+            or self.notify_stage_assignees
+            or self.notify_stage_groups
+        )
+        # notify_groups is M2M — can't check before save; validated in admin
+        if not has_recipients:
+            raise ValidationError(
+                "At least one recipient source must be set: "
+                "'Notify submitter', 'Email field', 'Static emails', "
+                "'Notify stage assignees', or 'Notify stage groups'."
+            )
+
+    def __str__(self) -> str:
+        parts = []
+        if self.notify_submitter:
+            parts.append("submitter")
+        if self.email_field:
+            parts.append(f"field:{self.email_field}")
+        if self.static_emails:
+            parts.append("static")
+        if self.notify_stage_assignees:
+            parts.append("assignees")
+        if self.notify_stage_groups:
+            parts.append("stage-groups")
+        target = ", ".join(parts) if parts else "groups"
+        stage_label = f" [{self.stage.name}]" if self.stage_id else ""
+        return f"{self.get_event_display()}{stage_label} → {target}"
+
+
 class StageFormFieldNotification(models.Model):
     """
     A notification rule attached to a workflow stage that can send emails to:
@@ -1194,23 +1354,26 @@ class PendingNotification(models.Model):
     """
     Queue of notifications waiting to be sent as part of a batch digest.
 
-    When a WorkflowDefinition has a non-immediate notification_cadence, all
-    WorkflowNotification-level events (submission_received, approval_notification,
-    rejection_notification, withdrawal_notification) and approval_request events
-    are stored here instead of being emailed immediately.
+    When a WorkflowDefinition has a non-immediate notification_cadence,
+    NotificationRule-level events are stored here instead of being emailed
+    immediately.
 
     The ``send_batched_notifications`` periodic task finds due records, groups them
     by (recipient_email, notification_type, workflow_id), and sends one digest email
-    per group.  Stage form-field notifications (StageFormFieldNotification) always
-    fire immediately and are not stored here.
+    per group.
     """
 
     NOTIFICATION_TYPES = [
         ("submission_received", "Submission Received"),
         ("approval_request", "Approval Request"),
-        ("approval_notification", "Approval Notification"),
-        ("rejection_notification", "Rejection Notification"),
-        ("withdrawal_notification", "Withdrawal Notification"),
+        ("stage_decision", "Stage Decision"),
+        ("workflow_approved", "Workflow Approved"),
+        ("workflow_denied", "Workflow Denied"),
+        ("form_withdrawn", "Form Withdrawn"),
+        # Legacy names kept for unsent records created before migration
+        ("approval_notification", "Approval Notification (legacy)"),
+        ("rejection_notification", "Rejection Notification (legacy)"),
+        ("withdrawal_notification", "Withdrawal Notification (legacy)"),
     ]
 
     workflow = models.ForeignKey(
@@ -2731,13 +2894,19 @@ class NotificationLog(models.Model):
     """Audit trail of every notification email attempted by the package's Celery tasks."""
 
     NOTIFICATION_TYPES = [
-        ("submission_created", "Submission Received"),
+        ("submission_received", "Submission Received"),
         ("approval_request", "Approval Request"),
-        ("approval_notification", "Approved"),
-        ("rejection_notification", "Rejected"),
+        ("stage_decision", "Stage Decision"),
+        ("workflow_approved", "Workflow Approved"),
+        ("workflow_denied", "Workflow Denied"),
+        ("form_withdrawn", "Form Withdrawn"),
         ("approval_reminder", "Approval Reminder"),
         ("escalation", "Escalation"),
         ("batched", "Batched Digest"),
+        # Legacy names kept for historical records
+        ("submission_created", "Submission Received (legacy)"),
+        ("approval_notification", "Approved (legacy)"),
+        ("rejection_notification", "Rejected (legacy)"),
         ("other", "Other"),
     ]
     STATUS_CHOICES = [

@@ -52,66 +52,114 @@ logger = logging.getLogger(__name__)
 # ---- notification shims ----
 
 
-def _notify_workflow_notification_with_cadence(
-    submission: FormSubmission, notification_type: str
+def _dispatch_notification_rules(
+    submission: FormSubmission, event: str, task_id: int | None = None
 ) -> None:
-    """Route WorkflowNotification rules through the batch queue or fire immediately.
+    """Dispatch all NotificationRule records for the given event.
 
-    Stage form-field notifications (StageFormFieldNotification) are always dispatched
-    immediately by their own callers and are not affected by this function.
+    Also fires legacy task functions for backward compatibility with
+    existing WorkflowNotification / StageFormFieldNotification records
+    that have not yet been migrated or dropped.
+
+    Uses Celery when available; falls back to synchronous dispatch.
+    Respects the workflow's ``notification_cadence`` for batching.
     """
-    workflow = getattr(submission.form_definition, "workflow", None)
-    cadence = (
-        getattr(workflow, "notification_cadence", "immediate")
-        if workflow
-        else "immediate"
-    )
+    # --- Unified NotificationRule dispatch ---
+    try:
+        from .tasks import send_notification_rules
 
-    if cadence != "immediate" and workflow is not None:
+        def _fire_rules() -> None:
+            try:
+                send_notification_rules.delay(submission.id, event, task_id)
+            except Exception:
+                logger.warning(
+                    "NotificationRule '%s' fell back to synchronous for submission %s",
+                    event,
+                    submission.id,
+                )
+                send_notification_rules(submission.id, event, task_id)
+
+        transaction.on_commit(_fire_rules)
+    except Exception:
+        logger.warning(
+            "Could not dispatch NotificationRule '%s' for submission %s",
+            event,
+            submission.id,
+        )
+
+    # --- Legacy dispatch (backward compat until old models are dropped) ---
+    _legacy_event_map = {
+        "submission_received": "submission_received",
+        "workflow_approved": "approval_notification",
+        "workflow_denied": "rejection_notification",
+        "form_withdrawn": "withdrawal_notification",
+    }
+    legacy_type = _legacy_event_map.get(event)
+    if legacy_type:
+        # Legacy WorkflowNotification dispatch
         try:
-            from .tasks import _queue_workflow_level_notifications
+            from .tasks import send_workflow_definition_notifications
 
-            _queue_workflow_level_notifications(submission, workflow, notification_type)
+            def _fire_legacy_wn() -> None:
+                try:
+                    send_workflow_definition_notifications.delay(
+                        submission.id, legacy_type
+                    )
+                except Exception:
+                    send_workflow_definition_notifications(submission.id, legacy_type)
+
+            transaction.on_commit(_fire_legacy_wn)
         except Exception:
-            logger.warning(
-                "Failed to queue batched %s notification for submission %s; "
-                "falling back to immediate.",
-                notification_type,
-                submission.id,
-            )
-            _notify_workflow_level_recipients(submission, notification_type)
-        return
+            pass
 
-    _notify_workflow_level_recipients(submission, notification_type)
+        # Legacy StageFormFieldNotification dispatch
+        if legacy_type != "withdrawal_notification":
+            try:
+                from .tasks import send_submission_form_field_notifications
+
+                def _fire_legacy_sfn() -> None:
+                    try:
+                        send_submission_form_field_notifications.delay(
+                            submission.id, legacy_type
+                        )
+                    except Exception:
+                        send_submission_form_field_notifications(
+                            submission.id, legacy_type
+                        )
+
+                transaction.on_commit(_fire_legacy_sfn)
+            except Exception:
+                pass
 
 
 def _notify_submission_created(submission: FormSubmission) -> None:
-    # Stage form-field notifications always fire immediately regardless of cadence.
-    _notify_form_field_recipients_for_submission(submission, "submission_received")
-    _notify_workflow_notification_with_cadence(submission, "submission_received")
+    _dispatch_notification_rules(submission, "submission_received")
 
 
 def _notify_task_request(task: ApprovalTask) -> None:
+    """Fire approval_request notifications for a newly activated task.
+
+    Dispatches both the unified NotificationRule path and the legacy
+    send_approval_request task (which handles the built-in approval
+    request email to the assigned approver).
+    """
+    _dispatch_notification_rules(task.submission, "approval_request", task_id=task.id)
+    # Legacy: direct approval request email to the assigned user/group
     workflow = getattr(task.submission.form_definition, "workflow", None)
     cadence = (
         getattr(workflow, "notification_cadence", "immediate")
         if workflow
         else "immediate"
     )
-
     if cadence != "immediate" and workflow is not None:
         try:
             from .tasks import _queue_approval_request_notifications
 
             _queue_approval_request_notifications(task, workflow)
         except Exception:
-            logger.warning(
-                "Failed to queue batched approval request; falling back to immediate"
-            )
             _notify_task_request_immediate(task)
-        return
-
-    _notify_task_request_immediate(task)
+    else:
+        _notify_task_request_immediate(task)
 
 
 def _notify_task_request_immediate(task: ApprovalTask) -> None:
@@ -124,85 +172,11 @@ def _notify_task_request_immediate(task: ApprovalTask) -> None:
 
 
 def _notify_final_approval(submission: FormSubmission) -> None:
-    _notify_form_field_recipients_for_submission(submission, "approval_notification")
-    _notify_workflow_notification_with_cadence(submission, "approval_notification")
+    _dispatch_notification_rules(submission, "workflow_approved")
 
 
 def _notify_rejection(submission: FormSubmission) -> None:
-    _notify_form_field_recipients_for_submission(submission, "rejection_notification")
-    _notify_workflow_notification_with_cadence(submission, "rejection_notification")
-
-
-def _notify_form_field_recipients_for_submission(
-    submission: FormSubmission,
-    notification_type: str,
-) -> None:
-    """Dispatch form-field notifications for submission-level events.
-
-    Iterates every workflow attached to the form, then every stage in those
-    workflows, collecting ``StageFormFieldNotification`` records whose type
-    matches ``notification_type``. Dispatches a single Celery task per record
-    (or logs a warning if Celery is unavailable).
-    """
-    try:
-        from .tasks import send_submission_form_field_notifications
-    except Exception:
-        logger.warning(
-            "Could not dispatch form-field '%s' notifications for submission %s",
-            notification_type,
-            submission.id,
-        )
-        return
-
-    def _dispatch() -> None:
-        try:
-            send_submission_form_field_notifications.delay(
-                submission.id, notification_type
-            )
-        except Exception:
-            logger.warning(
-                "Form-field '%s' notifications fell back to synchronous dispatch for submission %s",
-                notification_type,
-                submission.id,
-            )
-            send_submission_form_field_notifications(submission.id, notification_type)
-
-    transaction.on_commit(_dispatch)
-
-
-def _notify_workflow_level_recipients(
-    submission: FormSubmission,
-    notification_type: str,
-) -> None:
-    """Dispatch ``WorkflowNotification`` rules for a workflow-conclusion event.
-
-    Fires ``send_workflow_definition_notifications`` asynchronously (or
-    synchronously if Celery is unavailable) for the given event type.
-    """
-    try:
-        from .tasks import send_workflow_definition_notifications
-    except Exception:
-        logger.warning(
-            "Could not dispatch WorkflowNotification '%s' rules for submission %s",
-            notification_type,
-            submission.id,
-        )
-        return
-
-    def _dispatch() -> None:
-        try:
-            send_workflow_definition_notifications.delay(
-                submission.id, notification_type
-            )
-        except Exception:
-            logger.warning(
-                "WorkflowNotification '%s' fell back to synchronous dispatch for submission %s",
-                notification_type,
-                submission.id,
-            )
-            send_workflow_definition_notifications(submission.id, notification_type)
-
-    transaction.on_commit(_dispatch)
+    _dispatch_notification_rules(submission, "workflow_denied")
 
 
 def _due_date_for(workflow: WorkflowDefinition):
@@ -789,6 +763,20 @@ def _advance_to_next_stage(
             workflow_stage=sibling, status="pending"
         ).exists():
             return  # A parallel branch is still in progress
+
+    # Fire stage_decision notifications for all completed siblings
+    for sibling in (s for s in stages if s.order == current_order):
+        completed_task = (
+            submission.approval_tasks.filter(workflow_stage=sibling)
+            .exclude(status="pending")
+            .order_by("-completed_at")
+            .first()
+        )
+        _dispatch_notification_rules(
+            submission,
+            "stage_decision",
+            task_id=completed_task.id if completed_task else None,
+        )
 
     # Find stages at the next order level within this workflow track,
     # filtering by trigger_conditions against the submission data.

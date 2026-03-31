@@ -34,6 +34,7 @@ from .models import (
     LDAPGroupProfile,
     ManagedFile,
     NotificationLog,
+    NotificationRule,
     PostSubmissionAction,
     PrefillSource,
     StageApprovalGroup,
@@ -515,13 +516,55 @@ class WorkflowNotificationInline(nested_admin.NestedStackedInline):
     )
 
 
+class NotificationRuleInline(nested_admin.NestedStackedInline):
+    """Unified notification rule inline.
+
+    Replaces WorkflowNotificationInline and StageFormFieldNotificationInline
+    with a single, generic inline that supports all event types and all
+    recipient sources.
+    """
+
+    model = NotificationRule
+    extra = 0
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    ("event", "stage"),
+                    (
+                        "notify_submitter",
+                        "notify_stage_assignees",
+                        "notify_stage_groups",
+                    ),
+                    ("email_field", "static_emails"),
+                    "notify_groups",
+                    "subject_template",
+                )
+            },
+        ),
+        (
+            "Conditions (optional)",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "Leave blank to always send. "
+                    "Use the same JSON format as stage trigger_conditions — "
+                    'e.g. <code>{"operator":"AND","conditions":[{"field":"department","operator":"equals","value":"Graduate"}]}</code>'
+                ),
+                "fields": ("conditions",),
+            },
+        ),
+    )
+
+
 class WorkflowDefinitionInline(nested_admin.NestedStackedInline):
     """Inline for editing a WorkflowDefinition directly from the FormDefinition
     change page."""
 
     model = WorkflowDefinition
     extra = 0
-    inlines = [WorkflowStageInline, WorkflowNotificationInline]
+    inlines = [WorkflowStageInline, NotificationRuleInline, WorkflowNotificationInline]
     fields = [
         "name_label",
         "requires_approval",
@@ -1466,7 +1509,12 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
 
 @admin.register(WorkflowDefinition)
 class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
-    inlines = [WorkflowStageInline, WorkflowNotificationInline, ChangeHistoryInline]
+    inlines = [
+        WorkflowStageInline,
+        NotificationRuleInline,
+        WorkflowNotificationInline,
+        ChangeHistoryInline,
+    ]
     list_display = (
         "form_definition",
         "requires_approval",

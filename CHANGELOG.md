@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-03-31
+
+### Added
+- **Unified `NotificationRule` model** — Replaces `WorkflowNotification`, `StageFormFieldNotification`, and `WorkflowStage.notify_assignee_on_final_decision` with a single, generic model. All six recipient sources (submitter, email field, static emails, stage assignees, stage groups, arbitrary groups) are available on every event type, letting admins configure any combination they need.
+- **New event types** — `stage_decision` (fires when an individual stage completes), `workflow_approved`, `workflow_denied`, `form_withdrawn` replace the legacy `approval_notification`, `rejection_notification`, `withdrawal_notification` names.
+- **Group notifications** — `notify_stage_groups` includes all users in a stage's approval groups; `notify_groups` M2M allows notifying arbitrary Django groups independent of stage assignment.
+- **Stage-scoped vs. workflow-scoped rules** — Setting the optional `stage` FK scopes `notify_stage_assignees` and `notify_stage_groups` to a specific stage. Leaving it null includes all stages.
+- **Unified `send_notification_rules` Celery task** — Single dispatch entry point for all `NotificationRule` records, with full conditions evaluation, recipient resolution, and template rendering.
+- **Data migration `0075`** — Automatically migrates all existing `WorkflowNotification`, `StageFormFieldNotification`, and `notify_assignee_on_final_decision` records into `NotificationRule`.
+- **Comprehensive notification documentation** — `docs/NOTIFICATIONS.md` with architecture overview, model reference, 10 configuration scenarios, troubleshooting guide, and migration notes.
+
+### Changed
+- **Legacy models retained** — `WorkflowNotification` and `StageFormFieldNotification` remain for backward compatibility. The workflow engine dispatches both legacy and unified paths in parallel. Legacy models will be removed in a future release.
+- **Updated `PendingNotification` and `NotificationLog` event types** — Both models now include the new event names alongside legacy names for historical records.
+
 ## [0.42.2] - 2026-03-31
 
 ### Fixed

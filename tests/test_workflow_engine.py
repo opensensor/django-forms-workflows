@@ -16,8 +16,7 @@ from django_forms_workflows.models import (
     WorkflowStage,
 )
 from django_forms_workflows.workflow_engine import (
-    _notify_form_field_recipients_for_submission,
-    _notify_workflow_level_recipients,
+    _dispatch_notification_rules,
     create_workflow_tasks,
     handle_approval,
     handle_rejection,
@@ -74,29 +73,14 @@ class TestNotificationDispatch:
         "django_forms_workflows.workflow_engine.transaction.on_commit",
         side_effect=lambda fn: fn(),
     )
-    @patch("django_forms_workflows.tasks.send_workflow_definition_notifications.delay")
-    def test_workflow_notifications_dispatch_on_commit(
+    @patch("django_forms_workflows.tasks.send_notification_rules.delay")
+    def test_notification_rules_dispatch_on_commit(
         self, mock_delay, mock_on_commit, submission
     ):
-        _notify_workflow_level_recipients(submission, "submission_received")
+        _dispatch_notification_rules(submission, "submission_received")
 
-        mock_on_commit.assert_called_once()
-        mock_delay.assert_called_once_with(submission.id, "submission_received")
-
-    @patch(
-        "django_forms_workflows.workflow_engine.transaction.on_commit",
-        side_effect=lambda fn: fn(),
-    )
-    @patch(
-        "django_forms_workflows.tasks.send_submission_form_field_notifications.delay"
-    )
-    def test_form_field_notifications_dispatch_on_commit(
-        self, mock_delay, mock_on_commit, submission
-    ):
-        _notify_form_field_recipients_for_submission(submission, "submission_received")
-
-        mock_on_commit.assert_called_once()
-        mock_delay.assert_called_once_with(submission.id, "submission_received")
+        mock_on_commit.assert_called()
+        mock_delay.assert_any_call(submission.id, "submission_received", None)
 
 
 # ── Legacy flat mode (all) ────────────────────────────────────────────────

@@ -394,28 +394,32 @@ def form_auto_save(request, slug):
         raw = json.loads(request.body)
         data = {k: v for k, v in raw.items() if k not in _auto_save_skip}
 
-        # Upsert draft — form_data must be in defaults so the INSERT on first
-        # save does not hit the NOT NULL constraint on that column.
-        draft, created = FormSubmission.objects.update_or_create(
-            form_definition=form_def,
-            submitter=request.user,
-            status="draft",
-            defaults={
-                "form_data": data,
-                "submission_ip": get_client_ip(request),
-                "user_agent": request.META.get("HTTP_USER_AGENT", ""),
-            },
-        )
+        # Upsert draft.  We avoid update_or_create so we can set
+        # _skip_change_history *before* save() fires the signal.
+        try:
+            draft = FormSubmission.objects.get(
+                form_definition=form_def,
+                submitter=request.user,
+                status="draft",
+            )
+        except FormSubmission.DoesNotExist:
+            draft = FormSubmission(
+                form_definition=form_def,
+                submitter=request.user,
+                status="draft",
+            )
 
-        # Log audit — use "update" which is a valid ACTION_TYPES choice
-        AuditLog.objects.create(
-            action="update",
-            object_type="FormSubmission",
-            object_id=draft.id,
-            user=request.user,
-            user_ip=get_client_ip(request),
-            comments="Auto-saved draft",
-        )
+        draft.form_data = data
+        draft.submission_ip = get_client_ip(request)
+        draft.user_agent = request.META.get("HTTP_USER_AGENT", "")
+
+        # Skip audit logging for auto-saves — they fire every
+        # ~30 seconds and would generate excessive AuditLog /
+        # ChangeHistory rows.  The draft is already persisted;
+        # a proper AuditLog entry is written on explicit "Save Draft"
+        # or "Submit".
+        draft._skip_change_history = True
+        draft.save()
 
         return JsonResponse(
             {

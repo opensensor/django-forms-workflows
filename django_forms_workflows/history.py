@@ -94,6 +94,9 @@ def _diff(old, new):
 
 def _pre_save_handler(sender, instance, **kwargs):
     """Snapshot the *current* DB state before the save overwrites it."""
+    # Allow callers to opt out (e.g. auto-save, bulk imports)
+    if getattr(instance, "_skip_change_history", False):
+        return
     if not instance.pk:
         return  # new object — nothing to diff against
     try:
@@ -105,6 +108,10 @@ def _pre_save_handler(sender, instance, **kwargs):
 
 def _post_save_handler(sender, instance, created, **kwargs):
     """Compare old → new and log any changes."""
+    # Allow callers to opt out (e.g. auto-save, bulk imports)
+    if getattr(instance, "_skip_change_history", False):
+        return
+
     from .models import ChangeHistory
 
     user = get_current_user()

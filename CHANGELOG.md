@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.44.1] - 2026-03-31
+
+### Fixed
+- **Suppress audit logs for auto-saves** — Removed `AuditLog` creation and `ChangeHistory` signal tracking from the `form_auto_save` view. Auto-saves fire every ~30 seconds and were generating excessive database rows. Explicit "Save Draft" and "Submit" actions still create audit entries as before.
+
+### Added
+- **`_skip_change_history` opt-out flag** — Any code can now set `instance._skip_change_history = True` before calling `.save()` to suppress `ChangeHistory` signal tracking (useful for auto-saves, bulk imports, etc.).
+- **Sync API: workflow-level notification rules** — Export and import now include workflow-scoped `NotificationRule` entries (where `stage=null`), with dedicated prefetch and diff support.
+- **Sync API: `allow_edit_form_data`** — Stage serialization and diff comparison now include the `allow_edit_form_data` field.
+
 ## [0.44.0] - 2026-03-31
 
 ### Added

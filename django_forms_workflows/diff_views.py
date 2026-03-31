@@ -80,6 +80,7 @@ def _build_summary(forms_data):
                 "validate_assignee_group",
                 "allow_reassign",
                 "allow_send_back",
+                "allow_edit_form_data",
                 "approve_label",
                 "approval_logic",
                 "requires_manager_approval",
@@ -142,6 +143,14 @@ def _build_summary(forms_data):
             for key in wf_setting_keys:
                 if b_wf.get(key) != o_wf.get(key):
                     diffs.append(f"Workflow {key}: {b_wf.get(key)} → {o_wf.get(key)}")
+
+            # Workflow-level notification rules (stage=null)
+            b_wf_notifs = b_wf.get("notification_rules", [])
+            o_wf_notifs = o_wf.get("notification_rules", [])
+            if b_wf_notifs != o_wf_notifs:
+                diffs.append(
+                    f"Workflow notification rules: {len(b_wf_notifs)} → {len(o_wf_notifs)}"
+                )
 
         # Form metadata
         meta_keys = [

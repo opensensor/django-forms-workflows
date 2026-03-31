@@ -251,6 +251,7 @@ def _serialize_workflow_stage(stage):
         "validate_assignee_group": stage.validate_assignee_group,
         "allow_reassign": stage.allow_reassign,
         "allow_send_back": stage.allow_send_back,
+        "allow_edit_form_data": stage.allow_edit_form_data,
         "notification_rules": [
             {
                 "event": r.event,
@@ -310,6 +311,21 @@ def _serialize_workflow(wf):
         "allow_bulk_pdf_export": wf.allow_bulk_pdf_export,
         # Visual editor data
         "visual_workflow_data": wf.visual_workflow_data,
+        # Workflow-level notification rules (stage=null)
+        "notification_rules": [
+            {
+                "event": r.event,
+                "notify_submitter": r.notify_submitter,
+                "email_field": r.email_field,
+                "static_emails": r.static_emails,
+                "notify_stage_assignees": r.notify_stage_assignees,
+                "notify_stage_groups": r.notify_stage_groups,
+                "subject_template": r.subject_template,
+                "conditions": r.conditions,
+                "notify_groups": [g.name for g in r.notify_groups.all()],
+            }
+            for r in wf.notification_rules.filter(stage__isnull=True)
+        ],
         # Stages and sub-workflows
         "stages": [
             _serialize_workflow_stage(s) for s in wf.stages.all().order_by("order")
@@ -445,6 +461,8 @@ def build_export_payload(queryset):
         "workflows__stages",
         "workflows__stages__stageapprovalgroup_set",
         "workflows__stages__stageapprovalgroup_set__group",
+        "workflows__notification_rules",
+        "workflows__notification_rules__notify_groups",
         "workflows__stages__notification_rules",
         "workflows__stages__notification_rules__notify_groups",
         "workflows__sub_workflow_config",
@@ -627,6 +645,9 @@ def import_form(form_data, conflict="update", category_cache=None):
         stages_data = wf_data.pop("stages", [])
         sub_wf_data = wf_data.pop("sub_workflow_config", None)
 
+        # Pop notification rules before creating the workflow object
+        wf_notif_data = wf_data.pop("notification_rules", [])
+
         # Silently discard legacy keys that may appear in old exports
         for legacy_key in (
             "escalation_threshold",
@@ -648,6 +669,17 @@ def import_form(form_data, conflict="update", category_cache=None):
                 "notification_cadence_time": nc_time,
             },
         )
+
+        # Sync workflow-level notification rules (stage=null)
+        wf.notification_rules.filter(stage__isnull=True).delete()
+        for notif in wf_notif_data:
+            notif = dict(notif)
+            group_names = notif.pop("notify_groups", [])
+            if "notification_type" in notif and "event" not in notif:
+                notif["event"] = notif.pop("notification_type")
+            rule = NotificationRule.objects.create(workflow=wf, stage=None, **notif)
+            for gname in group_names:
+                rule.notify_groups.add(_get_or_create_group(gname))
 
         # Update stages in-place (matched by order + name) so that existing
         # ApprovalTask records — which hold a PROTECT FK to WorkflowStage —

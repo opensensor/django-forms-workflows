@@ -1530,7 +1530,7 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
 
     @admin.display(description="Notification rules")
     def notification_rule_count(self, obj):
-        count = obj.notifications.count()
+        count = obj.notification_rules.count()
         if count == 0:
             return "—"
         return format_html(

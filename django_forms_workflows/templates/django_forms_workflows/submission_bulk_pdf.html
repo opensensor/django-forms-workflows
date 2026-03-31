@@ -130,6 +130,7 @@
     </tbody>
 </table>
 
+{% if not item.hide_approval_history %}
 {% for section in item.approval_step_sections %}
 <div class="step-section-header">{{ section.step_name }}</div>
 <p class="step-meta">
@@ -151,6 +152,7 @@
     </tbody>
 </table>
 {% endfor %}
+{% endif %}
 
 </div>
 {% endfor %}

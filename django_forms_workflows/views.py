@@ -2094,7 +2094,8 @@ def submission_pdf(request, submission_id):
     # --- privacy: mirror hide_approval_history logic from submission_detail ---
     workflow = getattr(form_def, "workflow", None)
     is_submitter_only = (
-        submission.submitter == request.user
+        submission.submitter_id is not None
+        and submission.submitter_id == request.user.pk
         and not request.user.is_superuser
         and not user_can_approve(request.user, submission)
         and not request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
@@ -2105,8 +2106,10 @@ def submission_pdf(request, submission_id):
     )
 
     # --- build width-aware row groups for PDF layout ---
-    pdf_rows = _build_pdf_rows(submission)
-    approval_step_sections = _build_approval_step_sections(submission)
+    pdf_rows = _build_pdf_rows(submission, hide_approval_history=hide_approval_history)
+    approval_step_sections = (
+        _build_approval_step_sections(submission) if not hide_approval_history else []
+    )
 
     # --- render HTML template to a string ---
     from django.template.loader import render_to_string
@@ -2470,7 +2473,7 @@ def _build_ordered_form_data(submission, form_data):
     return ordered
 
 
-def _build_pdf_rows(submission):
+def _build_pdf_rows(submission, hide_approval_history=False):
     """Return form fields grouped into display rows for PDF rendering.
 
     Unlike :func:`_build_ordered_form_data`, this helper:
@@ -2517,6 +2520,11 @@ def _build_pdf_rows(submission):
 
     seen_keys: set = set()
 
+    # Collect ALL stage-scoped field base names so the fallback loop can
+    # also exclude indexed variants (e.g. payment_type_1, payment_type_2)
+    # produced by sub-workflow instances.
+    stage_field_names: set = set()
+
     for field in submission.form_definition.fields.order_by("order"):
         if field.field_type == "section":
             flush_half()
@@ -2531,6 +2539,7 @@ def _build_pdf_rows(submission):
         # fallback loop below cannot accidentally include them either.
         if field.workflow_stage_id is not None:
             seen_keys.add(key)
+            stage_field_names.add(key)
             continue
 
         if key not in form_data:
@@ -2564,10 +2573,21 @@ def _build_pdf_rows(submission):
     flush_half()
     flush_third()
 
-    # Append any form_data keys not covered by field definitions (approval-step
-    # fields, legacy entries, etc.) so nothing is silently dropped.
+    # Append any form_data keys not covered by field definitions (legacy
+    # entries, manually-added keys, etc.) so nothing is silently dropped.
+    # BUT skip keys that belong to stage-scoped fields — they have their
+    # own dedicated approval-step sections and must not leak into the main
+    # form data table.  We also check indexed variants (e.g. field_name_1)
+    # produced by sub-workflow instances.
+    def _is_stage_field(k):
+        if k in stage_field_names:
+            return True
+        # Check for indexed suffix: "base_name_<int>"
+        parts = k.rsplit("_", 1)
+        return len(parts) == 2 and parts[1].isdigit() and parts[0] in stage_field_names
+
     for key, value in form_data.items():
-        if key not in seen_keys:
+        if key not in seen_keys and not _is_stage_field(key):
             rows.append(
                 {
                     "type": "full",
@@ -3027,7 +3047,7 @@ def bulk_export_submissions_pdf(request):
     allowed = []
     for sub in submissions:
         can_view = (
-            sub.submitter == request.user
+            (sub.submitter_id is not None and sub.submitter_id == request.user.pk)
             or request.user.is_superuser
             or user_can_approve(request.user, sub)
             or request.user.groups.filter(
@@ -3043,15 +3063,29 @@ def bulk_export_submissions_pdf(request):
     if not allowed:
         return HttpResponse("No exportable submissions found.", status=404)
 
-    # Build per-submission context items
+    # Build per-submission context items, respecting privacy settings
     submission_items = []
     for sub in allowed:
+        form_def = sub.form_definition
+        is_submitter_only = (
+            sub.submitter_id is not None
+            and sub.submitter_id == request.user.pk
+            and not request.user.is_superuser
+            and not user_can_approve(request.user, sub)
+            and not request.user.groups.filter(
+                id__in=form_def.admin_groups.all()
+            ).exists()
+        )
+        hide = getattr(form_def, "hide_approval_history", False) and is_submitter_only
         submission_items.append(
             {
                 "submission": sub,
-                "form_def": sub.form_definition,
-                "pdf_rows": _build_pdf_rows(sub),
-                "approval_step_sections": _build_approval_step_sections(sub),
+                "form_def": form_def,
+                "pdf_rows": _build_pdf_rows(sub, hide_approval_history=hide),
+                "approval_step_sections": (
+                    _build_approval_step_sections(sub) if not hide else []
+                ),
+                "hide_approval_history": hide,
             }
         )
 

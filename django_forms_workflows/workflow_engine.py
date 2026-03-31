@@ -771,6 +771,7 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
         submission.save(update_fields=["status"])
 
     any_created = False
+    trigger_skipped = False  # a stage with groups existed but its trigger didn't match
     for workflow in approval_workflows:
         due_date = _due_date_for(workflow)
         stages = list(workflow.stages.order_by("order", "id"))
@@ -778,12 +779,23 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
             continue  # No stages configured for this track
 
         first_order = stages[0].order
+        first_order_all = [s for s in stages if s.order == first_order]
         first_order_stages = [
             s
-            for s in stages
-            if s.order == first_order
-            and evaluate_conditions(s.trigger_conditions, form_data)
+            for s in first_order_all
+            if evaluate_conditions(s.trigger_conditions, form_data)
         ]
+
+        # Detect stages that HAVE approval groups but whose trigger
+        # conditions didn't match — this distinguishes a genuine "no
+        # stages to run" from a misconfiguration where choices were
+        # renamed but triggers were not updated.
+        for s in first_order_all:
+            if s not in first_order_stages:
+                groups = list(s.approval_groups.all())
+                if groups or s.requires_manager_approval:
+                    trigger_skipped = True
+
         for stage in first_order_stages:
             groups = list(stage.approval_groups.all())
             if not stage.requires_manager_approval and not groups:
@@ -792,7 +804,24 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
             any_created = True
 
     if not any_created:
-        _finalize_submission(submission)
+        if trigger_skipped:
+            # Non-empty stages exist but their trigger conditions didn't
+            # match — likely a configuration issue (e.g. form choices were
+            # renamed but stage triggers were not updated).  Leave the
+            # submission as pending_approval so it isn't silently
+            # auto-approved.
+            logger.warning(
+                "Submission %s has approval workflows with stages but no "
+                "first-order stage trigger conditions matched.  The submission "
+                "will remain pending_approval.  Check stage trigger conditions "
+                "for workflow(s): %s",
+                submission.pk,
+                ", ".join(str(w.pk) for w in approval_workflows),
+            )
+        else:
+            # All stages are genuinely empty or all trigger conditions
+            # matched but stages had no groups — nothing to approve.
+            _finalize_submission(submission)
 
 
 @transaction.atomic

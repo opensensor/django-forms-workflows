@@ -712,8 +712,10 @@ class TestConditionalStageTriggers:
         )
         create_workflow_tasks(sub)
         sub.refresh_from_db()
-        # Stage condition not met → no tasks created → auto-approved
-        assert sub.status == "approved"
+        # Stage condition not met → no tasks created → remains pending so
+        # admins can investigate the configuration (prevents silent
+        # auto-approval when trigger conditions are misconfigured).
+        assert sub.status == "pending_approval"
         assert sub.approval_tasks.count() == 0
 
     @patch("django_forms_workflows.workflow_engine._notify_task_request")

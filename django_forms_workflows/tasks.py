@@ -398,8 +398,8 @@ def check_approval_deadlines() -> str:
                             status="skipped"
                         )
                         try:
-                            send_workflow_definition_notifications.delay(
-                                submission.id, "approval_notification"
+                            send_notification_rules.delay(
+                                submission.id, "workflow_approved"
                             )
                         except Exception:
                             logger.debug(
@@ -782,45 +782,6 @@ def _build_form_field_notification_context(
         else submission_url
     )
     return submission_url, approval_url
-
-
-# Legacy task stubs — kept only so in-flight Celery messages don't fail on
-# upgrade.  New code uses send_notification_rules exclusively.
-
-
-@shared_task(name="django_forms_workflows.send_stage_form_field_notifications")
-def send_stage_form_field_notifications(task_id: int) -> None:  # noqa: ARG001
-    logger.info(
-        "Legacy send_stage_form_field_notifications called (task_id=%s); "
-        "no-op — use NotificationRule instead.",
-        task_id,
-    )
-
-
-@shared_task(name="django_forms_workflows.send_submission_form_field_notifications")
-def send_submission_form_field_notifications(
-    submission_id: int,
-    notification_type: str,  # noqa: ARG001
-) -> None:
-    logger.info(
-        "Legacy send_submission_form_field_notifications called "
-        "(submission_id=%s, type=%s); no-op — use NotificationRule instead.",
-        submission_id,
-        notification_type,
-    )
-
-
-@shared_task(name="django_forms_workflows.send_workflow_definition_notifications")
-def send_workflow_definition_notifications(
-    submission_id: int,
-    notification_type: str,  # noqa: ARG001
-) -> None:
-    logger.info(
-        "Legacy send_workflow_definition_notifications called "
-        "(submission_id=%s, type=%s); no-op — use NotificationRule instead.",
-        submission_id,
-        notification_type,
-    )
 
 
 # ---------------------------------------------------------------------------

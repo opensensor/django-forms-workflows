@@ -32,6 +32,12 @@ class WorkflowBuilder {
         this.isPanning = false;
         this.minZoom = 0.25;
         this.maxZoom = 2;
+        this.workspaceWidth = 0;
+        this.workspaceHeight = 0;
+        this.minWorkspaceWidth = 2400;
+        this.minWorkspaceHeight = 1600;
+        this.workspacePaddingX = 360;
+        this.workspacePaddingY = 280;
 
         this.init();
     }
@@ -65,16 +71,13 @@ class WorkflowBuilder {
         // Create a single transform wrapper that holds both SVG and nodes.
         // Applying pan/zoom to one wrapper keeps arrows and nodes aligned.
         this.transformWrapper = document.createElement('div');
-        this.transformWrapper.style.position = 'absolute';
-        this.transformWrapper.style.top = '0';
-        this.transformWrapper.style.left = '0';
-        this.transformWrapper.style.width = '100%';
-        this.transformWrapper.style.height = '100%';
-        this.transformWrapper.style.transformOrigin = '0 0';
+        this.transformWrapper.className = 'workflow-transform-wrapper';
 
         // Move SVG into the wrapper, then add wrapper to canvas
         this.canvas.appendChild(this.transformWrapper);
         this.transformWrapper.appendChild(this.svg);
+        this.updateWorkspaceBounds();
+        window.addEventListener('resize', () => this.updateWorkspaceBounds());
 
         // Make canvas droppable
         this.canvas.addEventListener('dragover', (e) => {
@@ -109,7 +112,7 @@ class WorkflowBuilder {
 
             e.preventDefault();
             this.isPanning = true;
-            this.canvas.style.cursor = 'grabbing';
+            this.canvas.classList.add('is-panning');
             const startX = e.clientX, startY = e.clientY;
             const startPanX = this.panX, startPanY = this.panY;
 
@@ -120,7 +123,7 @@ class WorkflowBuilder {
             };
             const onUp = () => {
                 this.isPanning = false;
-                this.canvas.style.cursor = '';
+                this.canvas.classList.remove('is-panning');
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             };
@@ -156,9 +159,51 @@ class WorkflowBuilder {
     /** Convert client (screen) coordinates to canvas (node) coordinates. */
     clientToCanvas(clientX, clientY) {
         const rect = this.canvas.getBoundingClientRect();
-        const x = (clientX - rect.left - this.panX) / this.zoom;
-        const y = (clientY - rect.top - this.panY) / this.zoom;
+        const x = (clientX - rect.left + this.canvas.scrollLeft - this.panX) / this.zoom;
+        const y = (clientY - rect.top + this.canvas.scrollTop - this.panY) / this.zoom;
         return [x, y];
+    }
+
+    getWorkspaceBounds(extraPoints = []) {
+        const viewportWidth = this.canvas?.clientWidth || 0;
+        const viewportHeight = this.canvas?.clientHeight || 0;
+        let maxX = Math.max(this.minWorkspaceWidth, viewportWidth + this.workspacePaddingX);
+        let maxY = Math.max(this.minWorkspaceHeight, viewportHeight + this.workspacePaddingY);
+
+        this.nodes.forEach((node) => {
+            maxX = Math.max(maxX, node.x + 340 + this.workspacePaddingX);
+            maxY = Math.max(maxY, node.y + 220 + this.workspacePaddingY);
+        });
+
+        extraPoints.forEach((point) => {
+            if (!point) return;
+            maxX = Math.max(maxX, point.x + this.workspacePaddingX);
+            maxY = Math.max(maxY, point.y + this.workspacePaddingY);
+        });
+
+        return {
+            width: Math.ceil(maxX),
+            height: Math.ceil(maxY),
+        };
+    }
+
+    setWorkspaceSize(width, height) {
+        if (!this.transformWrapper || !this.svg) return;
+        if (width === this.workspaceWidth && height === this.workspaceHeight) return;
+
+        this.workspaceWidth = width;
+        this.workspaceHeight = height;
+        this.transformWrapper.style.width = `${width}px`;
+        this.transformWrapper.style.height = `${height}px`;
+        this.svg.setAttribute('width', width);
+        this.svg.setAttribute('height', height);
+        this.svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    }
+
+    updateWorkspaceBounds(extraPoints = []) {
+        if (!this.canvas || !this.transformWrapper || !this.svg) return;
+        const bounds = this.getWorkspaceBounds(extraPoints);
+        this.setWorkspaceSize(bounds.width, bounds.height);
     }
 
     /** Apply the current pan/zoom transform to the single wrapper (nodes + SVG). */
@@ -699,7 +744,7 @@ class WorkflowBuilder {
         const content = document.getElementById('propertiesContent');
         content.innerHTML = `
             <div class="properties-empty">
-                <i class="bi bi-info-circle" style="font-size: 2rem; color: #dee2e6;"></i>
+                <i class="bi bi-info-circle properties-empty-icon"></i>
                 <p>Select a node to edit its properties</p>
             </div>
         `;
@@ -841,8 +886,7 @@ class WorkflowBuilder {
         const routingSection = `
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
-                <select class="form-select" id="stage_groups_${node.id}" name="approval_groups" multiple size="6"
-                        style="min-height: 140px;"
+                <select class="form-select builder-multiselect-lg" id="stage_groups_${node.id}" name="approval_groups" multiple size="6"
                         onchange="workflowBuilder.updateStageConfig('${node.id}')">
         `;
 
@@ -872,8 +916,7 @@ class WorkflowBuilder {
         const approvalFieldsSection = `
             <div class="mb-3">
                 <label class="form-label"><strong>Fields shown during this stage</strong></label>
-                <select class="form-select" id="stage_fields_${node.id}" name="approval_fields" multiple size="6"
-                        style="min-height: 140px;"
+                <select class="form-select builder-multiselect-lg" id="stage_fields_${node.id}" name="approval_fields" multiple size="6"
                         onchange="workflowBuilder.updateStageConfig('${node.id}')">
                     ${this.fields.map(field => `
                         <option value="${field.id}" ${selectedApprovalFieldIds.has(field.id) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
@@ -2417,6 +2460,7 @@ class WorkflowBuilder {
         if (this.selectedConnection !== null && !this.connections[this.selectedConnection]) {
             this.selectedConnection = null;
         }
+        this.updateWorkspaceBounds();
         this.renderNodes();
         this.renderConnections();
         this.applyTransform();
@@ -2516,13 +2560,11 @@ class WorkflowBuilder {
         if (inputPoint) {
             inputPoint.addEventListener('mouseenter', (e) => {
                 if (this.isConnecting) {
-                    inputPoint.style.background = '#28a745';
-                    inputPoint.style.transform = 'translateY(-50%) scale(1.5)';
+                    inputPoint.classList.add('is-connect-target');
                 }
             });
             inputPoint.addEventListener('mouseleave', (e) => {
-                inputPoint.style.background = '';
-                inputPoint.style.transform = '';
+                inputPoint.classList.remove('is-connect-target');
             });
         }
 
@@ -2713,6 +2755,8 @@ class WorkflowBuilder {
         const startPoint = this.getConnectionPointPosition(this.connectionStart.nodeId, 'output');
         if (!startPoint) return;
 
+        this.updateWorkspaceBounds([startPoint, { x, y }]);
+
         if (!this.tempLine) {
             this.tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             this.tempLine.setAttribute('class', 'connection-line');
@@ -2787,12 +2831,10 @@ class WorkflowBuilder {
             const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             hitbox.setAttribute('class', 'connection-hitbox');
             hitbox.setAttribute('d', path);
-            hitbox.style.cursor = 'pointer';
 
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             line.setAttribute('class', 'connection-line');
             line.setAttribute('data-connection-index', index);
-            line.style.cursor = 'pointer';
             line.setAttribute('d', path);
 
             const setHover = (isHovered) => {

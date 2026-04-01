@@ -590,6 +590,17 @@ class FormField(models.Model):
         null=True,
         help_text='JSON: [{"value": "opt1", "label": "Option 1"}, ...] or comma-separated string',
     )
+    shared_option_list = models.ForeignKey(
+        "SharedOptionList",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="form_fields",
+        help_text=(
+            "Use a centrally managed option list instead of inline choices. "
+            "When set, this overrides the choices field above."
+        ),
+    )
 
     # Dynamic Behavior - Prefill from external sources
     prefill_source_config = models.ForeignKey(
@@ -679,6 +690,58 @@ class FormField(models.Model):
 
     def __str__(self):
         return f"{self.field_label} ({self.field_name})"
+
+
+class SharedOptionList(models.Model):
+    """
+    Centrally managed, reusable list of options.
+
+    A single SharedOptionList (e.g. "Departments", "Building Locations",
+    "Job Titles") can be referenced by any number of form fields across
+    different forms.  When the list is updated, every field that
+    references it automatically picks up the new options — no need to
+    edit each form individually.
+    """
+
+    name = models.CharField(
+        max_length=200,
+        help_text="Display name (e.g. 'Departments', 'Building Locations')",
+    )
+    slug = models.SlugField(
+        unique=True,
+        help_text="Unique identifier used in the API and form builder",
+    )
+    items = models.JSONField(
+        help_text=(
+            "Ordered list of options. Each item is either a string (used as "
+            'both value and label) or an object: {"value": "eng", "label": "Engineering"}.'
+        ),
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive lists are hidden from the form builder but still resolve for existing fields.",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Shared Option List"
+        verbose_name_plural = "Shared Option Lists"
+
+    def __str__(self):
+        return f"{self.name} ({len(self.get_choices())} options)"
+
+    def get_choices(self):
+        """Return items as a list of (value, label) tuples."""
+        result = []
+        for item in self.items or []:
+            if isinstance(item, dict):
+                result.append((item.get("value", ""), item.get("label", "")))
+            else:
+                result.append((str(item), str(item)))
+        return result
 
 
 class DocumentTemplate(models.Model):

@@ -39,6 +39,7 @@ from .models import (
     NotificationRule,
     PostSubmissionAction,
     PrefillSource,
+    SharedOptionList,
     StageApprovalGroup,
     SubWorkflowDefinition,
     SubWorkflowInstance,
@@ -166,6 +167,7 @@ class FormFieldInline(nested_admin.NestedStackedInline):
                 "classes": ("collapse",),
                 "fields": (
                     "choices",
+                    "shared_option_list",
                     "prefill_source_config",
                     "default_value",
                     "formula",
@@ -304,7 +306,7 @@ class FormFieldAdmin(admin.ModelAdmin):
         ),
         (
             "Choices (for select/radio/checkbox fields)",
-            {"fields": ("choices",), "classes": ("collapse",)},
+            {"fields": ("shared_option_list", "choices"), "classes": ("collapse",)},
         ),
         (
             "Formula (for calculated fields)",
@@ -1421,6 +1423,23 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                 name="form_builder_api_clone",
             ),
             path(
+                "builder/api/shared-lists/",
+                self.admin_site.admin_view(form_builder_views.shared_option_list_api),
+                name="form_builder_api_shared_lists",
+            ),
+            path(
+                "builder/api/shared-lists/save/",
+                self.admin_site.admin_view(form_builder_views.shared_option_list_save),
+                name="form_builder_api_shared_list_save",
+            ),
+            path(
+                "builder/api/shared-lists/delete/<int:list_id>/",
+                self.admin_site.admin_view(
+                    form_builder_views.shared_option_list_delete
+                ),
+                name="form_builder_api_shared_list_delete",
+            ),
+            path(
                 "builder/api/doc-templates/<int:form_id>/",
                 self.admin_site.admin_view(form_builder_views.document_template_list),
                 name="form_builder_api_doc_templates",
@@ -2203,6 +2222,44 @@ class DocumentTemplateAdmin(admin.ModelAdmin):
             {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
         ),
     )
+
+
+# --- Shared Option List Admin ---
+
+
+@admin.register(SharedOptionList)
+class SharedOptionListAdmin(admin.ModelAdmin):
+    """Admin for centrally managed reusable option lists."""
+
+    list_display = ("name", "slug", "item_count", "is_active", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "slug")
+    prepopulated_fields = {"slug": ("name",)}
+    readonly_fields = ("created_at", "updated_at")
+
+    fieldsets = (
+        (None, {"fields": ("name", "slug", "is_active")}),
+        (
+            "Options",
+            {
+                "fields": ("items",),
+                "description": (
+                    "JSON array of options. Each item is either a string "
+                    '(e.g. "Engineering") or an object (e.g. '
+                    '{"value": "eng", "label": "Engineering"}).'
+                ),
+            },
+        ),
+        (
+            "Timestamps",
+            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
+        ),
+    )
+
+    def item_count(self, obj):
+        return len(obj.items or [])
+
+    item_count.short_description = "Options"
 
 
 # --- File Upload Configuration Admin ---

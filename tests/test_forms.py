@@ -13,6 +13,7 @@ from django_forms_workflows.models import (
     ApprovalTask,
     FormField,
     PrefillSource,
+    SharedOptionList,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -154,6 +155,111 @@ class TestDynamicFormChoices:
         assert result == []
         result = form._parse_choices("")
         assert result == []
+
+
+class TestSharedOptionListChoices:
+    """Test that SharedOptionList integrates correctly with choice resolution."""
+
+    def test_shared_option_list_overrides_inline_choices(self, form_definition, user):
+        sol = SharedOptionList.objects.create(
+            name="Departments",
+            slug="departments",
+            items=[
+                {"value": "eng", "label": "Engineering"},
+                {"value": "mkt", "label": "Marketing"},
+            ],
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="dept",
+            field_label="Department",
+            field_type="select",
+            order=1,
+            choices="Should,Be,Ignored",
+            shared_option_list=sol,
+        )
+        form = DynamicForm(form_definition, user=user)
+        choices = form.fields["dept"].choices
+        # First choice is the blank placeholder
+        assert choices[0] == ("", "-- Select --")
+        assert ("eng", "Engineering") in choices
+        assert ("mkt", "Marketing") in choices
+        # Inline choices should NOT appear
+        assert ("Should", "Should") not in choices
+
+    def test_shared_option_list_with_radio(self, form_definition, user):
+        sol = SharedOptionList.objects.create(
+            name="Sizes",
+            slug="sizes",
+            items=["Small", "Medium", "Large"],
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="size",
+            field_label="Size",
+            field_type="radio",
+            order=1,
+            shared_option_list=sol,
+        )
+        form = DynamicForm(form_definition, user=user)
+        choices = form.fields["size"].choices
+        assert ("Small", "Small") in choices
+        assert ("Large", "Large") in choices
+
+    def test_shared_option_list_with_checkboxes(self, form_definition, user):
+        sol = SharedOptionList.objects.create(
+            name="Skills",
+            slug="skills",
+            items=["Python", "Django", "JavaScript"],
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="skills",
+            field_label="Skills",
+            field_type="checkboxes",
+            order=1,
+            shared_option_list=sol,
+        )
+        form = DynamicForm(form_definition, user=user)
+        choices = form.fields["skills"].choices
+        assert ("Python", "Python") in choices
+        assert ("Django", "Django") in choices
+
+    def test_no_shared_list_falls_back_to_inline(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="color",
+            field_label="Color",
+            field_type="select",
+            order=1,
+            choices=[
+                {"value": "red", "label": "Red"},
+                {"value": "blue", "label": "Blue"},
+            ],
+        )
+        form = DynamicForm(form_definition, user=user)
+        choices = form.fields["color"].choices
+        assert ("red", "Red") in choices
+
+    def test_deleted_shared_list_falls_back_to_inline(self, form_definition, user):
+        sol = SharedOptionList.objects.create(
+            name="Temp", slug="temp", items=["A", "B"]
+        )
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="pick",
+            field_label="Pick",
+            field_type="select",
+            order=1,
+            choices="X, Y, Z",
+            shared_option_list=sol,
+        )
+        sol.delete()
+        field.refresh_from_db()
+        form = DynamicForm(form_definition, user=user)
+        choices = form.fields["pick"].choices
+        # Should fall back to inline choices
+        assert ("X", "X") in choices
 
 
 class TestDynamicFormPrefill:

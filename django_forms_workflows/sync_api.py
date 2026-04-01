@@ -215,6 +215,9 @@ def _serialize_field(field):
         "regex_validation": field.regex_validation,
         "regex_error_message": field.regex_error_message,
         "choices": field.choices,
+        "shared_option_list_slug": field.shared_option_list.slug
+        if field.shared_option_list_id
+        else None,
         "prefill_source_config": _serialize_prefill_source(field.prefill_source_config),
         "default_value": field.default_value,
         "formula": field.formula,
@@ -478,6 +481,7 @@ def build_export_payload(queryset):
     qs = queryset.prefetch_related(
         "fields",
         "fields__prefill_source_config",
+        "fields__shared_option_list",
         "fields__workflow_stage",
         "workflows",
         "workflows__stages",
@@ -844,9 +848,17 @@ def import_form(form_data, conflict="update", category_cache=None):
         workflow_stage = (
             stage_order_map.get(stage_order) if stage_order is not None else None
         )
+        # Resolve shared option list by slug (if present)
+        sol_slug = field_data.pop("shared_option_list_slug", None)
+        shared_option_list = None
+        if sol_slug:
+            from .models import SharedOptionList
+
+            shared_option_list = SharedOptionList.objects.filter(slug=sol_slug).first()
         FormField.objects.create(
             form_definition=form_obj,
             prefill_source_config=ps_config,
+            shared_option_list=shared_option_list,
             min_value=Decimal(min_val) if min_val is not None else None,
             max_value=Decimal(max_val) if max_val is not None else None,
             workflow_stage=workflow_stage,

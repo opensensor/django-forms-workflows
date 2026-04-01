@@ -1029,7 +1029,19 @@
                 }{% if not forloop.last %},{% endif %}
                 {% endfor %}
             ],
+            sharedOptionLists: [
+                {% for ol in shared_option_lists %}
+                {
+                    id: {{ ol.id }},
+                    name: "{{ ol.name|escapejs }}",
+                    slug: "{{ ol.slug|escapejs }}",
+                    itemCount: {{ ol.items|length }}
+                }{% if not forloop.last %},{% endif %}
+                {% endfor %}
+            ],
             apiUrls: {
+                sharedLists: "{% url 'admin:form_builder_api_shared_lists' %}",
+                sharedListSave: "{% url 'admin:form_builder_api_shared_list_save' %}",
                 {% if form_definition %}
                 load: "{% url 'admin:form_builder_api_load' form_definition.id %}",
                 clone: "{% url 'admin:form_builder_api_clone' form_definition.id %}",

@@ -848,6 +848,19 @@ class FormBuilder {
                         ${prefillOptions}
                     </select>
                 </div>
+                ${['select', 'radio', 'checkbox_multiple', 'multiselect', 'multiselect_list', 'checkboxes'].includes(field.field_type) ? `
+                <div class="col-12">
+                    <label class="form-label">Shared Option List</label>
+                    <select class="form-select" id="propSharedOptionList">
+                        <option value="">None (use inline choices)</option>
+                        ${(this.config.sharedOptionLists || []).map(ol =>
+                            '<option value="' + ol.id + '"' + (field.shared_option_list_id === ol.id ? ' selected' : '') + '>' +
+                            this.escapeHtml(ol.name) + ' (' + ol.itemCount + ' options)</option>'
+                        ).join('')}
+                    </select>
+                    <small class="text-muted">Centrally managed list — updates apply to all forms using it.</small>
+                </div>
+                ` : ''}
                 <div class="col-12">
                     <label class="form-label">CSS Class</label>
                     <input type="text" class="form-control" id="propCssClass" value="${this.escapeHtml(field.css_class)}">
@@ -1655,6 +1668,9 @@ class FormBuilder {
 
         const prefillSelect = document.getElementById('propPrefillSource');
         field.prefill_source_id = prefillSelect.value ? parseInt(prefillSelect.value) : null;
+
+        const sharedListSelect = document.getElementById('propSharedOptionList');
+        field.shared_option_list_id = sharedListSelect && sharedListSelect.value ? parseInt(sharedListSelect.value) : null;
 
         // Save approval step
         const approvalStepSelect = document.getElementById('propApprovalStep');

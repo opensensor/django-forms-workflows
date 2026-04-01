@@ -22,6 +22,7 @@ from django_forms_workflows.models import (
     ManagedFile,
     PostSubmissionAction,
     PrefillSource,
+    SharedOptionList,
     SubWorkflowDefinition,
     SubWorkflowInstance,
     UserProfile,
@@ -893,3 +894,108 @@ class TestDocumentTemplate:
         assert DocumentTemplate.objects.filter(form_definition=form_definition).exists()
         form_definition.delete()
         assert not DocumentTemplate.objects.filter(id=doc_template.id).exists()
+
+
+# ── SharedOptionList ─────────────────────────────────────────────────────
+
+
+class TestSharedOptionList:
+    def test_create_with_string_items(self, db):
+        sol = SharedOptionList.objects.create(
+            name="Departments",
+            slug="departments",
+            items=["Engineering", "Marketing", "Sales"],
+        )
+        assert sol.name == "Departments"
+        assert sol.slug == "departments"
+        assert sol.is_active is True
+
+    def test_get_choices_string_items(self, db):
+        sol = SharedOptionList.objects.create(
+            name="Colors",
+            slug="colors",
+            items=["Red", "Green", "Blue"],
+        )
+        choices = sol.get_choices()
+        assert choices == [("Red", "Red"), ("Green", "Green"), ("Blue", "Blue")]
+
+    def test_get_choices_dict_items(self, db):
+        sol = SharedOptionList.objects.create(
+            name="Departments",
+            slug="departments",
+            items=[
+                {"value": "eng", "label": "Engineering"},
+                {"value": "mkt", "label": "Marketing"},
+            ],
+        )
+        choices = sol.get_choices()
+        assert choices == [("eng", "Engineering"), ("mkt", "Marketing")]
+
+    def test_get_choices_mixed_items(self, db):
+        sol = SharedOptionList.objects.create(
+            name="Mixed",
+            slug="mixed",
+            items=[
+                "Plain",
+                {"value": "obj", "label": "Object Style"},
+            ],
+        )
+        choices = sol.get_choices()
+        assert choices == [("Plain", "Plain"), ("obj", "Object Style")]
+
+    def test_get_choices_empty(self, db):
+        sol = SharedOptionList.objects.create(name="Empty", slug="empty", items=[])
+        assert sol.get_choices() == []
+
+    def test_get_choices_none_in_memory(self, db):
+        """get_choices() handles None gracefully even if items is set to None."""
+        sol = SharedOptionList(name="Null", slug="null", items=None)
+        assert sol.get_choices() == []
+
+    def test_str(self, db):
+        sol = SharedOptionList.objects.create(
+            name="Buildings",
+            slug="buildings",
+            items=["Main", "Annex"],
+        )
+        assert str(sol) == "Buildings (2 options)"
+
+    def test_unique_slug(self, db):
+        SharedOptionList.objects.create(name="List A", slug="unique-slug", items=[])
+        with pytest.raises(IntegrityError):
+            SharedOptionList.objects.create(name="List B", slug="unique-slug", items=[])
+
+    def test_form_field_fk(self, form_definition):
+        sol = SharedOptionList.objects.create(
+            name="Depts", slug="depts", items=["HR", "IT"]
+        )
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="dept",
+            field_label="Department",
+            field_type="select",
+            order=1,
+            shared_option_list=sol,
+        )
+        assert field.shared_option_list == sol
+        assert sol.form_fields.first() == field
+
+    def test_form_field_set_null_on_delete(self, form_definition):
+        sol = SharedOptionList.objects.create(name="Temp", slug="temp", items=["A"])
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="temp_field",
+            field_label="Temp",
+            field_type="select",
+            order=1,
+            shared_option_list=sol,
+        )
+        sol.delete()
+        field.refresh_from_db()
+        assert field.shared_option_list is None
+
+    def test_ordering(self, db):
+        SharedOptionList.objects.create(name="Zebra", slug="zebra", items=[])
+        SharedOptionList.objects.create(name="Alpha", slug="alpha", items=[])
+        names = list(SharedOptionList.objects.values_list("name", flat=True))
+        assert names == ["Alpha", "Zebra"]

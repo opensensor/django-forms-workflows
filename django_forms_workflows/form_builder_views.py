@@ -21,6 +21,7 @@ from .models import (
     FormField,
     FormTemplate,
     PrefillSource,
+    SharedOptionList,
     StageApprovalGroup,
     SubWorkflowDefinition,
     WorkflowDefinition,
@@ -248,9 +249,15 @@ def form_builder_view(request, form_id=None):
         [{"value": ft[0], "label": ft[1]} for ft in FormField.FIELD_TYPES]
     )
 
+    # Get shared option lists for the field property panel
+    shared_option_lists = SharedOptionList.objects.filter(is_active=True).order_by(
+        "name"
+    )
+
     context = {
         "form_definition": form_definition,
         "prefill_sources": prefill_sources,
+        "shared_option_lists": shared_option_lists,
         "field_types": field_types_json,
         "is_new": form_id is None,
     }
@@ -286,6 +293,7 @@ def form_builder_load(request, form_id):
             "choices": field.choices or "",
             "default_value": field.default_value or "",
             "prefill_source_id": field.prefill_source_config_id,
+            "shared_option_list_id": field.shared_option_list_id,
             "validation": {
                 "min_value": field.min_value,
                 "max_value": field.max_value,
@@ -453,6 +461,8 @@ def form_builder_save(request):
                     "choices": field_data.get("choices", ""),
                     "default_value": field_data.get("default_value", ""),
                     "prefill_source_config_id": field_data.get("prefill_source_id"),
+                    "shared_option_list_id": field_data.get("shared_option_list_id")
+                    or None,
                 }
 
                 # Add validation properties
@@ -785,3 +795,81 @@ def document_template_delete(request, form_id, template_id):
     )
     tpl.delete()
     return JsonResponse({"success": True, "message": "Template deleted"})
+
+
+# ---------------------------------------------------------------------------
+# Shared Option List API endpoints
+# ---------------------------------------------------------------------------
+
+
+@staff_member_required
+@require_GET
+def shared_option_list_api(request):
+    """List all shared option lists (for form builder dropdowns)."""
+    lists = SharedOptionList.objects.filter(is_active=True).order_by("name")
+    return JsonResponse(
+        {
+            "success": True,
+            "lists": [
+                {
+                    "id": ol.id,
+                    "name": ol.name,
+                    "slug": ol.slug,
+                    "item_count": len(ol.items or []),
+                }
+                for ol in lists
+            ],
+        }
+    )
+
+
+@staff_member_required
+@require_POST
+def shared_option_list_save(request):
+    """Create or update a shared option list."""
+    try:
+        data = json.loads(request.body)
+        list_id = data.get("id")
+        name = data.get("name", "").strip()
+        slug = data.get("slug", "").strip()
+        items = data.get("items", [])
+        is_active = data.get("is_active", True)
+
+        if not name:
+            return JsonResponse(
+                {"success": False, "error": "Name is required"}, status=400
+            )
+        if not slug:
+            slug = name.lower().replace(" ", "-")
+
+        if list_id:
+            ol = get_object_or_404(SharedOptionList, id=list_id)
+            ol.name = name
+            ol.slug = slug
+            ol.items = items
+            ol.is_active = is_active
+            ol.save()
+        else:
+            ol = SharedOptionList.objects.create(
+                name=name, slug=slug, items=items, is_active=is_active
+            )
+
+        return JsonResponse(
+            {"success": True, "id": ol.id, "message": "List saved successfully"}
+        )
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    except Exception:
+        logger.exception("Error saving shared option list")
+        return JsonResponse(
+            {"success": False, "error": "An internal error occurred."}, status=500
+        )
+
+
+@staff_member_required
+@require_POST
+def shared_option_list_delete(request, list_id):
+    """Delete a shared option list."""
+    ol = get_object_or_404(SharedOptionList, id=list_id)
+    ol.delete()
+    return JsonResponse({"success": True, "message": "List deleted"})

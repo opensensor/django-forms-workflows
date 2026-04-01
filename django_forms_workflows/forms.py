@@ -384,6 +384,27 @@ class DynamicForm(forms.Form):
 
         return []
 
+    def _resolve_choices(self, field_def):
+        """Resolve choices for a field from all sources in priority order.
+
+        1. Database prefill source (return_choices query)
+        2. SharedOptionList (centrally managed reusable list)
+        3. Inline choices on the field definition
+
+        Returns a list of (value, label) tuples.
+        """
+        db_choices = self._get_choices_from_prefill_source(field_def)
+        if db_choices is not None:
+            return db_choices
+
+        if field_def.shared_option_list_id:
+            try:
+                return field_def.shared_option_list.get_choices()
+            except Exception:
+                pass
+
+        return self._parse_choices(field_def.choices)
+
     def _get_choices_from_prefill_source(self, field_def):
         """
         Return a list of (value, label) tuples from a database choices query when the
@@ -531,34 +552,19 @@ class DynamicForm(forms.Form):
             self.fields[field_def.field_name] = forms.URLField(**field_args)
 
         elif field_def.field_type == "select":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = [("", "-- Select --")] + (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = [("", "-- Select --")] + self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.ChoiceField(
                 choices=choices, **field_args
             )
 
         elif field_def.field_type == "multiselect":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices, widget=forms.CheckboxSelectMultiple, **field_args
             )
 
         elif field_def.field_type == "multiselect_list":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.SelectMultiple(attrs={"class": "form-select"}),
@@ -566,12 +572,7 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "radio":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.ChoiceField(
                 choices=choices, widget=forms.RadioSelect, **field_args
             )
@@ -585,12 +586,7 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "checkboxes":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.CheckboxSelectMultiple,
@@ -1505,12 +1501,7 @@ class ApprovalStepForm(forms.Form):
             self.fields[field_def.field_name] = forms.EmailField(**field_args)
 
         elif field_def.field_type == "select":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = [("", "-- Select --")] + (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = [("", "-- Select --")] + self._resolve_choices(field_def)
             if widget_attrs:
                 field_args["widget"] = forms.Select(attrs=widget_attrs)
             self.fields[field_def.field_name] = forms.ChoiceField(
@@ -1518,12 +1509,7 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "multiselect":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.CheckboxSelectMultiple,
@@ -1531,12 +1517,7 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "multiselect_list":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.MultipleChoiceField(
                 choices=choices,
                 widget=forms.SelectMultiple(attrs={"class": "form-select"}),
@@ -1544,12 +1525,7 @@ class ApprovalStepForm(forms.Form):
             )
 
         elif field_def.field_type == "radio":
-            _db_choices = self._get_choices_from_prefill_source(field_def)
-            choices = (
-                _db_choices
-                if _db_choices is not None
-                else self._parse_choices(field_def.choices)
-            )
+            choices = self._resolve_choices(field_def)
             self.fields[field_def.field_name] = forms.ChoiceField(
                 choices=choices,
                 widget=forms.RadioSelect(attrs=widget_attrs),
@@ -1674,6 +1650,18 @@ class ApprovalStepForm(forms.Form):
         if isinstance(choices, str):
             return [(c.strip(), c.strip()) for c in choices.split(",") if c.strip()]
         return []
+
+    def _resolve_choices(self, field_def):
+        """Resolve choices from all sources (DB prefill > shared list > inline)."""
+        db_choices = self._get_choices_from_prefill_source(field_def)
+        if db_choices is not None:
+            return db_choices
+        if field_def.shared_option_list_id:
+            try:
+                return field_def.shared_option_list.get_choices()
+            except Exception:
+                pass
+        return self._parse_choices(field_def.choices)
 
     def _get_choices_from_prefill_source(self, field_def):
         """

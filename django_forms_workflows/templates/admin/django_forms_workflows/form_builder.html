@@ -595,6 +595,45 @@
         .preview-panel::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+
+        /* Palette category headers */
+        .palette-category-header {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 0.75rem;
+            margin-top: 0.75rem;
+            margin-bottom: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #6c757d;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .palette-category-header:first-child { margin-top: 0; }
+        .palette-category-header .badge {
+            font-size: 0.6rem;
+            font-weight: 500;
+            padding: 0.15rem 0.4rem;
+        }
+
+        /* Keyboard shortcut hints */
+        .shortcut-hints {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.72rem;
+            color: #6c757d;
+        }
+        .shortcut-hints kbd {
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            padding: 0.1rem 0.35rem;
+            font-size: 0.68rem;
+            font-family: inherit;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+        }
     </style>
 </head>
 <body>
@@ -672,6 +711,34 @@
                         </div>
                     </div>
 
+                    <!-- Submission Controls -->
+                    <div class="col-12 mt-3">
+                        <h6 class="text-muted border-bottom pb-2">
+                            <i class="bi bi-shield-check"></i> Submission Controls
+                        </h6>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Close Date</label>
+                        <input type="datetime-local" class="form-control form-control-sm" id="formCloseDate">
+                        <small class="text-muted">Stop accepting submissions after this date</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Max Submissions</label>
+                        <input type="number" class="form-control form-control-sm" id="formMaxSubmissions" min="1" placeholder="Unlimited">
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="formOnePerUser">
+                            <label class="form-check-label" for="formOnePerUser">One Per User</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="formEnableCaptcha">
+                            <label class="form-check-label" for="formEnableCaptcha">CAPTCHA</label>
+                        </div>
+                    </div>
+
                     <!-- Client-Side Enhancements -->
                     <div class="col-12 mt-3">
                         <h6 class="text-muted border-bottom pb-2">
@@ -709,6 +776,9 @@
         <div class="palette-panel">
             <div class="panel-header">
                 <i class="bi bi-grid-3x3-gap"></i> Field Types
+                <div class="mt-2">
+                    <input type="text" class="form-control form-control-sm" id="paletteSearch" placeholder="Search fields..." autocomplete="off">
+                </div>
             </div>
             <div class="panel-content" id="fieldPalette">
                 <!-- Field types will be populated by JavaScript -->
@@ -763,8 +833,13 @@
     <div class="save-bar">
         <div class="container-fluid">
             <div class="d-flex justify-content-between align-items-center">
-                <div>
+                <div class="d-flex align-items-center gap-3">
                     <span class="text-muted" id="saveStatus">Unsaved changes</span>
+                    <span class="shortcut-hints d-none d-md-flex">
+                        <span><kbd>Ctrl+S</kbd> Save</span>
+                        <span><kbd>Ctrl+Z</kbd> Undo</span>
+                        <span><kbd>Ctrl+Shift+Z</kbd> Redo</span>
+                    </span>
                 </div>
                 <div>
                     <button class="btn btn-outline-secondary me-2" id="btnCancel">Cancel</button>

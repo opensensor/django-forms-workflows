@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-04-01
+
+### Added
+- **Rating field** (`field_type = "rating"`) — star-based rating widget rendered via a CSS-only radio button group. `max_value` controls the star count (default 5). Stored as a string `"1"`–`"5"` (or up to the configured max).
+- **Slider field** (`field_type = "slider"`) — range slider input backed by `DecimalField`. `min_value`/`max_value` set the range; `default_value` sets the step size. Live value badge updates as the user drags. Rendered with Bootstrap's `form-range` class.
+- **Address field** (`field_type = "address"`) — structured address stored as free-text (up to 500 chars). The JS form-enhancements layer splits the textarea into labelled sub-inputs (street, city, state, ZIP, country) on the client side.
+- **Matrix / Grid field** (`field_type = "matrix"`) — questionnaire-style grid defined by `choices = {"rows": [...], "columns": [...]}`. Each row becomes a separate `RadioSelect` sub-field; answers are collected as a hidden marker field. Falls back to a plain `Textarea` when no rows/columns are configured.
+- **Submission controls on `FormDefinition`** — three new fields enforced at the view layer before any form is rendered or submitted:
+  - `close_date` (`DateTimeField`, nullable) — stops accepting submissions after the configured date/time.
+  - `max_submissions` (`PositiveIntegerField`, nullable) — caps the total number of non-draft submissions.
+  - `one_per_user` (`BooleanField`, default `False`) — restricts each authenticated user to a single non-draft, non-withdrawn submission.
+- **CAPTCHA support** (`enable_captcha` on `FormDefinition`) — when enabled, injects a hidden `captcha_token` field and a `<div data-captcha-widget>` placeholder. The JS layer dynamically loads either Google reCAPTCHA v2/v3 or hCaptcha (detected by script tag). Server-side verification via `DynamicForm._verify_captcha_token()` calls the provider's `siteverify` endpoint using `FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY` / `FORMS_WORKFLOWS_CAPTCHA_VERIFY_URL` settings; fails open when the key is not configured.
+- **Analytics CSV export** — new `/analytics/export/` endpoint (`analytics_export_csv`) returns a CSV of all non-draft submissions in the selected time range, filterable by form slug. Columns: Date, Form, Status, Submitter, Submission ID.
+- **Analytics period-over-period comparison** — the analytics dashboard now computes the previous equivalent period and exposes `total_change`, `approved_change`, `rejected_change`, and `approval_rate` / `approval_rate_change` context variables for trend indicators.
+- **Form builder: Submission Controls panel** — close date picker, max-submissions input, and one-per-user / CAPTCHA checkboxes added to the form-settings panel in the visual form builder; values round-trip through `form_builder_load` / `form_builder_save`.
+- **Form builder: palette search** — live filter input in the field-palette panel narrows the displayed field types as the user types.
+- **Migration `0080`** — adds `close_date`, `max_submissions`, `one_per_user`, `enable_captcha` to `FormDefinition`; extends `FormField.field_type` choices with `rating`, `matrix`, `address`, `slider`.
+
+### Fixed
+- **QR code view: inactive form now returns 404 before 501** — `form_qr_code` previously checked for the `segno` package before resolving the form, so requests for inactive or non-existent slugs returned 501 (Not Implemented) instead of 404 when `segno` was not installed. The `get_object_or_404` call is now performed first.
+
+### Tests
+- 156 new test cases across `tests/test_forms.py` and `tests/test_views.py` covering all four new field types, CAPTCHA injection and verification, all three submission controls (positive and negative paths), the analytics dashboard context keys and period comparison, and the CSV export (content, headers, filtering, filename).
+
 ## [0.49.0] - 2026-04-01
 
 ### Added

@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from django import forms as dj_forms
 
 from django_forms_workflows.forms import ApprovalStepForm, DynamicForm
 from django_forms_workflows.models import (
@@ -879,6 +880,233 @@ class TestSignatureFieldDynamicForm:
         form = DynamicForm(form_definition, user=user, data={"sig": ""})
         assert not form.is_valid()
         assert "sig" in form.errors
+
+
+class TestNewFieldTypes:
+    """Tests for the four new field types: rating, slider, address, matrix."""
+
+    def test_rating_field_creates_choice_field(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="satisfaction",
+            field_label="Satisfaction",
+            field_type="rating",
+            order=1,
+            max_value=5,
+        )
+        form = DynamicForm(form_definition, user=user)
+        field = form.fields["satisfaction"]
+        assert isinstance(field, dj_forms.ChoiceField)
+        choice_values = [v for v, _ in field.choices if v]
+        assert "1" in choice_values
+        assert "5" in choice_values
+
+    def test_rating_field_default_max_5_stars(self, form_definition, user):
+        """Rating field with no max_value defaults to 5 stars."""
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="rating",
+            field_label="Rating",
+            field_type="rating",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        non_blank = [(v, lbl) for v, lbl in form.fields["rating"].choices if v]
+        assert len(non_blank) == 5
+
+    def test_rating_field_custom_max_stars(self, form_definition, user):
+        """Rating field with max_value=3 produces exactly 3 choices."""
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="nps",
+            field_label="NPS",
+            field_type="rating",
+            order=1,
+            max_value=3,
+        )
+        form = DynamicForm(form_definition, user=user)
+        non_blank = [(v, lbl) for v, lbl in form.fields["nps"].choices if v]
+        assert len(non_blank) == 3
+
+    def test_slider_field_creates_decimal_field(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="volume",
+            field_label="Volume",
+            field_type="slider",
+            order=1,
+            min_value=0,
+            max_value=100,
+        )
+        form = DynamicForm(form_definition, user=user)
+        field = form.fields["volume"]
+        assert isinstance(field, dj_forms.DecimalField)
+        assert field.widget.attrs.get("data-slider-field") == "true"
+        # class includes "form-range" marker (strip since there may be trailing space)
+        assert "form-range" in field.widget.attrs.get("class", "")
+
+    def test_slider_field_respects_min_max(self, form_definition, user):
+        """Slider field min/max are passed through to the DecimalField validators."""
+        from decimal import Decimal
+
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="pct",
+            field_label="Percentage",
+            field_type="slider",
+            order=1,
+            min_value=10,
+            max_value=90,
+        )
+        form = DynamicForm(form_definition, user=user)
+        field = form.fields["pct"]
+        # DecimalField stores min/max as Decimal for validation
+        assert field.min_value == Decimal("10")
+        assert field.max_value == Decimal("90")
+
+    def test_address_field_creates_char_with_textarea(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="home_address",
+            field_label="Home Address",
+            field_type="address",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        field = form.fields["home_address"]
+        assert isinstance(field, dj_forms.CharField)
+        assert isinstance(field.widget, dj_forms.Textarea)
+        assert field.widget.attrs.get("data-address-field") == "true"
+
+    def test_address_field_max_length(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="addr",
+            field_label="Address",
+            field_type="address",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert form.fields["addr"].max_length == 500
+
+    def test_matrix_field_creates_subfields(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="skills",
+            field_label="Skills",
+            field_type="matrix",
+            order=1,
+            choices={"rows": ["Python", "Django"], "columns": ["Novice", "Expert"]},
+        )
+        form = DynamicForm(form_definition, user=user)
+        # Hidden marker field
+        assert "skills" in form.fields
+        assert isinstance(form.fields["skills"].widget, dj_forms.HiddenInput)
+        assert form.fields["skills"].widget.attrs.get("data-matrix-field") == "true"
+        # One sub-field per row
+        assert "skills__Python" in form.fields
+        assert "skills__Django" in form.fields
+
+    def test_matrix_subfield_choices_match_columns(self, form_definition, user):
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="agree",
+            field_label="Agreement",
+            field_type="matrix",
+            order=1,
+            choices={
+                "rows": ["Statement A"],
+                "columns": ["Agree", "Neutral", "Disagree"],
+            },
+        )
+        form = DynamicForm(form_definition, user=user)
+        sub = form.fields["agree__Statement A"]
+        col_values = [v for v, _ in sub.choices if v]
+        assert col_values == ["Agree", "Neutral", "Disagree"]
+
+    def test_matrix_field_no_config_fallback_textarea(self, form_definition, user):
+        """Matrix field with no rows/columns falls back to a Textarea."""
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="matrix_no_cfg",
+            field_label="Matrix",
+            field_type="matrix",
+            order=1,
+            choices=None,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert "matrix_no_cfg" in form.fields
+        assert isinstance(form.fields["matrix_no_cfg"].widget, dj_forms.Textarea)
+
+
+class TestDynamicFormCaptcha:
+    """Tests for CAPTCHA field injection and server-side verification."""
+
+    def test_captcha_field_added_when_enabled(self, form_definition, user):
+        form_definition.enable_captcha = True
+        form_definition.save()
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="name",
+            field_label="Name",
+            field_type="text",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert "captcha_token" in form.fields
+        assert isinstance(form.fields["captcha_token"].widget, dj_forms.HiddenInput)
+
+    def test_captcha_field_not_added_when_disabled(self, form_definition, user):
+        form_definition.enable_captcha = False
+        form_definition.save()
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="name",
+            field_label="Name",
+            field_type="text",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert "captcha_token" not in form.fields
+
+    def test_captcha_verify_fail_open_without_key(
+        self, form_definition, user, settings
+    ):
+        """When no secret key is configured, _verify_captcha_token returns True."""
+        settings.FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY = ""
+        form_definition.enable_captcha = True
+        form_definition.save()
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="name",
+            field_label="Name",
+            field_type="text",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert form._verify_captcha_token("any-token") is True
+
+    def test_captcha_verify_returns_false_on_network_error(
+        self, form_definition, user, settings, monkeypatch
+    ):
+        """Network errors during CAPTCHA verification return False."""
+        settings.FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY = "test-secret"
+
+        def _raise(*args, **kwargs):
+            raise OSError("network error")
+
+        monkeypatch.setattr("urllib.request.urlopen", _raise)
+        form_definition.enable_captcha = True
+        form_definition.save()
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="name",
+            field_label="Name",
+            field_type="text",
+            order=1,
+        )
+        form = DynamicForm(form_definition, user=user)
+        assert form._verify_captcha_token("bad-token") is False
 
 
 class TestSignatureFieldApprovalStepForm:

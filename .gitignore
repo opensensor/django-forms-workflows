@@ -4,3 +4,4 @@ db.sqlite3
 form-workflows/
 __pycache__/
 .venv/
+FEATURE_GAP_ANALYSIS.md

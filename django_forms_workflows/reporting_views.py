@@ -6,17 +6,59 @@ analysis, and status breakdowns — all computed from existing
 FormSubmission, ApprovalTask, and WorkflowStage data.
 """
 
+import csv
 import json
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Count, F, Max, Min
 from django.db.models.functions import TruncDate, TruncMonth
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 from .models import ApprovalTask, FormDefinition, FormSubmission
+
+
+@login_required
+def analytics_export_csv(request):
+    """Export analytics summary data as CSV."""
+    range_days = int(request.GET.get("days", 90))
+    cutoff = timezone.now() - timedelta(days=range_days)
+    form_slug = request.GET.get("form", "")
+
+    submissions_qs = FormSubmission.objects.exclude(status="draft")
+    if form_slug:
+        submissions_qs = submissions_qs.filter(form_definition__slug=form_slug)
+
+    submissions_in_range = submissions_qs.filter(created_at__gte=cutoff)
+
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = (
+        f'attachment; filename="analytics_{range_days}d.csv"'
+    )
+
+    writer = csv.writer(response)
+    writer.writerow(["Date", "Form", "Status", "Submitter", "Submission ID"])
+    for sub in submissions_in_range.select_related(
+        "form_definition", "submitter"
+    ).order_by("-created_at"):
+        writer.writerow(
+            [
+                sub.created_at.strftime("%Y-%m-%d %H:%M"),
+                sub.form_definition.name if sub.form_definition else "",
+                sub.status,
+                (
+                    sub.submitter.get_full_name() or sub.submitter.username
+                    if sub.submitter
+                    else "Anonymous"
+                ),
+                sub.id,
+            ]
+        )
+
+    return response
 
 
 @login_required
@@ -26,6 +68,7 @@ def analytics_dashboard(request):
     # ── Time range filter ───────────────────────────────────────────────
     range_days = int(request.GET.get("days", 90))
     cutoff = timezone.now() - timedelta(days=range_days)
+    prev_cutoff = cutoff - timedelta(days=range_days)  # Previous period
     form_slug = request.GET.get("form", "")
 
     # Base querysets
@@ -37,21 +80,58 @@ def analytics_dashboard(request):
         tasks_qs = tasks_qs.filter(submission__form_definition__slug=form_slug)
 
     submissions_in_range = submissions_qs.filter(created_at__gte=cutoff)
+    submissions_prev = submissions_qs.filter(
+        created_at__gte=prev_cutoff, created_at__lt=cutoff
+    )
     tasks_in_range = tasks_qs.filter(created_at__gte=cutoff)
 
     # ── 1. Summary cards ────────────────────────────────────────────────
     total_submissions = submissions_in_range.count()
+    prev_total = submissions_prev.count()
+
     status_counts = dict(
         submissions_in_range.values_list("status")
         .annotate(c=Count("id"))
         .values_list("status", "c")
     )
+    prev_status_counts = dict(
+        submissions_prev.values_list("status")
+        .annotate(c=Count("id"))
+        .values_list("status", "c")
+    )
+
     pending_count = status_counts.get("pending_approval", 0) + status_counts.get(
         "submitted", 0
     )
     approved_count = status_counts.get("approved", 0)
     rejected_count = status_counts.get("rejected", 0)
     withdrawn_count = status_counts.get("withdrawn", 0)
+
+    prev_approved = prev_status_counts.get("approved", 0)
+    prev_rejected = prev_status_counts.get("rejected", 0)
+
+    # ── 1b. Period-over-period comparison ───────────────────────────────
+    def _pct_change(current, previous):
+        if previous == 0:
+            return None  # Can't compute change from zero
+        return round(((current - previous) / previous) * 100, 1)
+
+    total_change = _pct_change(total_submissions, prev_total)
+    approved_change = _pct_change(approved_count, prev_approved)
+    rejected_change = _pct_change(rejected_count, prev_rejected)
+
+    # ── 1c. Approval rate ───────────────────────────────────────────────
+    decided = approved_count + rejected_count
+    approval_rate = round((approved_count / decided) * 100, 1) if decided > 0 else None
+    prev_decided = prev_approved + prev_rejected
+    prev_approval_rate = (
+        round((prev_approved / prev_decided) * 100, 1) if prev_decided > 0 else None
+    )
+    approval_rate_change = (
+        round(approval_rate - prev_approval_rate, 1)
+        if approval_rate is not None and prev_approval_rate is not None
+        else None
+    )
 
     # ── 2. Submissions per day (for line chart) ─────────────────────────
     daily_submissions = list(
@@ -189,6 +269,12 @@ def analytics_dashboard(request):
         "rejected_count": rejected_count,
         "withdrawn_count": withdrawn_count,
         "overdue_count": overdue_count,
+        # Period comparison
+        "total_change": total_change,
+        "approved_change": approved_change,
+        "rejected_change": rejected_change,
+        "approval_rate": approval_rate,
+        "approval_rate_change": approval_rate_change,
         # Charts (JSON-serialized for Chart.js)
         "daily_submissions_json": _chart_json(daily_submissions),
         "monthly_submissions_json": _chart_json(monthly_submissions),

@@ -17,6 +17,9 @@ class FormBuilder {
         this.isNewField = false; // Track if editing a newly created field
         this.formSteps = []; // Track multi-step configuration
         this.contextMenu = null; // Track context menu element
+        this.undoStack = []; // Undo history
+        this.redoStack = []; // Redo history
+        this.maxUndoSteps = 50;
 
         this.init();
     }
@@ -41,36 +44,91 @@ class FormBuilder {
     setupFieldPalette() {
         const palette = document.getElementById('fieldPalette');
 
-        this.fieldTypes = [
-            { type: 'text', label: 'Text Input', icon: 'bi-input-cursor-text' },
-            { type: 'email', label: 'Email', icon: 'bi-envelope' },
-            { type: 'number', label: 'Number', icon: 'bi-123' },
-            { type: 'textarea', label: 'Textarea', icon: 'bi-textarea-t' },
-            { type: 'select', label: 'Select Dropdown', icon: 'bi-menu-button-wide' },
-            { type: 'radio', label: 'Radio Buttons', icon: 'bi-ui-radios' },
-            { type: 'checkbox_multiple', label: 'Checkboxes', icon: 'bi-ui-checks' },
-            { type: 'checkbox', label: 'Single Checkbox', icon: 'bi-check-square' },
-            { type: 'date', label: 'Date', icon: 'bi-calendar-date' },
-            { type: 'time', label: 'Time', icon: 'bi-clock' },
-            { type: 'datetime', label: 'Date & Time', icon: 'bi-calendar-event' },
-            { type: 'file', label: 'File Upload', icon: 'bi-file-earmark-arrow-up' },
-            { type: 'url', label: 'URL', icon: 'bi-link-45deg' },
-            { type: 'phone', label: 'Phone Number', icon: 'bi-telephone' },
-            { type: 'decimal', label: 'Decimal/Currency', icon: 'bi-currency-dollar' },
-            { type: 'section', label: 'Section Header', icon: 'bi-layout-text-sidebar' },
+        this.fieldTypeCategories = [
+            {
+                name: 'Basic Inputs',
+                icon: 'bi-input-cursor-text',
+                types: [
+                    { type: 'text', label: 'Single Line Text', icon: 'bi-input-cursor-text' },
+                    { type: 'textarea', label: 'Multi-line Text', icon: 'bi-textarea-t' },
+                    { type: 'email', label: 'Email Address', icon: 'bi-envelope' },
+                    { type: 'phone', label: 'Phone Number', icon: 'bi-telephone' },
+                    { type: 'url', label: 'Website URL', icon: 'bi-link-45deg' },
+                    { type: 'number', label: 'Whole Number', icon: 'bi-123' },
+                    { type: 'decimal', label: 'Decimal Number', icon: 'bi-hash' },
+                    { type: 'currency', label: 'Currency ($)', icon: 'bi-currency-dollar' },
+                ]
+            },
+            {
+                name: 'Selection',
+                icon: 'bi-ui-checks',
+                types: [
+                    { type: 'select', label: 'Dropdown Select', icon: 'bi-menu-button-wide' },
+                    { type: 'radio', label: 'Radio Buttons', icon: 'bi-ui-radios' },
+                    { type: 'checkbox', label: 'Single Checkbox', icon: 'bi-check-square' },
+                    { type: 'multiselect', label: 'Checkboxes (Multi)', icon: 'bi-ui-checks' },
+                    { type: 'multiselect_list', label: 'Multi-Select List', icon: 'bi-list-check' },
+                    { type: 'checkboxes', label: 'Checkbox Group', icon: 'bi-ui-checks-grid' },
+                    { type: 'country', label: 'Country Picker', icon: 'bi-globe' },
+                    { type: 'us_state', label: 'US State Picker', icon: 'bi-geo-alt' },
+                ]
+            },
+            {
+                name: 'Date & Time',
+                icon: 'bi-calendar',
+                types: [
+                    { type: 'date', label: 'Date', icon: 'bi-calendar-date' },
+                    { type: 'time', label: 'Time', icon: 'bi-clock' },
+                    { type: 'datetime', label: 'Date & Time', icon: 'bi-calendar-event' },
+                ]
+            },
+            {
+                name: 'Uploads & Media',
+                icon: 'bi-cloud-upload',
+                types: [
+                    { type: 'file', label: 'File Upload', icon: 'bi-file-earmark-arrow-up' },
+                    { type: 'multifile', label: 'Multi-File Upload', icon: 'bi-files' },
+                    { type: 'spreadsheet', label: 'Spreadsheet Upload', icon: 'bi-file-earmark-spreadsheet' },
+                    { type: 'signature', label: 'Signature', icon: 'bi-pen' },
+                ]
+            },
+            {
+                name: 'Advanced',
+                icon: 'bi-lightning',
+                types: [
+                    { type: 'calculated', label: 'Calculated / Formula', icon: 'bi-calculator' },
+                    { type: 'hidden', label: 'Hidden Field', icon: 'bi-eye-slash' },
+                    { type: 'rating', label: 'Rating (Stars)', icon: 'bi-star' },
+                    { type: 'slider', label: 'Slider', icon: 'bi-sliders' },
+                    { type: 'matrix', label: 'Matrix / Grid', icon: 'bi-grid-3x3' },
+                    { type: 'address', label: 'Address', icon: 'bi-house-door' },
+                ]
+            },
+            {
+                name: 'Layout',
+                icon: 'bi-layout-split',
+                types: [
+                    { type: 'section', label: 'Section Header', icon: 'bi-layout-text-sidebar' },
+                ]
+            }
         ];
 
-        this.fieldTypes.forEach(fieldType => {
-            const item = document.createElement('div');
-            item.className = 'field-palette-item';
-            item.dataset.fieldType = fieldType.type;
-            item.innerHTML = `
-                <i class="bi ${fieldType.icon}"></i>
-                <span>${fieldType.label}</span>
-            `;
-
-            palette.appendChild(item);
+        // Build flat fieldTypes list for backward compatibility
+        this.fieldTypes = [];
+        this.fieldTypeCategories.forEach(cat => {
+            cat.types.forEach(ft => this.fieldTypes.push(ft));
         });
+
+        // Render categorized palette
+        this.renderPalette('');
+
+        // Setup search
+        const searchInput = document.getElementById('paletteSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.renderPalette(e.target.value.toLowerCase().trim());
+            });
+        }
 
         // Setup SortableJS for palette to work with both single-step and multi-step canvases
         new Sortable(palette, {
@@ -98,6 +156,40 @@ class FormBuilder {
         });
     }
     
+    renderPalette(filter) {
+        const palette = document.getElementById('fieldPalette');
+        // Remove all items but keep the search (which is in the panel-header)
+        palette.innerHTML = '';
+
+        this.fieldTypeCategories.forEach(cat => {
+            const matchingTypes = cat.types.filter(ft =>
+                !filter || ft.label.toLowerCase().includes(filter) || ft.type.toLowerCase().includes(filter)
+            );
+            if (matchingTypes.length === 0) return;
+
+            // Category header
+            const header = document.createElement('div');
+            header.className = 'palette-category-header';
+            header.innerHTML = `
+                <i class="bi ${cat.icon}"></i>
+                <span>${cat.name}</span>
+                <span class="badge bg-secondary rounded-pill ms-auto">${matchingTypes.length}</span>
+            `;
+            palette.appendChild(header);
+
+            matchingTypes.forEach(fieldType => {
+                const item = document.createElement('div');
+                item.className = 'field-palette-item';
+                item.dataset.fieldType = fieldType.type;
+                item.innerHTML = `
+                    <i class="bi ${fieldType.icon}"></i>
+                    <span>${fieldType.label}</span>
+                `;
+                palette.appendChild(item);
+            });
+        });
+    }
+
     setupCanvas() {
         const canvas = document.getElementById('formCanvas');
 
@@ -264,6 +356,7 @@ class FormBuilder {
     }
 
     addFieldAtPosition(fieldType, position) {
+        this.pushUndo();
         const field = {
             id: `new_${this.fieldIdCounter++}`,
             order: position + 1,
@@ -330,6 +423,25 @@ class FormBuilder {
             document.getElementById('formSlug').value = slug;
         });
 
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+S / Cmd+S = Save
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                this.saveForm();
+            }
+            // Ctrl+Z / Cmd+Z = Undo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                this.undo();
+            }
+            // Ctrl+Shift+Z / Cmd+Shift+Z = Redo
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+                e.preventDefault();
+                this.redo();
+            }
+        });
+
         // Multi-step toggle
         const multiStepCheckbox = document.getElementById('formEnableMultiStep');
 
@@ -352,6 +464,63 @@ class FormBuilder {
         // Add field at the end
         this.addFieldAtPosition(fieldType, this.fields.length);
     }
+
+    duplicateField(index) {
+        this.pushUndo();
+        const original = this.fields[index];
+        const clone = JSON.parse(JSON.stringify(original));
+        clone.id = `new_${this.fieldIdCounter++}`;
+        clone.field_name = original.field_name + '_copy';
+        clone.field_label = original.field_label + ' (Copy)';
+        clone.order = index + 2;
+
+        this.fields.splice(index + 1, 0, clone);
+        this.updateFieldOrders();
+
+        // Also add to step if in multi-step mode
+        if (this.formSteps && this.formSteps.length > 0) {
+            this.formSteps.forEach(step => {
+                if (step.fields) {
+                    const pos = step.fields.indexOf(original.field_name);
+                    if (pos !== -1) {
+                        step.fields.splice(pos + 1, 0, clone.field_name);
+                    }
+                }
+            });
+        }
+
+        const isMultiStep = document.getElementById('formEnableMultiStep')?.checked;
+        if (isMultiStep) {
+            this.renderStepTabs();
+        } else {
+            this.renderCanvas();
+        }
+        this.updatePreview();
+    }
+
+    pushUndo() {
+        this.undoStack.push(JSON.stringify(this.fields));
+        if (this.undoStack.length > this.maxUndoSteps) {
+            this.undoStack.shift();
+        }
+        this.redoStack = [];
+    }
+
+    undo() {
+        if (this.undoStack.length === 0) return;
+        this.redoStack.push(JSON.stringify(this.fields));
+        this.fields = JSON.parse(this.undoStack.pop());
+        this.renderCanvas();
+        this.updatePreview();
+    }
+
+    redo() {
+        if (this.redoStack.length === 0) return;
+        this.undoStack.push(JSON.stringify(this.fields));
+        this.fields = JSON.parse(this.redoStack.pop());
+        this.renderCanvas();
+        this.updatePreview();
+    }
     
     getDefaultLabel(fieldType) {
         const labels = {
@@ -361,16 +530,31 @@ class FormBuilder {
             'textarea': 'Text Area',
             'select': 'Select Option',
             'radio': 'Radio Choice',
-            'checkbox_multiple': 'Checkboxes',
+            'multiselect': 'Checkboxes',
+            'multiselect_list': 'Multi-Select',
             'checkbox': 'Checkbox',
+            'checkboxes': 'Checkbox Group',
+            'checkbox_multiple': 'Checkboxes',
             'date': 'Date',
             'time': 'Time',
             'datetime': 'Date and Time',
             'file': 'File Upload',
+            'multifile': 'File Uploads',
             'url': 'Website URL',
             'phone': 'Phone Number',
-            'decimal': 'Amount',
-            'section': 'Section Header'
+            'decimal': 'Decimal',
+            'currency': 'Amount',
+            'hidden': 'Hidden Field',
+            'section': 'Section Header',
+            'calculated': 'Calculated Field',
+            'spreadsheet': 'Spreadsheet Upload',
+            'country': 'Country',
+            'us_state': 'State',
+            'signature': 'Signature',
+            'rating': 'Rating',
+            'matrix': 'Matrix',
+            'address': 'Address',
+            'slider': 'Slider'
         };
         return labels[fieldType] || 'Field';
     }
@@ -433,6 +617,9 @@ class FormBuilder {
                         <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})" title="Edit section">
                             <i class="bi bi-pencil"></i>
                         </button>
+                        <button class="btn btn-sm btn-outline-secondary btn-field-action" onclick="formBuilder.duplicateField(${index})" title="Duplicate section">
+                            <i class="bi bi-copy"></i>
+                        </button>
                         <button class="btn btn-sm btn-outline-danger btn-field-action" onclick="formBuilder.deleteField(${index})" title="Delete section">
                             <i class="bi bi-trash"></i>
                         </button>
@@ -458,6 +645,9 @@ class FormBuilder {
                         <span class="field-type-badge">${field.field_type}</span>
                         <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})" title="Edit field">
                             <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary btn-field-action" onclick="formBuilder.duplicateField(${index})" title="Duplicate field">
+                            <i class="bi bi-copy"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-danger btn-field-action" onclick="formBuilder.deleteField(${index})" title="Delete field">
                             <i class="bi bi-trash"></i>
@@ -513,8 +703,14 @@ class FormBuilder {
             </option>`
         ).join('');
 
-        const widthOptions = ['full', 'half', 'third'].map(w =>
-            `<option value="${w}" ${field.width === w ? 'selected' : ''}>${w.charAt(0).toUpperCase() + w.slice(1)}</option>`
+        const widthChoices = [
+            { value: 'full', label: 'Full Width' },
+            { value: 'half', label: 'Half (50%)' },
+            { value: 'third', label: 'One Third (33%)' },
+            { value: 'fourth', label: 'One Quarter (25%)' }
+        ];
+        const widthOptions = widthChoices.map(w =>
+            `<option value="${w.value}" ${field.width === w.value ? 'selected' : ''}>${w.label}</option>`
         ).join('');
 
         return `
@@ -602,10 +798,47 @@ class FormBuilder {
                     <label class="form-label">Placeholder</label>
                     <input type="text" class="form-control" id="propPlaceholder" value="${this.escapeHtml(field.placeholder)}">
                 </div>
-                ${field.field_type === 'select' || field.field_type === 'radio' || field.field_type === 'checkbox_multiple' ? `
+                ${['select', 'radio', 'checkbox_multiple', 'multiselect', 'multiselect_list', 'checkboxes'].includes(field.field_type) ? `
                 <div class="col-12">
                     <label class="form-label">Choices (one per line)</label>
                     <textarea class="form-control" id="propChoices" rows="4">${this.escapeHtml(field.choices)}</textarea>
+                    <small class="text-muted">Enter each option on a new line. Use <code>value|Label</code> format for separate values and display text.</small>
+                </div>
+                ` : ''}
+                ${field.field_type === 'calculated' ? `
+                <div class="col-12">
+                    <label class="form-label">Formula</label>
+                    <input type="text" class="form-control font-monospace" id="propDefaultValue" value="${this.escapeHtml(field.default_value)}" placeholder="e.g. {field_a} + {field_b}">
+                    <small class="text-muted">Use <code>{field_name}</code> to reference other fields. Evaluated live on the client and re-validated on the server.</small>
+                </div>
+                ` : ''}
+                ${field.field_type === 'rating' ? `
+                <div class="col-md-6">
+                    <label class="form-label">Max Stars</label>
+                    <input type="number" class="form-control" id="propMaxValue" value="${field.validation?.max_value || 5}" min="3" max="10">
+                    <small class="text-muted">Number of stars to display (3-10)</small>
+                </div>
+                ` : ''}
+                ${field.field_type === 'slider' ? `
+                <div class="col-md-4">
+                    <label class="form-label">Min Value</label>
+                    <input type="number" class="form-control" id="propMinValue" value="${field.validation?.min_value || 0}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Max Value</label>
+                    <input type="number" class="form-control" id="propMaxValue" value="${field.validation?.max_value || 100}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Step</label>
+                    <input type="number" class="form-control" id="propDefaultValue" value="${this.escapeHtml(field.default_value || '1')}" min="0.01">
+                    <small class="text-muted">Increment value</small>
+                </div>
+                ` : ''}
+                ${field.field_type === 'matrix' ? `
+                <div class="col-12">
+                    <label class="form-label">Matrix Configuration (JSON)</label>
+                    <textarea class="form-control font-monospace" id="propChoices" rows="5">${this.escapeHtml(typeof field.choices === 'object' ? JSON.stringify(field.choices, null, 2) : (field.choices || '{"rows": ["Row 1", "Row 2"], "columns": ["Col A", "Col B", "Col C"]}'))}</textarea>
+                    <small class="text-muted">Define rows and columns as JSON: <code>{"rows": [...], "columns": [...]}</code></small>
                 </div>
                 ` : ''}
                 <div class="col-12">
@@ -1432,6 +1665,32 @@ class FormBuilder {
             field.choices = choicesEl.value;
         }
 
+        const defaultValueEl = document.getElementById('propDefaultValue');
+        if (defaultValueEl) {
+            field.default_value = defaultValueEl.value;
+        }
+
+        // Save min/max values for rating, slider, etc.
+        const minValEl = document.getElementById('propMinValue');
+        if (minValEl) {
+            if (!field.validation) field.validation = {};
+            field.validation.min_value = minValEl.value ? parseFloat(minValEl.value) : null;
+        }
+        const maxValEl = document.getElementById('propMaxValue');
+        if (maxValEl) {
+            if (!field.validation) field.validation = {};
+            field.validation.max_value = maxValEl.value ? parseFloat(maxValEl.value) : null;
+        }
+
+        // For matrix, try to parse choices as JSON
+        if (field.field_type === 'matrix' && choicesEl) {
+            try {
+                field.choices = JSON.parse(choicesEl.value);
+            } catch (e) {
+                // Keep as string if not valid JSON
+            }
+        }
+
         // Save conditional logic
         const enableConditional = document.getElementById('propEnableConditional');
         if (enableConditional && enableConditional.checked) {
@@ -1534,6 +1793,7 @@ class FormBuilder {
 
     deleteField(index) {
         if (confirm('Are you sure you want to delete this field?')) {
+            this.pushUndo();
             this.deleteFieldSilently(index);
         }
     }
@@ -1695,6 +1955,12 @@ class FormBuilder {
             document.getElementById('formAllowDraft').checked = data.allow_save_draft;
             document.getElementById('formAllowWithdrawal').checked = data.allow_withdrawal;
 
+            // Load submission controls
+            if (data.close_date) document.getElementById('formCloseDate').value = data.close_date.slice(0, 16);
+            if (data.max_submissions) document.getElementById('formMaxSubmissions').value = data.max_submissions;
+            document.getElementById('formOnePerUser').checked = data.one_per_user || false;
+            document.getElementById('formEnableCaptcha').checked = data.enable_captcha || false;
+
             // Load client-side enhancement settings
             document.getElementById('formEnableAutoSave').checked = data.enable_auto_save !== false;
             document.getElementById('formAutoSaveInterval').value = data.auto_save_interval || 30;
@@ -1752,6 +2018,10 @@ class FormBuilder {
             requires_login: document.getElementById('formRequiresLogin').checked,
             allow_save_draft: document.getElementById('formAllowDraft').checked,
             allow_withdrawal: document.getElementById('formAllowWithdrawal').checked,
+            close_date: document.getElementById('formCloseDate').value || null,
+            max_submissions: parseInt(document.getElementById('formMaxSubmissions').value) || null,
+            one_per_user: document.getElementById('formOnePerUser').checked,
+            enable_captcha: document.getElementById('formEnableCaptcha').checked,
             enable_auto_save: document.getElementById('formEnableAutoSave').checked,
             auto_save_interval: parseInt(document.getElementById('formAutoSaveInterval').value) || 30,
             enable_multi_step: isMultiStep,

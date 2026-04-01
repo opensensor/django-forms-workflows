@@ -266,6 +266,11 @@ def form_qr_code(request, slug):
     The view is intentionally public so QR images can be embedded in printed
     materials without authentication.
     """
+    # Resolve (and 404-guard) the form before checking for the optional package
+    # so that an inactive/missing slug always returns 404 regardless of whether
+    # segno is installed.
+    form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
+
     try:
         import segno
     except ImportError:
@@ -275,8 +280,6 @@ def form_qr_code(request, slug):
             status=501,
             content_type="text/plain",
         )
-
-    form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
 
     submit_url = request.build_absolute_uri(
         reverse("forms_workflows:form_submit", args=[form_def.slug])
@@ -326,6 +329,35 @@ def form_submit(request, slug):
         if not user_can_submit_form(request.user, form_def):
             messages.error(request, "You don't have permission to submit this form.")
             return redirect("forms_workflows:form_list")
+
+    # ── Submission controls ─────────────────────────────────────────────
+    if form_def.close_date and timezone.now() >= form_def.close_date:
+        messages.error(request, "This form is no longer accepting submissions.")
+        return redirect("forms_workflows:form_list")
+
+    if form_def.max_submissions is not None:
+        submitted_count = (
+            FormSubmission.objects.filter(form_definition=form_def)
+            .exclude(status="draft")
+            .count()
+        )
+        if submitted_count >= form_def.max_submissions:
+            messages.error(
+                request, "This form has reached its maximum number of submissions."
+            )
+            return redirect("forms_workflows:form_list")
+
+    if form_def.one_per_user and not is_anonymous:
+        existing = (
+            FormSubmission.objects.filter(
+                form_definition=form_def, submitter=request.user
+            )
+            .exclude(status__in=["draft", "withdrawn"])
+            .exists()
+        )
+        if existing:
+            messages.error(request, "You have already submitted this form.")
+            return redirect("forms_workflows:my_submissions")
 
     # Drafts are only available for authenticated users
     draft = None
@@ -437,6 +469,14 @@ def form_submit(request, slug):
 
     form_enhancements_config = json.dumps(form.get_enhancements_config())
 
+    captcha_site_key = ""
+    if form_def.enable_captcha:
+        from django.conf import settings as django_settings
+
+        captcha_site_key = getattr(
+            django_settings, "FORMS_WORKFLOWS_CAPTCHA_SITE_KEY", ""
+        )
+
     return render(
         request,
         "django_forms_workflows/form_submit.html",
@@ -447,6 +487,7 @@ def form_submit(request, slug):
             "draft_id": draft.id if draft else None,
             "form_enhancements_config": form_enhancements_config,
             "is_anonymous": is_anonymous,
+            "captcha_site_key": captcha_site_key,
         },
     )
 

@@ -311,6 +311,12 @@ def form_builder_load(request, form_id):
         "requires_login": form_definition.requires_login,
         "allow_save_draft": form_definition.allow_save_draft,
         "allow_withdrawal": form_definition.allow_withdrawal,
+        "close_date": form_definition.close_date.isoformat()
+        if form_definition.close_date
+        else None,
+        "max_submissions": form_definition.max_submissions,
+        "one_per_user": form_definition.one_per_user,
+        "enable_captcha": form_definition.enable_captcha,
         "enable_multi_step": form_definition.enable_multi_step,
         "form_steps": form_definition.form_steps or [],
         "enable_auto_save": form_definition.enable_auto_save,
@@ -343,6 +349,10 @@ def form_builder_save(request):
         requires_login = data.get("requires_login", True)
         allow_save_draft = data.get("allow_save_draft", True)
         allow_withdrawal = data.get("allow_withdrawal", True)
+        close_date = data.get("close_date") or None
+        max_submissions = data.get("max_submissions") or None
+        one_per_user = data.get("one_per_user", False)
+        enable_captcha = data.get("enable_captcha", False)
         enable_multi_step = data.get("enable_multi_step", False)
         form_steps = data.get("form_steps", [])
         enable_auto_save = data.get("enable_auto_save", True)
@@ -372,6 +382,10 @@ def form_builder_save(request):
                 form_definition.requires_login = requires_login
                 form_definition.allow_save_draft = allow_save_draft
                 form_definition.allow_withdrawal = allow_withdrawal
+                form_definition.close_date = close_date
+                form_definition.max_submissions = max_submissions
+                form_definition.one_per_user = one_per_user
+                form_definition.enable_captcha = enable_captcha
                 form_definition.enable_multi_step = enable_multi_step
                 form_definition.form_steps = form_steps
                 form_definition.enable_auto_save = enable_auto_save
@@ -388,6 +402,10 @@ def form_builder_save(request):
                     requires_login=requires_login,
                     allow_save_draft=allow_save_draft,
                     allow_withdrawal=allow_withdrawal,
+                    close_date=close_date,
+                    max_submissions=max_submissions,
+                    one_per_user=one_per_user,
+                    enable_captcha=enable_captcha,
                     enable_multi_step=enable_multi_step,
                     form_steps=form_steps,
                     enable_auto_save=enable_auto_save,

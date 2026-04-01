@@ -207,6 +207,32 @@ class FormDefinition(models.Model):
         default=True, help_text="Form requires authentication"
     )
 
+    # Submission Controls
+    close_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Automatically stop accepting submissions after this date/time",
+    )
+    max_submissions = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Maximum total submissions allowed (leave blank for unlimited)",
+    )
+    one_per_user = models.BooleanField(
+        default=False,
+        help_text="Restrict each authenticated user to a single submission",
+    )
+
+    # Bot Protection
+    enable_captcha = models.BooleanField(
+        default=False,
+        help_text=(
+            "Show a CAPTCHA challenge before submission. "
+            "Requires FORMS_WORKFLOWS_CAPTCHA_SITE_KEY and "
+            "FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY in settings."
+        ),
+    )
+
     # Client-Side Enhancements
     enable_multi_step = models.BooleanField(
         default=False,
@@ -466,6 +492,10 @@ class FormField(models.Model):
         ("country", "Country Picker"),
         ("us_state", "US State Picker"),
         ("signature", "Signature"),
+        ("rating", "Rating (Stars)"),
+        ("matrix", "Matrix / Grid"),
+        ("address", "Address"),
+        ("slider", "Slider"),
     ]
 
     # Relationship

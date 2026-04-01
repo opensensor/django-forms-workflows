@@ -2,12 +2,16 @@
 Tests for django_forms_workflows.views.
 """
 
+from datetime import timedelta
+
 import pytest
 from django.test import Client
 from django.urls import reverse
+from django.utils import timezone
 
 from django_forms_workflows.models import (
     ApprovalTask,
+    FormDefinition,
     FormSubmission,
 )
 
@@ -1077,3 +1081,267 @@ class TestFormQrCodeView:
         resp = client.get(url)
         # Should not redirect to login
         assert resp.status_code != 302
+
+
+# ── submission controls ────────────────────────────────────────────────────
+
+
+class TestSubmissionControls:
+    """Tests for close_date, max_submissions, and one_per_user enforcement."""
+
+    # ── close_date ────────────────────────────────────────────────────────
+
+    def test_close_date_past_blocks_get(self, auth_client, simple_form):
+        """Form with a past close_date redirects on GET."""
+        simple_form.close_date = timezone.now() - timedelta(hours=1)
+        simple_form.save()
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 302
+        assert resp["Location"].endswith(reverse("forms_workflows:form_list"))
+
+    def test_close_date_future_allows_get(self, auth_client, simple_form):
+        """Form with a future close_date renders normally."""
+        simple_form.close_date = timezone.now() + timedelta(days=7)
+        simple_form.save()
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    def test_close_date_none_allows_get(self, auth_client, simple_form):
+        """Form with no close_date is always open."""
+        simple_form.close_date = None
+        simple_form.save()
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    # ── max_submissions ───────────────────────────────────────────────────
+
+    def test_max_submissions_at_limit_blocks_get(self, auth_client, simple_form, user):
+        """Form at its submission limit redirects on GET."""
+        simple_form.max_submissions = 2
+        simple_form.save()
+        for _ in range(2):
+            FormSubmission.objects.create(
+                form_definition=simple_form,
+                submitter=user,
+                form_data={},
+                status="submitted",
+            )
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 302
+
+    def test_max_submissions_under_limit_allows_get(
+        self, auth_client, simple_form, user
+    ):
+        """Form below its submission limit renders normally."""
+        simple_form.max_submissions = 5
+        simple_form.save()
+        FormSubmission.objects.create(
+            form_definition=simple_form,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    def test_max_submissions_drafts_not_counted(self, auth_client, simple_form, user):
+        """Draft submissions don't count toward the max_submissions limit."""
+        simple_form.max_submissions = 1
+        simple_form.save()
+        FormSubmission.objects.create(
+            form_definition=simple_form,
+            submitter=user,
+            form_data={},
+            status="draft",
+        )
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    # ── one_per_user ──────────────────────────────────────────────────────
+
+    def test_one_per_user_blocks_second_submission(
+        self, auth_client, simple_form, user
+    ):
+        """Second submission by the same user is redirected to my_submissions."""
+        simple_form.one_per_user = True
+        simple_form.save()
+        FormSubmission.objects.create(
+            form_definition=simple_form,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 302
+        assert resp["Location"].endswith(reverse("forms_workflows:my_submissions"))
+
+    def test_one_per_user_allows_first_submission(self, auth_client, simple_form):
+        """First submission is allowed when one_per_user is set."""
+        simple_form.one_per_user = True
+        simple_form.save()
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    def test_one_per_user_ignores_draft_submissions(
+        self, auth_client, simple_form, user
+    ):
+        """A draft doesn't count as a previous submission for one_per_user."""
+        simple_form.one_per_user = True
+        simple_form.save()
+        FormSubmission.objects.create(
+            form_definition=simple_form,
+            submitter=user,
+            form_data={},
+            status="draft",
+        )
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    def test_one_per_user_ignores_withdrawn_submissions(
+        self, auth_client, simple_form, user
+    ):
+        """A withdrawn submission doesn't count for one_per_user."""
+        simple_form.one_per_user = True
+        simple_form.save()
+        FormSubmission.objects.create(
+            form_definition=simple_form,
+            submitter=user,
+            form_data={},
+            status="withdrawn",
+        )
+        url = reverse("forms_workflows:form_submit", args=[simple_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+
+# ── analytics dashboard ────────────────────────────────────────────────────
+
+
+class TestAnalyticsDashboard:
+    """Tests for the analytics dashboard view."""
+
+    def test_requires_login(self, client):
+        url = reverse("forms_workflows:analytics_dashboard")
+        resp = client.get(url)
+        assert resp.status_code == 302
+
+    def test_accessible_to_authenticated_user(self, auth_client):
+        url = reverse("forms_workflows:analytics_dashboard")
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    def test_context_contains_summary_keys(self, auth_client, submission):
+        url = reverse("forms_workflows:analytics_dashboard")
+        resp = auth_client.get(url)
+        for key in (
+            "total_submissions",
+            "approved_count",
+            "rejected_count",
+            "pending_count",
+            "withdrawn_count",
+        ):
+            assert key in resp.context, f"Missing context key: {key}"
+
+    def test_context_contains_period_comparison_keys(self, auth_client):
+        url = reverse("forms_workflows:analytics_dashboard")
+        resp = auth_client.get(url)
+        for key in ("total_change", "approved_change", "approval_rate"):
+            assert key in resp.context, f"Missing period-comparison key: {key}"
+
+    def test_filter_by_form_slug(self, auth_client, submission, simple_form):
+        url = reverse("forms_workflows:analytics_dashboard")
+        resp = auth_client.get(url, {"form": simple_form.slug})
+        assert resp.status_code == 200
+        assert resp.context["total_submissions"] >= 0
+
+    def test_custom_day_range(self, auth_client, submission):
+        url = reverse("forms_workflows:analytics_dashboard")
+        resp = auth_client.get(url, {"days": "30"})
+        assert resp.status_code == 200
+
+    def test_no_submissions_produces_zero_counts(self, auth_client):
+        url = reverse("forms_workflows:analytics_dashboard")
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+        assert resp.context["total_submissions"] == 0
+
+
+# ── analytics CSV export ───────────────────────────────────────────────────
+
+
+class TestAnalyticsExportCSV:
+    """Tests for the analytics CSV export endpoint."""
+
+    def test_requires_login(self, client):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = client.get(url)
+        assert resp.status_code == 302
+
+    def test_returns_csv_content_type(self, auth_client, submission):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+        assert "text/csv" in resp["Content-Type"]
+
+    def test_response_has_attachment_disposition(self, auth_client):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url)
+        assert "attachment" in resp["Content-Disposition"]
+
+    def test_header_row_present(self, auth_client):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url)
+        assert b"Date,Form,Status,Submitter,Submission ID" in resp.content
+
+    def test_submission_appears_in_export(self, auth_client, submission):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url)
+        assert str(submission.id).encode() in resp.content
+
+    def test_filter_by_form_includes_matching(
+        self, auth_client, submission, simple_form
+    ):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url, {"form": simple_form.slug})
+        assert str(submission.id).encode() in resp.content
+
+    def test_filter_by_form_excludes_other_forms(
+        self, auth_client, submission, simple_form, category, user
+    ):
+        other = FormDefinition.objects.create(
+            name="ZZZZ Other Form Unique",
+            slug="other-form",
+            category=category,
+            is_active=True,
+        )
+        FormSubmission.objects.create(
+            form_definition=other,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url, {"form": simple_form.slug})
+        content = resp.content.decode()
+        # The submission for simple_form is present; the other form's name is not.
+        assert str(submission.id) in content
+        assert "ZZZZ Other Form Unique" not in content
+
+    def test_default_filename_uses_90_days(self, auth_client):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url)
+        assert "90d.csv" in resp["Content-Disposition"]
+
+    def test_custom_day_range_in_filename(self, auth_client):
+        url = reverse("forms_workflows:analytics_export_csv")
+        resp = auth_client.get(url, {"days": "30"})
+        assert "30d.csv" in resp["Content-Disposition"]

@@ -5,16 +5,22 @@
 
 {% block extra_css %}
 <style>
-    .stat-card { border-left: 4px solid; border-radius: 8px; }
+    .stat-card { border-left: 4px solid; border-radius: 8px; transition: transform 0.15s, box-shadow 0.15s; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     .stat-card .stat-value { font-size: 2rem; font-weight: 700; }
-    .stat-card .stat-label { font-size: 0.85rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat-card.border-primary { border-left-color: #0d6efd !important; }
-    .stat-card.border-warning { border-left-color: #ffc107 !important; }
-    .stat-card.border-success { border-left-color: #198754 !important; }
-    .stat-card.border-danger  { border-left-color: #dc3545 !important; }
+    .stat-card .stat-label { font-size: 0.8rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card.border-primary   { border-left-color: #0d6efd !important; }
+    .stat-card.border-warning   { border-left-color: #ffc107 !important; }
+    .stat-card.border-success   { border-left-color: #198754 !important; }
+    .stat-card.border-danger    { border-left-color: #dc3545 !important; }
     .stat-card.border-secondary { border-left-color: #6c757d !important; }
+    .stat-card.border-info      { border-left-color: #0dcaf0 !important; }
     .chart-container { position: relative; height: 300px; }
     .metric-table th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .trend-up   { color: #198754; font-size: 0.78rem; font-weight: 600; }
+    .trend-down { color: #dc3545; font-size: 0.78rem; font-weight: 600; }
+    .trend-flat { color: #6c757d; font-size: 0.78rem; font-weight: 600; }
+    .card { border: none; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border-radius: 8px; }
 </style>
 {% endblock %}
 
@@ -24,29 +30,42 @@
     {# ── Header + Filters ─────────────────────────────────────────────── #}
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
         <h2 class="mb-0"><i class="bi bi-graph-up"></i> Analytics Dashboard</h2>
-        <form method="get" class="d-flex gap-2 align-items-center flex-wrap">
-            <select name="form" class="form-select form-select-sm" style="width: auto;">
-                <option value="">All Forms</option>
-                {% for slug, name in available_forms %}
-                    <option value="{{ slug }}" {% if slug == form_slug %}selected{% endif %}>{{ name }}</option>
-                {% endfor %}
-            </select>
-            <select name="days" class="form-select form-select-sm" style="width: auto;">
-                <option value="30" {% if range_days == 30 %}selected{% endif %}>30 days</option>
-                <option value="90" {% if range_days == 90 %}selected{% endif %}>90 days</option>
-                <option value="180" {% if range_days == 180 %}selected{% endif %}>6 months</option>
-                <option value="365" {% if range_days == 365 %}selected{% endif %}>1 year</option>
-            </select>
-            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button>
-        </form>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <form method="get" class="d-flex gap-2 align-items-center flex-wrap">
+                <select name="form" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">All Forms</option>
+                    {% for slug, name in available_forms %}
+                        <option value="{{ slug }}" {% if slug == form_slug %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+                <select name="days" class="form-select form-select-sm" style="width: auto;">
+                    <option value="7" {% if range_days == 7 %}selected{% endif %}>7 days</option>
+                    <option value="30" {% if range_days == 30 %}selected{% endif %}>30 days</option>
+                    <option value="90" {% if range_days == 90 %}selected{% endif %}>90 days</option>
+                    <option value="180" {% if range_days == 180 %}selected{% endif %}>6 months</option>
+                    <option value="365" {% if range_days == 365 %}selected{% endif %}>1 year</option>
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button>
+            </form>
+            <a href="{% url 'forms_workflows:analytics_export_csv' %}?days={{ range_days }}{% if form_slug %}&form={{ form_slug }}{% endif %}"
+               class="btn btn-sm btn-outline-secondary" title="Export CSV">
+                <i class="bi bi-download"></i> Export
+            </a>
+        </div>
     </div>
 
-    {# ── Summary Cards ────────────────────────────────────────────────── #}
+    {# ── Summary Cards (with period comparison) ───────────────────────── #}
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-4 col-xl-2">
             <div class="card stat-card border-primary p-3">
                 <div class="stat-value text-primary">{{ total_submissions }}</div>
                 <div class="stat-label">Total Submissions</div>
+                {% if total_change is not None %}
+                <div class="{% if total_change > 0 %}trend-up{% elif total_change < 0 %}trend-down{% else %}trend-flat{% endif %}">
+                    <i class="bi {% if total_change > 0 %}bi-arrow-up-short{% elif total_change < 0 %}bi-arrow-down-short{% else %}bi-dash{% endif %}"></i>
+                    {{ total_change }}% vs prev {{ range_days }}d
+                </div>
+                {% endif %}
             </div>
         </div>
         <div class="col-6 col-md-4 col-xl-2">
@@ -59,12 +78,24 @@
             <div class="card stat-card border-success p-3">
                 <div class="stat-value text-success">{{ approved_count }}</div>
                 <div class="stat-label">Approved</div>
+                {% if approved_change is not None %}
+                <div class="{% if approved_change > 0 %}trend-up{% elif approved_change < 0 %}trend-down{% else %}trend-flat{% endif %}">
+                    <i class="bi {% if approved_change > 0 %}bi-arrow-up-short{% elif approved_change < 0 %}bi-arrow-down-short{% else %}bi-dash{% endif %}"></i>
+                    {{ approved_change }}%
+                </div>
+                {% endif %}
             </div>
         </div>
         <div class="col-6 col-md-4 col-xl-2">
             <div class="card stat-card border-danger p-3">
                 <div class="stat-value text-danger">{{ rejected_count }}</div>
                 <div class="stat-label">Rejected</div>
+                {% if rejected_change is not None %}
+                <div class="{% if rejected_change > 0 %}trend-up{% elif rejected_change < 0 %}trend-down{% else %}trend-flat{% endif %}">
+                    <i class="bi {% if rejected_change > 0 %}bi-arrow-up-short{% elif rejected_change < 0 %}bi-arrow-down-short{% else %}bi-dash{% endif %}"></i>
+                    {{ rejected_change }}%
+                </div>
+                {% endif %}
             </div>
         </div>
         <div class="col-6 col-md-4 col-xl-2">
@@ -81,21 +112,33 @@
         </div>
     </div>
 
-    {# ── Turnaround Cards ─────────────────────────────────────────────── #}
+    {# ── Turnaround + Approval Rate Cards ─────────────────────────────── #}
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <div class="card p-3 text-center">
+                <div class="stat-value text-info">{% if approval_rate is not None %}{{ approval_rate }}%{% else %}N/A{% endif %}</div>
+                <div class="stat-label">Approval Rate</div>
+                {% if approval_rate_change is not None %}
+                <div class="{% if approval_rate_change > 0 %}trend-up{% elif approval_rate_change < 0 %}trend-down{% else %}trend-flat{% endif %}">
+                    <i class="bi {% if approval_rate_change > 0 %}bi-arrow-up-short{% elif approval_rate_change < 0 %}bi-arrow-down-short{% else %}bi-dash{% endif %}"></i>
+                    {{ approval_rate_change }}pp
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-3">
             <div class="card p-3 text-center">
                 <div class="stat-value text-info">{{ turnaround.avg }}</div>
                 <div class="stat-label">Avg Approval Time</div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card p-3 text-center">
                 <div class="stat-value text-success">{{ turnaround.fastest }}</div>
                 <div class="stat-label">Fastest Approval</div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card p-3 text-center">
                 <div class="stat-value text-warning">{{ turnaround.slowest }}</div>
                 <div class="stat-label">Slowest Approval</div>
@@ -133,6 +176,15 @@
                 </div>
             </div>
         </div>
+        <div class="col-lg-6">
+            <div class="card p-3">
+                <h6 class="text-muted mb-3"><i class="bi bi-bar-chart-steps"></i> Submissions by Form</h6>
+                <div class="chart-container">
+                    <canvas id="byFormChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 
     {# ── Tables Row ───────────────────────────────────────────────────── #}
     <div class="row g-3 mb-4">
@@ -153,7 +205,7 @@
                     {% endfor %}
                     </tbody>
                 </table>
-                {% else %}<p class="text-muted mb-0">No pending tasks right now 🎉</p>{% endif %}
+                {% else %}<p class="text-muted mb-0">No pending tasks right now.</p>{% endif %}
             </div>
         </div>
 
@@ -218,6 +270,12 @@
         approved: '#198754', rejected: '#dc3545', withdrawn: '#6c757d'
     };
 
+    var chartDefaults = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } }
+    };
+
     // Daily submissions line chart
     var dailyData = {{ daily_submissions_json }};
     new Chart(document.getElementById('dailyChart'), {
@@ -227,14 +285,17 @@
             datasets: [{
                 label: 'Submissions',
                 data: dailyData.map(function(d) { return d.count; }),
-                borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.1)',
-                fill: true, tension: 0.3, pointRadius: 2
+                borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.08)',
+                fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2
             }]
         },
-        options: { responsive: true, maintainAspectRatio: false,
-            scales: { x: { ticks: { maxTicksLimit: 12 } } },
-            plugins: { legend: { display: false } }
-        }
+        options: Object.assign({}, chartDefaults, {
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, font: { size: 11 } }, grid: { display: false } },
+                y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } }
+            },
+            interaction: { intersect: false, mode: 'index' }
+        })
     });
 
     // Status doughnut
@@ -242,14 +303,17 @@
     new Chart(document.getElementById('statusChart'), {
         type: 'doughnut',
         data: {
-            labels: statusData.map(function(d) { return d.status; }),
+            labels: statusData.map(function(d) { return d.status.replace('_', ' '); }),
             datasets: [{
                 data: statusData.map(function(d) { return d.count; }),
-                backgroundColor: statusData.map(function(d) { return STATUS_COLORS[d.status] || '#adb5bd'; })
+                backgroundColor: statusData.map(function(d) { return STATUS_COLORS[d.status] || '#adb5bd'; }),
+                borderWidth: 0
             }]
         },
-        options: { responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } }
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } } }
         }
     });
 
@@ -262,31 +326,42 @@
             datasets: [{
                 label: 'Submissions',
                 data: monthlyData.map(function(d) { return d.count; }),
-                backgroundColor: '#0d6efd'
+                backgroundColor: 'rgba(13,110,253,0.7)',
+                borderRadius: 4
             }]
         },
-        options: { responsive: true, maintainAspectRatio: false,
-            scales: { x: { ticks: { maxTicksLimit: 12 } } },
-            plugins: { legend: { display: false } }
-        }
+        options: Object.assign({}, chartDefaults, {
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, font: { size: 11 } }, grid: { display: false } },
+                y: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } }
+            }
+        })
     });
 
     // By form horizontal bar
     var byFormData = {{ by_form_json }};
-    new Chart(document.getElementById('byFormChart'), {
-        type: 'bar',
-        data: {
-            labels: byFormData.map(function(d) { return d.form_definition__name; }),
-            datasets: [{
-                label: 'Submissions',
-                data: byFormData.map(function(d) { return d.count; }),
-                backgroundColor: '#6610f2'
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-            plugins: { legend: { display: false } }
-        }
-    });
+    var byFormEl = document.getElementById('byFormChart');
+    if (byFormEl) {
+        new Chart(byFormEl, {
+            type: 'bar',
+            data: {
+                labels: byFormData.map(function(d) { return d.form_definition__name; }),
+                datasets: [{
+                    label: 'Submissions',
+                    data: byFormData.map(function(d) { return d.count; }),
+                    backgroundColor: 'rgba(102,16,242,0.7)',
+                    borderRadius: 4
+                }]
+            },
+            options: Object.assign({}, chartDefaults, {
+                indexAxis: 'y',
+                scales: {
+                    x: { beginAtZero: true, ticks: { font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+                    y: { ticks: { font: { size: 11 } }, grid: { display: false } }
+                }
+            })
+        });
+    }
 })();
 </script>
 {% endblock %}

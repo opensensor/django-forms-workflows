@@ -6,6 +6,7 @@ based on database-stored form definitions, and the ApprovalStepForm
 class for handling approval-step field editing.
 """
 
+import json
 import logging
 import re
 from datetime import date, datetime
@@ -319,6 +320,23 @@ class DynamicForm(forms.Form):
                     )
                 )
                 i += 1
+
+        # CAPTCHA field (rendered before submit buttons)
+        if form_definition.enable_captcha:
+            self.fields["captcha_token"] = forms.CharField(
+                widget=forms.HiddenInput(attrs={"data-captcha-field": "true"}),
+                required=True,
+                error_messages={
+                    "required": "Please complete the CAPTCHA verification."
+                },
+            )
+            layout_fields.append(
+                Div(
+                    HTML('<div data-captcha-widget="true" class="mb-3"></div>'),
+                    Field("captcha_token"),
+                    css_class="captcha-wrapper",
+                )
+            )
 
         # Add submit buttons
         buttons = [Submit("submit", "Submit", css_class="btn btn-primary")]
@@ -681,6 +699,113 @@ class DynamicForm(forms.Form):
                 widget=forms.HiddenInput(), required=False, initial=initial
             )
 
+        elif field_def.field_type == "rating":
+            max_stars = int(field_def.max_value) if field_def.max_value else 5
+            rating_choices = [(str(i), str(i)) for i in range(1, max_stars + 1)]
+            widget_attrs.update(
+                {
+                    "class": "rating-stars-input " + widget_attrs.get("class", ""),
+                    "data-max-stars": str(max_stars),
+                }
+            )
+            self.fields[field_def.field_name] = forms.ChoiceField(
+                choices=[("", "")] + rating_choices,
+                widget=forms.Select(attrs=widget_attrs),
+                **field_args,
+            )
+
+        elif field_def.field_type == "slider":
+            min_val = float(field_def.min_value) if field_def.min_value else 0
+            max_val = float(field_def.max_value) if field_def.max_value else 100
+            step = float(field_def.default_value) if field_def.default_value else 1
+            widget_attrs.update(
+                {
+                    "type": "range",
+                    "min": str(min_val),
+                    "max": str(max_val),
+                    "step": str(step),
+                    "class": "form-range " + widget_attrs.get("class", ""),
+                    "data-slider-field": "true",
+                }
+            )
+            self.fields[field_def.field_name] = forms.DecimalField(
+                min_value=field_def.min_value,
+                max_value=field_def.max_value,
+                widget=forms.NumberInput(attrs=widget_attrs),
+                **field_args,
+            )
+
+        elif field_def.field_type == "address":
+            # Structured address stored as JSON with sub-fields rendered
+            # via a single Textarea.  The form-enhancements JS splits this
+            # into sub-inputs (street, city, state, zip, country) on the
+            # client side.
+            widget_attrs.update(
+                {
+                    "rows": 4,
+                    "data-address-field": "true",
+                    "placeholder": widget_attrs.get(
+                        "placeholder",
+                        "Street Address\nCity, State ZIP\nCountry",
+                    ),
+                }
+            )
+            self.fields[field_def.field_name] = forms.CharField(
+                widget=forms.Textarea(attrs=widget_attrs),
+                max_length=500,
+                **field_args,
+            )
+
+        elif field_def.field_type == "matrix":
+            # Matrix/grid: rows and columns defined via `choices` JSON.
+            # Expected format: {"rows": ["Row 1", ...], "columns": ["Col A", ...]}
+            # Stored as JSON dict mapping row labels to selected column values.
+            rows = []
+            cols = []
+            if field_def.choices and isinstance(field_def.choices, dict):
+                rows = field_def.choices.get("rows", [])
+                cols = field_def.choices.get("columns", [])
+
+            if rows and cols:
+                # Create one radio/select per row, rendered together by template
+                for row_label in rows:
+                    sub_name = f"{field_def.field_name}__{row_label}"
+                    col_choices = [(c, c) for c in cols]
+                    self.fields[sub_name] = forms.ChoiceField(
+                        choices=[("", "—")] + col_choices,
+                        label=row_label,
+                        required=field_def.required,
+                        widget=forms.RadioSelect(
+                            attrs={
+                                "class": "matrix-row-input",
+                                "data-matrix-group": field_def.field_name,
+                            }
+                        ),
+                    )
+                # Marker field so the template knows this is a matrix group
+                self.fields[field_def.field_name] = forms.CharField(
+                    widget=forms.HiddenInput(
+                        attrs={
+                            "data-matrix-field": "true",
+                            "data-matrix-rows": ",".join(rows),
+                        }
+                    ),
+                    required=False,
+                    initial="matrix",
+                )
+            else:
+                # Fallback if rows/cols not configured yet
+                widget_attrs["rows"] = 3
+                widget_attrs["placeholder"] = (
+                    "Configure rows/columns in choices as JSON: "
+                    '{"rows": [...], "columns": [...]}'
+                )
+                self.fields[field_def.field_name] = forms.CharField(
+                    widget=forms.Textarea(attrs=widget_attrs),
+                    required=False,
+                    **{k: v for k, v in field_args.items() if k != "required"},
+                )
+
         # Add custom validation if regex provided
         if field_def.regex_validation and field_def.field_type in ["text", "textarea"]:
             self.fields[field_def.field_name].validators.append(
@@ -873,6 +998,19 @@ class DynamicForm(forms.Form):
 
         cleaned_data = super().clean()
 
+        # ── CAPTCHA verification ───────────────────────────────────────────
+        if self.form_definition.enable_captcha and "captcha_token" in cleaned_data:
+            token = cleaned_data.pop("captcha_token", "")
+            if token:
+                if not self._verify_captcha_token(token):
+                    self.add_error(
+                        None,
+                        ValidationError(
+                            "CAPTCHA verification failed. Please try again.",
+                            code="captcha_failed",
+                        ),
+                    )
+
         for field_def in (
             self.form_definition.fields.exclude(field_type="section")
             .filter(workflow_stage__isnull=True)
@@ -937,6 +1075,46 @@ class DynamicForm(forms.Form):
                     )
 
         return cleaned_data
+
+    def _verify_captcha_token(self, token):
+        """Verify a CAPTCHA token with the provider's API.
+
+        Supports both Google reCAPTCHA v2/v3 and hCaptcha — both use the
+        same ``siteverify`` POST contract.  Configure via Django settings:
+
+        - ``FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY``  (required)
+        - ``FORMS_WORKFLOWS_CAPTCHA_VERIFY_URL``   (optional; defaults to
+          Google reCAPTCHA)
+        """
+        import urllib.parse
+        import urllib.request
+
+        from django.conf import settings
+
+        secret = getattr(settings, "FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY", "")
+        if not secret:
+            logger.warning(
+                "CAPTCHA enabled but FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY not set"
+            )
+            return True  # Fail open if misconfigured
+
+        verify_url = getattr(
+            settings,
+            "FORMS_WORKFLOWS_CAPTCHA_VERIFY_URL",
+            "https://www.google.com/recaptcha/api/siteverify",
+        )
+
+        try:
+            data = urllib.parse.urlencode(
+                {"secret": secret, "response": token}
+            ).encode()
+            req = urllib.request.Request(verify_url, data=data, method="POST")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                result = json.loads(resp.read())
+            return result.get("success", False)
+        except Exception:
+            logger.exception("CAPTCHA verification request failed")
+            return False
 
     def get_enhancements_config(self):
         """

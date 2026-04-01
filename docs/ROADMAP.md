@@ -94,22 +94,7 @@ This document describes what has been delivered, what is actively being worked o
 
 ### 5. ✅ Form Versioning with Diff Viewer — *Shipped in v0.45.0*
 
-### 6. Multi-Tenancy Support
-
-**Why:** Organisations running multiple independent business units want isolated form libraries, user pools, and approval chains within a single Django installation.
-
-**Scope:**
-- `Organisation` model — top-level tenant boundary
-- All existing models gain a nullable `organisation` FK (backward-compatible)
-- Middleware or `request.organisation` context resolver (subdomain or path prefix)
-- Admin UI scoped to the current tenant
-- Shared "global" forms available to all tenants
-
-**Complexity:** Very High. Touches every model and view; best tackled as a major version bump.
-
----
-
-### 7. Plugin / Custom Handler Marketplace
+### 6. Plugin / Custom Handler Marketplace
 
 **Why:** The `FORMS_WORKFLOWS_CALLBACKS` setting and `register_handler()` API (v0.48) provide handler registration, but there is no discoverability mechanism or standardised packaging for third-party handlers.
 

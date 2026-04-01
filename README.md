@@ -363,7 +363,6 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 - [ ] Webhook delivery on workflow events (submit / approve / reject)
 
 ### 📋 Planned (medium-term)
-- [ ] Multi-tenancy support (organisation-scoped form libraries)
 - [ ] Plugin / custom handler marketplace
 
 ## Credits

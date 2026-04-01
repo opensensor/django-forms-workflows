@@ -19,6 +19,8 @@ class WorkflowBuilder {
         this.fields = [];
         this.groups = [];
         this.forms = [];
+        this.workflowTargets = [];
+        this.validationState = { errors: [], warnings: [], nodeIssues: {}, firstErrorNodeId: null };
 
         // Pan & zoom state
         this.panX = 0;
@@ -201,6 +203,82 @@ class WorkflowBuilder {
 
     setupEventListeners() {
         document.getElementById('btnSave').addEventListener('click', () => this.saveWorkflow());
+        const workflowTrackSelect = document.getElementById('workflowTrackSelect');
+        if (workflowTrackSelect) {
+            workflowTrackSelect.addEventListener('change', (event) => {
+                const workflowId = event.target.value;
+                window.location.href = `${this.config.workflowBuilderUrl}?workflow_id=${workflowId}`;
+            });
+        }
+    }
+
+    setSaveStatus(text, tone = 'neutral') {
+        const status = document.getElementById('saveStatus');
+        if (!status) return;
+        status.textContent = text;
+        status.dataset.tone = tone;
+    }
+
+    setBuilderMessage(level, title, details = [], autoHide = false) {
+        const container = document.getElementById('builderMessage');
+        if (!container) return;
+
+        const safeDetails = (details || []).slice(0, 6);
+        container.innerHTML = `
+            <div class="alert alert-${level} mb-2 py-2 px-3">
+                <div class="fw-semibold">${this.escapeHtml(title)}</div>
+                ${safeDetails.length ? `
+                    <ul class="mb-0 small mt-2">
+                        ${safeDetails.map(detail => `<li>${this.escapeHtml(detail)}</li>`).join('')}
+                    </ul>
+                ` : ''}
+            </div>
+        `;
+
+        if (autoHide) {
+            window.clearTimeout(this.builderMessageTimeout);
+            this.builderMessageTimeout = window.setTimeout(() => {
+                if (container) {
+                    container.innerHTML = '';
+                }
+            }, 4000);
+        }
+    }
+
+    updateValidationDisplay() {
+        const container = document.getElementById('validationSummary');
+        if (!container) return;
+
+        const { errors, warnings } = this.validationState;
+        if (errors.length) {
+            container.innerHTML = `
+                <div class="alert alert-danger validation-summary mb-0 py-2 px-3">
+                    <div class="fw-semibold"><i class="bi bi-exclamation-triangle"></i> ${errors.length} validation error${errors.length === 1 ? '' : 's'} blocking save</div>
+                    <ul class="small mb-0 mt-2">
+                        ${errors.slice(0, 4).map(error => `<li>${this.escapeHtml(error)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+            return;
+        }
+
+        if (warnings.length) {
+            container.innerHTML = `
+                <div class="alert alert-warning validation-summary mb-0 py-2 px-3">
+                    <div class="fw-semibold"><i class="bi bi-exclamation-circle"></i> ${warnings.length} warning${warnings.length === 1 ? '' : 's'}</div>
+                    <ul class="small mb-0 mt-2">
+                        ${warnings.slice(0, 4).map(warning => `<li>${this.escapeHtml(warning)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="alert alert-success validation-summary mb-0 py-2 px-3">
+                <div class="fw-semibold"><i class="bi bi-check-circle"></i> Builder validation looks good</div>
+            </div>
+        `;
     }
 
     async loadWorkflow() {
@@ -217,6 +295,7 @@ class WorkflowBuilder {
                 this.fields = data.fields || [];
                 this.groups = data.groups || [];
                 this.forms = data.forms || [];
+                this.workflowTargets = data.workflow_targets || [];
 
                 console.log('Loaded nodes:', this.nodes);
                 console.log('Loaded connections:', this.connections);
@@ -232,21 +311,45 @@ class WorkflowBuilder {
                 }
             } else {
                 console.error('Failed to load workflow:', data.error);
+                this.setBuilderMessage('danger', 'Failed to load workflow builder data.', [data.error || 'Unknown error']);
             }
         } catch (error) {
             console.error('Error loading workflow:', error);
+            this.setBuilderMessage('danger', 'Failed to load workflow builder data.', [error.message || 'Unknown error']);
         }
     }
 
     async saveWorkflow() {
+        const validation = this.refreshValidationState();
+        if (validation.errors.length) {
+            this.setSaveStatus('Fix validation errors', 'danger');
+            this.setBuilderMessage(
+                'danger',
+                'Fix validation errors before saving.',
+                validation.errors
+            );
+            if (validation.firstErrorNodeId) {
+                this.selectNode(validation.firstErrorNodeId);
+            }
+            return;
+        }
+
         const saveBtn = document.getElementById('btnSave');
         const originalText = saveBtn.innerHTML;
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saving...';
-        document.getElementById('saveStatus').textContent = 'Saving...';
+        this.setSaveStatus('Saving...', 'info');
+        this.setBuilderMessage(
+            validation.warnings.length ? 'warning' : 'info',
+            validation.warnings.length
+                ? 'Saving workflow with warnings.'
+                : 'Saving workflow…',
+            validation.warnings
+        );
 
         const workflowData = {
             form_id: this.config.formId,
+            workflow_id: this.config.currentWorkflowId,
             workflow: {
                 nodes: this.nodes,
                 connections: this.connections
@@ -274,18 +377,33 @@ class WorkflowBuilder {
             console.log('Response data:', result);
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to save workflow');
+                const error = new Error(result.error || 'Failed to save workflow');
+                error.details = result.errors || [];
+                throw error;
             }
 
-            document.getElementById('saveStatus').textContent = 'Saved successfully';
-            alert('Workflow saved successfully!');
+            if (result.workflow_id) {
+                this.config.currentWorkflowId = result.workflow_id;
+            }
+
+            this.setSaveStatus('Saved successfully', 'success');
+            this.setBuilderMessage(
+                'success',
+                'Workflow saved successfully.',
+                validation.warnings.length ? ['Saved with non-blocking warnings shown below.'] : [],
+                true
+            );
             setTimeout(() => {
-                document.getElementById('saveStatus').textContent = 'Ready';
+                this.setSaveStatus('Ready', 'neutral');
             }, 2000);
         } catch (error) {
             console.error('Error saving workflow:', error);
-            alert('Failed to save workflow: ' + error.message);
-            document.getElementById('saveStatus').textContent = 'Error saving';
+            this.setBuilderMessage(
+                'danger',
+                `Failed to save workflow: ${error.message}`,
+                error.details || []
+            );
+            this.setSaveStatus('Error saving', 'danger');
         } finally {
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
@@ -342,10 +460,13 @@ class WorkflowBuilder {
                     assignee_form_field: '',
                     assignee_lookup_type: 'email',
                     validate_assignee_group: true,
+                    trigger_conditions: null,
+                    approval_fields: [],
                     approval_groups: [],
                 };
             case 'workflow_settings':
                 return {
+                    name_label: '',
                     requires_approval: true,
                     approval_deadline_days: null,
                     send_reminder_after_days: null,
@@ -354,6 +475,8 @@ class WorkflowBuilder {
                     notification_cadence_day: null,
                     notification_cadence_time: '',
                     notification_cadence_form_field: '',
+                    trigger_conditions: null,
+                    notification_rules: [],
                 };
             case 'condition':
                 return {
@@ -386,6 +509,7 @@ class WorkflowBuilder {
                 return {
                     sub_workflow_def_id: null,
                     sub_workflow_id: null,
+                    sub_workflow_form_id: null,
                     sub_workflow_name: '',
                     section_label: '',
                     count_field: '',
@@ -420,6 +544,7 @@ class WorkflowBuilder {
         this.selectedNode = nodeId;
         const node = this.nodes.find(n => n.id === nodeId);
         if (node) {
+            this.refreshValidationState();
             this.showNodeProperties(node);
         }
         this.render();
@@ -456,6 +581,7 @@ class WorkflowBuilder {
 
     buildPropertiesForm(node) {
         let html = `<h6 class="mb-3">${this.getNodeTypeLabel(node.type)}</h6>`;
+        html += this.buildNodeIssuesAlert(node);
 
         switch (node.type) {
             case 'start':
@@ -509,7 +635,9 @@ class WorkflowBuilder {
 
     buildStageProperties(node) {
         const data = node.data || {};
-        const selectedGroupIds = (data.approval_groups || []).map(g => g.id);
+        const orderedApprovalGroups = this.getNormalizedStageApprovalGroups(data.approval_groups || []);
+        const selectedGroupIds = orderedApprovalGroups.map(g => g.id);
+        const selectedApprovalFieldIds = new Set((data.approval_fields || []).map(field => field.id));
 
         let html = `
             <div class="alert alert-info">
@@ -606,6 +734,8 @@ class WorkflowBuilder {
                 <small class="text-muted d-block mt-1">Hold Ctrl/Cmd to select multiple groups.</small>
             </div>
 
+            ${this.buildStageApprovalOrderEditor(node, orderedApprovalGroups)}
+
             <div class="mb-3">
                 <label class="form-label">Approval Logic</label>
                 <select class="form-select" name="approval_logic"
@@ -614,6 +744,20 @@ class WorkflowBuilder {
                     <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
                     <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>Sequential</option>
                 </select>
+            </div>
+
+            <hr />
+            <h6>Approval-Only Fields</h6>
+            <div class="mb-3">
+                <label class="form-label"><strong>Fields shown during this stage</strong></label>
+                <select class="form-select" id="stage_fields_${node.id}" name="approval_fields" multiple size="6"
+                        style="min-height: 140px;"
+                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    ${this.fields.map(field => `
+                        <option value="${field.id}" ${selectedApprovalFieldIds.has(field.id) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
+                    `).join('')}
+                </select>
+                <small class="text-muted d-block mt-1">Selected fields become editable approval-step fields for this stage only.</small>
             </div>
 
             <hr />
@@ -651,9 +795,60 @@ class WorkflowBuilder {
                     </label>
                 </div>
             </div>
+
+            ${this.buildTriggerConditionsEditor(node, 'Stage trigger conditions')}
         `;
 
         return html;
+    }
+
+    getNormalizedStageApprovalGroups(groups) {
+        return [...(groups || [])]
+            .filter(group => group && group.id)
+            .sort((a, b) => {
+                const posA = a.position ?? 0;
+                const posB = b.position ?? 0;
+                if (posA !== posB) return posA - posB;
+                return (a.name || '').localeCompare(b.name || '');
+            })
+            .map((group, index) => ({ ...group, position: index }));
+    }
+
+    buildStageApprovalOrderEditor(node, orderedGroups) {
+        if (!orderedGroups.length) {
+            return `
+                <div class="alert alert-secondary small">
+                    Select one or more approval groups above. For sequential stages, the order shown here controls which group is asked first.
+                </div>
+            `;
+        }
+
+        return `
+            <div class="mb-3">
+                <label class="form-label"><strong>Approval Group Order</strong></label>
+                <div class="list-group">
+                    ${orderedGroups.map((group, index) => `
+                        <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                            <div>
+                                <span class="badge bg-secondary me-2">${index + 1}</span>
+                                ${this.escapeHtml(group.name)}
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-secondary" ${index === 0 ? 'disabled' : ''}
+                                        onclick="workflowBuilder.moveStageApprovalGroup('${node.id}', ${group.id}, -1)">
+                                    <i class="bi bi-arrow-up"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" ${index === orderedGroups.length - 1 ? 'disabled' : ''}
+                                        onclick="workflowBuilder.moveStageApprovalGroup('${node.id}', ${group.id}, 1)">
+                                    <i class="bi bi-arrow-down"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                <small class="text-muted d-block mt-1">This order is used when the stage logic is <strong>Sequential</strong>.</small>
+            </div>
+        `;
     }
 
     buildWorkflowSettingsProperties(node) {
@@ -662,6 +857,15 @@ class WorkflowBuilder {
         let html = `
             <div class="alert alert-info">
                 <i class="bi bi-info-circle"></i> Workflow-level notification and deadline settings.
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Workflow Track Label</label>
+                <input type="text" class="form-control" name="name_label"
+                       value="${this.escapeHtml(data.name_label || '')}"
+                       placeholder="e.g. Finance Approval"
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                <small class="text-muted">Helpful when a form has multiple workflow tracks.</small>
             </div>
 
             <h6 class="mt-3">Deadlines &amp; Reminders</h6>
@@ -723,13 +927,300 @@ class WorkflowBuilder {
             </div>
 
             <hr />
-            <div class="alert alert-secondary mb-0">
-                <i class="bi bi-info-circle"></i>
-                Recipient rules and event-specific notifications are still configured in Django Admin via <strong>Notification Rules</strong>.
-            </div>
+            ${this.buildNotificationRulesEditor(node)}
+            ${this.buildTriggerConditionsEditor(node, 'Workflow trigger conditions')}
         `;
 
         return html;
+    }
+
+    getNotificationRuleStageOptions() {
+        return this.nodes
+            .filter(node => node.type === 'stage')
+            .map(node => ({
+                nodeId: node.id,
+                stageId: node.data?.stage_id || null,
+                name: node.data?.name || 'Unnamed Stage',
+                order: node.data?.order || 0,
+            }))
+            .sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
+    }
+
+    getNotificationRuleState(rule) {
+        return {
+            rule_id: rule?.rule_id || null,
+            stage_id: rule?.stage_id || null,
+            stage_node_id: rule?.stage_node_id || '',
+            event: rule?.event || 'approval_request',
+            subject_template: rule?.subject_template || '',
+            notify_submitter: !!rule?.notify_submitter,
+            email_field: rule?.email_field || '',
+            static_emails: rule?.static_emails || '',
+            notify_stage_assignees: !!rule?.notify_stage_assignees,
+            notify_stage_groups: !!rule?.notify_stage_groups,
+            notify_groups: (rule?.notify_groups || []).map(group => ({
+                id: typeof group === 'object' ? group.id : group,
+                name: typeof group === 'object' ? group.name : String(group),
+            })).filter(group => group.id),
+            conditions: rule?.conditions || null,
+        };
+    }
+
+    buildNotificationRulesEditor(node) {
+        const rules = (node.data.notification_rules || []).map(rule => this.getNotificationRuleState(rule));
+        const stageOptions = this.getNotificationRuleStageOptions();
+        const eventOptions = [
+            ['submission_received', 'Submission Received'],
+            ['approval_request', 'Approval Request'],
+            ['stage_decision', 'Stage Decision'],
+            ['workflow_approved', 'Workflow Approved'],
+            ['workflow_denied', 'Workflow Denied'],
+            ['form_withdrawn', 'Form Withdrawn'],
+        ];
+
+        return `
+            <h6>Notification Rules</h6>
+            <p class="small text-muted">Configure event-driven recipients here instead of dropping to Django Admin.</p>
+            ${(rules.length ? rules : [null]).map((rule, index) => {
+                const state = this.getNotificationRuleState(rule || {});
+                const selectedGroupIds = new Set((state.notify_groups || []).map(group => group.id));
+                return `
+                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${state.rule_id || ''}">
+                        <div class="card-body py-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="mb-0">Rule ${index + 1}</h6>
+                                ${rules.length ? `
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            onclick="workflowBuilder.removeNotificationRule('${node.id}', ${index})">
+                                        Remove
+                                    </button>
+                                ` : ''}
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label form-label-sm">Scope</label>
+                                <select class="form-select form-select-sm" name="notification_rule_stage"
+                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                    <option value="">Workflow-level</option>
+                                    ${stageOptions.map(option => `
+                                        <option value="${option.nodeId}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label form-label-sm">Event</label>
+                                <select class="form-select form-select-sm" name="notification_rule_event"
+                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                    ${eventOptions.map(([value, label]) => `
+                                        <option value="${value}" ${state.event === value ? 'selected' : ''}>${label}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label form-label-sm">Subject Template</label>
+                                <input type="text" class="form-control form-control-sm" name="notification_rule_subject_template"
+                                       value="${this.escapeHtml(state.subject_template)}"
+                                       placeholder="Submission Approved: {form_name} (ID {submission_id})"
+                                       onchange="workflowBuilder.updateNotificationRules('${node.id}')" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label form-label-sm">Email Field</label>
+                                <select class="form-select form-select-sm" name="notification_rule_email_field"
+                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                    <option value="">-- None --</option>
+                                    ${this.fields.map(field => `
+                                        <option value="${field.field_name}" ${state.email_field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label form-label-sm">Static Emails</label>
+                                <input type="text" class="form-control form-control-sm" name="notification_rule_static_emails"
+                                       value="${this.escapeHtml(state.static_emails)}"
+                                       placeholder="ops@example.com, owner@example.com"
+                                       onchange="workflowBuilder.updateNotificationRules('${node.id}')" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label form-label-sm">Additional Groups</label>
+                                <select class="form-select form-select-sm" name="notification_rule_notify_groups" multiple size="4"
+                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                    ${this.groups.map(group => `
+                                        <option value="${group.id}" ${selectedGroupIds.has(group.id) ? 'selected' : ''}>${this.escapeHtml(group.name)}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="notification_rule_notify_submitter"
+                                               ${state.notify_submitter ? 'checked' : ''}
+                                               onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                        <label class="form-check-label">Notify submitter</label>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_assignees"
+                                               ${state.notify_stage_assignees ? 'checked' : ''}
+                                               onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                        <label class="form-check-label">Notify stage assignees</label>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_groups"
+                                               ${state.notify_stage_groups ? 'checked' : ''}
+                                               onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                        <label class="form-check-label">Notify stage groups</label>
+                                    </div>
+                                </div>
+                            </div>
+                            ${this.buildConditionsEditor({
+                                title: 'Rule conditions',
+                                conditions: state.conditions,
+                                onChangeHandler: `workflowBuilder.updateNotificationRules('${node.id}')`,
+                                editorKind: 'notification-rule',
+                                extraAttributes: `data-rule-index="${index}"`,
+                                removeConditionHandler: `workflowBuilder.removeNotificationRuleCondition('${node.id}', ${index}, __INDEX__)`,
+                            })}
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick="workflowBuilder.addNotificationRuleCondition('${node.id}', ${index})">
+                                <i class="bi bi-plus-lg"></i> Add Rule Condition
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="workflowBuilder.addNotificationRule('${node.id}')">
+                <i class="bi bi-plus-lg"></i> Add Notification Rule
+            </button>
+        `;
+    }
+
+    getNormalizedTriggerConditions(rawConditions) {
+        if (!rawConditions) {
+            return { operator: 'AND', conditions: [] };
+        }
+
+        if (Array.isArray(rawConditions.conditions)) {
+            return {
+                operator: (rawConditions.operator || 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND',
+                conditions: rawConditions.conditions.map(condition => ({
+                    field: condition.field || '',
+                    operator: condition.operator || 'equals',
+                    value: condition.value ?? ''
+                }))
+            };
+        }
+
+        if (rawConditions.field) {
+            return {
+                operator: 'AND',
+                conditions: [{
+                    field: rawConditions.field || '',
+                    operator: rawConditions.operator || 'equals',
+                    value: rawConditions.value ?? ''
+                }]
+            };
+        }
+
+        return { operator: 'AND', conditions: [] };
+    }
+
+    buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, extraAttributes = '', removeConditionHandler = null }) {
+        const state = this.getNormalizedTriggerConditions(conditions);
+        const operatorOptions = [
+            ['equals', 'Equals'],
+            ['not_equals', 'Not equals'],
+            ['contains', 'Contains'],
+            ['in', 'In list'],
+            ['gt', 'Greater than'],
+            ['gte', 'Greater than or equal'],
+            ['lt', 'Less than'],
+            ['lte', 'Less than or equal'],
+            ['is_empty', 'Is empty'],
+            ['not_empty', 'Is not empty'],
+        ];
+
+        let rowsHtml = '';
+        state.conditions.forEach((condition, index) => {
+            const operator = condition.operator || 'equals';
+            const needsValue = !['is_empty', 'not_empty'].includes(operator);
+            rowsHtml += `
+                <div class="border rounded p-2 mb-2 trigger-condition-row" data-index="${index}">
+                    <div class="mb-2">
+                        <label class="form-label form-label-sm mb-1">Field</label>
+                        <select class="form-select form-select-sm" name="condition_field"
+                                onchange="${onChangeHandler}">
+                            <option value="">-- Select field --</option>
+                            ${this.fields.map(field => `
+                                <option value="${field.field_name}" ${condition.field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label form-label-sm mb-1">Operator</label>
+                        <select class="form-select form-select-sm" name="condition_operator"
+                                onchange="${onChangeHandler}">
+                            ${operatorOptions.map(([value, label]) => `
+                                <option value="${value}" ${operator === value ? 'selected' : ''}>${label}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label form-label-sm mb-1">Value</label>
+                        <input type="text" class="form-control form-control-sm" name="condition_value"
+                               value="${this.escapeHtml(condition.value ?? '')}"
+                               placeholder="${operator === 'in' ? 'Comma-separated values' : 'Comparison value'}"
+                               ${needsValue ? '' : 'disabled'}
+                               onchange="${onChangeHandler}" />
+                    </div>
+                    ${removeConditionHandler ? `
+                    <div class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                onclick="${removeConditionHandler.replace('__INDEX__', String(index))}">
+                            Remove
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+
+        if (!rowsHtml) {
+            rowsHtml = '<p class="text-muted small mb-2">Always run unless you add at least one condition.</p>';
+        }
+
+        return `
+            <hr />
+            <h6>${this.escapeHtml(title)}</h6>
+            <div class="conditions-editor" data-editor-kind="${editorKind}" ${extraAttributes}>
+            <div class="mb-2">
+                <label class="form-label form-label-sm">Match mode</label>
+                <select class="form-select form-select-sm" name="condition_group_operator"
+                        onchange="${onChangeHandler}">
+                    <option value="AND" ${state.operator === 'AND' ? 'selected' : ''}>All conditions must match (AND)</option>
+                    <option value="OR" ${state.operator === 'OR' ? 'selected' : ''}>Any condition may match (OR)</option>
+                </select>
+            </div>
+            ${rowsHtml}
+            </div>
+        `;
+    }
+
+    buildTriggerConditionsEditor(node, title) {
+        return `
+            ${this.buildConditionsEditor({
+                title,
+                conditions: node.data.trigger_conditions,
+                onChangeHandler: `workflowBuilder.updateNodeTriggerConditions('${node.id}')`,
+                editorKind: 'node-trigger',
+                removeConditionHandler: `workflowBuilder.removeTriggerCondition('${node.id}', __INDEX__)`,
+            })}
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    onclick="workflowBuilder.addTriggerCondition('${node.id}')">
+                <i class="bi bi-plus-lg"></i> Add Condition
+            </button>
+        `;
     }
 
 
@@ -1015,11 +1506,11 @@ class WorkflowBuilder {
     buildSubWorkflowProperties(node) {
         const data = node.data || {};
 
-        // Build workflow options from this.forms (available workflows)
+        // Build workflow options from this.workflowTargets
         let workflowOptions = '<option value="">-- Select a workflow --</option>';
-        this.forms.forEach(f => {
-            const selected = (data.sub_workflow_id == f.id) ? 'selected' : '';
-            workflowOptions += `<option value="${f.id}" ${selected}>${this.escapeHtml(f.name)} (${f.field_count} fields)</option>`;
+        this.workflowTargets.forEach(target => {
+            const selected = (data.sub_workflow_id == target.workflow_id) ? 'selected' : '';
+            workflowOptions += `<option value="${target.workflow_id}" data-form-id="${target.form_id}" ${selected}>${this.escapeHtml(target.workflow_label)} (${target.field_count} fields)</option>`;
         });
 
         // Build count field options from this.fields
@@ -1121,6 +1612,7 @@ class WorkflowBuilder {
         node.data.sub_workflow_id = subWfSelect.value ? parseInt(subWfSelect.value) : null;
         const selectedOption = subWfSelect.selectedOptions[0];
         node.data.sub_workflow_name = selectedOption && selectedOption.value ? selectedOption.text : '';
+        node.data.sub_workflow_form_id = selectedOption && selectedOption.dataset.formId ? parseInt(selectedOption.dataset.formId) : null;
 
         node.data.section_label = container.querySelector('input[name="section_label"]').value;
         node.data.count_field = container.querySelector('select[name="count_field"]').value;
@@ -1201,12 +1693,13 @@ class WorkflowBuilder {
         node.data.assignee_form_field = container.querySelector('select[name="assignee_form_field"]').value;
         node.data.assignee_lookup_type = container.querySelector('select[name="assignee_lookup_type"]').value;
         node.data.validate_assignee_group = container.querySelector(`#stage_validate_assignee_group_${nodeId}`).checked;
-
-        const groupSelect = container.querySelector(`#stage_groups_${nodeId}`);
-        node.data.approval_groups = Array.from(groupSelect.selectedOptions).map(opt => ({
-            id: parseInt(opt.value),
-            name: opt.text
-        }));
+        node.data.trigger_conditions = this.readNodeTriggerConditions(container);
+        node.data.approval_groups = this.readStageApprovalGroupsFromPanel(
+            container,
+            nodeId,
+            node.data.approval_groups || []
+        );
+        node.data.approval_fields = this.readStageApprovalFieldsFromPanel(container, nodeId);
         node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
 
         this.render();
@@ -1225,12 +1718,231 @@ class WorkflowBuilder {
             node.data[key] = val ? parseInt(val) : null;
         });
 
+        node.data.name_label = container.querySelector('input[name="name_label"]').value;
         node.data.notification_cadence = container.querySelector('select[name="notification_cadence"]').value;
         const cadenceDay = container.querySelector('input[name="notification_cadence_day"]').value;
         node.data.notification_cadence_day = cadenceDay ? parseInt(cadenceDay) : null;
         node.data.notification_cadence_time = container.querySelector('input[name="notification_cadence_time"]').value;
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
+        node.data.notification_rules = this.readNotificationRulesFromPanel(container);
+        node.data.trigger_conditions = this.readNodeTriggerConditions(container);
 
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    readConditionsFromEditor(editorElement) {
+        if (!editorElement) {
+            return null;
+        }
+
+        const operatorElement = editorElement.querySelector('select[name="condition_group_operator"]');
+        const rows = Array.from(editorElement.querySelectorAll('.trigger-condition-row'));
+        const conditions = rows.map(row => {
+            const operator = row.querySelector('select[name="condition_operator"]').value;
+            const condition = {
+                field: row.querySelector('select[name="condition_field"]').value,
+                operator,
+            };
+            if (!['is_empty', 'not_empty'].includes(operator)) {
+                condition.value = row.querySelector('input[name="condition_value"]').value;
+            }
+            return condition;
+        }).filter(condition => condition.field);
+
+        if (!conditions.length) {
+            return null;
+        }
+
+        return {
+            operator: operatorElement ? operatorElement.value : 'AND',
+            conditions,
+        };
+    }
+
+    readNodeTriggerConditions(container) {
+        return this.readConditionsFromEditor(
+            container.querySelector('.conditions-editor[data-editor-kind="node-trigger"]')
+        );
+    }
+
+    readStageApprovalGroupsFromPanel(container, nodeId, existingGroups) {
+        const groupSelect = container.querySelector(`#stage_groups_${nodeId}`);
+        const selected = Array.from(groupSelect.selectedOptions).map(opt => ({
+            id: parseInt(opt.value),
+            name: opt.text,
+        }));
+        const existingOrdered = this.getNormalizedStageApprovalGroups(existingGroups || []);
+        const existingMap = new Map(existingOrdered.map(group => [group.id, group]));
+
+        const kept = existingOrdered.filter(group => selected.some(sel => sel.id === group.id));
+        const appended = selected
+            .filter(group => !existingMap.has(group.id))
+            .map(group => ({ id: group.id, name: group.name }));
+
+        return [...kept, ...appended].map((group, index) => ({
+            id: group.id,
+            name: group.name,
+            position: index,
+        }));
+    }
+
+    readStageApprovalFieldsFromPanel(container, nodeId) {
+        const fieldSelect = container.querySelector(`#stage_fields_${nodeId}`);
+        if (!fieldSelect) {
+            return [];
+        }
+
+        return Array.from(fieldSelect.selectedOptions).map(option => {
+            const fieldId = parseInt(option.value);
+            const field = this.fields.find(entry => entry.id === fieldId);
+            return {
+                id: fieldId,
+                field_name: field?.field_name || option.text,
+                field_label: field?.field_label || option.text,
+                field_type: field?.field_type || '',
+                order: field?.order ?? 0,
+            };
+        });
+    }
+
+    moveStageApprovalGroup(nodeId, groupId, direction) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const groups = this.getNormalizedStageApprovalGroups(node.data.approval_groups || []);
+        const currentIndex = groups.findIndex(group => group.id === groupId);
+        const targetIndex = currentIndex + direction;
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= groups.length) {
+            return;
+        }
+
+        [groups[currentIndex], groups[targetIndex]] = [groups[targetIndex], groups[currentIndex]];
+        node.data.approval_groups = groups.map((group, index) => ({ ...group, position: index }));
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    readNotificationRulesFromPanel(container) {
+        return Array.from(container.querySelectorAll('.notification-rule-card')).map(card => {
+            const stageNodeId = card.querySelector('select[name="notification_rule_stage"]').value;
+            const notifyGroups = Array.from(card.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions).map(opt => ({
+                id: parseInt(opt.value),
+                name: opt.text,
+            }));
+            return {
+                rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
+                stage_node_id: stageNodeId || '',
+                event: card.querySelector('select[name="notification_rule_event"]').value,
+                subject_template: card.querySelector('input[name="notification_rule_subject_template"]').value,
+                notify_submitter: card.querySelector('input[name="notification_rule_notify_submitter"]').checked,
+                email_field: card.querySelector('select[name="notification_rule_email_field"]').value,
+                static_emails: card.querySelector('input[name="notification_rule_static_emails"]').value,
+                notify_stage_assignees: card.querySelector('input[name="notification_rule_notify_stage_assignees"]').checked,
+                notify_stage_groups: card.querySelector('input[name="notification_rule_notify_stage_groups"]').checked,
+                notify_groups: notifyGroups,
+                conditions: this.readConditionsFromEditor(
+                    card.querySelector('.conditions-editor[data-editor-kind="notification-rule"]')
+                ),
+            };
+        }).filter(rule => (
+            rule.notify_submitter
+            || rule.email_field
+            || rule.static_emails
+            || rule.notify_stage_assignees
+            || rule.notify_stage_groups
+            || rule.notify_groups.length > 0
+            || rule.subject_template
+            || (rule.conditions && rule.conditions.conditions && rule.conditions.conditions.length > 0)
+        ));
+    }
+
+    addNotificationRule(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        node.data.notification_rules = [...(node.data.notification_rules || []), this.getNotificationRuleState({})];
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    removeNotificationRule(nodeId, index) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const rules = [...(node.data.notification_rules || [])];
+        rules.splice(index, 1);
+        node.data.notification_rules = rules;
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    addNotificationRuleCondition(nodeId, ruleIndex) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const rules = [...(node.data.notification_rules || [])];
+        const rule = this.getNotificationRuleState(rules[ruleIndex] || {});
+        const state = this.getNormalizedTriggerConditions(rule.conditions);
+        state.conditions.push({ field: '', operator: 'equals', value: '' });
+        rules[ruleIndex] = { ...rule, conditions: state };
+        node.data.notification_rules = rules;
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    removeNotificationRuleCondition(nodeId, ruleIndex, conditionIndex) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const rules = [...(node.data.notification_rules || [])];
+        const rule = this.getNotificationRuleState(rules[ruleIndex] || {});
+        const state = this.getNormalizedTriggerConditions(rule.conditions);
+        state.conditions.splice(conditionIndex, 1);
+        rules[ruleIndex] = { ...rule, conditions: state.conditions.length ? state : null };
+        node.data.notification_rules = rules;
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    updateNotificationRules(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const container = document.getElementById('propertiesContent');
+        node.data.notification_rules = this.readNotificationRulesFromPanel(container);
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    addTriggerCondition(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
+        state.conditions.push({ field: '', operator: 'equals', value: '' });
+        node.data.trigger_conditions = state;
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    removeTriggerCondition(nodeId, index) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
+        state.conditions.splice(index, 1);
+        node.data.trigger_conditions = state.conditions.length ? state : null;
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    updateNodeTriggerConditions(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const container = document.getElementById('propertiesContent');
+        node.data.trigger_conditions = this.readNodeTriggerConditions(container);
         this.render();
         this.selectNode(nodeId);
     }
@@ -1292,8 +2004,226 @@ class WorkflowBuilder {
         return div.innerHTML;
     }
 
+    addNodeIssue(result, nodeId, severity, message) {
+        if (!nodeId) return;
+        if (!result.nodeIssues[nodeId]) {
+            result.nodeIssues[nodeId] = { errors: [], warnings: [] };
+        }
+        result.nodeIssues[nodeId][severity].push(message);
+        result[severity].push(message);
+        if (severity === 'errors' && !result.firstErrorNodeId) {
+            result.firstErrorNodeId = nodeId;
+        }
+    }
+
+    refreshValidationState() {
+        this.validationState = this.validateWorkflow();
+        this.updateValidationDisplay();
+        return this.validationState;
+    }
+
+    validateWorkflow() {
+        const result = {
+            errors: [],
+            warnings: [],
+            nodeIssues: {},
+            firstErrorNodeId: null,
+        };
+        const fieldNames = new Set(this.fields.map(field => field.field_name));
+        const fieldIds = new Set(this.fields.map(field => field.id));
+        const groupIds = new Set(this.groups.map(group => group.id));
+        const stageNodes = this.nodes.filter(node => node.type === 'stage');
+        const settingsNode = this.nodes.find(node => node.type === 'workflow_settings');
+        const stageNodeIds = new Set(stageNodes.map(node => node.id));
+        const assignedApprovalFields = new Map();
+
+        stageNodes.forEach((node, index) => {
+            const data = node.data || {};
+            const groups = (data.approval_groups || []).filter(group => group && group.id);
+            const stageLabel = data.name || `Stage ${index + 1}`;
+
+            if (!String(data.name || '').trim()) {
+                this.addNodeIssue(result, node.id, 'errors', `Stage ${index + 1} is missing a name.`);
+            }
+            if (!(groups.length || data.requires_manager_approval || data.assignee_form_field)) {
+                this.addNodeIssue(result, node.id, 'errors', `${stageLabel} needs approval groups, manager approval, or a dynamic assignee field.`);
+            }
+            if (data.assignee_form_field && !fieldNames.has(data.assignee_form_field)) {
+                this.addNodeIssue(result, node.id, 'errors', `${stageLabel} uses an unknown assignee field: ${data.assignee_form_field}.`);
+            }
+            if (data.validate_assignee_group !== false && data.assignee_form_field && !groups.length) {
+                this.addNodeIssue(result, node.id, 'errors', `${stageLabel} cannot validate assignee group membership without at least one approval group.`);
+            }
+            if (data.approval_logic === 'sequence' && groups.length < 2) {
+                this.addNodeIssue(result, node.id, 'warnings', `${stageLabel} uses sequence logic with fewer than two approval groups.`);
+            }
+
+            groups.forEach(group => {
+                if (!groupIds.has(group.id)) {
+                    this.addNodeIssue(result, node.id, 'errors', `${stageLabel} references an unknown approval group: ${group.id}.`);
+                }
+            });
+
+            (data.approval_fields || []).forEach(field => {
+                const fieldId = field?.id;
+                const fieldName = field?.field_name;
+                const lookupKey = fieldId ? `id:${fieldId}` : `name:${fieldName}`;
+                const label = field?.field_label || fieldName || fieldId;
+                const exists = (fieldId && fieldIds.has(fieldId)) || (fieldName && fieldNames.has(fieldName));
+
+                if (!exists) {
+                    this.addNodeIssue(result, node.id, 'errors', `${stageLabel} references an unknown approval-only field: ${label}.`);
+                    return;
+                }
+
+                if (assignedApprovalFields.has(lookupKey) && assignedApprovalFields.get(lookupKey) !== node.id) {
+                    const otherStage = this.nodes.find(candidate => candidate.id === assignedApprovalFields.get(lookupKey));
+                    const otherLabel = otherStage?.data?.name || 'another stage';
+                    this.addNodeIssue(result, node.id, 'errors', `Approval-only field ${label} is already assigned to ${otherLabel}.`);
+                } else {
+                    assignedApprovalFields.set(lookupKey, node.id);
+                }
+            });
+        });
+
+        if (settingsNode) {
+            const data = settingsNode.data || {};
+            const cadence = data.notification_cadence || 'immediate';
+            const cadenceDay = data.notification_cadence_day;
+
+            if (cadence === 'weekly' && !(Number.isInteger(cadenceDay) && cadenceDay >= 0 && cadenceDay <= 6)) {
+                this.addNodeIssue(result, settingsNode.id, 'errors', 'Weekly notification cadence requires a digest day between 0 and 6.');
+            }
+            if (cadence === 'monthly' && !(Number.isInteger(cadenceDay) && cadenceDay >= 1 && cadenceDay <= 31)) {
+                this.addNodeIssue(result, settingsNode.id, 'errors', 'Monthly notification cadence requires a digest day between 1 and 31.');
+            }
+            if (cadence === 'form_field_date') {
+                if (!data.notification_cadence_form_field) {
+                    this.addNodeIssue(result, settingsNode.id, 'errors', 'On-date notification cadence requires a date field.');
+                } else if (!fieldNames.has(data.notification_cadence_form_field)) {
+                    this.addNodeIssue(result, settingsNode.id, 'errors', `Unknown notification cadence field: ${data.notification_cadence_form_field}.`);
+                }
+            }
+            if (cadence !== 'weekly' && cadence !== 'monthly' && data.notification_cadence_day !== null && data.notification_cadence_day !== '') {
+                this.addNodeIssue(result, settingsNode.id, 'warnings', 'Digest day is only used for weekly and monthly notification cadences.');
+            }
+            if (cadence !== 'form_field_date' && data.notification_cadence_form_field) {
+                this.addNodeIssue(result, settingsNode.id, 'warnings', 'Date field is ignored unless cadence is “On Date From Form Field”.');
+            }
+
+            (data.notification_rules || []).forEach((rule, index) => {
+                const ruleLabel = `Notification rule ${index + 1}`;
+                const hasRecipients = Boolean(
+                    rule.notify_submitter
+                    || rule.email_field
+                    || rule.static_emails
+                    || rule.notify_stage_assignees
+                    || rule.notify_stage_groups
+                    || (rule.notify_groups || []).length
+                );
+                if (!hasRecipients) {
+                    this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} must define at least one recipient source.`);
+                }
+                if (rule.email_field && !fieldNames.has(rule.email_field)) {
+                    this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references an unknown email field: ${rule.email_field}.`);
+                }
+                if (rule.stage_node_id && !stageNodeIds.has(rule.stage_node_id)) {
+                    this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references a stage that is not present in the builder graph.`);
+                }
+                if ((rule.notify_stage_assignees || rule.notify_stage_groups) && !stageNodes.length) {
+                    this.addNodeIssue(result, settingsNode.id, 'warnings', `${ruleLabel} uses stage-based recipients, but no approval stages are configured yet.`);
+                }
+            });
+        }
+
+        this.nodes.filter(node => node.type === 'email').forEach((node, index) => {
+            const data = node.data || {};
+            const label = data.name || `Email notification ${index + 1}`;
+            if (!(data.email_to || data.email_to_field)) {
+                this.addNodeIssue(result, node.id, 'errors', `${label} needs static recipients or a recipient field.`);
+            }
+            if (data.email_to_field && !fieldNames.has(data.email_to_field)) {
+                this.addNodeIssue(result, node.id, 'errors', `${label} references an unknown recipient field: ${data.email_to_field}.`);
+            }
+            if (data.email_cc_field && !fieldNames.has(data.email_cc_field)) {
+                this.addNodeIssue(result, node.id, 'errors', `${label} references an unknown CC field: ${data.email_cc_field}.`);
+            }
+        });
+
+        this.nodes.filter(node => node.type === 'action').forEach((node, index) => {
+            const data = node.data || {};
+            if (typeof data.config === 'string' && data.config.trim()) {
+                try {
+                    JSON.parse(data.config);
+                } catch (_error) {
+                    this.addNodeIssue(result, node.id, 'errors', `${data.name || `Action ${index + 1}`} has invalid JSON configuration.`);
+                }
+            }
+        });
+
+        this.nodes.filter(node => node.type === 'sub_workflow').forEach((node, index) => {
+            const data = node.data || {};
+            const label = data.sub_workflow_name || `Sub-workflow ${index + 1}`;
+            if (!data.sub_workflow_id) {
+                this.addNodeIssue(result, node.id, 'errors', `${label} needs a target workflow.`);
+            }
+            if (data.count_field && !fieldNames.has(data.count_field)) {
+                this.addNodeIssue(result, node.id, 'errors', `${label} references an unknown count field: ${data.count_field}.`);
+            }
+            if (data.detached && data.reject_parent) {
+                this.addNodeIssue(result, node.id, 'warnings', `${label} is detached, so “Reject Parent on Failure” may not have any effect.`);
+            }
+        });
+
+        return result;
+    }
+
+    getNodeIssues(nodeId) {
+        return this.validationState.nodeIssues[nodeId] || { errors: [], warnings: [] };
+    }
+
+    buildNodeIssuesAlert(node) {
+        const issues = this.getNodeIssues(node.id);
+        if (!issues.errors.length && !issues.warnings.length) {
+            return '';
+        }
+
+        const errorHtml = issues.errors.length ? `
+            <div class="alert alert-danger py-2 px-3">
+                <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle"></i> Fix before saving</div>
+                <ul class="small mb-0">
+                    ${issues.errors.map(error => `<li>${this.escapeHtml(error)}</li>`).join('')}
+                </ul>
+            </div>
+        ` : '';
+        const warningHtml = issues.warnings.length ? `
+            <div class="alert alert-warning py-2 px-3 ${issues.errors.length ? 'mt-2' : ''}">
+                <div class="fw-semibold mb-1"><i class="bi bi-exclamation-circle"></i> Warnings</div>
+                <ul class="small mb-0">
+                    ${issues.warnings.map(warning => `<li>${this.escapeHtml(warning)}</li>`).join('')}
+                </ul>
+            </div>
+        ` : '';
+        return `${errorHtml}${warningHtml}`;
+    }
+
+    buildNodeIssueBadges(nodeId) {
+        const issues = this.getNodeIssues(nodeId);
+        if (!issues.errors.length && !issues.warnings.length) {
+            return '';
+        }
+
+        return `
+            <div class="node-issue-badges mt-2">
+                ${issues.errors.length ? `<span class="badge bg-danger-subtle text-danger-emphasis">${issues.errors.length} error${issues.errors.length === 1 ? '' : 's'}</span>` : ''}
+                ${issues.warnings.length ? `<span class="badge bg-warning-subtle text-warning-emphasis">${issues.warnings.length} warning${issues.warnings.length === 1 ? '' : 's'}</span>` : ''}
+            </div>
+        `;
+    }
+
     render() {
         console.log('Rendering workflow with', this.nodes.length, 'nodes and', this.connections.length, 'connections');
+        this.refreshValidationState();
         this.renderNodes();
         this.renderConnections();
         this.applyTransform();
@@ -1321,6 +2251,12 @@ class WorkflowBuilder {
 
         const div = document.createElement('div');
         div.className = `workflow-node ${node.type}`;
+        const issues = this.getNodeIssues(node.id);
+        if (issues.errors.length) {
+            div.className += ' has-validation-error';
+        } else if (issues.warnings.length) {
+            div.className += ' has-validation-warning';
+        }
         if (this.selectedNode === node.id) {
             div.className += ' selected';
         }
@@ -1350,6 +2286,7 @@ class WorkflowBuilder {
             </div>
             <div class="node-content">
                 ${this.getNodeDescription(node)}
+                ${this.buildNodeIssueBadges(node.id)}
             </div>
             ${canDelete ? `
                 <div class="node-actions">
@@ -1442,8 +2379,12 @@ class WorkflowBuilder {
                 return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${node.data.form_builder_url || '#'}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
             case 'workflow_settings':
                 const parts_ws = [];
+                if (node.data.name_label) parts_ws.push(node.data.name_label);
                 if (node.data.approval_deadline_days) parts_ws.push(`Deadline: ${node.data.approval_deadline_days}d`);
                 if (node.data.notification_cadence && node.data.notification_cadence !== 'immediate') parts_ws.push(`Cadence: ${node.data.notification_cadence}`);
+                if (node.data.notification_cadence_form_field && node.data.notification_cadence === 'form_field_date') parts_ws.push(`Date field: ${node.data.notification_cadence_form_field}`);
+                if (node.data.notification_rules && node.data.notification_rules.length > 0) parts_ws.push(`Notifications: ${node.data.notification_rules.length}`);
+                if (node.data.trigger_conditions && node.data.trigger_conditions.conditions && node.data.trigger_conditions.conditions.length > 0) parts_ws.push('Conditional');
                 return parts_ws.length > 0 ?
                     `<small class="text-muted">${parts_ws.join(' • ')}</small>` :
                     '<small class="text-muted">Default settings</small>';
@@ -1454,6 +2395,8 @@ class WorkflowBuilder {
                 if (node.data.allow_reassign) stageParts.push('Reassign');
                 if (node.data.allow_edit_form_data) stageParts.push('Editable');
                 if (node.data.assignee_form_field) stageParts.push(`Dynamic: ${node.data.assignee_form_field}`);
+                if (node.data.approval_fields && node.data.approval_fields.length > 0) stageParts.push(`Stage fields: ${node.data.approval_fields.length}`);
+                if (node.data.trigger_conditions && node.data.trigger_conditions.conditions && node.data.trigger_conditions.conditions.length > 0) stageParts.push('Conditional');
                 if (node.data.approval_groups && node.data.approval_groups.length > 0) {
                     const gc = node.data.approval_groups.length;
                     stageParts.push(`${gc} group${gc > 1 ? 's' : ''} (${node.data.approval_logic || 'all'})`);
@@ -1483,6 +2426,7 @@ class WorkflowBuilder {
             case 'action':
                 return node.data.action_type ? `${node.data.action_type.toUpperCase()}: ${node.data.trigger || ''}` : 'Configure action';
             case 'email':
+                if (node.data.email_to && node.data.email_to_field) return `Send to: ${node.data.email_to} + field ${node.data.email_to_field}`;
                 if (node.data.email_to) return `Send to: ${node.data.email_to}`;
                 if (node.data.email_to_field) return `Send to field: ${node.data.email_to_field}`;
                 return 'Configure email';
@@ -1494,6 +2438,7 @@ class WorkflowBuilder {
                 if (node.data.count_field) swParts.push(`Count: ${node.data.count_field}`);
                 if (node.data.trigger) swParts.push(node.data.trigger === 'on_approval' ? 'After approval' : 'On submission');
                 if (node.data.detached) swParts.push('Detached');
+                if (node.data.reject_parent) swParts.push('Rejects parent');
                 return swParts.length > 0 ?
                     `<span class="badge bg-info">Sub-Workflow</span><br><small class="text-muted">${swParts.join(' • ')}</small>` :
                     '<span class="badge bg-secondary">Sub-Workflow</span><br><small class="text-muted">Not configured</small>';

@@ -121,6 +121,16 @@
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
     }
+
+    .workflow-node.has-validation-error {
+        border-color: #dc3545;
+        box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.12);
+    }
+
+    .workflow-node.has-validation-warning {
+        border-color: #fd7e14;
+        box-shadow: 0 0 0 2px rgba(253, 126, 20, 0.10);
+    }
     
     .workflow-node.start {
         border-color: #28a745;
@@ -435,6 +445,28 @@
         color: rgba(255,255,255,0.8);
         font-size: 0.875rem;
     }
+
+    .save-status[data-tone="success"] { color: #d1f7dd; }
+    .save-status[data-tone="danger"] { color: #ffd6d6; }
+    .save-status[data-tone="info"] { color: #d9ecff; }
+
+    .builder-status-panels {
+        padding: 0.75rem 1.5rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .validation-summary ul,
+    #builderMessage ul {
+        padding-left: 1.1rem;
+    }
+
+    .node-issue-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
 </style>
 {% endblock %}
 
@@ -474,15 +506,9 @@
     
     <!-- Workflow Canvas -->
     <div class="workflow-canvas-container">
-        {% if workflow_count > 1 %}
-        <div class="alert alert-warning m-3 mb-0">
-            <i class="bi bi-exclamation-triangle"></i>
-            This form has <strong>{{ workflow_count }}</strong> workflow tracks. The visual builder currently edits only the first track; use Django Admin for multi-track workflow configuration.
-        </div>
-        {% endif %}
         <div class="canvas-header">
             <div>
-                <h5 class="mb-0">{{ form_definition.name }} - Workflow</h5>
+                <h5 class="mb-0">{{ form_definition.name }} - {{ selected_workflow_label }}</h5>
                 <small class="text-muted">
                     Visual workflow builder •
                     {% if workflow_id %}
@@ -491,6 +517,17 @@
                     </a>
                     {% endif %}
                 </small>
+                {% if workflow_count > 1 %}
+                <div class="mt-2" style="max-width: 360px;">
+                    <label for="workflowTrackSelect" class="form-label form-label-sm mb-1 text-white-50">Workflow track</label>
+                    <select class="form-select form-select-sm" id="workflowTrackSelect">
+                        {% for track in workflow_tracks %}
+                        <option value="{{ track.id }}" {% if track.id == workflow_id %}selected{% endif %}>{{ track.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-white-50">Existing tracks can be edited one at a time.</small>
+                </div>
+                {% endif %}
             </div>
             <div class="workflow-toolbar">
                 <div class="zoom-controls">
@@ -513,6 +550,10 @@
                     <i class="bi bi-arrow-left"></i> Back
                 </button>
             </div>
+        </div>
+        <div class="builder-status-panels">
+            <div id="builderMessage"></div>
+            <div id="validationSummary"></div>
         </div>
         <div class="workflow-canvas" id="workflowCanvas">
             <svg class="connections-svg" id="connectionsSvg">
@@ -542,6 +583,9 @@
                     <p class="small text-muted mb-2">This visual builder configures:</p>
                     <ul class="small text-muted">
                         <li>Approval stages and stage routing basics</li>
+                        <li>Workflow/stage trigger conditions</li>
+                        <li>Notification rules and cadence</li>
+                        <li>Approval-group ordering and approval-only fields</li>
                         <li>Post-submission actions</li>
                         <li>Email actions</li>
                         <li>Sub-workflow configuration</li>
@@ -557,10 +601,6 @@
                         {% endif %}:
                     </p>
                     <ul class="small text-muted">
-                        <li>Multiple parallel workflow tracks</li>
-                        <li>Workflow/stage trigger conditions</li>
-                        <li>Notification rules and recipients</li>
-                        <li>Sequence ordering inside a stage</li>
                         <li>Any advanced configuration not shown in the builder</li>
                     </ul>
                 </div>
@@ -576,9 +616,11 @@
 <script>
     const WORKFLOW_CONFIG = {
         formId: {{ form_id }},
+        currentWorkflowId: {{ workflow_id }},
+        workflowBuilderUrl: '{% url "admin:workflow_builder" form_id %}',
         csrfToken: '{{ csrf_token }}',
         apiUrls: {
-            load: '{% url "admin:workflow_builder_load" form_id %}',
+            load: '{% url "admin:workflow_builder_load" form_id %}?workflow_id={{ workflow_id }}',
             save: '{% url "admin:workflow_builder_save" %}',
         }
     };

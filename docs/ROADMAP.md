@@ -58,38 +58,11 @@ This document describes what has been delivered, what is actively being worked o
 
 ---
 
-### 2. Submission Dashboard & Analytics
-
-**Why:** Administrators and form owners need visibility into form throughput, approval bottlenecks, and SLA compliance — currently only raw Django Admin lists are available.
-
-**Scope:**
-- Per-form summary card: total submissions, pending, approved, rejected (last 30 days)
-- Average time-to-approval per stage (highlights bottleneck stages)
-- Overdue tasks (past `due_date`) count and list
-- Exportable as CSV/Excel
-- Accessible at `/forms/dashboard/` (staff only)
-
-**Complexity:** Low-Medium. Primarily aggregation queries on existing models.
-
----
-
 ## 📋 Medium-Term
 
 ### 4. ✅ Signature Field Type — *Shipped in v0.45.0*
 
 ### 5. ✅ Form Versioning with Diff Viewer — *Shipped in v0.45.0*
-
-### 6. Plugin / Custom Handler Marketplace
-
-**Why:** The `FORMS_WORKFLOWS_CALLBACKS` setting and `register_handler()` API (v0.48) provide handler registration, but there is no discoverability mechanism or standardised packaging for third-party handlers.
-
-**Scope:**
-- `django-forms-workflows-handler-{name}` packaging convention
-- `entry_points` auto-discovery — handlers register themselves via `[django_forms_workflows.handlers]` entry point group
-- Handler metadata schema: `name`, `description`, `config_schema` (JSON Schema for admin UI generation), `supported_triggers`
-- Example reference handler packages: `dfw-handler-slack`, `dfw-handler-servicenow`
-
-**Complexity:** Medium (protocol design) + Low (per-handler implementation).
 
 ---
 

@@ -368,10 +368,8 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 - [x] First-class workflow webhooks with HMAC signing, async retry/backoff, admin configuration, delivery logs, cloning, and sync support
 
 ### 🚧 Near-term (next 1–3 releases)
-- [ ] Submission dashboard & analytics
 
 ### 📋 Planned (medium-term)
-- [ ] Plugin / custom handler marketplace
 
 ## Credits
 

@@ -787,10 +787,13 @@ def convert_workflow_to_visual(workflow, form_definition):
     connections = []
     node_id_counter = 1
 
-    # Layout configuration for better spacing
-    horizontal_spacing = 280
+    # Layout configuration for better spacing.
+    # Keep these values comfortably above the visual builder node widths so
+    # generated layouts do not bunch up or overlap before the user edits them.
+    horizontal_spacing = 380
+    vertical_spacing = 170
     start_x = 120
-    start_y = 200
+    start_y = 220
     current_x = start_x
     current_y = start_y
 
@@ -887,8 +890,6 @@ def convert_workflow_to_visual(workflow, form_definition):
         order_groups: OrderedDict[int, list] = OrderedDict()
         for stage in stages:
             order_groups.setdefault(stage.order, []).append(stage)
-
-        vertical_spacing = 120
 
         for _order_val, group in order_groups.items():
             if len(group) == 1:

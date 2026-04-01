@@ -3,6 +3,7 @@ Tests for the form builder and workflow builder admin views.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -76,6 +77,24 @@ class TestConvertWorkflowToVisual:
         assert stage_nodes[0]["data"]["name"] == "Manager Review"
         assert stage_nodes[1]["data"]["name"] == "Finance Review"
         assert stage_nodes[0]["data"]["allow_send_back"] is True
+
+    def test_generated_layout_uses_wider_spacing(
+        self, staged_workflow, form_definition
+    ):
+        """Generated nodes should have enough horizontal room for the builder cards."""
+        result = convert_workflow_to_visual(staged_workflow, form_definition)
+
+        same_lane_nodes = sorted(
+            [node for node in result["nodes"] if node["y"] == 220],
+            key=lambda node: node["x"],
+        )
+
+        x_positions = [node["x"] for node in same_lane_nodes]
+        assert x_positions[:3] == [120, 500, 880]
+        assert all(
+            later - earlier >= 380
+            for earlier, later in zip(x_positions, x_positions[1:], strict=False)
+        )
 
     def test_backfills_send_back_flag_from_saved_visual_data(
         self, staged_workflow, form_definition
@@ -806,6 +825,20 @@ class TestWorkflowBuilderViews:
         url = _wf_url(f"{form_definition.id}/workflow/")
         resp = client.get(url)
         assert resp.status_code == 200
+
+    def test_form_admin_change_template_has_analytics_shortcut(self):
+        template_path = (
+            Path(__file__).resolve().parents[1]
+            / "django_forms_workflows/templates/admin/django_forms_workflows/formdef_change_form.html"
+        )
+
+        content = template_path.read_text()
+
+        assert "View Analytics" in content
+        assert (
+            "{% url 'forms_workflows:analytics_dashboard' %}?form={{ original.slug|urlencode }}"
+            in content
+        )
 
     def test_builder_view_selects_requested_workflow_track(
         self, client, superuser, form_definition

@@ -24,6 +24,9 @@ class WorkflowBuilder {
         this.isDirty = false;
         this.isSaving = false;
         this.lastSavedWorkflowSnapshot = null;
+        this.nodeStackOrder = new Map();
+        this.nextNodeStackOrder = 1;
+        this.draggingNodeId = null;
 
         // Pan & zoom state
         this.panX = 0;
@@ -253,6 +256,10 @@ class WorkflowBuilder {
 
     setupEventListeners() {
         document.getElementById('btnSave').addEventListener('click', () => this.saveWorkflow());
+        const autoArrangeBtn = document.getElementById('btnAutoArrange');
+        if (autoArrangeBtn) {
+            autoArrangeBtn.addEventListener('click', () => this.autoArrangeNodes());
+        }
         const deleteConnectionBtn = document.getElementById('btnDeleteConnection');
         if (deleteConnectionBtn) {
             deleteConnectionBtn.addEventListener('click', () => this.deleteSelectedConnection());
@@ -457,6 +464,11 @@ class WorkflowBuilder {
                     }));
                     this.nodeIdCounter = maxId + 1;
                 }
+
+                this.initializeNodeStackOrder();
+                if (this.layoutNeedsNormalization()) {
+                    this.autoArrangeNodes({ suppressRender: true, silent: true });
+                }
             } else {
                 console.error('Failed to load workflow:', data.error);
                 this.setBuilderMessage('danger', 'Failed to load workflow builder data.', [data.error || 'Unknown error']);
@@ -570,6 +582,7 @@ class WorkflowBuilder {
             data: {}
         };
         this.nodes.push(node);
+        this.bringNodeToFront(node.id);
         this.render();
     }
 
@@ -582,7 +595,192 @@ class WorkflowBuilder {
             data: this.getDefaultNodeData(type)
         };
         this.nodes.push(node);
+        this.bringNodeToFront(node.id);
         this.render();
+    }
+
+    initializeNodeStackOrder() {
+        this.nodeStackOrder = new Map();
+        this.nextNodeStackOrder = 1;
+        this.nodes.forEach((node) => {
+            this.nodeStackOrder.set(node.id, this.nextNodeStackOrder++);
+        });
+    }
+
+    bringNodeToFront(nodeId) {
+        if (!nodeId) return;
+        this.nodeStackOrder.set(nodeId, this.nextNodeStackOrder++);
+    }
+
+    getEstimatedNodeWidth(type) {
+        switch (type) {
+            case 'workflow_settings':
+                return 320;
+            case 'form':
+            case 'sub_workflow':
+                return 300;
+            case 'stage':
+            case 'approval':
+            case 'approval_config':
+                return 280;
+            case 'action':
+            case 'email':
+            case 'condition':
+                return 260;
+            case 'join':
+                return 140;
+            case 'start':
+            case 'end':
+                return 180;
+            default:
+                return 240;
+        }
+    }
+
+    getEstimatedNodeHeight(type) {
+        switch (type) {
+            case 'workflow_settings':
+                return 180;
+            case 'form':
+            case 'sub_workflow':
+                return 170;
+            case 'stage':
+            case 'approval':
+            case 'approval_config':
+                return 160;
+            case 'action':
+            case 'email':
+            case 'condition':
+                return 150;
+            case 'join':
+                return 96;
+            default:
+                return 140;
+        }
+    }
+
+    nodesOverlap(a, b, padding = 16) {
+        const aWidth = this.getEstimatedNodeWidth(a.type);
+        const aHeight = this.getEstimatedNodeHeight(a.type);
+        const bWidth = this.getEstimatedNodeWidth(b.type);
+        const bHeight = this.getEstimatedNodeHeight(b.type);
+
+        return !(
+            a.x + aWidth + padding <= b.x
+            || b.x + bWidth + padding <= a.x
+            || a.y + aHeight + padding <= b.y
+            || b.y + bHeight + padding <= a.y
+        );
+    }
+
+    layoutNeedsNormalization() {
+        const nodes = [...this.nodes];
+        const sameLaneThreshold = 110;
+        const minimumGap = 56;
+
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                if (this.nodesOverlap(nodes[i], nodes[j], 20)) {
+                    return true;
+                }
+            }
+        }
+
+        const byLane = [...nodes].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+        for (let i = 1; i < byLane.length; i++) {
+            const prev = byLane[i - 1];
+            const current = byLane[i];
+            if (Math.abs(current.y - prev.y) > sameLaneThreshold || current.x < prev.x) {
+                continue;
+            }
+            const requiredX = prev.x + this.getEstimatedNodeWidth(prev.type) + minimumGap;
+            if (current.x < requiredX) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    resolveNodeCollisions() {
+        const sortedNodes = [...this.nodes].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+
+        sortedNodes.forEach((node, index) => {
+            let attempts = 0;
+            while (attempts < 24) {
+                const blockingNode = sortedNodes
+                    .slice(0, index)
+                    .find((candidate) => this.nodesOverlap(candidate, node, 12));
+                if (!blockingNode) {
+                    break;
+                }
+
+                const sameLane = Math.abs(blockingNode.y - node.y) <= 110;
+                if (sameLane) {
+                    node.x = Math.max(
+                        node.x,
+                        blockingNode.x + this.getEstimatedNodeWidth(blockingNode.type) + 72,
+                    );
+                } else {
+                    node.y = Math.max(
+                        node.y,
+                        blockingNode.y + this.getEstimatedNodeHeight(blockingNode.type) + 52,
+                    );
+                }
+                attempts += 1;
+            }
+        });
+    }
+
+    autoArrangeNodes(options = {}) {
+        const { suppressRender = false, silent = false } = options;
+        if (!this.nodes.length) return;
+
+        const laneThreshold = 120;
+        const horizontalGap = 84;
+        const sortedByY = [...this.nodes].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+        const lanes = [];
+
+        sortedByY.forEach((node) => {
+            let lane = lanes.find((candidate) => Math.abs(candidate.centerY - node.y) <= laneThreshold);
+            if (!lane) {
+                lane = { centerY: node.y, nodes: [] };
+                lanes.push(lane);
+            }
+            lane.nodes.push(node);
+            lane.centerY = Math.round(lane.nodes.reduce((total, entry) => total + entry.y, 0) / lane.nodes.length);
+        });
+
+        lanes
+            .sort((a, b) => a.centerY - b.centerY)
+            .forEach((lane) => {
+                lane.nodes.sort((a, b) => a.x - b.x);
+                let cursorX = Math.max(80, lane.nodes[0]?.x || 80);
+                lane.nodes.forEach((node, index) => {
+                    if (index === 0) {
+                        node.x = Math.max(80, node.x);
+                    } else {
+                        node.x = Math.max(node.x, cursorX);
+                    }
+                    cursorX = node.x + this.getEstimatedNodeWidth(node.type) + horizontalGap;
+                });
+            });
+
+        this.resolveNodeCollisions();
+        this.updateWorkspaceBounds();
+
+        if (!silent) {
+            this.setBuilderMessage(
+                'info',
+                'Workflow layout auto-arranged.',
+                ['Nodes were spaced out to reduce overlap and make dragging easier.'],
+                true,
+            );
+        }
+
+        if (!suppressRender) {
+            this.render();
+        }
     }
 
     getDefaultNodeData(type) {
@@ -2474,7 +2672,10 @@ class WorkflowBuilder {
         this.transformWrapper.querySelectorAll('.workflow-node').forEach(n => n.remove());
 
         // Render each node into the transform wrapper (alongside the SVG)
-        this.nodes.forEach(node => {
+        const orderedNodes = [...this.nodes].sort((a, b) => {
+            return (this.nodeStackOrder.get(a.id) || 0) - (this.nodeStackOrder.get(b.id) || 0);
+        });
+        orderedNodes.forEach(node => {
             console.log('Creating node element for:', node);
             const nodeEl = this.createNodeElement(node);
             this.transformWrapper.appendChild(nodeEl);
@@ -2499,6 +2700,9 @@ class WorkflowBuilder {
         }
         if (this.selectedNode === node.id) {
             div.className += ' selected';
+        }
+        if (this.draggingNodeId === node.id) {
+            div.className += ' dragging';
         }
         div.style.left = `${node.x}px`;
         div.style.top = `${node.y}px`;
@@ -2696,6 +2900,9 @@ class WorkflowBuilder {
 
     startDragNode(e, node) {
         this.isDraggingNode = true;
+        this.draggingNodeId = node.id;
+        this.bringNodeToFront(node.id);
+        this.render();
         const startX = e.clientX;
         const startY = e.clientY;
         const nodeStartX = node.x;
@@ -2712,6 +2919,8 @@ class WorkflowBuilder {
 
         const onMouseUp = () => {
             this.isDraggingNode = false;
+            this.draggingNodeId = null;
+            this.render();
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
         };

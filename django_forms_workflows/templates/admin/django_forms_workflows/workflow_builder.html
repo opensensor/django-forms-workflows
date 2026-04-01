@@ -281,6 +281,7 @@
     
     /* Workflow Nodes */
     .workflow-node {
+        --node-width: 260px;
         --node-border: var(--wb-border);
         --node-surface-from: var(--wb-surface);
         --node-surface-to: var(--wb-surface);
@@ -290,11 +291,14 @@
         border: 2px solid var(--node-border);
         border-radius: var(--wb-radius-md);
         padding: 1rem;
-        min-width: 180px;
+        width: var(--node-width);
+        max-width: var(--node-width);
+        box-sizing: border-box;
         cursor: move;
         box-shadow: var(--wb-shadow-sm);
         transition: var(--wb-transition);
         overflow: visible;
+        user-select: none;
     }
     
     .workflow-node:hover {
@@ -305,6 +309,13 @@
     .workflow-node.selected {
         border-color: var(--wb-primary);
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        z-index: 20;
+    }
+
+    .workflow-node.dragging {
+        z-index: 30;
+        cursor: grabbing;
+        box-shadow: var(--wb-shadow-lg);
     }
 
     .workflow-node.has-validation-error {
@@ -319,16 +330,32 @@
     
     .workflow-node.form,
     .workflow-node.sub_workflow {
-        min-width: 220px;
+        --node-width: 300px;
     }
 
+    .workflow-node.stage,
+    .workflow-node.approval,
     .workflow-node.approval_config {
-        min-width: 240px;
+        --node-width: 280px;
+    }
+
+    .workflow-node.workflow_settings {
+        --node-width: 320px;
+    }
+
+    .workflow-node.action,
+    .workflow-node.email,
+    .workflow-node.condition {
+        --node-width: 260px;
+    }
+
+    .workflow-node.start,
+    .workflow-node.end {
+        --node-width: 180px;
     }
 
     .workflow-node.join {
-        min-width: 100px;
-        max-width: 140px;
+        --node-width: 140px;
         text-align: center;
     }
     
@@ -345,6 +372,7 @@
     .node-header span {
         color: var(--wb-text-strong);
         font-size: 0.92rem;
+        overflow-wrap: anywhere;
     }
     
     .node-icon {
@@ -364,6 +392,7 @@
         color: var(--wb-text);
         line-height: 1.45;
         min-height: 1.5rem;
+        overflow-wrap: anywhere;
     }
 
     .node-content .badge {
@@ -1006,6 +1035,9 @@
                 <span class="dirty-indicator" id="dirtyIndicator" hidden>
                     <i class="bi bi-dot"></i> Unsaved edits
                 </span>
+                <button class="toolbar-btn" id="btnAutoArrange" type="button" title="Spread steps out to reduce overlap">
+                    <i class="bi bi-distribute-horizontal"></i> Auto Arrange
+                </button>
                 <button class="toolbar-btn" id="btnDeleteConnection" disabled>
                     <i class="bi bi-scissors"></i> Remove Connection
                 </button>
@@ -1022,6 +1054,7 @@
             <div id="validationSummary"></div>
             <div class="builder-help-strip" id="builderHelpStrip">
                 <span class="builder-help-chip"><i class="bi bi-arrow-left-right"></i> Drag from the right arrow handle into a left arrow handle to connect steps</span>
+                <span class="builder-help-chip"><i class="bi bi-distribute-horizontal"></i> Use Auto Arrange if steps load too close together</span>
                 <span class="builder-help-chip"><i class="bi bi-exclamation-triangle"></i> Red nodes block save; orange nodes are warnings</span>
                 <span class="builder-help-chip"><i class="bi bi-scissors"></i> Click a connection, then press Delete or use Remove Connection</span>
             </div>

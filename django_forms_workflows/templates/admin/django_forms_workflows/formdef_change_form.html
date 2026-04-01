@@ -5,13 +5,18 @@
     {{ block.super }}
     {% if original.pk %}
     <li>
-        <a href="{% url 'admin:form_builder_edit' original.pk %}" class="btn btn-high btn-success" target="_blank" style="background-color: #28a745; color: white; padding: 10px 15px; border-radius: 4px; text-decoration: none; display: inline-block;">
+        <a href="{% url 'forms_workflows:analytics_dashboard' %}?form={{ original.slug|urlencode }}" class="admin-shortcut-link admin-shortcut-link--analytics" target="_blank">
+            <i class="bi bi-graph-up-arrow"></i> View Analytics
+        </a>
+    </li>
+    <li>
+        <a href="{% url 'admin:form_builder_edit' original.pk %}" class="admin-shortcut-link admin-shortcut-link--builder" target="_blank">
             <i class="bi bi-pencil-square"></i> Open Visual Form Builder
         </a>
     </li>
     {% else %}
     <li>
-        <span class="text-muted" style="padding: 10px 15px; display: inline-block;">
+        <span class="admin-shortcut-muted">
             Save form first to use Visual Builder
         </span>
     </li>
@@ -23,8 +28,28 @@
     <!-- Bootstrap Icons for the builder link -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        .btn-success:hover {
+        .admin-shortcut-link {
+            color: white !important;
+            padding: 10px 15px;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .admin-shortcut-link--builder {
+            background-color: #28a745;
+        }
+        .admin-shortcut-link--builder:hover {
             background-color: #218838 !important;
+        }
+        .admin-shortcut-link--analytics {
+            background-color: #0d6efd;
+        }
+        .admin-shortcut-link--analytics:hover {
+            background-color: #0b5ed7 !important;
+        }
+        .admin-shortcut-muted {
+            padding: 10px 15px;
+            display: inline-block;
         }
         .qr-share-panel {
             background: #f8f9fa;

@@ -25,6 +25,7 @@ from .models import (
     ApprovalTask,
     AuditLog,
     ChangeHistory,
+    DocumentTemplate,
     FileUploadConfig,
     FileWorkflowHook,
     FormCategory,
@@ -1418,6 +1419,21 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                 self.admin_site.admin_view(form_builder_views.form_builder_clone),
                 name="form_builder_api_clone",
             ),
+            path(
+                "builder/api/doc-templates/<int:form_id>/",
+                self.admin_site.admin_view(form_builder_views.document_template_list),
+                name="form_builder_api_doc_templates",
+            ),
+            path(
+                "builder/api/doc-templates/<int:form_id>/save/",
+                self.admin_site.admin_view(form_builder_views.document_template_save),
+                name="form_builder_api_doc_template_save",
+            ),
+            path(
+                "builder/api/doc-templates/<int:form_id>/delete/<int:template_id>/",
+                self.admin_site.admin_view(form_builder_views.document_template_delete),
+                name="form_builder_api_doc_template_delete",
+            ),
             # Workflow Builder URLs
             path(
                 "<int:form_id>/workflow/",
@@ -2145,6 +2161,44 @@ class FormTemplateAdmin(admin.ModelAdmin):
         if not change:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+
+
+# --- Document Template Admin ---
+
+
+@admin.register(DocumentTemplate)
+class DocumentTemplateAdmin(admin.ModelAdmin):
+    """Admin for custom PDF document templates with merge fields."""
+
+    list_display = (
+        "name",
+        "form_definition",
+        "page_size",
+        "is_default",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("is_default", "is_active", "page_size")
+    search_fields = ("name", "form_definition__name")
+    readonly_fields = ("created_at", "updated_at")
+
+    fieldsets = (
+        (None, {"fields": ("form_definition", "name", "is_default", "is_active")}),
+        (
+            "Template Content",
+            {
+                "fields": ("html_content", "page_size"),
+                "description": (
+                    "Use {field_name} merge fields and "
+                    "{% if field_name %}...{% endif %} conditional blocks."
+                ),
+            },
+        ),
+        (
+            "Timestamps",
+            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
+        ),
+    )
 
 
 # --- File Upload Configuration Admin ---

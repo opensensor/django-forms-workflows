@@ -1324,3 +1324,128 @@ class TestFormBuilderViews:
             content_type="application/json",
         )
         assert resp.status_code == 200
+
+
+# ── Document Template API endpoints ─────────────────────────────────────────
+
+
+class TestDocumentTemplateAPI:
+    """Tests for the document template CRUD API endpoints."""
+
+    def test_list_templates_empty(self, client, superuser, form_definition):
+        client.force_login(superuser)
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
+        resp = client.get(url)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["templates"] == []
+
+    def test_save_new_template(self, client, superuser, form_definition):
+        client.force_login(superuser)
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        resp = client.post(
+            url,
+            data=json.dumps(
+                {
+                    "name": "Test Cert",
+                    "html_content": "<h1>{form_name}</h1>",
+                    "page_size": "a4",
+                    "is_default": True,
+                    "is_active": True,
+                }
+            ),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["id"] is not None
+
+    def test_save_template_requires_name(self, client, superuser, form_definition):
+        client.force_login(superuser)
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        resp = client.post(
+            url,
+            data=json.dumps({"name": "", "html_content": "<p>Hi</p>"}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_update_template(self, client, superuser, form_definition):
+        from django_forms_workflows.models import DocumentTemplate
+
+        client.force_login(superuser)
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="Original",
+            html_content="<p>old</p>",
+        )
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        resp = client.post(
+            url,
+            data=json.dumps(
+                {
+                    "id": tpl.id,
+                    "name": "Updated",
+                    "html_content": "<p>new</p>",
+                    "page_size": "legal",
+                }
+            ),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        tpl.refresh_from_db()
+        assert tpl.name == "Updated"
+        assert tpl.page_size == "legal"
+
+    def test_delete_template(self, client, superuser, form_definition):
+        from django_forms_workflows.models import DocumentTemplate
+
+        client.force_login(superuser)
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="To Delete",
+            html_content="<p>bye</p>",
+        )
+        url = _fb_url(
+            f"builder/api/doc-templates/{form_definition.id}/delete/{tpl.id}/"
+        )
+        resp = client.post(url)
+        assert resp.status_code == 200
+        assert not DocumentTemplate.objects.filter(id=tpl.id).exists()
+
+    def test_set_default_clears_previous_default(
+        self, client, superuser, form_definition
+    ):
+        from django_forms_workflows.models import DocumentTemplate
+
+        client.force_login(superuser)
+        t1 = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="First",
+            html_content="<p>1</p>",
+            is_default=True,
+        )
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        resp = client.post(
+            url,
+            data=json.dumps(
+                {
+                    "name": "Second",
+                    "html_content": "<p>2</p>",
+                    "is_default": True,
+                }
+            ),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        t1.refresh_from_db()
+        assert t1.is_default is False
+
+    def test_non_staff_cannot_access(self, client, user, form_definition):
+        client.force_login(user)
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
+        resp = client.get(url)
+        # staff_member_required redirects non-staff
+        assert resp.status_code == 302

@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import (
+    DocumentTemplate,
     FormDefinition,
     FormField,
     FormTemplate,
@@ -683,3 +684,104 @@ def form_builder_preview(request):
         return JsonResponse(
             {"success": False, "error": "An internal error occurred."}, status=500
         )
+
+
+# ---------------------------------------------------------------------------
+# Document Template API endpoints
+# ---------------------------------------------------------------------------
+
+
+@staff_member_required
+@require_GET
+def document_template_list(request, form_id):
+    """List document templates for a form."""
+    templates = DocumentTemplate.objects.filter(form_definition_id=form_id).order_by(
+        "name"
+    )
+    return JsonResponse(
+        {
+            "success": True,
+            "templates": [
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "is_default": t.is_default,
+                    "is_active": t.is_active,
+                    "page_size": t.page_size,
+                    "html_content": t.html_content,
+                    "updated_at": t.updated_at.isoformat(),
+                }
+                for t in templates
+            ],
+        }
+    )
+
+
+@staff_member_required
+@require_POST
+def document_template_save(request, form_id):
+    """Create or update a document template."""
+    try:
+        data = json.loads(request.body)
+        form_def = get_object_or_404(FormDefinition, id=form_id)
+
+        template_id = data.get("id")
+        name = data.get("name", "").strip()
+        html_content = data.get("html_content", "")
+        page_size = data.get("page_size", "letter")
+        is_default = data.get("is_default", False)
+        is_active = data.get("is_active", True)
+
+        if not name:
+            return JsonResponse(
+                {"success": False, "error": "Template name is required"}, status=400
+            )
+
+        with transaction.atomic():
+            # If marking as default, clear other defaults for this form
+            if is_default:
+                DocumentTemplate.objects.filter(
+                    form_definition=form_def, is_default=True
+                ).update(is_default=False)
+
+            if template_id:
+                tpl = get_object_or_404(
+                    DocumentTemplate, id=template_id, form_definition=form_def
+                )
+                tpl.name = name
+                tpl.html_content = html_content
+                tpl.page_size = page_size
+                tpl.is_default = is_default
+                tpl.is_active = is_active
+                tpl.save()
+            else:
+                tpl = DocumentTemplate.objects.create(
+                    form_definition=form_def,
+                    name=name,
+                    html_content=html_content,
+                    page_size=page_size,
+                    is_default=is_default,
+                    is_active=is_active,
+                )
+
+        return JsonResponse(
+            {"success": True, "id": tpl.id, "message": "Template saved successfully"}
+        )
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    except Exception:
+        logger.exception("Error saving document template")
+        return JsonResponse(
+            {"success": False, "error": "An internal error occurred."}, status=500
+        )
+
+
+@staff_member_required
+@require_POST
+def document_template_delete(request, form_id, template_id):
+    """Delete a document template."""
+    tpl = get_object_or_404(
+        DocumentTemplate, id=template_id, form_definition_id=form_id
+    )
+    tpl.delete()
+    return JsonResponse({"success": True, "message": "Template deleted"})

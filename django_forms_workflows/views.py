@@ -2267,27 +2267,48 @@ def submission_pdf(request, submission_id):
         workflow and workflow.hide_approval_history and is_submitter_only
     )
 
-    # --- build width-aware row groups for PDF layout ---
-    pdf_rows = _build_pdf_rows(submission, hide_approval_history=hide_approval_history)
-    approval_step_sections = (
-        _build_approval_step_sections(submission) if not hide_approval_history else []
-    )
+    # --- check for custom document template ---
+    from .models import DocumentTemplate
 
-    # --- render HTML template to a string ---
-    from django.template.loader import render_to_string
+    template_id = request.GET.get("template")
+    custom_template = None
+    if template_id:
+        custom_template = DocumentTemplate.objects.filter(
+            id=template_id, form_definition=form_def, is_active=True
+        ).first()
+    if not custom_template:
+        custom_template = DocumentTemplate.objects.filter(
+            form_definition=form_def, is_default=True, is_active=True
+        ).first()
 
-    html_string = render_to_string(
-        "django_forms_workflows/submission_pdf.html",
-        {
-            "submission": submission,
-            "form_def": form_def,
-            "pdf_rows": pdf_rows,
-            "approval_step_sections": approval_step_sections,
-            "hide_approval_history": hide_approval_history,
-            "resolved_attachments": _resolve_attachments(submission.attachments),
-            "request": request,
-        },
-    )
+    if custom_template:
+        # --- custom document template path ---
+        html_string = custom_template.render(submission)
+    else:
+        # --- default built-in PDF layout ---
+        pdf_rows = _build_pdf_rows(
+            submission, hide_approval_history=hide_approval_history
+        )
+        approval_step_sections = (
+            _build_approval_step_sections(submission)
+            if not hide_approval_history
+            else []
+        )
+
+        from django.template.loader import render_to_string
+
+        html_string = render_to_string(
+            "django_forms_workflows/submission_pdf.html",
+            {
+                "submission": submission,
+                "form_def": form_def,
+                "pdf_rows": pdf_rows,
+                "approval_step_sections": approval_step_sections,
+                "hide_approval_history": hide_approval_history,
+                "resolved_attachments": _resolve_attachments(submission.attachments),
+                "request": request,
+            },
+        )
 
     # --- convert HTML to PDF using WeasyPrint ---
     try:
@@ -2305,7 +2326,12 @@ def submission_pdf(request, submission_id):
         logger.error("WeasyPrint error for submission %s: %s", submission_id, exc)
         return HttpResponse("An error occurred while generating the PDF.", status=500)
 
-    filename = f"submission_{submission_id}.pdf"
+    template_name = (
+        custom_template.name.replace(" ", "_").lower()
+        if custom_template
+        else "submission"
+    )
+    filename = f"{template_name}_{submission_id}.pdf"
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{filename}"'
     return response

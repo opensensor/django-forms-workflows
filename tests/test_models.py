@@ -12,6 +12,7 @@ from django_forms_workflows.models import (
     ActionExecutionLog,
     ApprovalTask,
     AuditLog,
+    DocumentTemplate,
     FormCategory,
     FormDefinition,
     FormField,
@@ -790,3 +791,105 @@ class TestWorkflowStageTriggerConditions:
         stages = list(staged_workflow.stages.order_by("order"))
         assert stages[0].order == 1
         assert stages[1].order == 2
+
+
+# ── DocumentTemplate ───────────────────────────────────────────────────────
+
+
+class TestDocumentTemplate:
+    """Tests for the DocumentTemplate model and its render method."""
+
+    @pytest.fixture
+    def doc_template(self, form_definition):
+        return DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="Approval Certificate",
+            html_content="<h1>{form_name}</h1><p>Dear {full_name},</p><p>ID: {submission_id}</p>",
+            page_size="letter",
+            is_default=True,
+            is_active=True,
+        )
+
+    def test_create(self, doc_template, form_definition):
+        assert doc_template.name == "Approval Certificate"
+        assert doc_template.form_definition == form_definition
+        assert doc_template.is_default is True
+        assert doc_template.is_active is True
+        assert doc_template.page_size == "letter"
+
+    def test_str(self, doc_template):
+        assert str(doc_template) == "Approval Certificate (Test Form)"
+
+    def test_render_merge_fields(self, doc_template, submission):
+        html = doc_template.render(submission)
+        assert "<h1>Test Form</h1>" in html
+        assert "Dear Test User," in html
+        assert f"ID: {submission.id}" in html
+
+    def test_render_system_variables(self, submission, form_definition):
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="System Vars",
+            html_content="{status} | {submitter_name}",
+        )
+        html = tpl.render(submission)
+        assert "Submitted" in html
+        assert "Test User" in html
+
+    def test_render_conditional_true(self, submission, form_definition):
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="Cond True",
+            html_content="{% if notes %}Notes: {notes}{% endif %}",
+        )
+        html = tpl.render(submission)
+        assert "Notes: Test submission" in html
+
+    def test_render_conditional_false(self, submission, form_definition):
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="Cond False",
+            html_content="{% if missing_field %}SHOULD NOT APPEAR{% endif %}",
+        )
+        html = tpl.render(submission)
+        assert "SHOULD NOT APPEAR" not in html
+
+    def test_render_list_field(self, submission, form_definition):
+        submission.form_data["tags"] = ["red", "blue", "green"]
+        submission.save()
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="List",
+            html_content="Tags: {tags}",
+        )
+        html = tpl.render(submission)
+        assert "red, blue, green" in html
+
+    def test_render_empty_field(self, submission, form_definition):
+        submission.form_data["empty"] = None
+        submission.save()
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="Empty",
+            html_content="Val=[{empty}]",
+        )
+        html = tpl.render(submission)
+        assert "Val=[]" in html
+
+    def test_ordering(self, form_definition):
+        DocumentTemplate.objects.create(
+            form_definition=form_definition, name="Zebra", html_content=""
+        )
+        DocumentTemplate.objects.create(
+            form_definition=form_definition, name="Alpha", html_content=""
+        )
+        templates = list(
+            DocumentTemplate.objects.filter(form_definition=form_definition)
+        )
+        assert templates[0].name == "Alpha"
+        assert templates[1].name == "Zebra"
+
+    def test_cascade_delete(self, doc_template, form_definition):
+        assert DocumentTemplate.objects.filter(form_definition=form_definition).exists()
+        form_definition.delete()
+        assert not DocumentTemplate.objects.filter(id=doc_template.id).exists()

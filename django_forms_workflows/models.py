@@ -681,6 +681,130 @@ class FormField(models.Model):
         return f"{self.field_label} ({self.field_name})"
 
 
+class DocumentTemplate(models.Model):
+    """
+    Custom PDF document template with merge fields.
+
+    Allows form admins to design polished PDF documents (certificates,
+    letters, contracts) that are populated with submission data.  Uses
+    ``{field_name}`` merge-field syntax and supports conditional sections
+    with ``{% if field_name %}...{% endif %}`` blocks.
+
+    Generated documents are served via the existing permission-gated
+    ``submission_pdf`` endpoint — they are **never** attached to emails
+    to prevent PII from travelling through email.
+    """
+
+    form_definition = models.ForeignKey(
+        FormDefinition,
+        related_name="document_templates",
+        on_delete=models.CASCADE,
+        help_text="The form this template belongs to.",
+    )
+    name = models.CharField(
+        max_length=200,
+        help_text="Display name (e.g. 'Approval Certificate', 'Offer Letter').",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        help_text=(
+            "Use this template instead of the built-in PDF layout when "
+            "downloading a submission PDF."
+        ),
+    )
+    is_active = models.BooleanField(default=True)
+
+    # Template content
+    html_content = models.TextField(
+        help_text=(
+            "Full HTML document with CSS. Use {field_name} merge fields to "
+            "insert submitted values. Use {% if field_name %}...{% endif %} "
+            "for conditional sections. Available variables: {form_name}, "
+            "{submission_id}, {submitted_at}, {status}, {submitter_name}, "
+            "and all form field names."
+        ),
+    )
+    page_size = models.CharField(
+        max_length=20,
+        default="letter",
+        choices=[
+            ("letter", "US Letter (8.5 x 11 in)"),
+            ("a4", "A4 (210 x 297 mm)"),
+            ("legal", "US Legal (8.5 x 14 in)"),
+        ],
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["form_definition", "name"]
+        verbose_name = "Document Template"
+        verbose_name_plural = "Document Templates"
+
+    def __str__(self):
+        return f"{self.name} ({self.form_definition.name})"
+
+    def render(self, submission):
+        """Render this template with submission data, returning HTML string."""
+        import re
+
+        form_data = submission.form_data or {}
+
+        # Build merge context with system variables + form data
+        context = {
+            "form_name": submission.form_definition.name,
+            "submission_id": str(submission.id),
+            "submitted_at": (
+                submission.submitted_at.strftime("%B %d, %Y at %I:%M %p")
+                if submission.submitted_at
+                else ""
+            ),
+            "status": submission.status.replace("_", " ").title(),
+            "submitter_name": (
+                submission.submitter.get_full_name() or submission.submitter.username
+                if submission.submitter
+                else "Anonymous"
+            ),
+        }
+        # Add all form field values
+        for key, val in form_data.items():
+            if isinstance(val, list):
+                context[key] = ", ".join(str(v) for v in val)
+            else:
+                context[key] = str(val) if val is not None else ""
+
+        html = self.html_content
+
+        # Process conditional blocks: {% if field_name %}...{% endif %}
+        def _eval_conditional(m):
+            field = m.group(1)
+            content = m.group(2)
+            val = context.get(field, "")
+            if val and val not in ("False", "false", "0", "None", ""):
+                # Recursively process merge fields inside the block
+                return re.sub(
+                    r"\{(\w+)\}", lambda mm: context.get(mm.group(1), ""), content
+                )
+            return ""
+
+        html = re.sub(
+            r"\{%\s*if\s+(\w+)\s*%\}(.*?)\{%\s*endif\s*%\}",
+            _eval_conditional,
+            html,
+            flags=re.DOTALL,
+        )
+
+        # Replace remaining {field_name} merge tokens
+        html = re.sub(
+            r"\{(\w+)\}",
+            lambda m: context.get(m.group(1), ""),
+            html,
+        )
+
+        return html
+
+
 class WorkflowDefinition(models.Model):
     """
     Approval workflow configuration.

@@ -20,4 +20,20 @@ urlpatterns = [
     ),
     path("api/save/", form_builder_views.form_builder_save, name="api_save"),
     path("api/preview/", form_builder_views.form_builder_preview, name="api_preview"),
+    # Document template API endpoints
+    path(
+        "api/doc-templates/<int:form_id>/",
+        form_builder_views.document_template_list,
+        name="api_doc_templates",
+    ),
+    path(
+        "api/doc-templates/<int:form_id>/save/",
+        form_builder_views.document_template_save,
+        name="api_doc_template_save",
+    ),
+    path(
+        "api/doc-templates/<int:form_id>/delete/<int:template_id>/",
+        form_builder_views.document_template_delete,
+        name="api_doc_template_delete",
+    ),
 ]

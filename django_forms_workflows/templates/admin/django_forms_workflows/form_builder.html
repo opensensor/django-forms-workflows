@@ -732,6 +732,19 @@
                         <small class="text-muted">Shown after submission. Use <code>{field_name}</code> for answer piping. Leave blank for default.</small>
                     </div>
 
+                    <!-- Document Templates -->
+                    <div class="col-12 mt-3">
+                        <h6 class="text-muted border-bottom pb-2">
+                            <i class="bi bi-file-earmark-pdf"></i> Document Templates
+                            <button type="button" class="btn btn-sm btn-outline-primary float-end" id="btnAddDocTemplate">
+                                <i class="bi bi-plus-circle"></i> Add Template
+                            </button>
+                        </h6>
+                    </div>
+                    <div class="col-12" id="docTemplatesContainer">
+                        <p class="text-muted small" id="docTemplatesEmpty">No custom document templates. PDFs will use the default layout.</p>
+                    </div>
+
                     <!-- Submission Controls -->
                     <div class="col-12 mt-3">
                         <h6 class="text-muted border-bottom pb-2">
@@ -926,6 +939,74 @@
         </div>
     </div>
 
+    <!-- Document Template Modal -->
+    <div class="modal fade" id="docTemplateModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-file-earmark-pdf"></i> Document Template</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="docTemplateId">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Template Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="docTemplateName" placeholder="e.g. Approval Certificate">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Page Size</label>
+                            <select class="form-select" id="docTemplatePageSize">
+                                <option value="letter">US Letter</option>
+                                <option value="a4">A4</option>
+                                <option value="legal">US Legal</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="docTemplateIsDefault">
+                                <label class="form-check-label" for="docTemplateIsDefault">Default</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="docTemplateIsActive" checked>
+                                <label class="form-check-label" for="docTemplateIsActive">Active</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">HTML Content</label>
+{% verbatim %}
+                            <textarea class="form-control font-monospace" id="docTemplateHtml" rows="16" placeholder="<!DOCTYPE html>
+<html>
+<head><style>body { font-family: sans-serif; }</style></head>
+<body>
+  <h1>{form_name}</h1>
+  <p>Dear {first_name},</p>
+  <p>Your submission #{submission_id} has been {status}.</p>
+  {% if approver_comments %}<p>Comments: {approver_comments}</p>{% endif %}
+</body>
+</html>"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="alert alert-info small mb-0">
+                                <strong>Merge fields:</strong> Use <code>{field_name}</code> to insert submitted values.
+                                <strong>Conditionals:</strong> <code>{% if field_name %}...{% endif %}</code> to show sections only when a field has a value.
+                                <strong>System vars:</strong> <code>{form_name}</code>, <code>{submission_id}</code>, <code>{submitted_at}</code>, <code>{status}</code>, <code>{submitter_name}</code>.
+                                <br><strong>Security:</strong> Documents are served via secure download link only — never attached to emails.
+                            </div>
+                        </div>
+{% endverbatim %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="btnSaveDocTemplate">
+                        <i class="bi bi-save"></i> Save Template
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
@@ -952,9 +1033,15 @@
                 {% if form_definition %}
                 load: "{% url 'admin:form_builder_api_load' form_definition.id %}",
                 clone: "{% url 'admin:form_builder_api_clone' form_definition.id %}",
+                docTemplates: "{% url 'admin:form_builder_api_doc_templates' form_definition.id %}",
+                docTemplateSave: "{% url 'admin:form_builder_api_doc_template_save' form_definition.id %}",
+                docTemplateDelete: "{% url 'admin:form_builder_api_doc_template_delete' form_definition.id 0 %}".replace('/0/', '/{id}/'),
                 {% else %}
                 load: null,
                 clone: null,
+                docTemplates: null,
+                docTemplateSave: null,
+                docTemplateDelete: null,
                 {% endif %}
                 save: "{% url 'admin:form_builder_api_save' %}",
                 preview: "{% url 'admin:form_builder_api_preview' %}",
@@ -1006,6 +1093,105 @@
                     }
                 });
             }
+
+            // ── Document Template Manager ─────────────────────────
+            const docUrls = formBuilderData.apiUrls;
+            const docContainer = document.getElementById('docTemplatesContainer');
+            const docEmpty = document.getElementById('docTemplatesEmpty');
+            let docTemplates = [];
+
+            async function loadDocTemplates() {
+                if (!docUrls.docTemplates) { docEmpty.style.display = 'block'; return; }
+                try {
+                    const resp = await fetch(docUrls.docTemplates);
+                    const data = await resp.json();
+                    docTemplates = data.templates || [];
+                    renderDocTemplates();
+                } catch (e) { console.error('Error loading doc templates:', e); }
+            }
+
+            function renderDocTemplates() {
+                const list = docContainer.querySelectorAll('.doc-tpl-item');
+                list.forEach(el => el.remove());
+                docEmpty.style.display = docTemplates.length ? 'none' : 'block';
+                docTemplates.forEach(tpl => {
+                    const el = document.createElement('div');
+                    el.className = 'doc-tpl-item d-flex justify-content-between align-items-center border rounded p-2 mb-2';
+                    el.innerHTML = `
+                        <div>
+                            <strong>${tpl.name}</strong>
+                            ${tpl.is_default ? '<span class="badge bg-primary ms-1">Default</span>' : ''}
+                            ${!tpl.is_active ? '<span class="badge bg-secondary ms-1">Inactive</span>' : ''}
+                            <small class="text-muted ms-2">${tpl.page_size}</small>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="editDocTemplate(${tpl.id})"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDocTemplate(${tpl.id}, '${tpl.name.replace(/'/g, "\\'")}')"><i class="bi bi-trash"></i></button>
+                        </div>`;
+                    docContainer.appendChild(el);
+                });
+            }
+
+            window.editDocTemplate = function(id) {
+                const tpl = docTemplates.find(t => t.id === id);
+                if (!tpl) return;
+                document.getElementById('docTemplateId').value = tpl.id;
+                document.getElementById('docTemplateName').value = tpl.name;
+                document.getElementById('docTemplateHtml').value = tpl.html_content;
+                document.getElementById('docTemplatePageSize').value = tpl.page_size;
+                document.getElementById('docTemplateIsDefault').checked = tpl.is_default;
+                document.getElementById('docTemplateIsActive').checked = tpl.is_active;
+                new bootstrap.Modal(document.getElementById('docTemplateModal')).show();
+            };
+
+            window.deleteDocTemplate = async function(id, name) {
+                if (!confirm(`Delete template "${name}"?`)) return;
+                try {
+                    await fetch(docUrls.docTemplateDelete.replace('{id}', id), {
+                        method: 'POST', headers: { 'X-CSRFToken': formBuilderData.csrfToken }
+                    });
+                    loadDocTemplates();
+                } catch (e) { alert('Error deleting template: ' + e.message); }
+            };
+
+            document.getElementById('btnAddDocTemplate').addEventListener('click', () => {
+                document.getElementById('docTemplateId').value = '';
+                document.getElementById('docTemplateName').value = '';
+                document.getElementById('docTemplateHtml').value = '';
+                document.getElementById('docTemplatePageSize').value = 'letter';
+                document.getElementById('docTemplateIsDefault').checked = false;
+                document.getElementById('docTemplateIsActive').checked = true;
+                new bootstrap.Modal(document.getElementById('docTemplateModal')).show();
+            });
+
+            document.getElementById('btnSaveDocTemplate').addEventListener('click', async () => {
+                const name = document.getElementById('docTemplateName').value.trim();
+                if (!name) { alert('Template name is required'); return; }
+                const payload = {
+                    id: document.getElementById('docTemplateId').value || null,
+                    name: name,
+                    html_content: document.getElementById('docTemplateHtml').value,
+                    page_size: document.getElementById('docTemplatePageSize').value,
+                    is_default: document.getElementById('docTemplateIsDefault').checked,
+                    is_active: document.getElementById('docTemplateIsActive').checked,
+                };
+                if (payload.id) payload.id = parseInt(payload.id);
+                try {
+                    const resp = await fetch(docUrls.docTemplateSave, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': formBuilderData.csrfToken },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        bootstrap.Modal.getInstance(document.getElementById('docTemplateModal')).hide();
+                        loadDocTemplates();
+                    } else { alert(data.error || 'Error saving template'); }
+                } catch (e) { alert('Error: ' + e.message); }
+            });
+
+            // Load templates on page load (only for existing forms)
+            if (formBuilderData.formId) loadDocTemplates();
         });
     </script>
 </body>

@@ -383,5 +383,4 @@ Django Forms Workflows is the **only** solution that provides:
 - Simple contact forms (use Crispy Forms)
 - Public-facing forms with no workflows
 - Teams without Django expertise
-- Projects needing visual form builder (coming soon!)
 

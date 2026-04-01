@@ -2,7 +2,7 @@
 
 Get Django Forms Workflows up and running in 10 minutes!
 
-> **Current release:** v0.35.11 · [Changelog](../CHANGELOG.md) · [Full Docs index](../README.md)
+> **Current release:** v0.48.0 · [Changelog](../CHANGELOG.md) · [Full Docs index](../README.md)
 
 ## Prerequisites
 

@@ -39,7 +39,7 @@ Make HTTP API calls to external services with form data.
 - Send notifications to external systems
 
 ### 4. Custom Handlers
-Execute custom Python code for complex integrations.
+Execute custom Python code for complex integrations. Handlers can be registered by short name via the `FORMS_WORKFLOWS_CALLBACKS` setting (v0.48+) so admins don't need to type full Python paths.
 
 **Use Cases:**
 - Complex business logic
@@ -249,13 +249,23 @@ Action Type: Custom Handler
 Trigger: On Complete
 
 Custom Handler Configuration:
-  - Handler Path: myapp.handlers.custom_integration_handler
+  - Handler Path: custom_integration
   - Handler Config:
     {
       "api_key": "YOUR_API_KEY",
       "endpoint": "https://api.example.com"
     }
 ```
+
+> **Tip (v0.48+):** Register handlers by name in `settings.py` so admins can use short names like `custom_integration` instead of full dotted paths:
+>
+> ```python
+> FORMS_WORKFLOWS_CALLBACKS = {
+>     "custom_integration": "myapp.handlers.custom_integration_handler",
+> }
+> ```
+>
+> Full dotted paths still work for backward compatibility.
 
 ## Field Mapping
 

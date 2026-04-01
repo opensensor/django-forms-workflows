@@ -258,6 +258,10 @@ class PostSubmissionActionExecutor:
         """
         Load and instantiate a custom handler.
 
+        Resolution order:
+        1. Look up ``custom_handler_path`` in the callback registry (short name).
+        2. Fall back to direct dotted-path import (backward compatible).
+
         Args:
             action: PostSubmissionAction instance
 
@@ -270,35 +274,45 @@ class PostSubmissionActionExecutor:
             )
             return None
 
-        try:
-            # Parse module and function name
-            module_path, function_name = action.custom_handler_path.rsplit(".", 1)
+        handler_ref = action.custom_handler_path
 
-            # Import module
-            module = import_module(module_path)
+        # 1. Try the callback registry first (allows short names like "id_photo_copy")
+        from django_forms_workflows.callback_registry import get_handler as registry_get
 
-            # Get handler class or function
-            handler = getattr(module, function_name)
+        handler = registry_get(handler_ref)
 
-            # Instantiate if it's a class
-            if isinstance(handler, type):
-                return handler(action, self.submission)
+        # 2. Fall back to direct dotted-path import
+        if handler is None and "." in handler_ref:
+            try:
+                module_path, function_name = handler_ref.rsplit(".", 1)
+                module = import_module(module_path)
+                handler = getattr(module, function_name)
+            except Exception as e:
+                logger.error(
+                    f"Could not load custom handler '{handler_ref}': {e}",
+                    exc_info=True,
+                )
+                return None
 
-            # If it's a function, wrap it
-            class FunctionHandler:
-                def __init__(self, func, action, submission):
-                    self.func = func
-                    self.action = action
-                    self.submission = submission
-
-                def execute(self):
-                    return self.func(self.action, self.submission)
-
-            return FunctionHandler(handler, action, self.submission)
-
-        except Exception as e:
+        if handler is None:
             logger.error(
-                f"Could not load custom handler '{action.custom_handler_path}': {e}",
-                exc_info=True,
+                f"Custom handler '{handler_ref}' not found in registry "
+                f"and could not be imported for action '{action.name}'"
             )
             return None
+
+        # Instantiate if it's a class
+        if isinstance(handler, type):
+            return handler(action, self.submission)
+
+        # If it's a function, wrap it
+        class _FunctionHandler:
+            def __init__(self, func, _action, _submission):
+                self.func = func
+                self.action = _action
+                self.submission = _submission
+
+            def execute(self):
+                return self.func(self.action, self.submission)
+
+        return _FunctionHandler(handler, action, self.submission)

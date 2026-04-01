@@ -18,3 +18,8 @@ class DjangoFormsWorkflowsConfig(AppConfig):
         """
         # Import signals to register handlers
         from . import signals  # noqa: F401
+
+        # Load custom callback handlers from FORMS_WORKFLOWS_CALLBACKS setting
+        from .callback_registry import load_from_settings
+
+        load_from_settings()

@@ -5,7 +5,7 @@
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![Django Version](https://img.shields.io/badge/django-5.2%2B-green)](https://www.djangoproject.com/)
-[![Version](https://img.shields.io/badge/version-0.37.8-orange)](https://github.com/opensensor/django-forms-workflows)
+[![Version](https://img.shields.io/badge/version-0.48.0-orange)](https://github.com/opensensor/django-forms-workflows)
 
 ## Overview
 
@@ -106,7 +106,7 @@ Automatically run side-effects after a submission event:
 - Execution ordering for dependent actions
 - Idempotent locking (`is_locked`) to prevent double-execution
 - Full execution logging via `ActionExecutionLog`
-- Pluggable handler architecture — register custom handlers for new action types
+- Pluggable handler architecture — register custom handlers via `FORMS_WORKFLOWS_CALLBACKS` setting or `register_handler()` API; use short names in the admin instead of full Python paths
 
 ### 🔄 Cross-Instance Form Sync
 Move form definitions between environments from the Django Admin:
@@ -201,6 +201,13 @@ FORMS_SYNC_REMOTES = {
     },
 }
 
+# Custom callback handlers — register by short name instead of full Python paths
+# These names can be used in PostSubmissionAction.custom_handler_path
+FORMS_WORKFLOWS_CALLBACKS = {
+    "id_photo_copy": "myapp.handlers.IDPhotoHandler",
+    "sync_to_erp": "myapp.handlers.ERPSyncHandler",
+}
+
 # Context processor — injects site_name into every template
 TEMPLATES = [
     {
@@ -212,7 +219,6 @@ TEMPLATES = [
         }
     }
 ]
-```
 ```
 
 ## Architecture
@@ -320,7 +326,7 @@ GNU Lesser General Public License v3.0 (LGPLv3) — see [LICENSE](LICENSE) for d
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rationale and implementation notes.
 
-### ✅ Delivered (through v0.37)
+### ✅ Delivered (through v0.48)
 - [x] Database-driven form definitions with 25+ field types
 - [x] Dynamic form rendering with Crispy Forms + Bootstrap 5
 - [x] Multi-stage approval workflows (any/all/sequence logic per stage)
@@ -348,6 +354,10 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 - [x] Bulk export — Excel and CSV export of submission data from the approval inbox (`allow_bulk_export` / `allow_bulk_pdf_export` per workflow)
 - [x] Four-tier RBAC — `submit_groups`, `view_groups`, `reviewer_groups` (read-only submission history), `admin_groups` (full submission view) with consistent enforcement across all list and detail views
 - [x] Auto-save with configurable interval; Save Draft bypasses required-field validation without storing browser internals (CSRF token, button names)
+- [x] Signature field type (drawn or typed) — v0.45.0
+- [x] Form versioning — ChangeHistory tracking, sync API snapshots, admin diff viewer action — v0.45.0
+- [x] Advanced reporting dashboard (submission analytics, approval times, bottleneck stages) — v0.46.0
+- [x] Settings-based callback handler registry (`FORMS_WORKFLOWS_CALLBACKS`) — register custom handlers by name instead of hardcoding Python paths in the database — v0.48.0
 
 ### 🚧 Near-term (next 1–3 releases)
 - [ ] Webhook delivery on workflow events (submit / approve / reject)
@@ -355,11 +365,6 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 ### 📋 Planned (medium-term)
 - [ ] Multi-tenancy support (organisation-scoped form libraries)
 - [ ] Plugin / custom handler marketplace
-
-### ✅ Recently shipped
-- [x] Signature field type (drawn or typed) — ✅ Shipped in v0.45.0
-- [x] Form versioning — ChangeHistory tracking, sync API snapshots, admin diff viewer action — ✅ Shipped in v0.45.0
-- [x] Advanced reporting dashboard (submission analytics, approval times, bottleneck stages) — ✅ Shipped in v0.46.0
 
 ## Credits
 

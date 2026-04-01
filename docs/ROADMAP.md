@@ -4,7 +4,7 @@ This document describes what has been delivered, what is actively being worked o
 
 ---
 
-## ✅ Delivered (current: v0.35.11)
+## ✅ Delivered (current: v0.48.0)
 
 <details>
 <summary>Click to expand full delivery list</summary>
@@ -22,6 +22,10 @@ This document describes what has been delivered, what is actively being worked o
 | v0.33 | **Spreadsheet upload** field (CSV, XLS, XLSX) stored as structured JSON |
 | v0.35 | **Dynamic individual assignees** — resolve approver from form field at runtime |
 | v0.35 | **Conditional workflow & stage trigger logic** — skip whole tracks or stages |
+| v0.45 | **Signature field type** (drawn or typed) with four Google Font options |
+| v0.45 | **Form versioning** — ChangeHistory tracking, sync API snapshots, admin diff viewer |
+| v0.46 | **Advanced reporting dashboard** — submission analytics, approval turnaround, bottleneck stages |
+| v0.48 | **Settings-based callback handler registry** (`FORMS_WORKFLOWS_CALLBACKS`) — register custom handlers by name |
 | all | LDAP/AD integration with profile sync, SSO attribute mapping |
 | all | Configurable prefill sources (user, LDAP, database, API, system values) |
 | all | Post-submission actions (email, database, LDAP, API, custom) with retries |
@@ -86,33 +90,9 @@ This document describes what has been delivered, what is actively being worked o
 
 ## 📋 Medium-Term
 
-### 4. Signature Field Type
+### 4. ✅ Signature Field Type — *Shipped in v0.45.0*
 
-**Why:** Many approval and HR workflows legally require an electronic signature. Currently only plain text or checkboxes are used as proxies.
-
-**Scope:**
-- `field_type = "signature"` rendered as a `<canvas>` pad (Signature Pad JS library)
-- Saved as a Base64 PNG data URL in `form_data`
-- Rendered in PDF exports and submission detail views
-- Typed-name fallback option (draws name in a script font)
-
-**Complexity:** Medium. Requires a JS dependency and a new storage/rendering pathway for binary data within `form_data`.
-
----
-
-### 5. Form Versioning with Diff Viewer
-
-**Why:** When a `FormDefinition` is modified after submissions exist, older submissions reference field names / types that may no longer match the current definition. Currently there is no snapshot or diff mechanism.
-
-**Scope:**
-- `FormDefinitionVersion` model — immutable snapshot of `FormDefinition` + `FormField` set as JSON, captured on each save
-- `FormSubmission.form_version` FK — each submission references the version it was filled against
-- Admin UI diff viewer — side-by-side comparison of two versions (field additions, removals, type changes)
-- No migration needed for existing submissions (FK nullable; falls back to current definition)
-
-**Complexity:** High. Requires careful data modelling and a diff rendering component.
-
----
+### 5. ✅ Form Versioning with Diff Viewer — *Shipped in v0.45.0*
 
 ### 6. Multi-Tenancy Support
 
@@ -131,7 +111,7 @@ This document describes what has been delivered, what is actively being worked o
 
 ### 7. Plugin / Custom Handler Marketplace
 
-**Why:** The post-submission action system is already pluggable (`register_handler`), but there is no discoverability mechanism or standardised packaging for third-party handlers.
+**Why:** The `FORMS_WORKFLOWS_CALLBACKS` setting and `register_handler()` API (v0.48) provide handler registration, but there is no discoverability mechanism or standardised packaging for third-party handlers.
 
 **Scope:**
 - `django-forms-workflows-handler-{name}` packaging convention

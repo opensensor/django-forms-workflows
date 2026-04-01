@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-04-01
+
+### Added
+- **Settings-based callback handler registry** — New `FORMS_WORKFLOWS_CALLBACKS` setting maps short handler names to dotted Python paths. Custom handlers can now be referenced by name (e.g. `"id_photo_copy"`) in `PostSubmissionAction.custom_handler_path` instead of full module paths. The executor resolves names from the registry first, then falls back to direct import for backward compatibility.
+- **`callback_registry` module** — `register_handler(name, handler)`, `get_handler(name)`, `get_registered_names()`, `is_registered(name)`, and `clear()` APIs for programmatic handler registration (e.g. in `AppConfig.ready()`).
+- **Auto-loading from settings** — `DjangoFormsWorkflowsConfig.ready()` calls `load_from_settings()` to bulk-register handlers from the `FORMS_WORKFLOWS_CALLBACKS` dict on startup.
+
 ## [0.47.3] - 2026-03-31
 
 ### Fixed

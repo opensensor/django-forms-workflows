@@ -1623,6 +1623,24 @@ class NotificationRuleAdmin(admin.ModelAdmin):
         return bool(obj.conditions)
 
 
+def _custom_handler_description():
+    """Build a dynamic description for the Custom Handler fieldset showing registered names."""
+    from django_forms_workflows.callback_registry import get_registered_names
+
+    names = get_registered_names()
+    if names:
+        name_list = ", ".join(f'"{n}"' for n in names)
+        return (
+            f"Enter a registered handler name or a full Python dotted path. "
+            f"Registered handlers: {name_list}"
+        )
+    return (
+        "Enter a full Python dotted path to a custom handler class or function "
+        "(e.g., 'myapp.handlers.MyHandler'). "
+        "Tip: register handlers by name via FORMS_WORKFLOWS_CALLBACKS in settings.py."
+    )
+
+
 @admin.register(PostSubmissionAction)
 class PostSubmissionActionAdmin(admin.ModelAdmin):
     list_display = (
@@ -1647,130 +1665,129 @@ class PostSubmissionActionAdmin(admin.ModelAdmin):
     list_editable = ("is_active", "order")
     ordering = ("form_definition", "order", "name")
 
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": (
-                    "form_definition",
-                    "name",
-                    "description",
-                    ("action_type", "trigger"),
-                    ("is_active", "order"),
-                )
-            },
-        ),
-        (
-            "Database Update Configuration",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    ("db_alias", "db_schema", "db_table"),
-                    ("db_lookup_field", "db_user_field"),
-                    "db_field_mappings",
-                ),
-                "description": (
-                    "Configure database updates. Field mappings format: "
-                    '[{"form_field": "email", "db_column": "EMAIL_ADDRESS"}, ...]'
-                ),
-            },
-        ),
-        (
-            "LDAP Update Configuration",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "ldap_dn_template",
-                    "ldap_field_mappings",
-                ),
-                "description": (
-                    "Configure LDAP updates. Field mappings format: "
-                    '[{"form_field": "phone", "ldap_attribute": "telephoneNumber"}, ...]'
-                ),
-            },
-        ),
-        (
-            "API Call Configuration",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    ("api_endpoint", "api_method"),
-                    "api_headers",
-                    "api_body_template",
-                ),
-                "description": (
-                    "Configure API calls. Use {field_name} in body template for form field values."
-                ),
-            },
-        ),
-        (
-            "Custom Handler Configuration",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "custom_handler_path",
-                    "custom_handler_config",
-                ),
-                "description": (
-                    "Python path to custom handler function (e.g., 'myapp.handlers.custom_update')"
-                ),
-            },
-        ),
-        (
-            "Email Notification Configuration",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    ("email_to", "email_to_field"),
-                    ("email_cc", "email_cc_field"),
-                    "email_subject_template",
-                    "email_body_template",
-                    "email_template_name",
-                ),
-                "description": (
-                    "Configure email notifications. Use {field_name} for form field values. "
-                    "email_to_field reads recipient from a form field (e.g., 'instructor_email')."
-                ),
-            },
-        ),
-        (
-            "Conditional Execution",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "condition_field",
-                    ("condition_operator", "condition_value"),
-                    "is_locked",
-                ),
-                "description": (
-                    "Execute this action only when the condition is met. "
-                    "Use is_locked to prevent duplicate executions."
-                ),
-            },
-        ),
-        (
-            "Error Handling",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "fail_silently",
-                    ("retry_on_failure", "max_retries"),
-                ),
-            },
-        ),
-        (
-            "Metadata",
-            {
-                "classes": ("collapse",),
-                "fields": (
-                    "created_at",
-                    "updated_at",
-                ),
-            },
-        ),
-    )
-
     readonly_fields = ("created_at", "updated_at")
+
+    def get_fieldsets(self, request, obj=None):
+        return (
+            (
+                None,
+                {
+                    "fields": (
+                        "form_definition",
+                        "name",
+                        "description",
+                        ("action_type", "trigger"),
+                        ("is_active", "order"),
+                    )
+                },
+            ),
+            (
+                "Database Update Configuration",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        ("db_alias", "db_schema", "db_table"),
+                        ("db_lookup_field", "db_user_field"),
+                        "db_field_mappings",
+                    ),
+                    "description": (
+                        "Configure database updates. Field mappings format: "
+                        '[{"form_field": "email", "db_column": "EMAIL_ADDRESS"}, ...]'
+                    ),
+                },
+            ),
+            (
+                "LDAP Update Configuration",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        "ldap_dn_template",
+                        "ldap_field_mappings",
+                    ),
+                    "description": (
+                        "Configure LDAP updates. Field mappings format: "
+                        '[{"form_field": "phone", "ldap_attribute": "telephoneNumber"}, ...]'
+                    ),
+                },
+            ),
+            (
+                "API Call Configuration",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        ("api_endpoint", "api_method"),
+                        "api_headers",
+                        "api_body_template",
+                    ),
+                    "description": (
+                        "Configure API calls. Use {field_name} in body template for form field values."
+                    ),
+                },
+            ),
+            (
+                "Custom Handler Configuration",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        "custom_handler_path",
+                        "custom_handler_config",
+                    ),
+                    "description": _custom_handler_description(),
+                },
+            ),
+            (
+                "Email Notification Configuration",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        ("email_to", "email_to_field"),
+                        ("email_cc", "email_cc_field"),
+                        "email_subject_template",
+                        "email_body_template",
+                        "email_template_name",
+                    ),
+                    "description": (
+                        "Configure email notifications. Use {field_name} for form field values. "
+                        "email_to_field reads recipient from a form field (e.g., 'instructor_email')."
+                    ),
+                },
+            ),
+            (
+                "Conditional Execution",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        "condition_field",
+                        ("condition_operator", "condition_value"),
+                        "is_locked",
+                    ),
+                    "description": (
+                        "Execute this action only when the condition is met. "
+                        "Use is_locked to prevent duplicate executions."
+                    ),
+                },
+            ),
+            (
+                "Error Handling",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        "fail_silently",
+                        ("retry_on_failure", "max_retries"),
+                    ),
+                },
+            ),
+            (
+                "Metadata",
+                {
+                    "classes": ("collapse",),
+                    "fields": (
+                        "created_at",
+                        "updated_at",
+                    ),
+                },
+            ),
+        )
 
 
 @admin.register(ActionExecutionLog)
@@ -2046,95 +2063,97 @@ class FileWorkflowHookAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = ("form_definition", "upload_config")
 
-    fieldsets = (
-        (
-            None,
-            {
-                "fields": (
-                    "name",
-                    "description",
-                    "is_active",
-                    "order",
-                ),
-            },
-        ),
-        (
-            "Scope",
-            {
-                "fields": (
-                    "form_definition",
-                    "upload_config",
-                    "field_name",
-                ),
-                "description": "Leave empty to apply to all forms/configs/fields.",
-            },
-        ),
-        (
-            "Trigger & Action",
-            {
-                "fields": ("trigger", "action"),
-            },
-        ),
-        (
-            "File Operations",
-            {
-                "fields": ("target_pattern",),
-                "classes": ("collapse",),
-                "description": "For rename/move/copy actions. Supports naming pattern tokens.",
-            },
-        ),
-        (
-            "Webhook/API Configuration",
-            {
-                "fields": (
-                    "webhook_url",
-                    "webhook_method",
-                    "webhook_headers",
-                    "webhook_payload_template",
-                ),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Custom Handler",
-            {
-                "fields": (
-                    "custom_handler_path",
-                    "custom_handler_config",
-                ),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Conditional Execution",
-            {
-                "fields": (
-                    "condition_field",
-                    "condition_operator",
-                    "condition_value",
-                ),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Error Handling",
-            {
-                "fields": (
-                    "fail_silently",
-                    "retry_on_failure",
-                    "max_retries",
-                ),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Metadata",
-            {
-                "fields": ("created_at", "updated_at"),
-                "classes": ("collapse",),
-            },
-        ),
-    )
+    def get_fieldsets(self, request, obj=None):
+        return (
+            (
+                None,
+                {
+                    "fields": (
+                        "name",
+                        "description",
+                        "is_active",
+                        "order",
+                    ),
+                },
+            ),
+            (
+                "Scope",
+                {
+                    "fields": (
+                        "form_definition",
+                        "upload_config",
+                        "field_name",
+                    ),
+                    "description": "Leave empty to apply to all forms/configs/fields.",
+                },
+            ),
+            (
+                "Trigger & Action",
+                {
+                    "fields": ("trigger", "action"),
+                },
+            ),
+            (
+                "File Operations",
+                {
+                    "fields": ("target_pattern",),
+                    "classes": ("collapse",),
+                    "description": "For rename/move/copy actions. Supports naming pattern tokens.",
+                },
+            ),
+            (
+                "Webhook/API Configuration",
+                {
+                    "fields": (
+                        "webhook_url",
+                        "webhook_method",
+                        "webhook_headers",
+                        "webhook_payload_template",
+                    ),
+                    "classes": ("collapse",),
+                },
+            ),
+            (
+                "Custom Handler",
+                {
+                    "fields": (
+                        "custom_handler_path",
+                        "custom_handler_config",
+                    ),
+                    "classes": ("collapse",),
+                    "description": _custom_handler_description(),
+                },
+            ),
+            (
+                "Conditional Execution",
+                {
+                    "fields": (
+                        "condition_field",
+                        "condition_operator",
+                        "condition_value",
+                    ),
+                    "classes": ("collapse",),
+                },
+            ),
+            (
+                "Error Handling",
+                {
+                    "fields": (
+                        "fail_silently",
+                        "retry_on_failure",
+                        "max_retries",
+                    ),
+                    "classes": ("collapse",),
+                },
+            ),
+            (
+                "Metadata",
+                {
+                    "fields": ("created_at", "updated_at"),
+                    "classes": ("collapse",),
+                },
+            ),
+        )
 
 
 @admin.register(ManagedFile)

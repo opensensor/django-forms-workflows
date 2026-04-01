@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-04-01
+
+### Added
+- **Visual workflow builder parity expanded** — The builder now supports workflow track selection, workflow/stage trigger conditions, notification rules, ordered stage approval groups, and approval-only stage fields without dropping into Django Admin.
+
+### Changed
+- **Visual workflow builder UX and validation pass** — Added inline validation summaries, node-level warnings/errors, safer save feedback, and backend validation for common builder misconfigurations such as missing approver sources, duplicate approval-only fields, and invalid notification cadence settings.
+
 ## [0.48.0] - 2026-04-01
 
 ### Added

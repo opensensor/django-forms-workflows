@@ -1200,17 +1200,28 @@ def send_notification_rules(
             )
             continue
 
-        subject = (
-            rule.subject_template.format(
+        # Build subject with answer piping — {field_name} tokens are
+        # resolved from form_data alongside the built-in {form_name} and
+        # {submission_id} placeholders.
+        _pipe_vars = {
+            "form_name": form_name,
+            "submission_id": submission.id,
+            **{
+                k: (", ".join(v) if isinstance(v, list) else str(v))
+                for k, v in form_data.items()
+            },
+        }
+        subject_tpl = rule.subject_template or default_subject_tpl
+        try:
+            subject = subject_tpl.format_map(defaultdict(str, _pipe_vars))
+        except Exception:
+            subject = subject_tpl.format(
                 form_name=form_name, submission_id=submission.id
             )
-            if rule.subject_template
-            else default_subject_tpl.format(
-                form_name=form_name, submission_id=submission.id
-            )
-        )
+
         context = {
             "submission": submission,
+            "form_data": form_data,
             "submission_url": submission_url,
             "approval_url": approval_url,
             "hide_approval_history": hide_approval_history,

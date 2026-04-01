@@ -14,6 +14,7 @@ from django_forms_workflows.models import (
     FormDefinition,
     FormSubmission,
 )
+from django_forms_workflows.views import _pipe_answer_tokens
 
 
 @pytest.fixture
@@ -1345,3 +1346,242 @@ class TestAnalyticsExportCSV:
         url = reverse("forms_workflows:analytics_export_csv")
         resp = auth_client.get(url, {"days": "30"})
         assert "30d.csv" in resp["Content-Disposition"]
+
+
+# ── _pipe_answer_tokens ────────────────────────────────────────────────────
+
+
+class TestPipeAnswerTokens:
+    """Unit tests for the _pipe_answer_tokens() helper."""
+
+    def test_basic_replacement(self):
+        assert _pipe_answer_tokens("Hello {name}", {"name": "Alice"}) == "Hello Alice"
+
+    def test_multiple_tokens(self):
+        result = _pipe_answer_tokens("{first} {last}", {"first": "John", "last": "Doe"})
+        assert result == "John Doe"
+
+    def test_unknown_token_becomes_empty_string(self):
+        assert _pipe_answer_tokens("Hi {unknown}!", {}) == "Hi !"
+
+    def test_no_tokens_passes_through_unchanged(self):
+        assert _pipe_answer_tokens("No tokens here.", {"x": "y"}) == "No tokens here."
+
+    def test_empty_string(self):
+        assert _pipe_answer_tokens("", {"x": "y"}) == ""
+
+    def test_list_value_comma_joined(self):
+        result = _pipe_answer_tokens("{choices}", {"choices": ["A", "B", "C"]})
+        assert result == "A, B, C"
+
+    def test_token_in_url(self):
+        result = _pipe_answer_tokens(
+            "https://example.com/?dept={dept}&ref={ref}",
+            {"dept": "hr", "ref": "42"},
+        )
+        assert result == "https://example.com/?dept=hr&ref=42"
+
+    def test_partial_unknown_token(self):
+        """Known tokens are replaced; unknown tokens become empty strings."""
+        result = _pipe_answer_tokens("{name} from {unknown}", {"name": "Bob"})
+        assert result == "Bob from "
+
+    def test_same_token_repeated(self):
+        result = _pipe_answer_tokens("{x} and {x}", {"x": "yes"})
+        assert result == "yes and yes"
+
+
+# ── submission_success view ────────────────────────────────────────────────
+
+
+class TestSubmissionSuccessView:
+    """Tests for the /submissions/<id>/success/ view."""
+
+    def test_returns_200(self, auth_client, form_with_fields, user):
+        form_with_fields.success_message = "<p>Thank you!</p>"
+        form_with_fields.save()
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={"full_name": "Alice"},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:submission_success", args=[sub.id])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    def test_tokens_piped_in_rendered_message(
+        self, auth_client, form_with_fields, user
+    ):
+        form_with_fields.success_message = "Thank you {full_name}!"
+        form_with_fields.save()
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={"full_name": "Bob"},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:submission_success", args=[sub.id])
+        resp = auth_client.get(url)
+        assert b"Thank you Bob!" in resp.content
+
+    def test_unknown_token_rendered_as_empty(self, auth_client, form_with_fields, user):
+        form_with_fields.success_message = "Hi {missing_field}!"
+        form_with_fields.save()
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:submission_success", args=[sub.id])
+        resp = auth_client.get(url)
+        assert b"Hi !" in resp.content
+
+    def test_nonexistent_submission_returns_404(self, auth_client, db):
+        url = reverse("forms_workflows:submission_success", args=[999999])
+        resp = auth_client.get(url)
+        assert resp.status_code == 404
+
+    def test_anonymous_access_allowed(self, client, form_with_fields, user):
+        """Success page has no login_required; anonymous users can view it."""
+        form_with_fields.success_message = "Done!"
+        form_with_fields.save()
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:submission_success", args=[sub.id])
+        resp = client.get(url)
+        assert resp.status_code == 200
+
+
+# ── success routing in form_submit ─────────────────────────────────────────
+
+
+class TestSuccessRouting:
+    """Tests for the post-submission routing: rules → static URL → message → default."""
+
+    # Valid POST data that satisfies simple_form's required fields
+    POST_DATA = {
+        "full_name": "Alice Smith",
+        "email": "alice@example.com",
+        "department": "hr",
+        "amount": "100.00",
+        "notes": "routing test",
+    }
+
+    def _post(self, auth_client, form):
+        url = reverse("forms_workflows:form_submit", args=[form.slug])
+        return auth_client.post(url, self.POST_DATA)
+
+    # ── static redirect URL ────────────────────────────────────────────────
+
+    def test_static_redirect_url_redirects(self, auth_client, simple_form):
+        simple_form.success_redirect_url = "https://example.com/thanks/"
+        simple_form.save()
+        resp = self._post(auth_client, simple_form)
+        assert resp.status_code == 302
+        assert resp["Location"] == "https://example.com/thanks/"
+
+    def test_static_redirect_url_with_token(self, auth_client, simple_form):
+        simple_form.success_redirect_url = "https://example.com/?dept={department}"
+        simple_form.save()
+        resp = self._post(auth_client, simple_form)
+        assert resp.status_code == 302
+        assert resp["Location"] == "https://example.com/?dept=hr"
+
+    # ── success message ────────────────────────────────────────────────────
+
+    def test_success_message_redirects_to_success_page(self, auth_client, simple_form):
+        simple_form.success_message = "Thank you {full_name}!"
+        simple_form.save()
+        resp = self._post(auth_client, simple_form)
+        assert resp.status_code == 302
+        assert "/success/" in resp["Location"]
+
+    def test_success_page_url_contains_submission_id(self, auth_client, simple_form):
+        simple_form.success_message = "Done!"
+        simple_form.save()
+        resp = self._post(auth_client, simple_form)
+        sub = FormSubmission.objects.filter(form_definition=simple_form).latest("id")
+        expected = reverse(
+            "forms_workflows:submission_success",
+            kwargs={"submission_id": sub.id},
+        )
+        assert resp["Location"].endswith(expected)
+
+    # ── conditional redirect rules ─────────────────────────────────────────
+
+    def test_matching_rule_redirects(self, auth_client, simple_form):
+        simple_form.success_redirect_rules = [
+            {
+                "url": "https://example.com/hr/",
+                "field": "department",
+                "operator": "equals",
+                "value": "hr",
+            }
+        ]
+        simple_form.save()
+        resp = self._post(auth_client, simple_form)
+        assert resp.status_code == 302
+        assert resp["Location"] == "https://example.com/hr/"
+
+    def test_non_matching_rule_falls_through_to_static_url(
+        self, auth_client, simple_form
+    ):
+        simple_form.success_redirect_rules = [
+            {
+                "url": "https://example.com/finance/",
+                "field": "department",
+                "operator": "equals",
+                "value": "finance",
+            }
+        ]
+        simple_form.success_redirect_url = "https://example.com/fallback/"
+        simple_form.save()
+        # POST_DATA has department=hr, rule expects finance → no match
+        resp = self._post(auth_client, simple_form)
+        assert resp.status_code == 302
+        assert resp["Location"] == "https://example.com/fallback/"
+
+    def test_first_matching_rule_wins(self, auth_client, simple_form):
+        simple_form.success_redirect_rules = [
+            {
+                "url": "https://example.com/first/",
+                "field": "department",
+                "operator": "equals",
+                "value": "hr",
+            },
+            {
+                "url": "https://example.com/second/",
+                "field": "department",
+                "operator": "equals",
+                "value": "hr",
+            },
+        ]
+        simple_form.save()
+        resp = self._post(auth_client, simple_form)
+        assert resp["Location"] == "https://example.com/first/"
+
+    def test_rule_url_token_piped(self, auth_client, simple_form):
+        simple_form.success_redirect_rules = [
+            {
+                "url": "https://example.com/?dept={department}",
+                "field": "department",
+                "operator": "equals",
+                "value": "hr",
+            }
+        ]
+        simple_form.save()
+        resp = self._post(auth_client, simple_form)
+        assert resp["Location"] == "https://example.com/?dept=hr"
+
+    # ── default behaviour ──────────────────────────────────────────────────
+
+    def test_no_config_redirects_to_my_submissions(self, auth_client, simple_form):
+        resp = self._post(auth_client, simple_form)
+        assert resp.status_code == 302
+        assert resp["Location"].endswith(reverse("forms_workflows:my_submissions"))

@@ -37,7 +37,7 @@ Each rule answers three questions:
 | `stage` | ForeignKey | Optional. Scopes recipient sources to a specific stage |
 | `event` | Choice | Which lifecycle event triggers this rule |
 | `conditions` | JSON | Optional conditions evaluated against `form_data` |
-| `subject_template` | CharField | Custom subject line (supports `{form_name}`, `{submission_id}`) |
+| `subject_template` | CharField | Custom subject line (supports `{form_name}`, `{submission_id}`, and any `{field_name}` token — see [Answer Piping](#answer-piping-in-subjects)) |
 | `notify_submitter` | Boolean | Include the form submitter |
 | `email_field` | CharField | Form field slug whose value is an email address |
 | `static_emails` | CharField | Comma-separated fixed email addresses |
@@ -247,6 +247,60 @@ For Gmail API, also set `DEFAULT_FROM_EMAIL`, `GMAIL_DELEGATED_USER`, and `GMAIL
 ### Batched notifications not sending
 - Check `send_batched_notifications` is in the Celery beat schedule
 - Check `PendingNotification` records are being created
+
+---
+
+## Answer Piping in Subjects
+
+`subject_template` supports **answer piping** — you can embed submitted form field values directly into the email subject line using `{field_name}` tokens.
+
+### Syntax
+
+```
+{field_name}
+```
+
+`field_name` must match the **field slug** on `FormField` exactly (case-sensitive).
+
+### Available tokens
+
+| Token | Source |
+|-------|--------|
+| `{form_name}` | The form's display name |
+| `{submission_id}` | The numeric ID of the submission |
+| `{<any field slug>}` | The submitted value for that field |
+
+### Behaviour
+
+| Scenario | Result |
+|----------|--------|
+| Known field, scalar value | Replaced with the submitted value |
+| Known field, list value (e.g. checkboxes) | Values joined with `", "` |
+| Unknown field slug | Replaced with `""` (empty string, fail-open) |
+
+### Examples
+
+```
+# Simple field piping
+Subject: {form_name} — New request from {full_name}
+
+# Multiple fields
+Subject: #{submission_id}: {department} request approved — {position_title}
+
+# List field
+Subject: Courses selected: {course_selections}
+```
+
+### `form_data` in template context
+
+In addition to subject piping, the full `form_data` dictionary is now passed to every notification email template as `form_data`. This allows HTML templates to reference field values directly:
+
+```html
+<!-- emails/approval_request.html -->
+<p>Request from: <strong>{{ form_data.full_name }}</strong></p>
+<p>Department: {{ form_data.department }}</p>
+<p>Amount requested: ${{ form_data.amount }}</p>
+```
 
 ---
 

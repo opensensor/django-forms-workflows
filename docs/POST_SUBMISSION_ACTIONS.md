@@ -11,6 +11,135 @@ Post-Submission Actions allow you to automatically update external systems with 
 
 > Need a reusable, signed callback for workflow lifecycle events like `task.created` or `submission.returned`? Use [Workflow Webhooks](WEBHOOKS.md) instead. Post-submission API actions are better for one-off integration calls tied to `on_submit`, `on_approve`, `on_reject`, or `on_complete`.
 
+---
+
+## Success Pages
+
+After a form is successfully submitted you can control exactly what happens next using three new fields on `FormDefinition`. They are evaluated in the following priority order:
+
+| Priority | Field | Behaviour |
+|----------|-------|-----------|
+| 1 (highest) | `success_redirect_rules` | First matching conditional rule wins — redirect to its URL |
+| 2 | `success_redirect_url` | Static redirect URL (no conditions) |
+| 3 | `success_message` | Render a custom message at `/submissions/<id>/success/` |
+| 4 (default) | *(none set)* | Authenticated users → My Submissions; anonymous → public confirmation page |
+
+### `success_message`
+
+An HTML snippet displayed on the built-in success page (`/submissions/<id>/success/`). Supports **answer piping** — see [Answer Piping](#answer-piping) below.
+
+```
+Thank you, {full_name}! Your request (#{submission_id}) has been received.
+We will contact you at {email} within 3 business days.
+```
+
+The success page renders inside your site's base template and includes "My Submissions" / "Back to Forms" navigation buttons.
+
+### `success_redirect_url`
+
+A static URL to redirect the user to after submission. Supports answer piping tokens in the URL:
+
+```
+https://portal.example.com/confirmation/?dept={department}&ref={employee_id}
+```
+
+### `success_redirect_rules`
+
+A JSON array of conditional redirect rules. Rules are evaluated in order; the **first matching rule** redirects the user. If no rule matches, the next lower-priority option (`success_redirect_url`, `success_message`, or the default) applies.
+
+Each rule combines a destination URL with a condition:
+
+```json
+[
+  {
+    "url": "https://hr.example.com/onboarding/?name={full_name}",
+    "field": "department",
+    "operator": "equals",
+    "value": "HR"
+  },
+  {
+    "url": "https://finance.example.com/approval/",
+    "field": "department",
+    "operator": "equals",
+    "value": "Finance"
+  },
+  {
+    "url": "https://example.com/default-thanks/",
+    "operator": "AND",
+    "conditions": []
+  }
+]
+```
+
+Rule URL values also support answer piping tokens.
+
+**Compound conditions** use the same JSON format as the conditional logic engine:
+
+```json
+{
+  "url": "https://example.com/high-value/",
+  "operator": "AND",
+  "conditions": [
+    {"field": "amount", "operator": "greater_than", "value": "10000"},
+    {"field": "department", "operator": "equals", "value": "Finance"}
+  ]
+}
+```
+
+See the [Conditional Logic documentation](CLIENT_SIDE_ENHANCEMENTS.md) for the full list of supported operators.
+
+---
+
+## Answer Piping
+
+**Answer piping** lets you embed submitted form field values into success messages, redirect URLs, and notification subjects using `{field_name}` tokens. Tokens are resolved server-side against the `form_data` dictionary.
+
+### Token Syntax
+
+```
+{field_name}
+```
+
+Where `field_name` is the **field slug** (the `field_name` value on `FormField`, not the label).
+
+### Behaviour
+
+| Scenario | Result |
+|----------|--------|
+| Token matches a field with a scalar value | Replaced with the value |
+| Token matches a field with a list value (e.g. checkboxes) | Values joined with `", "` |
+| Token does not match any submitted field | Replaced with `""` (empty string) |
+| No tokens present | Text passed through unchanged |
+
+### Examples
+
+**Success message:**
+```html
+<p>Hi {full_name}, your <strong>{department}</strong> request has been submitted.</p>
+<p>You selected: {checkbox_field}</p>
+```
+
+**Redirect URL with tokens:**
+```
+https://crm.example.com/intake/?name={full_name}&email={email}&src=form
+```
+
+**Notification subject (see also [Notifications](NOTIFICATIONS.md)):**
+```
+{form_name} — New submission from {full_name} (#{submission_id})
+```
+
+### Built-in placeholders
+
+The following special placeholders are also available in **notification subjects** (not just field names):
+
+| Placeholder | Value |
+|-------------|-------|
+| `{form_name}` | The form's display name |
+| `{submission_id}` | The numeric ID of the submission |
+
+---
+
 ## Supported Action Types
 
 ### 1. Database Updates

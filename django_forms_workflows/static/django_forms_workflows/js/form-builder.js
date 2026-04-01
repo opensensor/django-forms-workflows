@@ -1955,6 +1955,11 @@ class FormBuilder {
             document.getElementById('formAllowDraft').checked = data.allow_save_draft;
             document.getElementById('formAllowWithdrawal').checked = data.allow_withdrawal;
 
+            // Load success page settings
+            document.getElementById('formSuccessMessage').value = data.success_message || '';
+            document.getElementById('formSuccessRedirectUrl').value = data.success_redirect_url || '';
+            document.getElementById('formSuccessRedirectRules').value = data.success_redirect_rules ? JSON.stringify(data.success_redirect_rules) : '';
+
             // Load submission controls
             if (data.close_date) document.getElementById('formCloseDate').value = data.close_date.slice(0, 16);
             if (data.max_submissions) document.getElementById('formMaxSubmissions').value = data.max_submissions;
@@ -2018,6 +2023,9 @@ class FormBuilder {
             requires_login: document.getElementById('formRequiresLogin').checked,
             allow_save_draft: document.getElementById('formAllowDraft').checked,
             allow_withdrawal: document.getElementById('formAllowWithdrawal').checked,
+            success_message: document.getElementById('formSuccessMessage').value.trim(),
+            success_redirect_url: document.getElementById('formSuccessRedirectUrl').value.trim(),
+            success_redirect_rules: (() => { try { const v = document.getElementById('formSuccessRedirectRules').value.trim(); return v ? JSON.parse(v) : null; } catch(e) { return null; } })(),
             close_date: document.getElementById('formCloseDate').value || null,
             max_submissions: parseInt(document.getElementById('formMaxSubmissions').value) || null,
             one_per_user: document.getElementById('formOnePerUser').checked,

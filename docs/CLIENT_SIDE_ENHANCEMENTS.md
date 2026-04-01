@@ -320,6 +320,60 @@ The API endpoint should return:
 }
 ```
 
+### 6. Real-Time Answer Piping
+
+Labels, help text, and section headers on the form page can contain `{field_name}` tokens that are replaced **in real-time** as the user types or selects values. This lets you personalise later questions based on earlier answers without any server round-trip.
+
+#### How it works
+
+The enhancement JS scans every `<label>`, `<small>`, and `.form-text` element in the form for tokens matching `{field_name}`. For each token found it:
+
+1. Looks up the corresponding input, select, or textarea by name
+2. Attaches an `input` / `change` event listener
+3. Replaces the token with the field's current value on every keystroke
+
+The original template text (with tokens) is preserved in a `data-original-text` attribute so the replacement is always computed from the canonical template, not from a previously-substituted value.
+
+#### Example
+
+Given a field `full_name` and the following label on a later field:
+
+```html
+<label for="id_reason">
+  Hi {full_name}, why are you submitting this form?
+</label>
+```
+
+As the user types "Alice" into the `full_name` field the label updates live:
+
+```
+Hi Alice, why are you submitting this form?
+```
+
+#### Configuration
+
+No extra configuration is required. Token piping is automatically active for all forms loaded through `form_submit.html`. Place `{field_name}` tokens directly in:
+
+- **Field labels** (`field_label` on `FormField`)
+- **Help text** (`help_text` on `FormField`)
+- **Section header** text
+
+Tokens that reference fields that do not exist, or whose fields have no value yet, are replaced with an empty string.
+
+#### Behaviour summary
+
+| Scenario | Runtime behaviour |
+|----------|-------------------|
+| User types in referenced field | Label / help text updates immediately |
+| Referenced field is a select / radio | Updates on `change` event |
+| Referenced field has no value yet | Token becomes `""` (hidden) |
+| Token references a non-existent field | Token becomes `""` silently |
+| Multiple tokens in one element | Each resolved independently |
+
+> **Server-side equivalent:** The same `{field_name}` syntax is used in success messages, redirect URLs, and notification subjects, where tokens are resolved server-side against the submitted `form_data`. See [Post-Submission Actions — Answer Piping](POST_SUBMISSION_ACTIONS.md#answer-piping) for details.
+
+---
+
 ## Usage
 
 ### Automatic Initialization

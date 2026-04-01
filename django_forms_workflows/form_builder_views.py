@@ -311,6 +311,9 @@ def form_builder_load(request, form_id):
         "requires_login": form_definition.requires_login,
         "allow_save_draft": form_definition.allow_save_draft,
         "allow_withdrawal": form_definition.allow_withdrawal,
+        "success_message": form_definition.success_message or "",
+        "success_redirect_url": form_definition.success_redirect_url or "",
+        "success_redirect_rules": form_definition.success_redirect_rules,
         "close_date": form_definition.close_date.isoformat()
         if form_definition.close_date
         else None,
@@ -349,6 +352,9 @@ def form_builder_save(request):
         requires_login = data.get("requires_login", True)
         allow_save_draft = data.get("allow_save_draft", True)
         allow_withdrawal = data.get("allow_withdrawal", True)
+        success_message = data.get("success_message", "").strip()
+        success_redirect_url = data.get("success_redirect_url", "").strip()
+        success_redirect_rules = data.get("success_redirect_rules") or None
         close_date = data.get("close_date") or None
         max_submissions = data.get("max_submissions") or None
         one_per_user = data.get("one_per_user", False)
@@ -382,6 +388,9 @@ def form_builder_save(request):
                 form_definition.requires_login = requires_login
                 form_definition.allow_save_draft = allow_save_draft
                 form_definition.allow_withdrawal = allow_withdrawal
+                form_definition.success_message = success_message
+                form_definition.success_redirect_url = success_redirect_url
+                form_definition.success_redirect_rules = success_redirect_rules
                 form_definition.close_date = close_date
                 form_definition.max_submissions = max_submissions
                 form_definition.one_per_user = one_per_user
@@ -402,6 +411,9 @@ def form_builder_save(request):
                     requires_login=requires_login,
                     allow_save_draft=allow_save_draft,
                     allow_withdrawal=allow_withdrawal,
+                    success_message=success_message,
+                    success_redirect_url=success_redirect_url,
+                    success_redirect_rules=success_redirect_rules,
                     close_date=close_date,
                     max_submissions=max_submissions,
                     one_per_user=one_per_user,

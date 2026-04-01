@@ -203,6 +203,60 @@
         document.querySelectorAll('form').forEach(wireCalculatedFields);
     })();
 
+    // ── Answer piping: replace {field_name} tokens in labels & help text ─
+    (function () {
+        var form = document.querySelector('[data-form-enhancements="true"]');
+        if (!form) return;
+
+        // Find all labels and help-text spans that contain {tokens}
+        var TOKEN_RE = /\{(\w+)\}/g;
+        var pipeTargets = [];
+
+        form.querySelectorAll('label, .form-text, .help-block, small').forEach(function (el) {
+            var tpl = el.textContent;
+            if (TOKEN_RE.test(tpl)) {
+                pipeTargets.push({ el: el, template: tpl });
+            }
+            TOKEN_RE.lastIndex = 0; // reset regex state
+        });
+
+        if (!pipeTargets.length) return;
+
+        // Collect all referenced field names
+        var sourceNames = new Set();
+        pipeTargets.forEach(function (t) {
+            var m;
+            TOKEN_RE.lastIndex = 0;
+            while ((m = TOKEN_RE.exec(t.template)) !== null) {
+                sourceNames.add(m[1]);
+            }
+        });
+
+        function updatePipes() {
+            pipeTargets.forEach(function (t) {
+                t.el.textContent = t.template.replace(TOKEN_RE, function (_, name) {
+                    var el = form.querySelector('[name="' + name + '"]');
+                    if (!el) return '{' + name + '}';
+                    if (el.type === 'checkbox') return el.checked ? (el.value || 'Yes') : '';
+                    if (el.tagName === 'SELECT') {
+                        var opt = el.options[el.selectedIndex];
+                        return opt ? opt.text : '';
+                    }
+                    return el.value || '';
+                });
+            });
+        }
+
+        sourceNames.forEach(function (name) {
+            var el = form.querySelector('[name="' + name + '"]');
+            if (el) {
+                el.addEventListener('input', updatePipes);
+                el.addEventListener('change', updatePipes);
+            }
+        });
+        updatePipes();
+    })();
+
     // ── Rating stars widget ──────────────────────────────────────────────
     (function () {
         document.querySelectorAll('.rating-stars-input').forEach(function (select) {

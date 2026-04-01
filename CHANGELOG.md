@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-04-01
+
+### Added
+- **Success Pages** — Three new fields on `FormDefinition` control post-submission routing, evaluated in priority order:
+  - `success_redirect_rules` (JSONField) — array of conditional redirect rules; first match wins. Each rule combines a `url` with any condition the existing evaluate-conditions engine understands (simple field equality, compound AND/OR, etc.).
+  - `success_redirect_url` (CharField) — static redirect URL, applied when no rule matches.
+  - `success_message` (TextField) — custom HTML rendered at `/submissions/<id>/success/` when no redirect is configured.
+  - New `submission_success` URL (`forms_workflows:submission_success`) and view; template `submission_success.html` with "My Submissions" / "Back to Forms" navigation.
+- **Answer piping** — `{field_name}` token substitution available in three places:
+  - *Success messages & redirect URLs* — `_pipe_answer_tokens()` helper resolves tokens server-side from `form_data`; list-valued fields are comma-joined; unknown tokens become empty strings.
+  - *Notification subjects* — `subject_template` on `NotificationRule` now resolves `{field_name}` tokens alongside `{form_name}` and `{submission_id}` via a `defaultdict(str)` (fail-open: unknown tokens → empty string).
+  - *Live form labels* — new JS block in `form_submit.html` scans `<label>`, `<small>`, and `.form-text` elements for tokens, attaches `input`/`change` listeners, and replaces them in real-time as the user types.
+- **`form_data` in notification email context** — the full `form_data` dict is now passed to every notification template so HTML templates can reference `{{ form_data.field_name }}` directly.
+- **Form builder: Success Page settings panel** — redirect URL input, conditional rules JSON editor, success message textarea with piping syntax hints, and a CAPTCHA toggle; all values round-trip through `form_builder_load` / `form_builder_save`.
+- **Migration `0081`** (`0081_add_success_page_fields`) — adds `success_message`, `success_redirect_url`, and `success_redirect_rules` to `FormDefinition`.
+
+### Documentation
+- `docs/POST_SUBMISSION_ACTIONS.md` — new **Success Pages** and **Answer Piping** sections.
+- `docs/NOTIFICATIONS.md` — new **Answer Piping in Subjects** section; `form_data` template context documented.
+- `docs/FORM_BUILDER_USER_GUIDE.md` — Submission Controls panel, Success Page settings panel, palette search, and four new field types documented.
+- `docs/CLIENT_SIDE_ENHANCEMENTS.md` — new **Real-Time Answer Piping** section (§ 6).
+
+### Tests
+- New tests in `tests/test_views.py`: `TestPipeAnswerTokens` (9 cases), `TestSubmissionSuccessView` (5 cases), `TestSuccessRouting` (10 cases).
+- New tests in `tests/test_notifications.py`: 5 cases covering subject piping, unknown-field fail-open, built-in placeholders, list-value comma-join, and `form_data` in template context.
+
 ## [0.53.0] - 2026-04-01
 
 ### Added

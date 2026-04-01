@@ -252,6 +252,29 @@ class FormDefinition(models.Model):
         help_text="Auto-save interval in seconds",
     )
 
+    # Success Page
+    success_message = models.TextField(
+        blank=True,
+        help_text=(
+            "Custom HTML shown after submission. Supports answer piping with "
+            "{field_name} tokens that are replaced with the submitted values. "
+            "Leave blank for the default confirmation message."
+        ),
+    )
+    success_redirect_url = models.URLField(
+        blank=True,
+        help_text="Redirect to this URL after submission instead of showing a success page.",
+    )
+    success_redirect_rules = models.JSONField(
+        blank=True,
+        null=True,
+        help_text=(
+            "Conditional redirects based on form data. Format: "
+            '[{"field": "field_name", "operator": "equals", "value": "...", "url": "https://..."}]. '
+            "First matching rule wins; falls back to success_redirect_url or the default page."
+        ),
+    )
+
     # PDF Generation
     PDF_GENERATION_CHOICES = [
         ("none", "Disabled"),

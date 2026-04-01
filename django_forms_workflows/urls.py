@@ -84,6 +84,12 @@ urlpatterns = [
         views.reassign_task,
         name="reassign_task",
     ),
+    # Custom success page (per-submission, supports answer piping)
+    path(
+        "submissions/<int:submission_id>/success/",
+        views.submission_success,
+        name="submission_success",
+    ),
     # Public form submission confirmation (no login required)
     path(
         "submitted/",

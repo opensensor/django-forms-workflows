@@ -81,8 +81,18 @@ Drag field types from here to the canvas:
 - 📞 Phone Number - Phone with validation
 - 💰 Decimal/Currency - Money amounts
 
+**New Field Types:**
+- ⭐ Rating - Star rating (1–N stars). Set *Max Value* to control the number of stars (default 5). The submitted value is stored as a number string.
+- 🎚️ Slider - Range slider backed by a decimal field. Set *Min Value*, *Max Value*, and *Default Value* (step size). Rendered with a live value readout.
+- 🏠 Address - Free-text address area (up to 500 characters). The JS enhancement layer splits it into labelled sub-inputs (Street, City, State, ZIP, Country) on the client side.
+- 🔲 Matrix / Grid - Questionnaire-style grid. Provide *Choices* as JSON: `{"rows": ["Statement A", "Statement B"], "columns": ["Agree", "Neutral", "Disagree"]}`. Each row becomes a separate radio group. Falls back to a plain textarea when no rows/columns are configured.
+
 **Layout:**
 - 📑 Section Header - Visual separator
+
+#### Palette Search
+
+Type in the **search box** at the top of the palette to filter field types by name. The list updates instantly, making it easy to find a specific field type in large builders.
 
 ### 3. Form Canvas (Center)
 
@@ -236,6 +246,75 @@ Add custom styling to fields:
    - `text-danger` - Red text
    - `bg-light` - Light background
    - Your custom classes
+
+## Submission Controls
+
+The **Submission Controls** panel in Form Settings lets you restrict who can submit and when:
+
+| Setting | Description |
+|---------|-------------|
+| **Close Date** | Forms stop accepting new submissions at this date/time. Submitters see an error message and are redirected. Leave blank for no deadline. |
+| **Max Submissions** | Total cap on non-draft submissions across all users. Leave blank for unlimited. |
+| **One Submission Per User** | When checked, each authenticated user may submit only once. Draft and withdrawn submissions do not count. |
+
+These controls are enforced at the view layer on both GET (form load) and POST (submission attempt).
+
+## Success Page Settings
+
+The **Success Page** panel in Form Settings controls what happens after a form is submitted. Settings are evaluated in the following order of priority:
+
+1. **Conditional redirect rules** — JSON array evaluated in order; first match wins
+2. **Redirect URL** — Static URL (overrides success message if set)
+3. **Success message** — Custom HTML rendered on the built-in `/submissions/<id>/success/` page
+4. **Default** — Authenticated users go to My Submissions; anonymous users see the public confirmation page
+
+### Redirect URL
+
+Enter any absolute URL. Answer piping tokens are supported:
+
+```
+https://portal.example.com/thanks/?name={full_name}&dept={department}
+```
+
+### Conditional Redirect Rules
+
+JSON array of rules. Each rule has a `url` key plus condition fields:
+
+```json
+[
+  {
+    "url": "https://hr.example.com/onboarding/",
+    "field": "department",
+    "operator": "equals",
+    "value": "HR"
+  },
+  {
+    "url": "https://finance.example.com/approval/",
+    "field": "amount",
+    "operator": "greater_than",
+    "value": "10000"
+  }
+]
+```
+
+The first rule whose condition matches redirects the user. If no rule matches, the Redirect URL or success message is used.
+
+### Success Message
+
+An HTML snippet with optional **answer piping** tokens (`{field_name}`). Tokens are replaced server-side with the submitted values. Unknown tokens become empty strings.
+
+```html
+<p>Thanks, {full_name}! Your <strong>{department}</strong> request has been submitted.</p>
+<p>We'll contact you at {email} within 3 business days.</p>
+```
+
+See [Post-Submission Actions — Answer Piping](POST_SUBMISSION_ACTIONS.md#answer-piping) for the full reference.
+
+### CAPTCHA
+
+Enable the **CAPTCHA** toggle to require human verification before submission. The JS layer renders the CAPTCHA widget (Google reCAPTCHA v2/v3 or hCaptcha, detected automatically from your page's script tags). Configure `FORMS_WORKFLOWS_CAPTCHA_SECRET_KEY` and optionally `FORMS_WORKFLOWS_CAPTCHA_VERIFY_URL` in your Django settings.
+
+---
 
 ## Tips & Best Practices
 

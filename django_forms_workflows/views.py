@@ -454,6 +454,38 @@ def form_submit(request, slug):
 
             create_approval_tasks(submission)
 
+            # ── Success page / redirect routing ────────────────────────────
+            form_data = submission.form_data or {}
+
+            # 1. Check conditional redirect rules first
+            if form_def.success_redirect_rules:
+                from .conditions import evaluate_conditions
+
+                rules = form_def.success_redirect_rules
+                if isinstance(rules, list):
+                    for rule in rules:
+                        url = rule.pop("url", "")
+                        if url and evaluate_conditions(rule, form_data):
+                            rule["url"] = url  # restore for future evals
+                            return redirect(_pipe_answer_tokens(url, form_data))
+                        rule["url"] = url
+
+            # 2. Static redirect URL
+            if form_def.success_redirect_url:
+                return redirect(
+                    _pipe_answer_tokens(form_def.success_redirect_url, form_data)
+                )
+
+            # 3. Custom success message (rendered on a dedicated page)
+            if form_def.success_message:
+                return redirect(
+                    reverse(
+                        "forms_workflows:submission_success",
+                        kwargs={"submission_id": submission.id},
+                    )
+                )
+
+            # 4. Default behaviour
             if is_anonymous:
                 return redirect(
                     "forms_workflows:public_submission_confirmation",
@@ -488,6 +520,42 @@ def form_submit(request, slug):
             "form_enhancements_config": form_enhancements_config,
             "is_anonymous": is_anonymous,
             "captcha_site_key": captcha_site_key,
+        },
+    )
+
+
+def _pipe_answer_tokens(text, form_data):
+    """Replace {field_name} tokens in *text* with values from *form_data*.
+
+    Unresolved tokens are replaced with an empty string so the output is
+    always safe to display or use as a URL.
+    """
+    import re
+
+    def _repl(m):
+        val = form_data.get(m.group(1), "")
+        if isinstance(val, list):
+            return ", ".join(str(v) for v in val)
+        return str(val)
+
+    return re.sub(r"\{(\w+)\}", _repl, text)
+
+
+def submission_success(request, submission_id):
+    """Custom success page with answer-piped content."""
+    submission = get_object_or_404(FormSubmission, id=submission_id)
+    form_def = submission.form_definition
+    form_data = submission.form_data or {}
+
+    rendered_message = _pipe_answer_tokens(form_def.success_message, form_data)
+
+    return render(
+        request,
+        "django_forms_workflows/submission_success.html",
+        {
+            "form_def": form_def,
+            "submission": submission,
+            "success_message": rendered_message,
         },
     )
 

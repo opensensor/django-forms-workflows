@@ -1,0 +1,30 @@
+{% extends "django_forms_workflows/base.html" %}
+
+{% block title %}Submission Received — {{ form_def.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow-sm p-4">
+                <div class="text-center mb-4">
+                    <i class="bi bi-check-circle-fill text-success" style="font-size: 3.5rem;"></i>
+                </div>
+                <div class="success-message">
+                    {{ success_message|safe }}
+                </div>
+                <div class="d-grid gap-2 mt-4">
+                    {% if request.user.is_authenticated %}
+                    <a href="{% url 'forms_workflows:my_submissions' %}" class="btn btn-primary">
+                        <i class="bi bi-list-check"></i> My Submissions
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'forms_workflows:form_list' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Forms
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

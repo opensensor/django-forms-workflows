@@ -48,10 +48,19 @@
                   <h5 class="card-title">{{ form.name }}</h5>
                   <p class="card-text text-muted small">{{ form.description|striptags|truncatewords:20 }}</p>
                 </div>
-                <div class="card-footer bg-transparent border-0 pt-0">
+                <div class="card-footer bg-transparent border-0 pt-0 d-flex align-items-center gap-2">
                   <a href="{% url form_url_name form.slug %}" class="btn btn-primary btn-sm">
                     <i class="bi bi-pencil-square"></i> Fill Out Form
                   </a>
+                  <button type="button"
+                          class="btn btn-outline-secondary btn-sm share-qr-btn"
+                          data-form-name="{{ form.name }}"
+                          data-form-slug="{{ form.slug }}"
+                          data-qr-url="{% url 'forms_workflows:form_qr_code' form.slug %}"
+                          data-submit-url="{% url form_url_name form.slug %}"
+                          title="Share this form via link or QR code">
+                      <i class="bi bi-share"></i> Share
+                  </button>
                 </div>
               </div>
             </div>

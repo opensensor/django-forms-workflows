@@ -1022,3 +1022,58 @@ class TestChangeHistoryFormDataEdit:
         assert entry.changes["full_name"]["old"] == "Original"
         assert entry.changes["full_name"]["new"] == "Edited Name"
         assert entry.user == approver_user
+
+
+# ── form_qr_code ──────────────────────────────────────────────────────────
+
+
+class TestFormQrCodeView:
+    """Tests for the form_qr_code view that generates QR codes."""
+
+    def test_qr_svg_default(self, client, simple_form):
+        """Default format returns an SVG QR code."""
+        url = reverse("forms_workflows:form_qr_code", args=[simple_form.slug])
+        resp = client.get(url)
+        try:
+            import segno  # noqa: F401
+
+            assert resp.status_code == 200
+            assert resp["Content-Type"] == "image/svg+xml"
+            assert b"<svg" in resp.content
+        except ImportError:
+            assert resp.status_code == 501
+
+    def test_qr_png_format(self, client, simple_form):
+        """Requesting format=png returns a PNG QR code."""
+        url = reverse("forms_workflows:form_qr_code", args=[simple_form.slug])
+        resp = client.get(url, {"format": "png"})
+        try:
+            import segno  # noqa: F401
+
+            assert resp.status_code == 200
+            assert resp["Content-Type"] == "image/png"
+            # PNG magic bytes
+            assert resp.content[:4] == b"\x89PNG"
+        except ImportError:
+            assert resp.status_code == 501
+
+    def test_qr_inactive_form_404(self, client, simple_form):
+        """QR code for an inactive form returns 404."""
+        simple_form.is_active = False
+        simple_form.save()
+        url = reverse("forms_workflows:form_qr_code", args=[simple_form.slug])
+        resp = client.get(url)
+        assert resp.status_code == 404
+
+    def test_qr_nonexistent_slug_404(self, client, db):
+        """QR code for a non-existent slug returns 404."""
+        url = reverse("forms_workflows:form_qr_code", args=["does-not-exist"])
+        resp = client.get(url)
+        assert resp.status_code == 404
+
+    def test_qr_anonymous_access(self, client, simple_form):
+        """QR code endpoint is accessible without authentication."""
+        url = reverse("forms_workflows:form_qr_code", args=[simple_form.slug])
+        resp = client.get(url)
+        # Should not redirect to login
+        assert resp.status_code != 302

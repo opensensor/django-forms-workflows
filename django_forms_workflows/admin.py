@@ -546,6 +546,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
         "last_submission",
         "created_at",
         "clone_link",
+        "qr_code_link",
     )
     list_filter = (
         "is_active",
@@ -691,6 +692,29 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
         return "-"
 
     clone_link.short_description = "Clone"
+
+    def qr_code_link(self, obj):
+        """Display a Share button that opens the form's QR code / link panel."""
+        if obj.pk:
+            qr_url = reverse("forms_workflows:form_qr_code", args=[obj.slug])
+            submit_url = reverse("forms_workflows:form_submit", args=[obj.slug])
+            return format_html(
+                '<a href="{qr}" class="qr-share-link" target="_blank"'
+                '   data-form-name="{name}" data-slug="{slug}"'
+                '   data-qr-url="{qr}" data-submit-url="{sub}"'
+                '   title="Share &quot;{name}&quot; — QR code &amp; direct link"'
+                '   style="display:inline-block;padding:4px 10px;background:#0d6efd;'
+                '   color:white;border-radius:4px;text-decoration:none;font-size:12px;">'
+                '<i class="bi bi-share"></i> Share'
+                "</a>",
+                qr=qr_url,
+                name=obj.name,
+                slug=obj.slug,
+                sub=submit_url,
+            )
+        return "-"
+
+    qr_code_link.short_description = "Share / QR"
 
     def submission_count(self, obj):
         """Show total submission count for the form."""

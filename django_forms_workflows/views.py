@@ -255,6 +255,58 @@ def form_list(request):
     )
 
 
+def form_qr_code(request, slug):
+    """Return a QR-code image (SVG or PNG) encoding the form's submit URL.
+
+    Query parameters
+    ----------------
+    format : ``svg`` (default) or ``png``
+    size   : module scale factor for PNG (default 8)
+
+    The view is intentionally public so QR images can be embedded in printed
+    materials without authentication.
+    """
+    try:
+        import segno
+    except ImportError:
+        return HttpResponse(
+            "QR code generation requires the 'segno' package. "
+            "Install it with: pip install django-forms-workflows[qr]",
+            status=501,
+            content_type="text/plain",
+        )
+
+    form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
+
+    submit_url = request.build_absolute_uri(
+        reverse("forms_workflows:form_submit", args=[form_def.slug])
+    )
+
+    qr = segno.make(submit_url)
+
+    fmt = request.GET.get("format", "svg").lower()
+    if fmt == "png":
+        import io
+
+        scale = int(request.GET.get("size", 8))
+        buf = io.BytesIO()
+        qr.save(buf, kind="png", scale=scale, border=2)
+        buf.seek(0)
+        response = HttpResponse(buf.getvalue(), content_type="image/png")
+        response["Content-Disposition"] = f'inline; filename="{form_def.slug}-qr.png"'
+        return response
+
+    # Default: SVG
+    import io
+
+    buf = io.BytesIO()
+    qr.save(buf, kind="svg", scale=4, border=2, svgclass="qr-code")
+    buf.seek(0)
+    response = HttpResponse(buf.getvalue(), content_type="image/svg+xml")
+    response["Content-Disposition"] = f'inline; filename="{form_def.slug}-qr.svg"'
+    return response
+
+
 def form_submit(request, slug):
     """Submit a form — supports both authenticated and anonymous (public) access."""
     form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)

@@ -26,6 +26,137 @@
         .btn-success:hover {
             background-color: #218838 !important;
         }
+        .qr-share-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .qr-share-panel h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: #333;
+        }
+        .qr-share-panel .qr-preview {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 16px;
+            display: inline-block;
+        }
+        .qr-share-panel .qr-actions {
+            margin-top: 12px;
+        }
+        .qr-share-panel .qr-actions a,
+        .qr-share-panel .qr-actions button {
+            margin: 0 4px 4px 0;
+        }
+        .qr-share-panel .qr-url-row {
+            margin-top: 12px;
+        }
+        .qr-share-panel .qr-url-row input {
+            font-size: 13px;
+        }
+        .qr-copy-feedback {
+            font-size: 12px;
+            color: #28a745;
+            display: none;
+            margin-top: 4px;
+        }
     </style>
+{% endblock %}
+
+{% block after_related_objects %}
+    {{ block.super }}
+    {% if original.pk %}
+    <div class="qr-share-panel">
+        <h3><i class="bi bi-qr-code"></i> Share Form via QR Code</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 12px;">
+            Share this form by scanning the QR code below, or copy the direct link.
+            Download the QR code to print on posters, asset labels, or handouts.
+        </p>
+        <div style="display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap;">
+            <div class="qr-preview" id="adminQrPreview">
+                <div style="width: 160px; height: 160px; display: flex; align-items: center; justify-content: center;">
+                    <span style="color: #999;">Loading…</span>
+                </div>
+            </div>
+            <div style="flex: 1; min-width: 250px;">
+                <div class="qr-url-row">
+                    <label style="font-size: 12px; font-weight: 600; color: #666; display: block; margin-bottom: 4px;">
+                        Direct Link
+                    </label>
+                    <div style="display: flex; gap: 4px;">
+                        <input type="text" id="adminQrUrl" readonly
+                               style="flex: 1; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff;"
+                               value="">
+                        <button type="button" id="adminQrCopyBtn"
+                                style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer;"
+                                title="Copy link">
+                            <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                    </div>
+                    <span class="qr-copy-feedback" id="adminQrCopyFeedback">✓ Copied to clipboard</span>
+                </div>
+                <div class="qr-actions">
+                    <label style="font-size: 12px; font-weight: 600; color: #666; display: block; margin-bottom: 6px;">
+                        Download QR Code
+                    </label>
+                    <a id="adminQrDownloadSvg" href="#" download
+                       style="display: inline-block; padding: 6px 14px; background: #0d6efd; color: white; border-radius: 4px; text-decoration: none; font-size: 13px;">
+                        <i class="bi bi-download"></i> SVG (vector)
+                    </a>
+                    <a id="adminQrDownloadPng" href="#" download
+                       style="display: inline-block; padding: 6px 14px; background: #6c757d; color: white; border-radius: 4px; text-decoration: none; font-size: 13px;">
+                        <i class="bi bi-download"></i> PNG (image)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var qrUrl = '{% url "forms_workflows:form_qr_code" original.slug %}';
+        var submitUrl = '{% url "forms_workflows:form_submit" original.slug %}';
+        var absUrl = window.location.origin + submitUrl;
+        var slug = '{{ original.slug }}';
+
+        // Set URL field
+        document.getElementById('adminQrUrl').value = absUrl;
+
+        // Set download links
+        document.getElementById('adminQrDownloadSvg').href = qrUrl + '?format=svg';
+        document.getElementById('adminQrDownloadSvg').download = slug + '-qr.svg';
+        document.getElementById('adminQrDownloadPng').href = qrUrl + '?format=png&size=12';
+        document.getElementById('adminQrDownloadPng').download = slug + '-qr.png';
+
+        // Load QR preview
+        var preview = document.getElementById('adminQrPreview');
+        fetch(qrUrl + '?format=svg')
+            .then(function(r) { return r.text(); })
+            .then(function(svg) {
+                preview.innerHTML = svg;
+                var svgEl = preview.querySelector('svg');
+                if (svgEl) {
+                    svgEl.setAttribute('width', '160');
+                    svgEl.setAttribute('height', '160');
+                }
+            })
+            .catch(function() {
+                preview.innerHTML = '<span style="color: #dc3545;">Failed to load QR code.<br>Is segno installed?</span>';
+            });
+
+        // Copy button
+        document.getElementById('adminQrCopyBtn').addEventListener('click', function() {
+            navigator.clipboard.writeText(absUrl).then(function() {
+                var fb = document.getElementById('adminQrCopyFeedback');
+                fb.style.display = 'block';
+                setTimeout(function() { fb.style.display = 'none'; }, 2500);
+            });
+        });
+    });
+    </script>
+    {% endif %}
 {% endblock %}
 

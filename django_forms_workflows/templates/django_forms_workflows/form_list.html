@@ -48,10 +48,19 @@
                                 <h5 class="card-title">{{ form.name }}</h5>
                                 <p class="card-text">{{ form.description|striptags|truncatewords:20 }}</p>
                             </div>
-                            <div class="card-footer bg-transparent">
+                            <div class="card-footer bg-transparent d-flex align-items-center gap-2">
                                 <a href="{% url 'forms_workflows:form_submit' form.slug %}" class="btn btn-primary btn-sm">
                                     <i class="bi bi-pencil-square"></i> Fill Out Form
                                 </a>
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-sm share-qr-btn"
+                                        data-form-name="{{ form.name }}"
+                                        data-form-slug="{{ form.slug }}"
+                                        data-qr-url="{% url 'forms_workflows:form_qr_code' form.slug %}"
+                                        data-submit-url="{% url 'forms_workflows:form_submit' form.slug %}"
+                                        title="Share this form via link or QR code">
+                                    <i class="bi bi-share"></i> Share
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -65,5 +74,98 @@
         {% endif %}
     </div>
 </div>
+
+{# ── Share / QR Code Modal ── #}
+<div class="modal fade" id="shareQrModal" tabindex="-1" aria-labelledby="shareQrModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="shareQrModalLabel">
+          <i class="bi bi-qr-code"></i> Share Form
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <h6 id="shareQrFormName" class="mb-3"></h6>
+        <div id="shareQrImage" class="mb-3">
+          {# QR code SVG is injected here by JS #}
+        </div>
+        <div class="input-group input-group-sm">
+          <input type="text" id="shareQrUrl" class="form-control" readonly>
+          <button class="btn btn-outline-secondary" type="button" id="shareQrCopyBtn" title="Copy link">
+            <i class="bi bi-clipboard"></i>
+          </button>
+        </div>
+        <small id="shareQrCopyFeedback" class="text-success d-none mt-1">Copied!</small>
+      </div>
+      <div class="modal-footer justify-content-center">
+        <a id="shareQrDownloadSvg" href="#" download class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-download"></i> SVG
+        </a>
+        <a id="shareQrDownloadPng" href="#" download class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-download"></i> PNG
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var modal = document.getElementById('shareQrModal');
+    if (!modal) return;
+
+    var bsModal = new bootstrap.Modal(modal);
+
+    document.querySelectorAll('.share-qr-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var formName = this.dataset.formName;
+            var qrUrl    = this.dataset.qrUrl;
+            var submitUrl = this.dataset.submitUrl;
+            var absUrl   = window.location.origin + submitUrl;
+
+            modal.querySelector('#shareQrFormName').textContent = formName;
+            modal.querySelector('#shareQrUrl').value = absUrl;
+            modal.querySelector('#shareQrDownloadSvg').href = qrUrl + '?format=svg';
+            modal.querySelector('#shareQrDownloadSvg').download = this.dataset.formSlug + '-qr.svg';
+            modal.querySelector('#shareQrDownloadPng').href = qrUrl + '?format=png';
+            modal.querySelector('#shareQrDownloadPng').download = this.dataset.formSlug + '-qr.png';
+
+            // Load QR SVG inline
+            var imgContainer = modal.querySelector('#shareQrImage');
+            imgContainer.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div>';
+            fetch(qrUrl + '?format=svg')
+                .then(function(r) { return r.text(); })
+                .then(function(svg) {
+                    imgContainer.innerHTML = svg;
+                    // Make the SVG responsive
+                    var svgEl = imgContainer.querySelector('svg');
+                    if (svgEl) {
+                        svgEl.setAttribute('width', '200');
+                        svgEl.setAttribute('height', '200');
+                        svgEl.style.maxWidth = '100%';
+                    }
+                })
+                .catch(function() {
+                    imgContainer.innerHTML = '<span class="text-danger">Failed to load QR code</span>';
+                });
+
+            bsModal.show();
+        });
+    });
+
+    // Copy button
+    modal.querySelector('#shareQrCopyBtn').addEventListener('click', function() {
+        var urlInput = modal.querySelector('#shareQrUrl');
+        navigator.clipboard.writeText(urlInput.value).then(function() {
+            var fb = modal.querySelector('#shareQrCopyFeedback');
+            fb.classList.remove('d-none');
+            setTimeout(function() { fb.classList.add('d-none'); }, 2000);
+        });
+    });
+});
+</script>
 {% endblock %}
 

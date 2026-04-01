@@ -62,6 +62,9 @@ sphinx = { version = ">=7.0", optional = true }
 sphinx-rtd-theme = { version = ">=2.0", optional = true }
 sphinx-autodoc-typehints = { version = ">=1.25", optional = true }
 
+# Optional QR code generation
+segno = { version = ">=1.6", optional = true }
+
 # Optional picklist dependencies (country + US state field types)
 django-countries = { version = ">=7.0", optional = true }
 django-localflavor = { version = ">=4.0", optional = true }
@@ -82,6 +85,7 @@ mysql = ["mysqlclient"]
 gmail = ["google-auth", "google-api-python-client"]
 pdf = ["weasyprint"]
 excel = ["openpyxl"]
+qr = ["segno"]
 picklists = ["django-countries", "django-localflavor"]
 docs = ["sphinx", "sphinx-rtd-theme", "sphinx-autodoc-typehints"]
 all = [
@@ -92,6 +96,7 @@ all = [
   "google-auth", "google-api-python-client",
   "weasyprint",
   "openpyxl",
+  "segno",
   "django-countries", "django-localflavor"
 ]
 dev = ["pytest", "pytest-django", "pytest-cov", "ruff"]

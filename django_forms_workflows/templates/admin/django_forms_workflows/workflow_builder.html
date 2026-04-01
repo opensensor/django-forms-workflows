@@ -110,6 +110,7 @@
         cursor: move;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         transition: all 0.2s;
+        overflow: visible;
     }
     
     .workflow-node:hover {
@@ -173,6 +174,11 @@
         border-color: #a18cd1;
         background: linear-gradient(135deg, #f5f0ff 0%, #fdf2ff 100%);
         min-width: 220px;
+        box-shadow: 0 10px 24px rgba(118, 75, 162, 0.12);
+    }
+
+    .workflow-node.stage {
+        box-shadow: 0 10px 24px rgba(232, 62, 140, 0.12);
     }
 
     .workflow-node.join {
@@ -194,6 +200,13 @@
         gap: 0.5rem;
         margin-bottom: 0.5rem;
         font-weight: 600;
+        padding-bottom: 0.4rem;
+        border-bottom: 1px solid rgba(44, 62, 80, 0.08);
+    }
+
+    .node-header span {
+        color: #243b53;
+        font-size: 0.92rem;
     }
     
     .node-icon {
@@ -221,7 +234,18 @@
     
     .node-content {
         font-size: 0.875rem;
-        color: #6c757d;
+        color: #52606d;
+        line-height: 1.45;
+        min-height: 1.5rem;
+    }
+
+    .node-content .badge {
+        margin-bottom: 0.35rem;
+    }
+
+    .workflow-node.stage .node-content,
+    .workflow-node.sub_workflow .node-content {
+        color: #3e4c59;
     }
     
     .node-actions {
@@ -270,6 +294,54 @@
         background: #667eea;
         box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
     }
+
+    .workflow-node.stage .connection-point.directional-handle,
+    .workflow-node.sub_workflow .connection-point.directional-handle {
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: 2px solid #fff;
+        box-shadow: 0 3px 10px rgba(102, 126, 234, 0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .workflow-node.stage .connection-point.directional-handle::before,
+    .workflow-node.sub_workflow .connection-point.directional-handle::before {
+        color: #fff;
+        font-size: 0.9rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .workflow-node.stage .connection-point.input.directional-handle,
+    .workflow-node.sub_workflow .connection-point.input.directional-handle {
+        left: -13px;
+    }
+
+    .workflow-node.stage .connection-point.output.directional-handle,
+    .workflow-node.sub_workflow .connection-point.output.directional-handle {
+        right: -13px;
+    }
+
+    .workflow-node.stage .connection-point.input.directional-handle::before,
+    .workflow-node.sub_workflow .connection-point.input.directional-handle::before {
+        content: '←';
+    }
+
+    .workflow-node.stage .connection-point.output.directional-handle::before,
+    .workflow-node.sub_workflow .connection-point.output.directional-handle::before {
+        content: '→';
+    }
+
+    .workflow-node.stage .connection-point.directional-handle:hover,
+    .workflow-node.sub_workflow .connection-point.directional-handle:hover {
+        background: linear-gradient(135deg, #5568d3 0%, #653a8b 100%);
+        transform: translateY(-50%) scale(1.08);
+        box-shadow: 0 6px 14px rgba(102, 126, 234, 0.3);
+    }
     
     /* SVG Connections */
     .connections-svg {
@@ -292,18 +364,44 @@
     
     .connection-line {
         stroke: #667eea;
-        stroke-width: 2;
+        stroke-width: 2.5;
         fill: none;
         marker-end: url(#arrowhead);
         cursor: pointer;
         transition: all 0.2s;
         pointer-events: stroke;
         stroke-linecap: round;
+        stroke-linejoin: round;
     }
 
+    .connection-backdrop {
+        stroke: rgba(102, 126, 234, 0.14);
+        stroke-width: 8;
+        fill: none;
+        pointer-events: none;
+        stroke-linecap: round;
+    }
+
+    .connection-hitbox {
+        stroke: transparent;
+        stroke-width: 14;
+        fill: none;
+        pointer-events: stroke;
+    }
+
+    .connection-line.hovered,
     .connection-line:hover {
         stroke: #dc3545;
         stroke-width: 3;
+    }
+
+    .connection-backdrop.hovered {
+        stroke: rgba(220, 53, 69, 0.16);
+    }
+
+    .connection-backdrop.selected {
+        stroke: rgba(220, 53, 69, 0.2);
+        stroke-width: 10;
     }
 
     .connection-line.selected {
@@ -340,6 +438,130 @@
         padding: 0.5rem;
         overflow-y: auto;
         width: 100%;
+        background-color: #fff;
+        color: #212529;
+        border-color: #ced4da;
+    }
+
+    .properties-panel .form-control,
+    .properties-panel .form-select,
+    .properties-panel textarea,
+    .properties-panel input[type="text"],
+    .properties-panel input[type="number"],
+    .properties-panel input[type="time"] {
+        background-color: #fff !important;
+        color: #212529 !important;
+        border-color: #ced4da;
+    }
+
+    .properties-panel .form-control::placeholder,
+    .properties-panel textarea::placeholder {
+        color: #6c757d;
+        opacity: 1;
+    }
+
+    .properties-panel .form-control:focus,
+    .properties-panel .form-select:focus,
+    .properties-panel textarea:focus,
+    .properties-panel input[type="text"]:focus,
+    .properties-panel input[type="number"]:focus,
+    .properties-panel input[type="time"]:focus {
+        background-color: #fff !important;
+        color: #212529 !important;
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+    }
+
+    .properties-panel .form-check-input {
+        background-color: #fff;
+        border-color: #adb5bd;
+    }
+
+    .properties-panel .form-check-input:checked {
+        background-color: #667eea;
+        border-color: #667eea;
+    }
+
+    .properties-panel .card,
+    .properties-panel .list-group-item,
+    .properties-panel .trigger-condition-row,
+    .properties-panel .notification-rule-card {
+        background: #fff;
+        color: #212529;
+        border-color: #dee2e6;
+    }
+
+    .properties-panel .card .text-muted,
+    .properties-panel .list-group-item .text-muted,
+    .properties-panel .trigger-condition-row .text-muted {
+        color: #6c757d !important;
+    }
+
+    .properties-panel .btn-outline-secondary,
+    .properties-panel .btn-outline-primary,
+    .properties-panel .btn-outline-danger {
+        background-color: #fff;
+    }
+
+    .properties-panel .alert {
+        border-radius: 12px;
+    }
+
+    .property-section {
+        border: 1px solid #e7ebf0;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #fbfcfe 0%, #ffffff 100%);
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
+        margin-bottom: 1rem;
+        overflow: hidden;
+    }
+
+    .property-section-header {
+        padding: 0.85rem 1rem 0.6rem;
+        background: linear-gradient(180deg, rgba(102, 126, 234, 0.06) 0%, rgba(102, 126, 234, 0.02) 100%);
+        border-bottom: 1px solid #eef2f7;
+    }
+
+    .property-section-header h6 {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #334e68;
+        border: 0;
+        padding: 0;
+    }
+
+    .property-section-description {
+        margin: 0.35rem 0 0;
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: #627d98;
+    }
+
+    .property-section-body {
+        padding: 0.95rem 1rem 1rem;
+    }
+
+    .property-section-body .mb-3:last-child,
+    .property-section-body .row.g-2:last-child,
+    .property-section-body .list-group:last-child {
+        margin-bottom: 0 !important;
+    }
+
+    .properties-panel h6 {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #486581;
+        margin-bottom: 0.65rem;
+    }
+
+    .properties-panel hr {
+        margin: 1rem 0;
+        border-color: #edf2f7;
+        opacity: 1;
     }
 
     .properties-panel .form-select[multiple] option {
@@ -353,6 +575,8 @@
         line-height: 1.4;
         min-height: 2.5rem;
         display: block;
+        background: #fff;
+        color: #212529;
     }
 
     .properties-panel .form-select[multiple] option:checked {
@@ -449,12 +673,55 @@
     .save-status[data-tone="success"] { color: #d1f7dd; }
     .save-status[data-tone="danger"] { color: #ffd6d6; }
     .save-status[data-tone="info"] { color: #d9ecff; }
+    .save-status[data-tone="warning"] { color: #ffe7b3; }
+
+    .dirty-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 999px;
+        background: rgba(255, 193, 7, 0.18);
+        border: 1px solid rgba(255, 193, 7, 0.35);
+        color: #fff3cd;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .dirty-indicator[hidden] {
+        display: none;
+    }
 
     .builder-status-panels {
         padding: 0.75rem 1.5rem 0;
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+    }
+
+    .builder-help-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .builder-help-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        color: #475569;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    .builder-selection-status .alert {
+        border-radius: 12px;
+        border-color: rgba(13, 110, 253, 0.18);
+        background: #f7fbff;
     }
 
     .validation-summary ul,
@@ -466,6 +733,11 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.35rem;
+    }
+
+    .toolbar-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
     }
 </style>
 {% endblock %}
@@ -543,6 +815,12 @@
                     </button>
                 </div>
                 <span class="save-status" id="saveStatus">Ready</span>
+                <span class="dirty-indicator" id="dirtyIndicator" hidden>
+                    <i class="bi bi-dot"></i> Unsaved edits
+                </span>
+                <button class="toolbar-btn" id="btnDeleteConnection" disabled>
+                    <i class="bi bi-scissors"></i> Remove Connection
+                </button>
                 <button class="toolbar-btn" id="btnSave">
                     <i class="bi bi-save"></i> Save Workflow
                 </button>
@@ -554,6 +832,12 @@
         <div class="builder-status-panels">
             <div id="builderMessage"></div>
             <div id="validationSummary"></div>
+            <div class="builder-help-strip" id="builderHelpStrip">
+                <span class="builder-help-chip"><i class="bi bi-arrow-left-right"></i> Drag from the right arrow handle into a left arrow handle to connect steps</span>
+                <span class="builder-help-chip"><i class="bi bi-exclamation-triangle"></i> Red nodes block save; orange nodes are warnings</span>
+                <span class="builder-help-chip"><i class="bi bi-scissors"></i> Click a connection, then press Delete or use Remove Connection</span>
+            </div>
+            <div id="selectionStatus" class="builder-selection-status"></div>
         </div>
         <div class="workflow-canvas" id="workflowCanvas">
             <svg class="connections-svg" id="connectionsSvg">

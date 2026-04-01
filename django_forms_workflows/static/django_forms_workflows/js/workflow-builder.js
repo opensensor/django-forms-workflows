@@ -21,6 +21,9 @@ class WorkflowBuilder {
         this.forms = [];
         this.workflowTargets = [];
         this.validationState = { errors: [], warnings: [], nodeIssues: {}, firstErrorNodeId: null };
+        this.isDirty = false;
+        this.isSaving = false;
+        this.lastSavedWorkflowSnapshot = null;
 
         // Pan & zoom state
         this.panX = 0;
@@ -47,6 +50,8 @@ class WorkflowBuilder {
             console.log('No nodes found, creating start node');
             this.createStartNode();
         }
+
+        this.syncSavedWorkflowSnapshot();
 
         console.log('Rendering workflow...');
         this.render();
@@ -203,6 +208,10 @@ class WorkflowBuilder {
 
     setupEventListeners() {
         document.getElementById('btnSave').addEventListener('click', () => this.saveWorkflow());
+        const deleteConnectionBtn = document.getElementById('btnDeleteConnection');
+        if (deleteConnectionBtn) {
+            deleteConnectionBtn.addEventListener('click', () => this.deleteSelectedConnection());
+        }
         const workflowTrackSelect = document.getElementById('workflowTrackSelect');
         if (workflowTrackSelect) {
             workflowTrackSelect.addEventListener('change', (event) => {
@@ -210,6 +219,27 @@ class WorkflowBuilder {
                 window.location.href = `${this.config.workflowBuilderUrl}?workflow_id=${workflowId}`;
             });
         }
+
+        window.addEventListener('beforeunload', (event) => {
+            if (!this.isDirty || this.isSaving) return;
+            event.preventDefault();
+            event.returnValue = '';
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (this.selectedConnection === null) return;
+            if (this.isEditableElement(document.activeElement)) return;
+            if (event.key === 'Delete' || event.key === 'Backspace') {
+                event.preventDefault();
+                this.deleteSelectedConnection();
+            }
+        });
+    }
+
+    isEditableElement(element) {
+        if (!element) return false;
+        const tagName = element.tagName?.toLowerCase();
+        return element.isContentEditable || ['input', 'textarea', 'select'].includes(tagName);
     }
 
     setSaveStatus(text, tone = 'neutral') {
@@ -217,6 +247,79 @@ class WorkflowBuilder {
         if (!status) return;
         status.textContent = text;
         status.dataset.tone = tone;
+    }
+
+    getWorkflowSnapshot() {
+        return JSON.stringify({
+            nodes: this.nodes,
+            connections: this.connections,
+        });
+    }
+
+    syncSavedWorkflowSnapshot() {
+        this.lastSavedWorkflowSnapshot = this.getWorkflowSnapshot();
+        this.updateDirtyState();
+    }
+
+    updateDirtyState() {
+        this.isDirty = this.lastSavedWorkflowSnapshot !== null
+            && this.getWorkflowSnapshot() !== this.lastSavedWorkflowSnapshot;
+        this.updateDirtyIndicator();
+    }
+
+    updateDirtyIndicator() {
+        const badge = document.getElementById('dirtyIndicator');
+        if (badge) {
+            badge.hidden = !this.isDirty;
+        }
+
+        if (!this.isSaving) {
+            if (this.isDirty) {
+                this.setSaveStatus('Unsaved changes', 'warning');
+            } else {
+                this.setSaveStatus('Ready', 'neutral');
+            }
+        }
+    }
+
+    formatNodeReference(node) {
+        if (!node) return 'Unknown node';
+        const specificName = node.data?.name || node.data?.sub_workflow_name || node.data?.name_label || node.data?.form_name;
+        return specificName
+            ? `${this.getNodeTypeLabel(node.type)}: ${specificName}`
+            : this.getNodeTypeLabel(node.type);
+    }
+
+    updateConnectionSelectionUI() {
+        const button = document.getElementById('btnDeleteConnection');
+        const status = document.getElementById('selectionStatus');
+        const hasSelection = this.selectedConnection !== null && this.connections[this.selectedConnection];
+
+        if (button) {
+            button.disabled = !hasSelection;
+        }
+
+        if (!status) return;
+
+        if (!hasSelection) {
+            status.innerHTML = '';
+            return;
+        }
+
+        const connection = this.connections[this.selectedConnection];
+        const fromNode = this.nodes.find(node => node.id === connection.from);
+        const toNode = this.nodes.find(node => node.id === connection.to);
+        status.innerHTML = `
+            <div class="alert alert-primary py-2 px-3 mb-0 d-flex align-items-center justify-content-between gap-2">
+                <div>
+                    <div class="fw-semibold"><i class="bi bi-bezier2"></i> Connection selected</div>
+                    <div class="small">${this.escapeHtml(this.formatNodeReference(fromNode))} → ${this.escapeHtml(this.formatNodeReference(toNode))}</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="workflowBuilder.deleteSelectedConnection()">
+                    <i class="bi bi-trash"></i> Remove
+                </button>
+            </div>
+        `;
     }
 
     setBuilderMessage(level, title, details = [], autoHide = false) {
@@ -336,6 +439,7 @@ class WorkflowBuilder {
 
         const saveBtn = document.getElementById('btnSave');
         const originalText = saveBtn.innerHTML;
+        this.isSaving = true;
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saving...';
         this.setSaveStatus('Saving...', 'info');
@@ -386,6 +490,7 @@ class WorkflowBuilder {
                 this.config.currentWorkflowId = result.workflow_id;
             }
 
+            this.syncSavedWorkflowSnapshot();
             this.setSaveStatus('Saved successfully', 'success');
             this.setBuilderMessage(
                 'success',
@@ -405,6 +510,7 @@ class WorkflowBuilder {
             );
             this.setSaveStatus('Error saving', 'danger');
         } finally {
+            this.isSaving = false;
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
         }
@@ -542,11 +648,13 @@ class WorkflowBuilder {
     selectNode(nodeId) {
         this.deselectAll();
         this.selectedNode = nodeId;
+        this.selectedConnection = null;
         const node = this.nodes.find(n => n.id === nodeId);
         if (node) {
             this.refreshValidationState();
             this.showNodeProperties(node);
         }
+        this.updateConnectionSelectionUI();
         this.render();
     }
 
@@ -554,6 +662,24 @@ class WorkflowBuilder {
         this.selectedNode = null;
         this.selectedConnection = null;
         this.showEmptyProperties();
+        this.updateConnectionSelectionUI();
+        this.render();
+    }
+
+    selectConnection(index) {
+        if (!this.connections[index]) return;
+        this.selectedNode = null;
+        this.selectedConnection = index;
+        this.showEmptyProperties();
+        this.updateConnectionSelectionUI();
+        this.render();
+    }
+
+    deleteSelectedConnection() {
+        if (this.selectedConnection === null || !this.connections[this.selectedConnection]) return;
+        this.connections.splice(this.selectedConnection, 1);
+        this.selectedConnection = null;
+        this.updateConnectionSelectionUI();
         this.render();
     }
 
@@ -639,11 +765,7 @@ class WorkflowBuilder {
         const selectedGroupIds = orderedApprovalGroups.map(g => g.id);
         const selectedApprovalFieldIds = new Set((data.approval_fields || []).map(field => field.id));
 
-        let html = `
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Configure an approval stage with its own groups and logic.
-            </div>
-
+        const basicsSection = `
             <div class="mb-3">
                 <label class="form-label"><strong>Stage Name</strong></label>
                 <input type="text" class="form-control" name="name"
@@ -714,9 +836,9 @@ class WorkflowBuilder {
                 </div>
                 <small class="text-muted">Approvers at this stage may edit the original submission while reviewing it.</small>
             </div>
+        `;
 
-            <hr />
-
+        const routingSection = `
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
                 <select class="form-select" id="stage_groups_${node.id}" name="approval_groups" multiple size="6"
@@ -745,9 +867,9 @@ class WorkflowBuilder {
                     <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>Sequential</option>
                 </select>
             </div>
+        `;
 
-            <hr />
-            <h6>Approval-Only Fields</h6>
+        const approvalFieldsSection = `
             <div class="mb-3">
                 <label class="form-label"><strong>Fields shown during this stage</strong></label>
                 <select class="form-select" id="stage_fields_${node.id}" name="approval_fields" multiple size="6"
@@ -759,9 +881,9 @@ class WorkflowBuilder {
                 </select>
                 <small class="text-muted d-block mt-1">Selected fields become editable approval-step fields for this stage only.</small>
             </div>
+        `;
 
-            <hr />
-            <h6>Dynamic Assignee</h6>
+        const assigneeSection = `
             <div class="mb-3">
                 <label class="form-label"><strong>Assignee Field</strong></label>
                 <select class="form-select" name="assignee_form_field"
@@ -795,11 +917,30 @@ class WorkflowBuilder {
                     </label>
                 </div>
             </div>
-
-            ${this.buildTriggerConditionsEditor(node, 'Stage trigger conditions')}
         `;
 
-        return html;
+        return `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Configure an approval stage with its own groups and logic.
+            </div>
+            ${this.buildPropertySection('Stage Basics', basicsSection, {
+                icon: 'diagram-3',
+                description: 'Set the stage name, order, button label, and reviewer capabilities.',
+            })}
+            ${this.buildPropertySection('Approver Routing', routingSection, {
+                icon: 'people',
+                description: 'Choose which groups approve and whether they act together, separately, or in sequence.',
+            })}
+            ${this.buildPropertySection('Approval-Only Fields', approvalFieldsSection, {
+                icon: 'ui-checks-grid',
+                description: 'Limit extra editable fields to this approval step.',
+            })}
+            ${this.buildPropertySection('Dynamic Assignee', assigneeSection, {
+                icon: 'person-badge',
+                description: 'Resolve approvers from submitted form data when needed.',
+            })}
+            ${this.buildTriggerConditionsEditor(node, 'Stage trigger conditions')}
+        `;
     }
 
     getNormalizedStageApprovalGroups(groups) {
@@ -854,11 +995,7 @@ class WorkflowBuilder {
     buildWorkflowSettingsProperties(node) {
         const data = node.data || {};
 
-        let html = `
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Workflow-level notification and deadline settings.
-            </div>
-
+        const basicsSection = `
             <div class="mb-3">
                 <label class="form-label">Workflow Track Label</label>
                 <input type="text" class="form-control" name="name_label"
@@ -867,8 +1004,9 @@ class WorkflowBuilder {
                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
                 <small class="text-muted">Helpful when a form has multiple workflow tracks.</small>
             </div>
+        `;
 
-            <h6 class="mt-3">Deadlines &amp; Reminders</h6>
+        const timingSection = `
             <div class="mb-3">
                 <label class="form-label">Approval Deadline (days)</label>
                 <input type="number" class="form-control" name="approval_deadline_days" min="1"
@@ -925,13 +1063,23 @@ class WorkflowBuilder {
                 </select>
                 <small class="text-muted">Used only when cadence is “On Date From Form Field”.</small>
             </div>
+        `;
 
-            <hr />
+        return `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Workflow-level notification and deadline settings.
+            </div>
+            ${this.buildPropertySection('Workflow Identity', basicsSection, {
+                icon: 'signpost-split',
+                description: 'Label this track so admins can tell multiple workflow paths apart.',
+            })}
+            ${this.buildPropertySection('Timing, Deadlines & Notifications', timingSection, {
+                icon: 'clock-history',
+                description: 'Control deadlines, reminders, digests, and date-driven notifications.',
+            })}
             ${this.buildNotificationRulesEditor(node)}
             ${this.buildTriggerConditionsEditor(node, 'Workflow trigger conditions')}
         `;
-
-        return html;
     }
 
     getNotificationRuleStageOptions() {
@@ -978,9 +1126,7 @@ class WorkflowBuilder {
             ['form_withdrawn', 'Form Withdrawn'],
         ];
 
-        return `
-            <h6>Notification Rules</h6>
-            <p class="small text-muted">Configure event-driven recipients here instead of dropping to Django Admin.</p>
+        const content = `
             ${(rules.length ? rules : [null]).map((rule, index) => {
                 const state = this.getNotificationRuleState(rule || {});
                 const selectedGroupIds = new Set((state.notify_groups || []).map(group => group.id));
@@ -1094,6 +1240,11 @@ class WorkflowBuilder {
                 <i class="bi bi-plus-lg"></i> Add Notification Rule
             </button>
         `;
+
+        return this.buildPropertySection('Notification Rules', content, {
+            icon: 'bell',
+            description: 'Configure event-driven recipients here instead of dropping to Django Admin.',
+        });
     }
 
     getNormalizedTriggerConditions(rawConditions) {
@@ -1126,7 +1277,7 @@ class WorkflowBuilder {
         return { operator: 'AND', conditions: [] };
     }
 
-    buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, extraAttributes = '', removeConditionHandler = null }) {
+    buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
         const state = this.getNormalizedTriggerConditions(conditions);
         const operatorOptions = [
             ['equals', 'Equals'],
@@ -1191,8 +1342,7 @@ class WorkflowBuilder {
         }
 
         return `
-            <hr />
-            <h6>${this.escapeHtml(title)}</h6>
+            ${showHeader ? `<hr /><h6>${this.escapeHtml(title)}</h6>` : ''}
             <div class="conditions-editor" data-editor-kind="${editorKind}" ${extraAttributes}>
             <div class="mb-2">
                 <label class="form-label form-label-sm">Match mode</label>
@@ -1208,19 +1358,25 @@ class WorkflowBuilder {
     }
 
     buildTriggerConditionsEditor(node, title) {
-        return `
+        const content = `
             ${this.buildConditionsEditor({
                 title,
                 conditions: node.data.trigger_conditions,
                 onChangeHandler: `workflowBuilder.updateNodeTriggerConditions('${node.id}')`,
                 editorKind: 'node-trigger',
                 removeConditionHandler: `workflowBuilder.removeTriggerCondition('${node.id}', __INDEX__)`,
+                showHeader: false,
             })}
             <button type="button" class="btn btn-sm btn-outline-primary"
                     onclick="workflowBuilder.addTriggerCondition('${node.id}')">
                 <i class="bi bi-plus-lg"></i> Add Condition
             </button>
         `;
+
+        return this.buildPropertySection(title, content, {
+            icon: 'funnel',
+            description: 'Only apply this node when the submitted data matches these conditions.',
+        });
     }
 
 
@@ -1520,11 +1676,7 @@ class WorkflowBuilder {
             fieldOptions += `<option value="${f.field_name}" ${selected}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>`;
         });
 
-        return `
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Configure a sub-workflow that spawns child approval processes based on a form field value.
-            </div>
-
+        const targetSection = `
             <div class="mb-3">
                 <label class="form-label"><strong>Target Workflow</strong></label>
                 <select class="form-select" name="sub_workflow_id"
@@ -1559,7 +1711,9 @@ class WorkflowBuilder {
                        onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')" />
                 <small class="text-muted">Use {index} as placeholder (e.g. "Payment {index}")</small>
             </div>
+        `;
 
+        const launchSection = `
             <div class="mb-3">
                 <label class="form-label"><strong>Trigger</strong></label>
                 <select class="form-select" name="trigger"
@@ -1600,6 +1754,20 @@ class WorkflowBuilder {
                 </div>
                 <small class="text-muted">When enabled, rejecting any sub-workflow rejects the parent and cancels siblings</small>
             </div>
+        `;
+
+        return `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Configure a sub-workflow that spawns child approval processes based on a form field value.
+            </div>
+            ${this.buildPropertySection('Workflow Target & Labels', targetSection, {
+                icon: 'boxes',
+                description: 'Choose which child workflow to launch and how it should appear to reviewers.',
+            })}
+            ${this.buildPropertySection('Launch & Parent Behavior', launchSection, {
+                icon: 'arrow-repeat',
+                description: 'Define when the child workflow runs and whether it can affect the parent workflow.',
+            })}
         `;
     }
 
@@ -2182,6 +2350,10 @@ class WorkflowBuilder {
         return this.validationState.nodeIssues[nodeId] || { errors: [], warnings: [] };
     }
 
+    usesDirectionalHandles(nodeType) {
+        return ['stage', 'sub_workflow'].includes(nodeType);
+    }
+
     buildNodeIssuesAlert(node) {
         const issues = this.getNodeIssues(node.id);
         if (!issues.errors.length && !issues.warnings.length) {
@@ -2221,12 +2393,35 @@ class WorkflowBuilder {
         `;
     }
 
+    buildPropertySection(title, innerHtml, options = {}) {
+        const description = options.description ? `
+            <p class="property-section-description">${this.escapeHtml(options.description)}</p>
+        ` : '';
+        const icon = options.icon ? `<i class="bi bi-${options.icon}"></i>` : '';
+        return `
+            <section class="property-section ${options.className || ''}">
+                <div class="property-section-header">
+                    <h6>${icon}<span>${this.escapeHtml(title)}</span></h6>
+                    ${description}
+                </div>
+                <div class="property-section-body">
+                    ${innerHtml}
+                </div>
+            </section>
+        `;
+    }
+
     render() {
         console.log('Rendering workflow with', this.nodes.length, 'nodes and', this.connections.length, 'connections');
         this.refreshValidationState();
+        if (this.selectedConnection !== null && !this.connections[this.selectedConnection]) {
+            this.selectedConnection = null;
+        }
         this.renderNodes();
         this.renderConnections();
         this.applyTransform();
+        this.updateConnectionSelectionUI();
+        this.updateDirtyState();
     }
 
     renderNodes() {
@@ -2251,6 +2446,7 @@ class WorkflowBuilder {
 
         const div = document.createElement('div');
         div.className = `workflow-node ${node.type}`;
+        div.dataset.nodeId = node.id;
         const issues = this.getNodeIssues(node.id);
         if (issues.errors.length) {
             div.className += ' has-validation-error';
@@ -2276,6 +2472,13 @@ class WorkflowBuilder {
                          node.type !== 'workflow_settings' &&
                          node.type !== 'join' &&
                          !(node.type === 'form' && node.data.is_initial !== false);
+        const directionalHandles = this.usesDirectionalHandles(node.type);
+        const inputHandleTitle = directionalHandles
+            ? 'Incoming connection'
+            : 'Connect previous step here';
+        const outputHandleTitle = directionalHandles
+            ? 'Drag to next step'
+            : 'Drag to connect next step';
 
         div.innerHTML = `
             <div class="node-header">
@@ -2295,8 +2498,8 @@ class WorkflowBuilder {
                     </button>
                 </div>
             ` : ''}
-            <div class="connection-point input" data-node-id="${node.id}" data-point="input"></div>
-            <div class="connection-point output" data-node-id="${node.id}" data-point="output"></div>
+            <div class="connection-point input ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${node.id}" data-point="input" title="${inputHandleTitle}"></div>
+            <div class="connection-point output ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${node.id}" data-point="output" title="${outputHandleTitle}"></div>
         `;
 
         // Add connection point event listeners
@@ -2318,8 +2521,8 @@ class WorkflowBuilder {
                 }
             });
             inputPoint.addEventListener('mouseleave', (e) => {
-                inputPoint.style.background = '#667eea';
-                inputPoint.style.transform = 'translateY(-50%) scale(1)';
+                inputPoint.style.background = '';
+                inputPoint.style.transform = '';
             });
         }
 
@@ -2507,9 +2710,8 @@ class WorkflowBuilder {
 
     updateTempConnection(e) {
         const [x, y] = this.clientToCanvas(e.clientX, e.clientY);
-
-        const startNode = this.nodes.find(n => n.id === this.connectionStart.nodeId);
-        if (!startNode) return;
+        const startPoint = this.getConnectionPointPosition(this.connectionStart.nodeId, 'output');
+        if (!startPoint) return;
 
         if (!this.tempLine) {
             this.tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -2519,7 +2721,7 @@ class WorkflowBuilder {
         }
 
         const path = this.createConnectionPath(
-            startNode.x + 180, startNode.y + 40,
+            startPoint.x, startPoint.y,
             x, y
         );
         this.tempLine.setAttribute('d', path);
@@ -2554,6 +2756,8 @@ class WorkflowBuilder {
                 from: this.connectionStart.nodeId,
                 to: toNodeId
             });
+            this.selectedConnection = this.connections.length - 1;
+            this.updateConnectionSelectionUI();
             this.render();
         } else {
             console.log('Connection already exists');
@@ -2562,55 +2766,82 @@ class WorkflowBuilder {
 
     renderConnections() {
         // Remove existing connections
-        this.svg.querySelectorAll('.connection-line:not([stroke-dasharray])').forEach(l => l.remove());
+        this.svg.querySelectorAll('.connection-line:not([stroke-dasharray]), .connection-backdrop, .connection-hitbox').forEach(l => l.remove());
 
         // Render each connection
         this.connections.forEach((conn, index) => {
-            const fromNode = this.nodes.find(n => n.id === conn.from);
-            const toNode = this.nodes.find(n => n.id === conn.to);
+            const fromPoint = this.getConnectionPointPosition(conn.from, 'output');
+            const toPoint = this.getConnectionPointPosition(conn.to, 'input');
+            if (!fromPoint || !toPoint) return;
 
-            if (!fromNode || !toNode) return;
+            const path = this.createConnectionPath(
+                fromPoint.x, fromPoint.y,
+                toPoint.x, toPoint.y
+            );
+
+            const backdrop = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            backdrop.setAttribute('class', 'connection-backdrop');
+            backdrop.setAttribute('d', path);
+            this.svg.appendChild(backdrop);
+
+            const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            hitbox.setAttribute('class', 'connection-hitbox');
+            hitbox.setAttribute('d', path);
+            hitbox.style.cursor = 'pointer';
 
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             line.setAttribute('class', 'connection-line');
             line.setAttribute('data-connection-index', index);
             line.style.cursor = 'pointer';
-
-            const path = this.createConnectionPath(
-                fromNode.x + 180, fromNode.y + 40,
-                toNode.x, toNode.y + 40
-            );
             line.setAttribute('d', path);
 
-            // Add click handler to delete connection
-            line.addEventListener('click', (e) => {
+            const setHover = (isHovered) => {
+                line.classList.toggle('hovered', isHovered);
+                backdrop.classList.toggle('hovered', isHovered);
+            };
+
+            const selectConnection = (e) => {
                 e.stopPropagation();
-                if (confirm('Delete this connection?')) {
-                    this.connections.splice(index, 1);
-                    this.render();
-                }
-            });
+                this.selectConnection(index);
+            };
 
-            // Add hover effect
-            line.addEventListener('mouseenter', () => {
-                line.style.stroke = '#dc3545';
-                line.style.strokeWidth = '3';
-            });
+            if (this.selectedConnection === index) {
+                line.classList.add('selected');
+                backdrop.classList.add('selected');
+            }
 
-            line.addEventListener('mouseleave', () => {
-                line.style.stroke = '';
-                line.style.strokeWidth = '';
-            });
+            line.addEventListener('click', selectConnection);
+            hitbox.addEventListener('click', selectConnection);
+            line.addEventListener('mouseenter', () => setHover(true));
+            hitbox.addEventListener('mouseenter', () => setHover(true));
+            line.addEventListener('mouseleave', () => setHover(false));
+            hitbox.addEventListener('mouseleave', () => setHover(false));
 
             this.svg.appendChild(line);
+            this.svg.appendChild(hitbox);
         });
+    }
+
+    getConnectionPointPosition(nodeId, pointType) {
+        const nodeElement = this.transformWrapper.querySelector(`.workflow-node[data-node-id="${nodeId}"]`);
+        if (!nodeElement) return null;
+
+        const pointElement = nodeElement.querySelector(`.connection-point.${pointType}`);
+        if (!pointElement) return null;
+
+        const wrapperRect = this.transformWrapper.getBoundingClientRect();
+        const pointRect = pointElement.getBoundingClientRect();
+        return {
+            x: (pointRect.left - wrapperRect.left + pointRect.width / 2) / this.zoom,
+            y: (pointRect.top - wrapperRect.top + pointRect.height / 2) / this.zoom,
+        };
     }
 
     createConnectionPath(x1, y1, x2, y2) {
         const dx = x2 - x1;
-        const dy = y2 - y1;
-        const cx1 = x1 + Math.abs(dx) / 2;
-        const cx2 = x2 - Math.abs(dx) / 2;
+        const curve = Math.min(220, Math.max(60, Math.abs(dx) * 0.45 + (dx < 0 ? 70 : 0)));
+        const cx1 = x1 + curve;
+        const cx2 = x2 - curve;
 
         return `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`;
     }

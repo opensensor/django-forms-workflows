@@ -142,7 +142,7 @@ Because `validate_assignee_group=False`, any resolvable user is accepted even if
 
 ## Related Docs
 
-- [Workflow Configuration](CONFIGURATION.md)
+- [Workflows Guide](WORKFLOWS.md)
 - [Sub-Workflows](SUB_WORKFLOWS.md)
 - [Send Back for Correction](SEND_BACK.md)
 

@@ -8,6 +8,7 @@ import pytest
 
 from django_forms_workflows.models import (
     FormDefinition,
+    PostSubmissionAction,
     WorkflowDefinition,
 )
 from django_forms_workflows.workflow_builder_views import (
@@ -99,6 +100,47 @@ class TestConvertWorkflowToVisual:
 
         assert result["nodes"][0]["data"]["allow_send_back"] is True
 
+    def test_backfills_advanced_stage_fields_from_saved_visual_data(
+        self, staged_workflow, form_definition
+    ):
+        stage = staged_workflow.stages.order_by("order").first()
+        stage.allow_reassign = True
+        stage.allow_edit_form_data = True
+        stage.assignee_form_field = "manager_email"
+        stage.assignee_lookup_type = "email"
+        stage.validate_assignee_group = False
+        stage.save(
+            update_fields=[
+                "allow_reassign",
+                "allow_edit_form_data",
+                "assignee_form_field",
+                "assignee_lookup_type",
+                "validate_assignee_group",
+            ]
+        )
+        staged_workflow.visual_workflow_data = {
+            "nodes": [
+                {
+                    "id": "node_1",
+                    "type": "stage",
+                    "data": {
+                        "stage_id": stage.id,
+                        "name": stage.name,
+                        "order": stage.order,
+                    },
+                }
+            ],
+            "connections": [],
+        }
+        staged_workflow.save(update_fields=["visual_workflow_data"])
+
+        result = convert_workflow_to_visual(staged_workflow, form_definition)
+
+        assert result["nodes"][0]["data"]["allow_reassign"] is True
+        assert result["nodes"][0]["data"]["allow_edit_form_data"] is True
+        assert result["nodes"][0]["data"]["assignee_form_field"] == "manager_email"
+        assert result["nodes"][0]["data"]["validate_assignee_group"] is False
+
     def test_workflow_with_no_stages_has_no_stage_nodes(self, form_definition, db):
         """Workflow without stages produces no stage nodes."""
         flat_wf = WorkflowDefinition.objects.create(
@@ -112,13 +154,31 @@ class TestConvertWorkflowToVisual:
 
     def test_workflow_settings_node_populated(self, staged_workflow, form_definition):
         staged_workflow.approval_deadline_days = 7
-        staged_workflow.notification_cadence = "daily"
+        staged_workflow.notification_cadence = "form_field_date"
+        staged_workflow.notification_cadence_form_field = "review_date"
         staged_workflow.save()
 
         result = convert_workflow_to_visual(staged_workflow, form_definition)
         ws = next(n for n in result["nodes"] if n["type"] == "workflow_settings")
         assert ws["data"]["approval_deadline_days"] == 7
-        assert ws["data"]["notification_cadence"] == "daily"
+        assert ws["data"]["notification_cadence"] == "form_field_date"
+        assert ws["data"]["notification_cadence_form_field"] == "review_date"
+
+    def test_loads_email_action_configuration_into_visual_data(
+        self, form_definition, post_action_email
+    ):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=False,
+        )
+
+        result = convert_workflow_to_visual(workflow, form_definition)
+
+        email_node = next(n for n in result["nodes"] if n["type"] == "email")
+        assert email_node["data"]["email_to"] == "admin@example.com"
+        assert (
+            email_node["data"]["email_subject_template"] == "Form {form_name} approved"
+        )
 
 
 # ── convert_visual_to_workflow ───────────────────────────────────────────────
@@ -148,7 +208,12 @@ class TestConvertVisualToWorkflow:
                     "approval_logic": "all",
                     "requires_manager_approval": True,
                     "allow_send_back": True,
+                    "allow_reassign": True,
+                    "allow_edit_form_data": True,
                     "approve_label": "Sign Off",
+                    "assignee_form_field": "manager_email",
+                    "assignee_lookup_type": "email",
+                    "validate_assignee_group": False,
                     "approval_groups": [
                         {"id": approval_group.id, "name": approval_group.name}
                     ],
@@ -163,7 +228,12 @@ class TestConvertVisualToWorkflow:
         assert stages[0].approval_logic == "all"
         assert stages[0].requires_manager_approval is True
         assert stages[0].allow_send_back is True
+        assert stages[0].allow_reassign is True
+        assert stages[0].allow_edit_form_data is True
         assert stages[0].approve_label == "Sign Off"
+        assert stages[0].assignee_form_field == "manager_email"
+        assert stages[0].assignee_lookup_type == "email"
+        assert stages[0].validate_assignee_group is False
         assert list(stages[0].approval_groups.values_list("id", flat=True)) == [
             approval_group.id
         ]
@@ -206,14 +276,20 @@ class TestConvertVisualToWorkflow:
                 "approval_deadline_days": 14,
                 "send_reminder_after_days": 3,
                 "auto_approve_after_days": "",
-                "notification_cadence": "weekly",
+                "notification_cadence": "monthly",
+                "notification_cadence_day": 15,
+                "notification_cadence_time": "08:30",
+                "notification_cadence_form_field": "reminder_date",
             }
         )
         wf = convert_visual_to_workflow(visual, form_definition)
         assert wf.approval_deadline_days == 14
         assert wf.send_reminder_after_days == 3
         assert wf.auto_approve_after_days is None
-        assert wf.notification_cadence == "weekly"
+        assert wf.notification_cadence == "monthly"
+        assert wf.notification_cadence_day == 15
+        assert wf.notification_cadence_time.strftime("%H:%M") == "08:30"
+        assert wf.notification_cadence_form_field == "reminder_date"
 
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()
@@ -236,6 +312,41 @@ class TestConvertVisualToWorkflow:
         assert len(actions) == 1
         assert actions[0].name == "Update DB"
         assert actions[0].action_type == "database"
+
+    def test_creates_email_actions_with_email_configuration(self, form_definition):
+        visual = {
+            "nodes": [
+                {"type": "start", "data": {}},
+                {
+                    "type": "email",
+                    "data": {
+                        "name": "Notify Submitter",
+                        "trigger": "on_submit",
+                        "email_to": "ops@example.com",
+                        "email_to_field": "email",
+                        "email_cc": "manager@example.com",
+                        "email_cc_field": "manager_email",
+                        "email_subject_template": "Submitted {form_name}",
+                        "email_body_template": "Submission #{submission_id}",
+                        "email_template_name": "emails/submission.html",
+                    },
+                },
+                {"type": "end", "data": {}},
+            ],
+            "connections": [],
+        }
+
+        convert_visual_to_workflow(visual, form_definition)
+
+        action = PostSubmissionAction.objects.get(name="Notify Submitter")
+        assert action.action_type == "email"
+        assert action.email_to == "ops@example.com"
+        assert action.email_to_field == "email"
+        assert action.email_cc == "manager@example.com"
+        assert action.email_cc_field == "manager_email"
+        assert action.email_subject_template == "Submitted {form_name}"
+        assert action.email_body_template == "Submission #{submission_id}"
+        assert action.email_template_name == "emails/submission.html"
 
 
 # ── Workflow builder view tests ──────────────────────────────────────────────

@@ -103,6 +103,6 @@ ip_address:  <request IP>
 ## Related Docs
 
 - [Dynamic Assignees](DYNAMIC_ASSIGNEES.md)
-- [Workflow Configuration](CONFIGURATION.md)
+- [Workflows Guide](WORKFLOWS.md)
 - [Sub-Workflows](SUB_WORKFLOWS.md)
 

@@ -174,29 +174,63 @@ You should see your form rendered beautifully with Bootstrap styling!
 
 ## Add Approval Workflow
 
-### 1. Create a Workflow Definition
+### 1. Create Approval Groups
+
+1. Go to **Authentication and Authorization** → **Groups**
+2. Create a **Travel Approvers** group
+3. Optionally create a **Finance Approvers** group for a second stage
+4. Add your reviewer users to the appropriate groups
+
+### 2. Create a Workflow Definition
 
 1. Go to **Forms Workflows** → **Workflow Definitions**
 2. Click **Add Workflow Definition**
 3. Fill in:
    - **Form Definition**: Travel Request
    - **Requires Approval**: ✓
-   - **Approval Logic**: Any can approve (OR)
-   - **Notify on Submission**: ✓
-   - **Notify on Approval**: ✓
+   - **Name Label**: Travel Approval
+   - **Approval Deadline Days**: 5 *(optional)*
+   - **Notification Cadence**: Immediate
 
-### 2. Assign Approvers
+### 3. Add Workflow Stages
 
-1. Create a group in Django Admin: **Travel Approvers**
-2. Add users to this group
-3. In the Workflow Definition, select **Travel Approvers** in **Approval Groups**
+In the **Workflow Stages** inline, add:
 
-### 3. Test the Workflow
+#### Stage 1: Manager Review
+- **Name**: Manager Review
+- **Order**: 1
+- **Approval Logic**: All must approve
+- **Approval Groups**: Travel Approvers
+- **Allow Send Back**: ✓ *(optional, makes this a correction target for later stages)*
+
+#### Stage 2: Finance Review
+- **Name**: Finance Review
+- **Order**: 2
+- **Approval Logic**: All must approve
+- **Approval Groups**: Finance Approvers
+- **Approve Label**: Sign Off *(optional)*
+
+### 4. Optional Advanced Stage Features
+
+After saving the basic workflow, you can enable richer routing per stage:
+
+- **Dynamic assignee** — set `assignee_form_field` + `assignee_lookup_type`
+- **Conditional stage** — add `trigger_conditions` JSON
+- **Reassignment** — enable `allow_reassign`
+- **Editable submission data** — enable `allow_edit_form_data`
+- **Manager-first approval** — enable `requires_manager_approval`
+
+You can also create multiple `WorkflowDefinition` rows on the same form if you want **parallel approval tracks**.
+
+### 5. Test the Workflow
 
 1. Submit the form as a regular user
 2. Log in as an approver
 3. Go to `http://localhost:8000/forms/approvals/`
 4. Approve or reject the submission
+5. If you created multiple stages, confirm stage 2 is only created after stage 1 completes
+
+For a full explanation of staged, parallel, conditional, and dynamic workflows, see [Workflows Guide](WORKFLOWS.md).
 
 ## Add Prefill from User Profile
 
@@ -227,6 +261,14 @@ See [LDAP Configuration Guide](CONFIGURATION.md#ldap-integration) to:
 
 See [Dynamic Assignees](DYNAMIC_ASSIGNEES.md) to route approval tasks to the specific individual named in a form field (by email, username, or display name).
 
+### Model Richer Approval Flows
+
+See [Workflows Guide](WORKFLOWS.md) for multi-stage, parallel-track, conditional, reassignment, editable-review, and deadline/reminder features.
+
+### Use the Visual Workflow Builder Safely
+
+See [Visual Workflow Builder](VISUAL_WORKFLOW_BUILDER.md) for what the builder supports today versus which advanced workflow settings still need Django Admin.
+
 ### Use Calculated / Formula Fields
 
 See [Calculated Fields Guide](CALCULATED_FIELDS.md) to auto-compute read-only values from other field inputs, including spreadsheet-structured file uploads.
@@ -234,6 +276,10 @@ See [Calculated Fields Guide](CALCULATED_FIELDS.md) to auto-compute read-only va
 ### Enable Send Back for Correction
 
 See [Send Back for Correction](SEND_BACK.md) to let approvers return submissions to any prior stage without terminating the workflow.
+
+### Spawn Child Approval Flows
+
+See [Sub-Workflows Guide](SUB_WORKFLOWS.md) to create repeated child approval chains from a single parent submission.
 
 ### Enable Database Prefill
 
@@ -255,7 +301,7 @@ Then customize as needed!
 
 ### Add Celery for Background Tasks
 
-For async email notifications, escalation reminders, and webhook delivery:
+For async email notifications, batched digests, reminders, and deadline checks:
 
 ```bash
 pip install celery redis
@@ -271,7 +317,7 @@ CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 # Run Celery worker
 celery -A your_project worker -l info
 
-# Run Celery beat scheduler (for reminders and escalation checks)
+# Run Celery beat scheduler (for reminders, auto-approval, and digest checks)
 celery -A your_project beat -l info
 ```
 
@@ -292,12 +338,13 @@ celery -A your_project beat -l info
 ### Approvals not working
 
 - Check that a Workflow Definition exists for the form
+- Check that the workflow has at least one stage
 - Check that approval groups are configured
 - Check that approvers are in the correct groups
 
 ## Getting Help
 
-- 📖 [Full Documentation](README.md)
+- 📖 [Full Documentation](../README.md)
 - 💬 [GitHub Discussions](https://github.com/opensensor/django-forms-workflows/discussions)
 - 🐛 [Issue Tracker](https://github.com/opensensor/django-forms-workflows/issues)
 

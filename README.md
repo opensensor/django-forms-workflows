@@ -42,24 +42,30 @@ Business users create and modify forms through Django Admin:
 Flexible approval engine built on `WorkflowStage` records:
 - Each stage has its own approval groups and logic (`any` / `all` / `sequence`)
 - Stages execute in order; next stage unlocks when the current one completes
+- Multiple `WorkflowDefinition` records can run as parallel approval tracks on the same form
 - **Conditional stages** — each stage can carry `trigger_conditions` JSON; stages whose conditions don't match the submission data are automatically skipped
 - **Workflow-level trigger conditions** — entire parallel approval tracks are skipped when their workflow `trigger_conditions` don't match (e.g. only trigger a Finance track when `amount > 10000`)
 - **Dynamic individual assignees** — set `assignee_form_field` + `assignee_lookup_type` (`email` / `username` / `full_name` / `ldap`) on a stage to resolve the approver from a form field value at runtime; falls back to group tasks when the value cannot be resolved
 - **Send Back for Correction** — approvers can return a submission to any prior stage that has `allow_send_back` enabled without terminating the workflow; full audit entry recorded
 - Stage-specific form fields (e.g. approver notes, signature date) appear only during that stage
 - Configurable approval deadline (`approval_deadline_days`) sets `due_date` on created tasks
-- Email notifications and configurable reminder cadence (`daily` / `weekly` / `none`)
-- Escalation routing when a form field exceeds a threshold (e.g. amount > $5 000)
+- Reminder emails (`send_reminder_after_days`) and optional auto-approval after expiry (`auto_approve_after_days`)
+- Immediate or batched notifications (`immediate` / `daily` / `weekly` / `monthly` / `form_field_date`)
+- Optional per-stage reassignment, editable submission data during approval, custom approve button labels, hidden approval history, and bulk export / bulk PDF export controls
 - Rejection handling with per-stage or global rejection semantics
 - Complete audit trail on every approval, rejection, send-back, and status change
+
+See the [Workflow Guide](docs/WORKFLOWS.md), [Visual Workflow Builder](docs/VISUAL_WORKFLOW_BUILDER.md), [Dynamic Assignees](docs/DYNAMIC_ASSIGNEES.md), [Send Back for Correction](docs/SEND_BACK.md), and [Notifications](docs/NOTIFICATIONS.md).
 
 ### 🔀 Sub-Workflows
 Spawn child workflow instances from a parent submission:
 - `SubWorkflowDefinition` links a parent workflow to a child form definition
 - `count_field` controls how many sub-workflows to create (driven by a form field value)
+- `section_label` and `label_template` control how child instances are presented in the UI
 - `data_prefix` slices the parent's form data to populate each child
-- Triggered `on_approval`, `on_submit`, or `manual`
+- Triggered `on_submission` or `on_approval`
 - `detached` mode lets child instances complete independently of the parent
+- `reject_parent=True` lets a rejected child immediately reject the parent and cancel sibling child instances
 - Parent submission status reflects aggregate child completion when not detached
 - Sub-workflows support the same send-back mechanism via `handle_sub_workflow_send_back`
 

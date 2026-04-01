@@ -12,6 +12,7 @@ from django.contrib.auth.models import Group
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils.dateparse import parse_time
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import (
@@ -33,15 +34,21 @@ def workflow_builder_view(request, form_id):
     """
     form_definition = get_object_or_404(FormDefinition, id=form_id)
 
-    # Get or create workflow
-    workflow, created = WorkflowDefinition.objects.get_or_create(
-        form_definition=form_definition, defaults={"requires_approval": False}
-    )
+    workflows = form_definition.workflows.order_by("id")
+    workflow = workflows.first()
+    if workflow is None:
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        workflow_count = 1
+    else:
+        workflow_count = workflows.count()
 
     context = {
         "form_definition": form_definition,
         "form_id": form_id,
         "workflow_id": workflow.id,
+        "workflow_count": workflow_count,
     }
 
     return render(
@@ -81,9 +88,16 @@ def workflow_builder_load(request, form_id):
             }
         )
 
-    # Get all available forms for multi-step workflows
+    # Get forms that already have at least one workflow definition and can be used
+    # as sub-workflow targets. Exclude the current form to avoid self-reference.
     forms = []
-    for form in FormDefinition.objects.filter(is_active=True).order_by("name"):
+    eligible_forms = (
+        FormDefinition.objects.filter(is_active=True, workflows__isnull=False)
+        .exclude(id=form_definition.id)
+        .distinct()
+        .order_by("name")
+    )
+    for form in eligible_forms:
         forms.append(
             {
                 "id": form.id,
@@ -167,8 +181,38 @@ def convert_workflow_to_visual(workflow, form_definition):
     Reads WorkflowStage records to build stage nodes.
     """
     stage_defaults = {
-        stage.id: {"allow_send_back": stage.allow_send_back}
+        stage.id: {
+            "allow_send_back": stage.allow_send_back,
+            "allow_reassign": stage.allow_reassign,
+            "allow_edit_form_data": stage.allow_edit_form_data,
+            "assignee_form_field": stage.assignee_form_field,
+            "assignee_lookup_type": stage.assignee_lookup_type,
+            "validate_assignee_group": stage.validate_assignee_group,
+        }
         for stage in workflow.stages.all()
+    }
+    settings_defaults = {
+        "approval_deadline_days": workflow.approval_deadline_days,
+        "send_reminder_after_days": workflow.send_reminder_after_days,
+        "auto_approve_after_days": workflow.auto_approve_after_days,
+        "notification_cadence": workflow.notification_cadence,
+        "notification_cadence_day": workflow.notification_cadence_day,
+        "notification_cadence_time": workflow.notification_cadence_time.isoformat()
+        if workflow.notification_cadence_time
+        else "",
+        "notification_cadence_form_field": workflow.notification_cadence_form_field,
+    }
+    email_action_defaults = {
+        action.id: {
+            "email_to": action.email_to or "",
+            "email_to_field": action.email_to_field or "",
+            "email_cc": action.email_cc or "",
+            "email_cc_field": action.email_cc_field or "",
+            "email_subject_template": action.email_subject_template or "",
+            "email_body_template": action.email_body_template or "",
+            "email_template_name": action.email_template_name or "",
+        }
+        for action in form_definition.post_actions.filter(action_type="email")
     }
 
     # Check if visual workflow data exists AND has the correct format (nodes array)
@@ -177,13 +221,23 @@ def convert_workflow_to_visual(workflow, form_definition):
         # Check if it has the new format with nodes array
         if isinstance(visual_data, dict) and "nodes" in visual_data:
             for node in visual_data.get("nodes", []):
-                if node.get("type") != "stage":
-                    continue
-                stage_id = node.get("data", {}).get("stage_id")
-                defaults = stage_defaults.get(stage_id)
-                if defaults:
-                    for key, value in defaults.items():
-                        node.setdefault("data", {}).setdefault(key, value)
+                node_type = node.get("type")
+                node_data = node.setdefault("data", {})
+                if node_type == "stage":
+                    stage_id = node_data.get("stage_id")
+                    defaults = stage_defaults.get(stage_id)
+                    if defaults:
+                        for key, value in defaults.items():
+                            node_data.setdefault(key, value)
+                elif node_type == "workflow_settings":
+                    for key, value in settings_defaults.items():
+                        node_data.setdefault(key, value)
+                elif node_type == "email":
+                    action_id = node_data.get("action_id")
+                    defaults = email_action_defaults.get(action_id)
+                    if defaults:
+                        for key, value in defaults.items():
+                            node_data.setdefault(key, value)
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
         # Old format (e.g., stages array) - regenerate
@@ -271,6 +325,11 @@ def convert_workflow_to_visual(workflow, form_definition):
             "send_reminder_after_days": workflow.send_reminder_after_days,
             "auto_approve_after_days": workflow.auto_approve_after_days,
             "notification_cadence": workflow.notification_cadence,
+            "notification_cadence_day": workflow.notification_cadence_day,
+            "notification_cadence_time": workflow.notification_cadence_time.isoformat()
+            if workflow.notification_cadence_time
+            else "",
+            "notification_cadence_form_field": workflow.notification_cadence_form_field,
         },
     }
     nodes.append(settings_node)
@@ -309,7 +368,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "approval_logic": stage.approval_logic,
                         "requires_manager_approval": stage.requires_manager_approval,
                         "allow_send_back": stage.allow_send_back,
+                        "allow_reassign": stage.allow_reassign,
+                        "allow_edit_form_data": stage.allow_edit_form_data,
                         "approve_label": stage.approve_label or "",
+                        "assignee_form_field": stage.assignee_form_field,
+                        "assignee_lookup_type": stage.assignee_lookup_type,
+                        "validate_assignee_group": stage.validate_assignee_group,
                         "approval_groups": [
                             {"id": g.id, "name": g.name} for g in stage_groups
                         ],
@@ -341,7 +405,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                             "approval_logic": stage.approval_logic,
                             "requires_manager_approval": stage.requires_manager_approval,
                             "allow_send_back": stage.allow_send_back,
+                            "allow_reassign": stage.allow_reassign,
+                            "allow_edit_form_data": stage.allow_edit_form_data,
                             "approve_label": stage.approve_label or "",
+                            "assignee_form_field": stage.assignee_form_field,
+                            "assignee_lookup_type": stage.assignee_lookup_type,
+                            "validate_assignee_group": stage.validate_assignee_group,
                             "approval_groups": [
                                 {"id": g.id, "name": g.name} for g in stage_groups
                             ],
@@ -391,9 +460,13 @@ def convert_workflow_to_visual(workflow, form_definition):
             # For now, use empty config
             node_data.update(
                 {
-                    "to": "",
-                    "subject": "",
-                    "template": "",
+                    "email_to": action.email_to or "",
+                    "email_to_field": action.email_to_field or "",
+                    "email_cc": action.email_cc or "",
+                    "email_cc_field": action.email_cc_field or "",
+                    "email_subject_template": action.email_subject_template or "",
+                    "email_body_template": action.email_body_template or "",
+                    "email_template_name": action.email_template_name or "",
                 }
             )
         elif action.action_type == "database":
@@ -535,6 +608,9 @@ def convert_visual_to_workflow(workflow_data, form_definition):
         "requires_approval": settings_data.get("requires_approval", requires_approval),
         "visual_workflow_data": workflow_data,
         "notification_cadence": settings_data.get("notification_cadence", "immediate"),
+        "notification_cadence_form_field": settings_data.get(
+            "notification_cadence_form_field", ""
+        ),
     }
 
     # Optional numeric fields
@@ -542,9 +618,14 @@ def convert_visual_to_workflow(workflow_data, form_definition):
         "approval_deadline_days",
         "send_reminder_after_days",
         "auto_approve_after_days",
+        "notification_cadence_day",
     ):
         raw = settings_data.get(key)
         wf_defaults[key] = int(raw) if raw not in (None, "") else None
+    raw_time = settings_data.get("notification_cadence_time")
+    wf_defaults["notification_cadence_time"] = (
+        parse_time(raw_time) if raw_time else None
+    )
 
     workflow, _created = WorkflowDefinition.objects.update_or_create(
         form_definition=form_definition,
@@ -566,7 +647,12 @@ def convert_visual_to_workflow(workflow_data, form_definition):
             "approval_logic": sdata.get("approval_logic", "all"),
             "requires_manager_approval": sdata.get("requires_manager_approval", False),
             "allow_send_back": sdata.get("allow_send_back", False),
+            "allow_reassign": sdata.get("allow_reassign", False),
+            "allow_edit_form_data": sdata.get("allow_edit_form_data", False),
             "approve_label": sdata.get("approve_label", ""),
+            "assignee_form_field": sdata.get("assignee_form_field", ""),
+            "assignee_lookup_type": sdata.get("assignee_lookup_type", "email"),
+            "validate_assignee_group": sdata.get("validate_assignee_group", True),
         }
 
         if stage_id and stage_id in existing_stage_ids:
@@ -644,7 +730,18 @@ def convert_visual_to_workflow(workflow_data, form_definition):
         action_data = {
             "action_type": "email",
             "trigger": data.get("trigger", "on_approve"),
-            "description": f"Email to: {data.get('to', '')}, Subject: {data.get('subject', '')}",
+            "email_to": data.get("email_to", ""),
+            "email_to_field": data.get("email_to_field", ""),
+            "email_cc": data.get("email_cc", ""),
+            "email_cc_field": data.get("email_cc_field", ""),
+            "email_subject_template": data.get("email_subject_template", ""),
+            "email_body_template": data.get("email_body_template", ""),
+            "email_template_name": data.get("email_template_name", ""),
+            "description": data.get(
+                "description",
+                f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
+                f"Subject: {data.get('email_subject_template', '')}",
+            ),
         }
         if action_name in existing_actions:
             action = existing_actions[action_name]

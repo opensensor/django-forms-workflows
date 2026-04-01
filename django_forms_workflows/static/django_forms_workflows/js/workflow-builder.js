@@ -336,7 +336,12 @@ class WorkflowBuilder {
                     approval_logic: 'all',
                     requires_manager_approval: false,
                     allow_send_back: false,
+                    allow_reassign: false,
+                    allow_edit_form_data: false,
                     approve_label: '',
+                    assignee_form_field: '',
+                    assignee_lookup_type: 'email',
+                    validate_assignee_group: true,
                     approval_groups: [],
                 };
             case 'workflow_settings':
@@ -346,10 +351,9 @@ class WorkflowBuilder {
                     send_reminder_after_days: null,
                     auto_approve_after_days: null,
                     notification_cadence: 'immediate',
-                    notify_on_submission: true,
-                    notify_on_approval: true,
-                    notify_on_rejection: true,
-                    notify_on_withdrawal: true,
+                    notification_cadence_day: null,
+                    notification_cadence_time: '',
+                    notification_cadence_form_field: '',
                 };
             case 'condition':
                 return {
@@ -369,9 +373,13 @@ class WorkflowBuilder {
             case 'email':
                 return {
                     name: 'Send Email',
-                    to: '',
-                    subject: '',
-                    template: '',
+                    email_to: '',
+                    email_to_field: '',
+                    email_cc: '',
+                    email_cc_field: '',
+                    email_subject_template: '',
+                    email_body_template: '',
+                    email_template_name: '',
                     trigger: 'on_approve'
                 };
             case 'sub_workflow':
@@ -555,6 +563,30 @@ class WorkflowBuilder {
                 <small class="text-muted">Later stages can return submissions here for correction without rejecting the workflow.</small>
             </div>
 
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="stage_allow_reassign_${node.id}"
+                           name="allow_reassign" ${data.allow_reassign ? 'checked' : ''}
+                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <label class="form-check-label" for="stage_allow_reassign_${node.id}">
+                        <i class="bi bi-arrow-left-right"></i> <strong>Allow Reassignment</strong>
+                    </label>
+                </div>
+                <small class="text-muted">Allow current reviewers to reassign tasks to another eligible member of the stage groups.</small>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="stage_allow_edit_form_data_${node.id}"
+                           name="allow_edit_form_data" ${data.allow_edit_form_data ? 'checked' : ''}
+                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <label class="form-check-label" for="stage_allow_edit_form_data_${node.id}">
+                        <i class="bi bi-pencil-square"></i> <strong>Allow Reviewer Edits</strong>
+                    </label>
+                </div>
+                <small class="text-muted">Approvers at this stage may edit the original submission while reviewing it.</small>
+            </div>
+
             <hr />
 
             <div class="mb-3">
@@ -582,6 +614,42 @@ class WorkflowBuilder {
                     <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
                     <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>Sequential</option>
                 </select>
+            </div>
+
+            <hr />
+            <h6>Dynamic Assignee</h6>
+            <div class="mb-3">
+                <label class="form-label"><strong>Assignee Field</strong></label>
+                <select class="form-select" name="assignee_form_field"
+                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <option value="">-- Use approval groups --</option>
+                    ${this.fields.map(f => `
+                        <option value="${f.field_name}" ${data.assignee_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+                    `).join('')}
+                </select>
+                <small class="text-muted">When selected, the stage resolves the approver from a submitted form field before falling back to approval groups.</small>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label"><strong>Lookup Type</strong></label>
+                <select class="form-select" name="assignee_lookup_type"
+                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <option value="email" ${data.assignee_lookup_type === 'email' ? 'selected' : ''}>Email address</option>
+                    <option value="username" ${data.assignee_lookup_type === 'username' ? 'selected' : ''}>Username</option>
+                    <option value="full_name" ${data.assignee_lookup_type === 'full_name' ? 'selected' : ''}>Full name</option>
+                    <option value="ldap" ${data.assignee_lookup_type === 'ldap' ? 'selected' : ''}>LDAP display name</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="stage_validate_assignee_group_${node.id}"
+                           name="validate_assignee_group" ${data.validate_assignee_group !== false ? 'checked' : ''}
+                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                    <label class="form-check-label" for="stage_validate_assignee_group_${node.id}">
+                        <strong>Require Assignee to Belong to Stage Groups</strong>
+                    </label>
+                </div>
             </div>
         `;
 
@@ -622,29 +690,44 @@ class WorkflowBuilder {
                     <option value="immediate" ${data.notification_cadence === 'immediate' ? 'selected' : ''}>Immediate</option>
                     <option value="daily" ${data.notification_cadence === 'daily' ? 'selected' : ''}>Daily Digest</option>
                     <option value="weekly" ${data.notification_cadence === 'weekly' ? 'selected' : ''}>Weekly Digest</option>
-                    <option value="none" ${data.notification_cadence === 'none' ? 'selected' : ''}>None</option>
+                    <option value="monthly" ${data.notification_cadence === 'monthly' ? 'selected' : ''}>Monthly Digest</option>
+                    <option value="form_field_date" ${data.notification_cadence === 'form_field_date' ? 'selected' : ''}>On Date From Form Field</option>
                 </select>
             </div>
 
-            <hr />
-            <h6>Notifications</h6>
-        `;
+            <div class="mb-3">
+                <label class="form-label">Digest Day</label>
+                <input type="number" class="form-control" name="notification_cadence_day" min="0" max="31"
+                       value="${data.notification_cadence_day || ''}" placeholder="Weekly: 0-6, Monthly: 1-31"
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                <small class="text-muted">Used for weekly and monthly cadences only.</small>
+            </div>
 
-        const notifFlags = [
-            ['notify_on_submission', 'On Submission'],
-            ['notify_on_approval', 'On Approval'],
-            ['notify_on_rejection', 'On Rejection'],
-            ['notify_on_withdrawal', 'On Withdrawal'],
-        ];
-        notifFlags.forEach(([key, label]) => {
-            html += `
-            <div class="form-check form-switch mb-2">
-                <input class="form-check-input" type="checkbox" id="ws_${key}_${node.id}"
-                       name="${key}" ${data[key] !== false ? 'checked' : ''}
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
-                <label class="form-check-label" for="ws_${key}_${node.id}">${label}</label>
-            </div>`;
-        });
+            <div class="mb-3">
+                <label class="form-label">Digest Time</label>
+                <input type="time" class="form-control" name="notification_cadence_time"
+                       value="${this.escapeHtml(data.notification_cadence_time || '')}"
+                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Date Field</label>
+                <select class="form-select" name="notification_cadence_form_field"
+                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
+                    <option value="">-- Select a date field --</option>
+                    ${this.fields.map(f => `
+                        <option value="${f.field_name}" ${data.notification_cadence_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+                    `).join('')}
+                </select>
+                <small class="text-muted">Used only when cadence is “On Date From Form Field”.</small>
+            </div>
+
+            <hr />
+            <div class="alert alert-secondary mb-0">
+                <i class="bi bi-info-circle"></i>
+                Recipient rules and event-specific notifications are still configured in Django Admin via <strong>Notification Rules</strong>.
+            </div>
+        `;
 
         return html;
     }
@@ -826,45 +909,11 @@ class WorkflowBuilder {
     }
 
     buildConditionProperties(node) {
-        const data = node.data || {};
         return `
-            <div class="mb-3">
-                <label class="form-label">Condition Name</label>
-                <input type="text" class="form-control" name="name" value="${this.escapeHtml(data.name || 'Condition')}" placeholder="e.g., Check Amount" />
+            <div class="alert alert-warning mb-0">
+                <i class="bi bi-exclamation-triangle"></i>
+                Legacy condition nodes are not currently persisted by the workflow builder. Use workflow or stage <strong>trigger_conditions</strong> in Django Admin for conditional routing.
             </div>
-            <div class="mb-3">
-                <label class="form-label">Field to Check</label>
-                <select class="form-select" name="field">
-                    <option value="">Select field...</option>
-                    ${this.fields.map(f => `
-                        <option value="${f.field_name}" ${data.field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)}</option>
-                    `).join('')}
-                </select>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Operator</label>
-                <select class="form-select" name="operator">
-                    <option value="equals" ${data.operator === 'equals' ? 'selected' : ''}>Equals (=)</option>
-                    <option value="not_equals" ${data.operator === 'not_equals' ? 'selected' : ''}>Not Equals (≠)</option>
-                    <option value="greater_than" ${data.operator === 'greater_than' ? 'selected' : ''}>Greater Than (&gt;)</option>
-                    <option value="less_than" ${data.operator === 'less_than' ? 'selected' : ''}>Less Than (&lt;)</option>
-                    <option value="greater_or_equal" ${data.operator === 'greater_or_equal' ? 'selected' : ''}>Greater or Equal (≥)</option>
-                    <option value="less_or_equal" ${data.operator === 'less_or_equal' ? 'selected' : ''}>Less or Equal (≤)</option>
-                    <option value="contains" ${data.operator === 'contains' ? 'selected' : ''}>Contains</option>
-                    <option value="not_contains" ${data.operator === 'not_contains' ? 'selected' : ''}>Does Not Contain</option>
-                    <option value="is_empty" ${data.operator === 'is_empty' ? 'selected' : ''}>Is Empty</option>
-                    <option value="is_not_empty" ${data.operator === 'is_not_empty' ? 'selected' : ''}>Is Not Empty</option>
-                </select>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Compare Value</label>
-                <input type="text" class="form-control" name="value" value="${this.escapeHtml(data.value || '')}" placeholder="Value to compare against" />
-                <small class="text-muted">Leave empty for "is empty" / "is not empty" operators</small>
-            </div>
-            <hr class="my-3" />
-            <p class="text-muted small mb-2">
-                <i class="bi bi-info-circle"></i> Connect the output to different nodes for TRUE and FALSE paths
-            </p>
         `;
     }
 
@@ -873,11 +922,11 @@ class WorkflowBuilder {
         return `
             <div class="mb-3">
                 <label class="form-label">Action Name</label>
-                <input type="text" class="form-control" name="name" value="${this.escapeHtml(data.name || '')}" placeholder="e.g., Update User Record" />
+                <input type="text" class="form-control" name="name" value="${this.escapeHtml(data.name || '')}" placeholder="e.g., Update User Record" onchange="workflowBuilder.updateActionConfig('${node.id}')" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Action Type</label>
-                <select class="form-select" name="action_type">
+                <select class="form-select" name="action_type" onchange="workflowBuilder.updateActionConfig('${node.id}')">
                     <option value="database" ${data.action_type === 'database' ? 'selected' : ''}>Database Update</option>
                     <option value="ldap" ${data.action_type === 'ldap' ? 'selected' : ''}>LDAP Update</option>
                     <option value="api" ${data.action_type === 'api' ? 'selected' : ''}>API Call</option>
@@ -886,7 +935,7 @@ class WorkflowBuilder {
             </div>
             <div class="mb-3">
                 <label class="form-label">When to Execute</label>
-                <select class="form-select" name="trigger">
+                <select class="form-select" name="trigger" onchange="workflowBuilder.updateActionConfig('${node.id}')">
                     <option value="on_submit" ${data.trigger === 'on_submit' ? 'selected' : ''}>On Submission</option>
                     <option value="on_approve" ${data.trigger === 'on_approve' ? 'selected' : ''}>On Approval</option>
                     <option value="on_reject" ${data.trigger === 'on_reject' ? 'selected' : ''}>On Rejection</option>
@@ -896,7 +945,7 @@ class WorkflowBuilder {
             <hr class="my-3" />
             <div class="mb-3">
                 <label class="form-label">Configuration (JSON)</label>
-                <textarea class="form-control font-monospace" name="config" rows="4" placeholder='{"table": "users", "field": "status", "value": "approved"}'>${this.escapeHtml(JSON.stringify(data.config || {}, null, 2))}</textarea>
+                <textarea class="form-control font-monospace" name="config" rows="4" placeholder='{"table": "users", "field": "status", "value": "approved"}' onchange="workflowBuilder.updateActionConfig('${node.id}')">${this.escapeHtml(typeof data.config === 'string' ? data.config : JSON.stringify(data.config || {}, null, 2))}</textarea>
                 <small class="text-muted">Action-specific configuration in JSON format</small>
             </div>
         `;
@@ -904,38 +953,61 @@ class WorkflowBuilder {
 
     buildEmailProperties(node) {
         const data = node.data || {};
+        const fieldOptions = this.fields.map(f => `
+            <option value="${f.field_name}" ${data.email_to_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+        `).join('');
+        const ccFieldOptions = this.fields.map(f => `
+            <option value="${f.field_name}" ${data.email_cc_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+        `).join('');
         return `
             <div class="mb-3">
                 <label class="form-label">Email Name</label>
-                <input type="text" class="form-control" name="name" value="${this.escapeHtml(data.name || '')}" placeholder="e.g., Approval Notification" />
+                <input type="text" class="form-control" name="name" value="${this.escapeHtml(data.name || '')}" placeholder="e.g., Approval Notification" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Recipients</label>
-                <input type="text" class="form-control" name="to" value="${this.escapeHtml(data.to || '')}" placeholder="email@example.com or {field_name}" />
-                <small class="text-muted">Use {field_name} to reference form fields, or enter email addresses</small>
+                <label class="form-label">Static Recipients</label>
+                <input type="text" class="form-control" name="email_to" value="${this.escapeHtml(data.email_to || '')}" placeholder="email@example.com, approver@example.com" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+                <small class="text-muted">Comma-separated email addresses.</small>
             </div>
             <div class="mb-3">
-                <label class="form-label">Subject</label>
-                <input type="text" class="form-control" name="subject" value="${this.escapeHtml(data.subject || '')}" placeholder="Your request has been approved" />
+                <label class="form-label">Recipient Field</label>
+                <select class="form-select" name="email_to_field" onchange="workflowBuilder.updateEmailConfig('${node.id}')">
+                    <option value="">-- None --</option>
+                    ${fieldOptions}
+                </select>
+                <small class="text-muted">Optional form field that contains the recipient email address.</small>
             </div>
             <div class="mb-3">
-                <label class="form-label">Email Template</label>
-                <select class="form-select" name="template">
-                    <option value="">Select template...</option>
-                    <option value="approval_notification" ${data.template === 'approval_notification' ? 'selected' : ''}>Approval Notification</option>
-                    <option value="rejection_notification" ${data.template === 'rejection_notification' ? 'selected' : ''}>Rejection Notification</option>
-                    <option value="submission_confirmation" ${data.template === 'submission_confirmation' ? 'selected' : ''}>Submission Confirmation</option>
-                    <option value="custom" ${data.template === 'custom' ? 'selected' : ''}>Custom Template</option>
+                <label class="form-label">CC Addresses</label>
+                <input type="text" class="form-control" name="email_cc" value="${this.escapeHtml(data.email_cc || '')}" placeholder="manager@example.com" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">CC Field</label>
+                <select class="form-select" name="email_cc_field" onchange="workflowBuilder.updateEmailConfig('${node.id}')">
+                    <option value="">-- None --</option>
+                    ${ccFieldOptions}
                 </select>
             </div>
             <div class="mb-3">
                 <label class="form-label">When to Send</label>
-                <select class="form-select" name="trigger">
+                <select class="form-select" name="trigger" onchange="workflowBuilder.updateEmailConfig('${node.id}')">
                     <option value="on_submit" ${data.trigger === 'on_submit' ? 'selected' : ''}>On Submission</option>
                     <option value="on_approve" ${data.trigger === 'on_approve' ? 'selected' : ''}>On Approval</option>
                     <option value="on_reject" ${data.trigger === 'on_reject' ? 'selected' : ''}>On Rejection</option>
                     <option value="on_complete" ${data.trigger === 'on_complete' ? 'selected' : ''}>On Complete</option>
                 </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Subject Template</label>
+                <input type="text" class="form-control" name="email_subject_template" value="${this.escapeHtml(data.email_subject_template || '')}" placeholder="Form {form_name} approved" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Body Template</label>
+                <textarea class="form-control" name="email_body_template" rows="5" placeholder="Submission by {submitter} has been approved." onchange="workflowBuilder.updateEmailConfig('${node.id}')">${this.escapeHtml(data.email_body_template || '')}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">HTML Template Path</label>
+                <input type="text" class="form-control" name="email_template_name" value="${this.escapeHtml(data.email_template_name || '')}" placeholder="emails/approval.html" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
             </div>
         `;
     }
@@ -1124,6 +1196,11 @@ class WorkflowBuilder {
         node.data.approve_label = container.querySelector('input[name="approve_label"]').value;
         node.data.requires_manager_approval = container.querySelector(`#stage_requires_manager_${nodeId}`).checked;
         node.data.allow_send_back = container.querySelector(`#stage_allow_send_back_${nodeId}`).checked;
+        node.data.allow_reassign = container.querySelector(`#stage_allow_reassign_${nodeId}`).checked;
+        node.data.allow_edit_form_data = container.querySelector(`#stage_allow_edit_form_data_${nodeId}`).checked;
+        node.data.assignee_form_field = container.querySelector('select[name="assignee_form_field"]').value;
+        node.data.assignee_lookup_type = container.querySelector('select[name="assignee_lookup_type"]').value;
+        node.data.validate_assignee_group = container.querySelector(`#stage_validate_assignee_group_${nodeId}`).checked;
 
         const groupSelect = container.querySelector(`#stage_groups_${nodeId}`);
         node.data.approval_groups = Array.from(groupSelect.selectedOptions).map(opt => ({
@@ -1149,11 +1226,43 @@ class WorkflowBuilder {
         });
 
         node.data.notification_cadence = container.querySelector('select[name="notification_cadence"]').value;
+        const cadenceDay = container.querySelector('input[name="notification_cadence_day"]').value;
+        node.data.notification_cadence_day = cadenceDay ? parseInt(cadenceDay) : null;
+        node.data.notification_cadence_time = container.querySelector('input[name="notification_cadence_time"]').value;
+        node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
 
-        // Notification checkboxes
-        ['notify_on_submission', 'notify_on_approval', 'notify_on_rejection', 'notify_on_withdrawal'].forEach(key => {
-            node.data[key] = container.querySelector(`#ws_${key}_${nodeId}`).checked;
-        });
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    updateActionConfig(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const container = document.getElementById('propertiesContent');
+        node.data.name = container.querySelector('input[name="name"]').value;
+        node.data.action_type = container.querySelector('select[name="action_type"]').value;
+        node.data.trigger = container.querySelector('select[name="trigger"]').value;
+        node.data.config = container.querySelector('textarea[name="config"]').value;
+
+        this.render();
+        this.selectNode(nodeId);
+    }
+
+    updateEmailConfig(nodeId) {
+        const node = this.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const container = document.getElementById('propertiesContent');
+        node.data.name = container.querySelector('input[name="name"]').value;
+        node.data.email_to = container.querySelector('input[name="email_to"]').value;
+        node.data.email_to_field = container.querySelector('select[name="email_to_field"]').value;
+        node.data.email_cc = container.querySelector('input[name="email_cc"]').value;
+        node.data.email_cc_field = container.querySelector('select[name="email_cc_field"]').value;
+        node.data.email_subject_template = container.querySelector('input[name="email_subject_template"]').value;
+        node.data.email_body_template = container.querySelector('textarea[name="email_body_template"]').value;
+        node.data.email_template_name = container.querySelector('input[name="email_template_name"]').value;
+        node.data.trigger = container.querySelector('select[name="trigger"]').value;
 
         this.render();
         this.selectNode(nodeId);
@@ -1334,8 +1443,7 @@ class WorkflowBuilder {
             case 'workflow_settings':
                 const parts_ws = [];
                 if (node.data.approval_deadline_days) parts_ws.push(`Deadline: ${node.data.approval_deadline_days}d`);
-                if (node.data.notification_cadence && node.data.notification_cadence !== 'immediate') parts_ws.push(`Reminders: ${node.data.notification_cadence}`);
-                if (node.data.escalation_field) parts_ws.push('Escalation configured');
+                if (node.data.notification_cadence && node.data.notification_cadence !== 'immediate') parts_ws.push(`Cadence: ${node.data.notification_cadence}`);
                 return parts_ws.length > 0 ?
                     `<small class="text-muted">${parts_ws.join(' • ')}</small>` :
                     '<small class="text-muted">Default settings</small>';
@@ -1343,6 +1451,9 @@ class WorkflowBuilder {
                 const stageParts = [];
                 if (node.data.requires_manager_approval) stageParts.push('Manager');
                 if (node.data.allow_send_back) stageParts.push('Send Back target');
+                if (node.data.allow_reassign) stageParts.push('Reassign');
+                if (node.data.allow_edit_form_data) stageParts.push('Editable');
+                if (node.data.assignee_form_field) stageParts.push(`Dynamic: ${node.data.assignee_form_field}`);
                 if (node.data.approval_groups && node.data.approval_groups.length > 0) {
                     const gc = node.data.approval_groups.length;
                     stageParts.push(`${gc} group${gc > 1 ? 's' : ''} (${node.data.approval_logic || 'all'})`);
@@ -1372,7 +1483,9 @@ class WorkflowBuilder {
             case 'action':
                 return node.data.action_type ? `${node.data.action_type.toUpperCase()}: ${node.data.trigger || ''}` : 'Configure action';
             case 'email':
-                return node.data.to ? `Send to: ${node.data.to}` : 'Configure email';
+                if (node.data.email_to) return `Send to: ${node.data.email_to}`;
+                if (node.data.email_to_field) return `Send to field: ${node.data.email_to_field}`;
+                return 'Configure email';
             case 'join':
                 return '<small class="text-muted">Parallel stages merge here</small>';
             case 'sub_workflow':

@@ -446,24 +446,9 @@
             <i class="bi bi-box"></i> Workflow Nodes
         </div>
 
-        <div class="palette-node form" draggable="true" data-node-type="form">
-            <i class="bi bi-file-earmark-text"></i>
-            <span>Form</span>
-        </div>
-
         <div class="palette-node stage" draggable="true" data-node-type="stage">
             <i class="bi bi-layers"></i>
             <span>Approval Stage</span>
-        </div>
-
-        <div class="palette-node approval" draggable="true" data-node-type="approval">
-            <i class="bi bi-person-check"></i>
-            <span>Approval Step</span>
-        </div>
-
-        <div class="palette-node condition" draggable="true" data-node-type="condition">
-            <i class="bi bi-diagram-3"></i>
-            <span>Condition</span>
         </div>
 
         <div class="palette-node action" draggable="true" data-node-type="action">
@@ -489,6 +474,12 @@
     
     <!-- Workflow Canvas -->
     <div class="workflow-canvas-container">
+        {% if workflow_count > 1 %}
+        <div class="alert alert-warning m-3 mb-0">
+            <i class="bi bi-exclamation-triangle"></i>
+            This form has <strong>{{ workflow_count }}</strong> workflow tracks. The visual builder currently edits only the first track; use Django Admin for multi-track workflow configuration.
+        </div>
+        {% endif %}
         <div class="canvas-header">
             <div>
                 <h5 class="mb-0">{{ form_definition.name }} - Workflow</h5>
@@ -550,10 +541,10 @@
                     <h6><i class="bi bi-info-circle"></i> Visual Builder Scope</h6>
                     <p class="small text-muted mb-2">This visual builder configures:</p>
                     <ul class="small text-muted">
-                        <li>Approval workflow steps</li>
+                        <li>Approval stages and stage routing basics</li>
                         <li>Post-submission actions</li>
-                        <li>Email notifications</li>
-                        <li>Conditional branching</li>
+                        <li>Email actions</li>
+                        <li>Sub-workflow configuration</li>
                     </ul>
 
                     <p class="small text-muted mb-2 mt-3">For advanced settings, use the
@@ -566,11 +557,11 @@
                         {% endif %}:
                     </p>
                     <ul class="small text-muted">
-                        <li>Approval timeouts & deadlines</li>
-                        <li>Notification settings</li>
-                        <li>Conditional escalation</li>
-                        <li>Manager approval settings</li>
-                        <li>Database update mappings</li>
+                        <li>Multiple parallel workflow tracks</li>
+                        <li>Workflow/stage trigger conditions</li>
+                        <li>Notification rules and recipients</li>
+                        <li>Sequence ordering inside a stage</li>
+                        <li>Any advanced configuration not shown in the builder</li>
                     </ul>
                 </div>
             </div>

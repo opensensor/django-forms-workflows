@@ -112,7 +112,7 @@ This document describes what has been delivered, what is actively being worked o
 
 | Idea | Notes |
 |---|---|
-| Visual no-code workflow builder | Drag-and-drop stage graph in the browser; replaces admin inline editing |
+| Full workflow-builder parity | Extend the existing visual builder to cover multi-track workflows, trigger conditions, notification rules, and the remaining admin-only workflow settings |
 | AI-assisted form creation | Natural-language prompt → generates a `FormDefinition` + `WorkflowDefinition` via LLM |
 | Barcode / QR field type | Scan and decode during submission; useful for asset-tracking workflows |
 | Location field type | GPS coordinates or address autocomplete via browser Geolocation API |

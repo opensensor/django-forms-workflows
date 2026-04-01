@@ -570,7 +570,7 @@ class WorkflowDefinitionInline(nested_admin.NestedStackedInline):
     extra = 0
     inlines = [WorkflowStageInline, NotificationRuleInline, WebhookEndpointInline]
     fields = [
-        "name_label",
+        ("name_label", "start_trigger"),
         "requires_approval",
         "hide_approval_history",
         "collapse_parallel_stages",
@@ -876,6 +876,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                         cloned_wf = WorkflowDefinition.objects.create(
                             form_definition=cloned_form,
                             name_label=wf.name_label,
+                            start_trigger=wf.start_trigger,
                             requires_approval=wf.requires_approval,
                             approval_deadline_days=wf.approval_deadline_days,
                             send_reminder_after_days=wf.send_reminder_after_days,
@@ -1573,6 +1574,8 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
     ]
     list_display = (
         "form_definition",
+        "name_label",
+        "start_trigger",
         "requires_approval",
         "hide_approval_history",
         "notification_rule_count",
@@ -1580,6 +1583,7 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
         "allow_bulk_pdf_export",
     )
     list_filter = (
+        "start_trigger",
         "requires_approval",
         "hide_approval_history",
         "allow_bulk_export",
@@ -1592,7 +1596,7 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
             {
                 "fields": (
                     "form_definition",
-                    "name_label",
+                    ("name_label", "start_trigger"),
                     "requires_approval",
                     "hide_approval_history",
                     "collapse_parallel_stages",

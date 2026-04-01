@@ -666,6 +666,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     }
     settings_defaults = {
         "name_label": workflow.name_label,
+        "start_trigger": workflow.start_trigger,
         "approval_deadline_days": workflow.approval_deadline_days,
         "send_reminder_after_days": workflow.send_reminder_after_days,
         "auto_approve_after_days": workflow.auto_approve_after_days,
@@ -860,6 +861,7 @@ def convert_workflow_to_visual(workflow, form_definition):
         "y": current_y,
         "data": {
             "name_label": workflow.name_label,
+            "start_trigger": workflow.start_trigger,
             "requires_approval": workflow.requires_approval,
             "approval_deadline_days": workflow.approval_deadline_days,
             "send_reminder_after_days": workflow.send_reminder_after_days,
@@ -1161,6 +1163,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     # ── Workflow-level settings ──────────────────────────────────────────
     wf_defaults = {
         "name_label": settings_data.get("name_label", ""),
+        "start_trigger": settings_data.get("start_trigger", "on_submission"),
         "requires_approval": settings_data.get("requires_approval", requires_approval),
         "visual_workflow_data": workflow_data,
         "notification_cadence": settings_data.get("notification_cadence", "immediate"),

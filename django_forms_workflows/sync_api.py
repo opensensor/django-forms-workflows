@@ -306,6 +306,8 @@ def _serialize_workflow(wf):
     return {
         # Identity / display
         "name_label": wf.name_label,
+        # Start trigger
+        "start_trigger": wf.start_trigger,
         # Core approval settings
         "requires_approval": wf.requires_approval,
         "trigger_conditions": wf.trigger_conditions,

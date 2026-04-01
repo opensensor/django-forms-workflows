@@ -698,12 +698,70 @@ def _create_stage_tasks(
                 first_task = task
 
 
+def _start_deferred_workflows(submission: FormSubmission) -> bool:
+    """Start any on_all_complete workflows that are now eligible.
+
+    Returns True if at least one deferred workflow was started (meaning the
+    submission should stay at ``pending_approval``), False otherwise.
+    """
+    from .conditions import evaluate_conditions as _eval
+
+    form_data = submission.form_data or {}
+    deferred = [
+        w
+        for w in submission.form_definition.workflows.filter(
+            requires_approval=True,
+            start_trigger="on_all_complete",
+        )
+        if not w.used_as_sub_workflow.exists()
+        and _eval(w.trigger_conditions, form_data)
+    ]
+    if not deferred:
+        return False
+
+    any_started = False
+    for workflow in deferred:
+        # Skip if tasks already exist for this workflow (idempotency)
+        stage_ids = list(workflow.stages.values_list("id", flat=True))
+        if (
+            stage_ids
+            and submission.approval_tasks.filter(
+                workflow_stage_id__in=stage_ids,
+            ).exists()
+        ):
+            continue
+
+        due_date = _due_date_for(workflow)
+        stages = list(workflow.stages.order_by("order", "id"))
+        if not stages:
+            continue
+
+        first_order = stages[0].order
+        first_order_stages = [
+            s
+            for s in stages
+            if s.order == first_order and _eval(s.trigger_conditions, form_data)
+        ]
+        for stage in first_order_stages:
+            groups = list(stage.approval_groups.all())
+            if not stage.requires_manager_approval and not groups:
+                continue
+            _create_stage_tasks(submission, stage, due_date=due_date)
+            any_started = True
+
+    return any_started
+
+
 def _try_finalize_all_tracks(submission: FormSubmission) -> None:
     """Finalize the submission only when every workflow track is complete.
 
     A track is complete when it has no pending approval tasks across any of
     its stages.  For single-workflow forms this is equivalent to the old
     ``_finalize_submission`` call.
+
+    When all ``on_submission`` workflows are complete, any ``on_all_complete``
+    workflows are started.  The submission is only finalized once those
+    deferred workflows also complete.
     """
     # Collect all stage IDs across every workflow on this form
     all_workflows = list(
@@ -713,16 +771,41 @@ def _try_finalize_all_tracks(submission: FormSubmission) -> None:
         _finalize_submission(submission)
         return
 
-    for wf in all_workflows:
+    # Check whether on_submission workflows are all complete
+    on_submission_wfs = [
+        w
+        for w in all_workflows
+        if getattr(w, "start_trigger", "on_submission") == "on_submission"
+    ]
+    for wf in on_submission_wfs:
         stage_ids = list(wf.stages.values_list("id", flat=True))
         if not stage_ids:
             continue
         if submission.approval_tasks.filter(
             workflow_stage_id__in=stage_ids, status="pending"
         ).exists():
-            return  # This track still has pending work
+            return  # An on_submission track still has pending work
 
-    # All tracks complete
+    # All on_submission tracks are done — start deferred workflows if any
+    if _start_deferred_workflows(submission):
+        return  # Deferred workflow(s) started; wait for them to complete
+
+    # Check whether on_all_complete workflows (already running) are done
+    deferred_wfs = [
+        w
+        for w in all_workflows
+        if getattr(w, "start_trigger", "on_submission") == "on_all_complete"
+    ]
+    for wf in deferred_wfs:
+        stage_ids = list(wf.stages.values_list("id", flat=True))
+        if not stage_ids:
+            continue
+        if submission.approval_tasks.filter(
+            workflow_stage_id__in=stage_ids, status="pending"
+        ).exists():
+            return  # A deferred track still has pending work
+
+    # Everything is complete
     _finalize_submission(submission)
 
 
@@ -838,12 +921,16 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
     # Workflows referenced by any SubWorkflowDefinition.sub_workflow are
     # templates — they must only be spawned via _spawn_sub_workflows_for_trigger,
     # never auto-started on submission.
+    # Workflows with start_trigger="on_all_complete" are deferred — they only
+    # start after every on_submission workflow has finished (see
+    # _try_finalize_all_tracks).
     form_data = submission.form_data or {}
     approval_workflows = [
         w
         for w in workflows
         if w.requires_approval
         and not w.used_as_sub_workflow.exists()
+        and getattr(w, "start_trigger", "on_submission") == "on_submission"
         and evaluate_conditions(w.trigger_conditions, form_data)
     ]
     if not approval_workflows:

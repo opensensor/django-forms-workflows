@@ -831,6 +831,26 @@ class WorkflowDefinition(models.Model):
         ),
     )
 
+    START_TRIGGER_CHOICES = [
+        ("on_submission", "On Submission (default)"),
+        (
+            "on_all_complete",
+            "After All Other Workflows Complete",
+        ),
+    ]
+
+    start_trigger = models.CharField(
+        max_length=20,
+        choices=START_TRIGGER_CHOICES,
+        default="on_submission",
+        help_text=(
+            "When this workflow should start. "
+            '"On Submission" starts immediately when the form is submitted. '
+            '"After All Other Workflows Complete" waits until every other '
+            "on_submission workflow on this form has finished before starting."
+        ),
+    )
+
     # Basic Approval
     requires_approval = models.BooleanField(default=True)
 

@@ -2,17 +2,19 @@
 URL configuration for example project.
 """
 
-from django.contrib import admin
-from django.urls import path, include
-from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import include, path
+
+from .views import home
 
 urlpatterns = [
-    path("", TemplateView.as_view(template_name="index.html"), name="home"),
+    path("", home, name="home"),
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
     path("forms/", include("django_forms_workflows.urls")),
+    path("api/", include("django_forms_workflows.api_urls")),
 ]
 
 # Serve media files in development

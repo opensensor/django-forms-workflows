@@ -105,12 +105,12 @@ class WorkflowBuilder {
             }
         });
 
-        // ── Pan (middle-click or Ctrl+left-click on background) ─────────
+        // ── Pan (left-drag on background, or middle-click anywhere blank) ──
         this.canvas.addEventListener('mousedown', (e) => {
             const isBackground = e.target === this.canvas || e.target === this.svg
                 || e.target === this.transformWrapper
                 || e.target.tagName === 'svg' || e.target.closest('.connections-svg');
-            const shouldPan = isBackground && (e.button === 1 || (e.button === 0 && (e.ctrlKey || e.metaKey || e.shiftKey)));
+            const shouldPan = isBackground && (e.button === 0 || e.button === 1);
             if (!shouldPan) return;
 
             e.preventDefault();
@@ -673,10 +673,70 @@ class WorkflowBuilder {
         );
     }
 
+    getParallelStageGroups() {
+        const groups = new Map();
+
+        this.nodes
+            .filter((node) => node.type === 'stage' && node.data?.order !== undefined && node.data?.order !== null)
+            .forEach((node) => {
+                const key = String(node.data.order);
+                if (!groups.has(key)) {
+                    groups.set(key, []);
+                }
+                groups.get(key).push(node);
+            });
+
+        return [...groups.values()]
+            .filter((group) => group.length > 1)
+            .map((group) => group.sort((a, b) => (a.y - b.y) || (a.x - b.x)));
+    }
+
+    parallelStageGroupsNeedNormalization() {
+        const expectedVerticalGap = 220;
+
+        return this.getParallelStageGroups().some((group) => {
+            const anchorX = Math.min(...group.map((node) => node.x));
+            const xDrift = group.some((node) => Math.abs(node.x - anchorX) > 24);
+            if (xDrift) {
+                return true;
+            }
+
+            for (let index = 1; index < group.length; index += 1) {
+                const gap = group[index].y - group[index - 1].y;
+                if (Math.abs(gap - expectedVerticalGap) > 24) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+    }
+
+    normalizeParallelStageGroups() {
+        const verticalGap = 220;
+
+        this.getParallelStageGroups().forEach((group) => {
+            const anchorX = Math.min(...group.map((node) => node.x));
+            const centerY = Math.round(
+                group.reduce((total, node) => total + node.y, 0) / group.length,
+            );
+            const startY = centerY - ((group.length - 1) * verticalGap) / 2;
+
+            group.forEach((node, index) => {
+                node.x = anchorX;
+                node.y = Math.round(startY + (index * verticalGap));
+            });
+        });
+    }
+
     layoutNeedsNormalization() {
         const nodes = [...this.nodes];
         const sameLaneThreshold = 110;
         const minimumGap = 56;
+
+        if (this.parallelStageGroupsNeedNormalization()) {
+            return true;
+        }
 
         for (let i = 0; i < nodes.length; i++) {
             for (let j = i + 1; j < nodes.length; j++) {
@@ -766,7 +826,9 @@ class WorkflowBuilder {
                 });
             });
 
+        this.normalizeParallelStageGroups();
         this.resolveNodeCollisions();
+        this.normalizeParallelStageGroups();
         this.updateWorkspaceBounds();
 
         if (!silent) {
@@ -2899,21 +2961,21 @@ class WorkflowBuilder {
     }
 
     startDragNode(e, node) {
+        if (e.button !== 0) return;
+
+        e.preventDefault();
         this.isDraggingNode = true;
         this.draggingNodeId = node.id;
         this.bringNodeToFront(node.id);
         this.render();
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const nodeStartX = node.x;
-        const nodeStartY = node.y;
+        const [startCanvasX, startCanvasY] = this.clientToCanvas(e.clientX, e.clientY);
+        const dragOffsetX = startCanvasX - node.x;
+        const dragOffsetY = startCanvasY - node.y;
 
         const onMouseMove = (e) => {
-            // Divide by zoom so node movement matches cursor speed
-            const dx = (e.clientX - startX) / this.zoom;
-            const dy = (e.clientY - startY) / this.zoom;
-            node.x = nodeStartX + dx;
-            node.y = nodeStartY + dy;
+            const [canvasX, canvasY] = this.clientToCanvas(e.clientX, e.clientY);
+            node.x = canvasX - dragOffsetX;
+            node.y = canvasY - dragOffsetY;
             this.render();
         };
 

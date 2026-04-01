@@ -5,6 +5,7 @@ Database-driven form definitions with approval workflows and external data integ
 """
 
 import logging
+import secrets
 import uuid
 
 from django.conf import settings
@@ -1185,6 +1186,149 @@ class PendingNotification(models.Model):
             f"{self.get_notification_type_display()} → {self.recipient_email} "
             f"(due {self.scheduled_for:%Y-%m-%d %H:%M})"
         )
+
+
+class WebhookEndpoint(models.Model):
+    """First-class outbound webhook subscriptions for workflow lifecycle events."""
+
+    EVENT_TYPES = [
+        ("submission.created", "Submission Created"),
+        ("submission.approved", "Submission Approved"),
+        ("submission.rejected", "Submission Rejected"),
+        ("submission.returned", "Submission Returned"),
+        ("task.created", "Approval Task Created"),
+    ]
+
+    workflow = models.ForeignKey(
+        WorkflowDefinition,
+        on_delete=models.CASCADE,
+        related_name="webhook_endpoints",
+    )
+    name = models.CharField(max_length=200)
+    url = models.URLField(max_length=500)
+    secret = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "HMAC signing secret. Leave blank to auto-generate a secure secret on save."
+        ),
+    )
+    events = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of subscribed event names, e.g. ['submission.created']",
+    )
+    custom_headers = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='Optional static headers as JSON, e.g. {"Authorization": "Bearer ..."}',
+    )
+    is_active = models.BooleanField(default=True)
+    timeout_seconds = models.PositiveIntegerField(default=15)
+    retry_on_failure = models.BooleanField(default=True)
+    max_retries = models.PositiveIntegerField(default=3)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["workflow", "name"]
+        verbose_name = "Webhook Endpoint"
+        verbose_name_plural = "Webhook Endpoints"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if not isinstance(self.events, list | tuple):
+            raise ValidationError({"events": "Events must be stored as a list."})
+
+        valid_events = {value for value, _label in self.EVENT_TYPES}
+        invalid_events = sorted(set(self.events) - valid_events)
+        if invalid_events:
+            raise ValidationError(
+                {"events": f"Unsupported webhook events: {', '.join(invalid_events)}"}
+            )
+        if self.is_active and not self.events:
+            raise ValidationError(
+                {"events": "Select at least one event for an active webhook endpoint."}
+            )
+        if self.custom_headers is not None and not isinstance(
+            self.custom_headers, dict
+        ):
+            raise ValidationError(
+                {"custom_headers": "Custom headers must be a JSON object/dict."}
+            )
+
+    def save(self, *args, **kwargs):
+        if not self.secret:
+            self.secret = secrets.token_hex(32)
+        super().save(*args, **kwargs)
+
+    def subscribes_to(self, event: str) -> bool:
+        return self.is_active and event in (self.events or [])
+
+    def __str__(self):
+        workflow_label = self.workflow.name_label or self.workflow.form_definition.name
+        return f"{self.name} → {workflow_label}"
+
+
+class WebhookDeliveryLog(models.Model):
+    """Audit trail for outbound webhook delivery attempts."""
+
+    endpoint = models.ForeignKey(
+        "WebhookEndpoint",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="delivery_logs",
+    )
+    workflow = models.ForeignKey(
+        WorkflowDefinition,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="webhook_delivery_logs",
+    )
+    submission = models.ForeignKey(
+        "FormSubmission",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="webhook_delivery_logs",
+    )
+    approval_task = models.ForeignKey(
+        "ApprovalTask",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="webhook_delivery_logs",
+    )
+    event = models.CharField(
+        max_length=50, choices=WebhookEndpoint.EVENT_TYPES, db_index=True
+    )
+    endpoint_name = models.CharField(max_length=200, blank=True, default="")
+    delivery_url = models.URLField(max_length=500)
+    attempt_number = models.PositiveIntegerField(default=1)
+    success = models.BooleanField(default=False, db_index=True)
+    status_code = models.PositiveIntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True, default="")
+    request_headers = models.JSONField(blank=True, null=True)
+    payload = models.JSONField(blank=True, null=True)
+    response_body = models.TextField(blank=True, default="")
+    delivered_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-delivered_at"]
+        verbose_name = "Webhook Delivery Log"
+        verbose_name_plural = "Webhook Delivery Logs"
+        indexes = [
+            models.Index(fields=["event", "success"]),
+            models.Index(fields=["submission", "event"]),
+        ]
+
+    def __str__(self):
+        status = "✓" if self.success else "✗"
+        return f"{status} {self.event} → {self.delivery_url}"
 
 
 class PostSubmissionAction(models.Model):

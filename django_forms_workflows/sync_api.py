@@ -40,6 +40,7 @@ from .models import (
     PrefillSource,
     StageApprovalGroup,
     SubWorkflowDefinition,
+    WebhookEndpoint,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -284,6 +285,21 @@ def _serialize_sub_workflow_config(swc):
     }
 
 
+def _serialize_webhook_endpoint(endpoint):
+    return {
+        "name": endpoint.name,
+        "url": endpoint.url,
+        "secret": endpoint.secret,
+        "events": endpoint.events,
+        "custom_headers": endpoint.custom_headers,
+        "is_active": endpoint.is_active,
+        "timeout_seconds": endpoint.timeout_seconds,
+        "retry_on_failure": endpoint.retry_on_failure,
+        "max_retries": endpoint.max_retries,
+        "description": endpoint.description,
+    }
+
+
 def _serialize_workflow(wf):
     if wf is None:
         return None
@@ -325,6 +341,10 @@ def _serialize_workflow(wf):
                 "notify_groups": [g.name for g in r.notify_groups.all()],
             }
             for r in wf.notification_rules.filter(stage__isnull=True)
+        ],
+        "webhook_endpoints": [
+            _serialize_webhook_endpoint(endpoint)
+            for endpoint in wf.webhook_endpoints.all().order_by("name")
         ],
         # Stages and sub-workflows
         "stages": [
@@ -463,6 +483,7 @@ def build_export_payload(queryset):
         "workflows__stages__stageapprovalgroup_set__group",
         "workflows__notification_rules",
         "workflows__notification_rules__notify_groups",
+        "workflows__webhook_endpoints",
         "workflows__stages__notification_rules",
         "workflows__stages__notification_rules__notify_groups",
         "workflows__sub_workflow_config",
@@ -647,6 +668,7 @@ def import_form(form_data, conflict="update", category_cache=None):
 
         # Pop notification rules before creating the workflow object
         wf_notif_data = wf_data.pop("notification_rules", [])
+        wf_webhook_data = wf_data.pop("webhook_endpoints", [])
 
         # Silently discard legacy keys that may appear in old exports
         for legacy_key in (
@@ -680,6 +702,10 @@ def import_form(form_data, conflict="update", category_cache=None):
             rule = NotificationRule.objects.create(workflow=wf, stage=None, **notif)
             for gname in group_names:
                 rule.notify_groups.add(_get_or_create_group(gname))
+
+        wf.webhook_endpoints.all().delete()
+        for endpoint_data in wf_webhook_data:
+            WebhookEndpoint.objects.create(workflow=wf, **endpoint_data)
 
         # Update stages in-place (matched by order + name) so that existing
         # ApprovalTask records — which hold a PROTECT FK to WorkflowStage —

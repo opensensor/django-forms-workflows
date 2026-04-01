@@ -10,6 +10,9 @@ Celery-friendly email tasks for Django Forms Workflows.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 from calendar import monthrange
 from collections import defaultdict
@@ -17,6 +20,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta
 from datetime import time as dt_time
 
+import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -30,6 +34,9 @@ from .models import (
     NotificationLog,
     NotificationRule,
     PendingNotification,
+    WebhookDeliveryLog,
+    WebhookEndpoint,
+    WorkflowStage,
 )
 
 logger = logging.getLogger(__name__)
@@ -163,6 +170,304 @@ def _write_notification_log(
         )
     except Exception:  # pragma: no cover
         logger.exception("Failed to write NotificationLog (ignored)")
+
+
+def _serialize_webhook_user(user) -> dict | None:
+    if not user:
+        return None
+    return {
+        "id": user.id,
+        "username": user.get_username(),
+        "email": getattr(user, "email", ""),
+        "full_name": getattr(user, "get_full_name", lambda: "")(),
+    }
+
+
+def _serialize_webhook_stage(stage: WorkflowStage | None) -> dict | None:
+    if not stage:
+        return None
+    return {
+        "id": stage.id,
+        "name": stage.name,
+        "order": stage.order,
+    }
+
+
+def _build_webhook_payload(
+    submission: FormSubmission,
+    event: str,
+    *,
+    workflow=None,
+    approval_task: ApprovalTask | None = None,
+    target_stage: WorkflowStage | None = None,
+) -> dict:
+    workflow_obj = workflow
+    if workflow_obj is None and approval_task and approval_task.workflow_stage_id:
+        workflow_obj = approval_task.workflow_stage.workflow
+    if workflow_obj is None and target_stage is not None:
+        workflow_obj = target_stage.workflow
+
+    payload = {
+        "event": event,
+        "timestamp": timezone.now().isoformat(),
+        "submission": {
+            "id": submission.id,
+            "status": submission.status,
+            "created_at": submission.created_at.isoformat()
+            if submission.created_at
+            else None,
+            "submitted_at": submission.submitted_at.isoformat()
+            if submission.submitted_at
+            else None,
+            "completed_at": submission.completed_at.isoformat()
+            if submission.completed_at
+            else None,
+        },
+        "form": {
+            "id": submission.form_definition_id,
+            "name": submission.form_definition.name,
+            "slug": submission.form_definition.slug,
+        },
+        "submitter": _serialize_webhook_user(submission.submitter),
+        "workflow": None,
+        "task": None,
+        "target_stage": _serialize_webhook_stage(target_stage),
+    }
+
+    if workflow_obj is not None:
+        payload["workflow"] = {
+            "id": workflow_obj.id,
+            "name_label": workflow_obj.name_label,
+            "requires_approval": workflow_obj.requires_approval,
+        }
+
+    if approval_task is not None:
+        payload["task"] = {
+            "id": approval_task.id,
+            "status": approval_task.status,
+            "stage_number": approval_task.stage_number,
+            "step_name": approval_task.step_name,
+            "assigned_to": _serialize_webhook_user(approval_task.assigned_to),
+            "assigned_group": (
+                {
+                    "id": approval_task.assigned_group.id,
+                    "name": approval_task.assigned_group.name,
+                }
+                if approval_task.assigned_group_id
+                else None
+            ),
+            "workflow_stage": _serialize_webhook_stage(approval_task.workflow_stage),
+            "approved_by": _serialize_webhook_user(approval_task.completed_by),
+        }
+
+    return payload
+
+
+def _sign_webhook_payload(secret: str, payload_text: str) -> str:
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        payload_text.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"sha256={digest}"
+
+
+def _schedule_webhook_retry(
+    *,
+    endpoint_id: int,
+    event: str,
+    payload: dict,
+    submission_id: int | None,
+    task_id: int | None,
+    attempt: int,
+) -> None:
+    countdown = min(300, 2 ** max(0, attempt - 1))
+    kwargs = {
+        "endpoint_id": endpoint_id,
+        "event": event,
+        "payload": payload,
+        "submission_id": submission_id,
+        "task_id": task_id,
+        "attempt": attempt,
+    }
+    if hasattr(deliver_workflow_webhook, "apply_async"):
+        deliver_workflow_webhook.apply_async(kwargs=kwargs, countdown=countdown)
+    else:  # pragma: no cover
+        logger.warning(
+            "Celery apply_async unavailable; retrying webhook %s synchronously",
+            endpoint_id,
+        )
+        deliver_workflow_webhook(**kwargs)
+
+
+@shared_task(name="django_forms_workflows.dispatch_workflow_webhooks")
+def dispatch_workflow_webhooks(
+    submission_id: int,
+    event: str,
+    task_id: int | None = None,
+    workflow_id: int | None = None,
+    target_stage_id: int | None = None,
+) -> None:
+    submission = FormSubmission.objects.select_related(
+        "form_definition", "submitter"
+    ).get(id=submission_id)
+    approval_task = None
+    if task_id is not None:
+        approval_task = ApprovalTask.objects.select_related(
+            "assigned_to",
+            "assigned_group",
+            "completed_by",
+            "workflow_stage__workflow",
+        ).get(id=task_id)
+    target_stage = None
+    if target_stage_id is not None:
+        target_stage = WorkflowStage.objects.select_related("workflow").get(
+            id=target_stage_id
+        )
+
+    if workflow_id is not None:
+        workflow_ids = [workflow_id]
+    elif approval_task is not None and approval_task.workflow_stage_id:
+        workflow_ids = [approval_task.workflow_stage.workflow_id]
+    elif target_stage is not None:
+        workflow_ids = [target_stage.workflow_id]
+    else:
+        workflow_ids = list(
+            submission.form_definition.workflows.values_list("id", flat=True)
+        )
+
+    if not workflow_ids:
+        return
+
+    endpoints = WebhookEndpoint.objects.select_related(
+        "workflow", "workflow__form_definition"
+    ).filter(workflow_id__in=workflow_ids, is_active=True)
+    for endpoint in endpoints:
+        if not endpoint.subscribes_to(event):
+            continue
+        payload = _build_webhook_payload(
+            submission,
+            event,
+            workflow=endpoint.workflow,
+            approval_task=approval_task,
+            target_stage=target_stage,
+        )
+        try:
+            deliver_workflow_webhook.delay(
+                endpoint.id,
+                event,
+                payload,
+                submission.id,
+                approval_task.id if approval_task else None,
+                1,
+            )
+        except Exception:  # pragma: no cover
+            logger.warning(
+                "Webhook delivery fell back to synchronous execution for endpoint %s",
+                endpoint.id,
+            )
+            deliver_workflow_webhook(
+                endpoint.id,
+                event,
+                payload,
+                submission.id,
+                approval_task.id if approval_task else None,
+                1,
+            )
+
+
+@shared_task(name="django_forms_workflows.deliver_workflow_webhook")
+def deliver_workflow_webhook(
+    endpoint_id: int,
+    event: str,
+    payload: dict,
+    submission_id: int | None = None,
+    task_id: int | None = None,
+    attempt: int = 1,
+) -> None:
+    try:
+        endpoint = WebhookEndpoint.objects.select_related("workflow").get(
+            id=endpoint_id
+        )
+    except WebhookEndpoint.DoesNotExist:
+        logger.warning(
+            "Webhook endpoint %s no longer exists; skipping delivery", endpoint_id
+        )
+        return
+
+    if not endpoint.subscribes_to(event):
+        return
+
+    request_headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "django-forms-workflows/webhooks",
+        "X-Forms-Workflows-Event": event,
+    }
+    if endpoint.custom_headers:
+        request_headers.update(
+            {str(k): str(v) for k, v in endpoint.custom_headers.items()}
+        )
+
+    payload_text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    request_headers["X-Forms-Workflows-Signature"] = _sign_webhook_payload(
+        endpoint.secret,
+        payload_text,
+    )
+
+    log_data = {
+        "endpoint": endpoint,
+        "workflow": endpoint.workflow,
+        "submission_id": submission_id,
+        "approval_task_id": task_id,
+        "event": event,
+        "endpoint_name": endpoint.name,
+        "delivery_url": endpoint.url,
+        "attempt_number": attempt,
+        "request_headers": request_headers,
+        "payload": payload,
+    }
+    max_attempts = 1 + max(0, endpoint.max_retries)
+
+    try:
+        response = requests.request(
+            "POST",
+            endpoint.url,
+            data=payload_text,
+            headers=request_headers,
+            timeout=endpoint.timeout_seconds,
+        )
+        success = 200 <= response.status_code < 300
+        WebhookDeliveryLog.objects.create(
+            success=success,
+            status_code=response.status_code,
+            response_body=(response.text or "")[:5000],
+            error_message="" if success else f"HTTP {response.status_code}",
+            **log_data,
+        )
+        if not success and endpoint.retry_on_failure and attempt < max_attempts:
+            _schedule_webhook_retry(
+                endpoint_id=endpoint.id,
+                event=event,
+                payload=payload,
+                submission_id=submission_id,
+                task_id=task_id,
+                attempt=attempt + 1,
+            )
+    except Exception as exc:  # pragma: no cover
+        WebhookDeliveryLog.objects.create(
+            success=False,
+            error_message=str(exc),
+            **log_data,
+        )
+        if endpoint.retry_on_failure and attempt < max_attempts:
+            _schedule_webhook_retry(
+                endpoint_id=endpoint.id,
+                event=event,
+                payload=payload,
+                submission_id=submission_id,
+                task_id=task_id,
+                attempt=attempt + 1,
+            )
 
 
 # ---------------------------------------------------------------------------

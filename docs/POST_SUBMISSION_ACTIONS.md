@@ -9,6 +9,8 @@ Post-Submission Actions allow you to automatically update external systems with 
 3. **Approve** - Optional approval workflow
 4. **Post-Submit** - **Update external sources with the new data**
 
+> Need a reusable, signed callback for workflow lifecycle events like `task.created` or `submission.returned`? Use [Workflow Webhooks](WEBHOOKS.md) instead. Post-submission API actions are better for one-off integration calls tied to `on_submit`, `on_approve`, `on_reject`, or `on_complete`.
+
 ## Supported Action Types
 
 ### 1. Database Updates
@@ -34,7 +36,7 @@ Make HTTP API calls to external services with form data.
 
 **Use Cases:**
 - Send data to third-party services
-- Trigger webhooks
+- Call downstream APIs after a configured post-submission trigger
 - Update cloud applications
 - Send notifications to external systems
 

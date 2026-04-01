@@ -26,6 +26,7 @@ This document describes what has been delivered, what is actively being worked o
 | v0.45 | **Form versioning** — ChangeHistory tracking, sync API snapshots, admin diff viewer |
 | v0.46 | **Advanced reporting dashboard** — submission analytics, approval turnaround, bottleneck stages |
 | v0.48 | **Settings-based callback handler registry** (`FORMS_WORKFLOWS_CALLBACKS`) — register custom handlers by name |
+| v0.49 | **First-class workflow webhooks** — signed async delivery, retry/backoff, admin config, delivery logs, cloning, and sync support |
 | all | LDAP/AD integration with profile sync, SSO attribute mapping |
 | all | Configurable prefill sources (user, LDAP, database, API, system values) |
 | all | Post-submission actions (email, database, LDAP, API, custom) with retries |
@@ -57,23 +58,7 @@ This document describes what has been delivered, what is actively being worked o
 
 ---
 
-### 2. Webhook Delivery on Workflow Events
-
-**Why:** Downstream systems (Slack, Jira, ERP) need real-time notifications when a submission is created, approved, or rejected without polling.
-
-**Scope:**
-- `WebhookEndpoint` model — `url`, `secret`, `events` (multi-select), `is_active`
-- Supported events: `submission.created`, `submission.approved`, `submission.rejected`, `submission.returned`, `task.created`
-- Payload: JSON body with submission ID, form slug, submitter, status, timestamp
-- HMAC-SHA256 signature header (`X-Forms-Workflows-Signature`) for receiver verification
-- Celery task for async delivery with exponential back-off retry (reuses existing retry logic from `PostSubmissionActionExecutor`)
-- Delivery log stored in an `WebhookDeliveryLog` model (similar to `ActionExecutionLog`)
-
-**Complexity:** Medium. The Celery and retry infrastructure already exists; new model + signal wiring is the main work.
-
----
-
-### 3. Submission Dashboard & Analytics
+### 2. Submission Dashboard & Analytics
 
 **Why:** Administrators and form owners need visibility into form throughput, approval bottlenecks, and SLA compliance — currently only raw Django Admin lists are available.
 

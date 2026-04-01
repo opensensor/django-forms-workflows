@@ -11,6 +11,7 @@ from django_forms_workflows.models import (
     FormField,
     PostSubmissionAction,
     PrefillSource,
+    WebhookEndpoint,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -61,6 +62,13 @@ def export_form(db):
         workflow=wf, name="Review", order=1, approval_logic="all"
     )
     stage.approval_groups.add(g)
+    WebhookEndpoint.objects.create(
+        workflow=wf,
+        name="ERP Callback",
+        url="https://example.com/hooks/workflows",
+        events=["submission.created", "submission.approved"],
+        custom_headers={"Authorization": "Bearer sync-token"},
+    )
     PostSubmissionAction.objects.create(
         form_definition=fd,
         name="Notify Admin",
@@ -102,6 +110,15 @@ class TestExportPayload:
         assert len(stages) == 1
         assert stages[0]["name"] == "Review"
 
+    def test_webhooks_included(self, export_form):
+        qs = FormDefinition.objects.filter(pk=export_form.pk)
+        payload = build_export_payload(qs)
+        form_data = payload["forms"][0]
+        webhooks = form_data["workflow"].get("webhook_endpoints", [])
+        assert len(webhooks) == 1
+        assert webhooks[0]["name"] == "ERP Callback"
+        assert webhooks[0]["events"] == ["submission.created", "submission.approved"]
+
     def test_post_actions_included(self, export_form):
         qs = FormDefinition.objects.filter(pk=export_form.pk)
         payload = build_export_payload(qs)
@@ -138,6 +155,7 @@ class TestImportPayload:
         assert action == "created"
         assert FormDefinition.objects.filter(slug="sync-form").count() == 1
         assert fd.fields.count() == 2
+        assert fd.workflows.first().webhook_endpoints.count() == 1
 
     def test_import_skip_existing(self, export_form):
         qs = FormDefinition.objects.filter(pk=export_form.pk)
@@ -158,3 +176,6 @@ class TestImportPayload:
         assert action == "updated"
         export_form.refresh_from_db()
         assert export_form.description == "Updated description"
+        webhook = export_form.workflows.first().webhook_endpoints.first()
+        assert webhook is not None
+        assert webhook.url == "https://example.com/hooks/workflows"

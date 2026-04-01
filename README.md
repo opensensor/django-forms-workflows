@@ -54,8 +54,9 @@ Flexible approval engine built on `WorkflowStage` records:
 - Optional per-stage reassignment, editable submission data during approval, custom approve button labels, hidden approval history, and bulk export / bulk PDF export controls
 - Rejection handling with per-stage or global rejection semantics
 - Complete audit trail on every approval, rejection, send-back, and status change
+- First-class outbound webhooks per workflow with signed async delivery, retry/backoff, and delivery logs
 
-See the [Workflow Guide](docs/WORKFLOWS.md), [Visual Workflow Builder](docs/VISUAL_WORKFLOW_BUILDER.md), [Dynamic Assignees](docs/DYNAMIC_ASSIGNEES.md), [Send Back for Correction](docs/SEND_BACK.md), and [Notifications](docs/NOTIFICATIONS.md).
+See the [Workflow Guide](docs/WORKFLOWS.md), [Visual Workflow Builder](docs/VISUAL_WORKFLOW_BUILDER.md), [Dynamic Assignees](docs/DYNAMIC_ASSIGNEES.md), [Send Back for Correction](docs/SEND_BACK.md), [Notifications](docs/NOTIFICATIONS.md), and [Workflow Webhooks](docs/WEBHOOKS.md).
 
 ### 🔀 Sub-Workflows
 Spawn child workflow instances from a parent submission:
@@ -364,9 +365,10 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 - [x] Form versioning — ChangeHistory tracking, sync API snapshots, admin diff viewer action — v0.45.0
 - [x] Advanced reporting dashboard (submission analytics, approval times, bottleneck stages) — v0.46.0
 - [x] Settings-based callback handler registry (`FORMS_WORKFLOWS_CALLBACKS`) — register custom handlers by name instead of hardcoding Python paths in the database — v0.48.0
+- [x] First-class workflow webhooks with HMAC signing, async retry/backoff, admin configuration, delivery logs, cloning, and sync support
 
 ### 🚧 Near-term (next 1–3 releases)
-- [ ] Webhook delivery on workflow events (submit / approve / reject)
+- [ ] Submission dashboard & analytics
 
 ### 📋 Planned (medium-term)
 - [ ] Plugin / custom handler marketplace

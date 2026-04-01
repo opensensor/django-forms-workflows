@@ -17,6 +17,7 @@ from django_forms_workflows.models import (
 )
 from django_forms_workflows.workflow_engine import (
     _dispatch_notification_rules,
+    _dispatch_workflow_webhooks,
     create_workflow_tasks,
     handle_approval,
     handle_rejection,
@@ -81,6 +82,112 @@ class TestNotificationDispatch:
 
         mock_on_commit.assert_called()
         mock_delay.assert_any_call(submission.id, "submission_received", None)
+
+
+class TestWebhookDispatch:
+    @patch(
+        "django_forms_workflows.workflow_engine.transaction.on_commit",
+        side_effect=lambda fn: fn(),
+    )
+    @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks.delay")
+    def test_webhooks_dispatch_on_commit(self, mock_delay, mock_on_commit, submission):
+        _dispatch_workflow_webhooks(submission, "submission.created")
+
+        mock_on_commit.assert_called()
+        mock_delay.assert_called_once_with(
+            submission.id,
+            "submission.created",
+            None,
+            None,
+            None,
+        )
+
+    @patch(
+        "django_forms_workflows.workflow_engine.transaction.on_commit",
+        side_effect=lambda fn: fn(),
+    )
+    @patch("django_forms_workflows.tasks.send_approval_request.delay")
+    @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks.delay")
+    def test_task_request_dispatches_task_created(
+        self,
+        mock_webhook_delay,
+        mock_email_delay,
+        mock_on_commit,
+        workflow,
+        user,
+        approval_group,
+    ):
+        from django_forms_workflows.workflow_engine import _notify_task_request
+
+        submission = _make_submission(workflow.form_definition, user)
+        stage = workflow.stages.first()
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            workflow_stage=stage,
+            stage_number=1,
+            step_name="Stage 1",
+            status="pending",
+        )
+
+        _notify_task_request(task)
+
+        mock_on_commit.assert_called()
+        mock_webhook_delay.assert_called_once_with(
+            submission.id,
+            "task.created",
+            task.id,
+            workflow.id,
+            None,
+        )
+        mock_email_delay.assert_called_once_with(task.id)
+
+    @patch(
+        "django_forms_workflows.workflow_engine.transaction.on_commit",
+        side_effect=lambda fn: fn(),
+    )
+    @patch("django_forms_workflows.tasks.send_notification_rules")
+    @patch("django_forms_workflows.tasks.send_approval_request")
+    @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks")
+    def test_task_request_email_falls_back_to_sync_when_delay_fails(
+        self,
+        mock_webhook_task,
+        mock_email_task,
+        mock_notification_task,
+        mock_on_commit,
+        workflow,
+        user,
+        approval_group,
+    ):
+        from django_forms_workflows.workflow_engine import _notify_task_request
+
+        submission = _make_submission(workflow.form_definition, user)
+        stage = workflow.stages.first()
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            workflow_stage=stage,
+            stage_number=1,
+            step_name="Stage 1",
+            status="pending",
+        )
+        mock_email_task.delay.side_effect = RuntimeError("broker unavailable")
+
+        _notify_task_request(task)
+
+        mock_on_commit.assert_called()
+        mock_notification_task.delay.assert_called_once_with(
+            submission.id, "approval_request", task.id
+        )
+        mock_webhook_task.delay.assert_called_once_with(
+            submission.id,
+            "task.created",
+            task.id,
+            workflow.id,
+            None,
+        )
+        mock_email_task.delay.assert_called_once_with(task.id)
+        mock_email_task.assert_called_once_with(task.id)
 
 
 # ── Legacy flat mode (all) ────────────────────────────────────────────────
@@ -354,10 +461,17 @@ class TestEdgeCases:
 
 
 class TestSendBack:
+    @patch("django_forms_workflows.workflow_engine._dispatch_workflow_webhooks")
     @patch("django_forms_workflows.workflow_engine._notify_task_request")
     @patch("django_forms_workflows.workflow_engine._notify_submission_created")
     def test_send_back_creates_new_tasks(
-        self, mock_created, mock_task_req, staged_workflow, user, approval_group
+        self,
+        mock_created,
+        mock_task_req,
+        mock_dispatch_webhooks,
+        staged_workflow,
+        user,
+        approval_group,
     ):
         from django_forms_workflows.models import ApprovalTask
         from django_forms_workflows.workflow_engine import handle_send_back
@@ -395,6 +509,13 @@ class TestSendBack:
             submission=sub, workflow_stage=stage1, status="pending"
         )
         assert new_tasks.count() >= 1
+        mock_dispatch_webhooks.assert_called_once_with(
+            sub,
+            "submission.returned",
+            task_id=t2.id,
+            workflow_id=staged_workflow.id,
+            target_stage_id=stage1.id,
+        )
 
 
 class TestTwoStageFullCycle:

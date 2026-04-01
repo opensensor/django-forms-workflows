@@ -83,8 +83,53 @@ def _dispatch_notification_rules(
         )
 
 
+def _dispatch_workflow_webhooks(
+    submission: FormSubmission,
+    event: str,
+    *,
+    task_id: int | None = None,
+    workflow_id: int | None = None,
+    target_stage_id: int | None = None,
+) -> None:
+    """Dispatch first-class webhook deliveries for a workflow lifecycle event."""
+    try:
+        from .tasks import dispatch_workflow_webhooks
+
+        def _fire_webhooks() -> None:
+            try:
+                dispatch_workflow_webhooks.delay(
+                    submission.id,
+                    event,
+                    task_id,
+                    workflow_id,
+                    target_stage_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Webhook '%s' fell back to synchronous dispatch for submission %s",
+                    event,
+                    submission.id,
+                )
+                dispatch_workflow_webhooks(
+                    submission.id,
+                    event,
+                    task_id,
+                    workflow_id,
+                    target_stage_id,
+                )
+
+        transaction.on_commit(_fire_webhooks)
+    except Exception:
+        logger.warning(
+            "Could not dispatch webhook '%s' for submission %s",
+            event,
+            submission.id,
+        )
+
+
 def _notify_submission_created(submission: FormSubmission) -> None:
     _dispatch_notification_rules(submission, "submission_received")
+    _dispatch_workflow_webhooks(submission, "submission.created")
 
 
 def _notify_task_request(task: ApprovalTask) -> None:
@@ -94,21 +139,42 @@ def _notify_task_request(task: ApprovalTask) -> None:
     and the built-in send_approval_request email to the assigned approver.
     """
     _dispatch_notification_rules(task.submission, "approval_request", task_id=task.id)
+    _dispatch_workflow_webhooks(
+        task.submission,
+        "task.created",
+        task_id=task.id,
+        workflow_id=task.workflow_stage.workflow_id if task.workflow_stage_id else None,
+    )
     # Built-in approval request email to assigned user/group
     try:
         from .tasks import send_approval_request
 
-        send_approval_request.delay(task.id)
+        def _fire_email() -> None:
+            try:
+                send_approval_request.delay(task.id)
+            except Exception:
+                logger.warning(
+                    "Approval request email fell back to synchronous send for task %s",
+                    task.id,
+                )
+                send_approval_request(task.id)
+
+        transaction.on_commit(_fire_email)
     except Exception:
-        logger.warning("Notification tasks not available for approval_request")
+        logger.warning(
+            "Could not dispatch built-in approval request email for task %s",
+            task.id,
+        )
 
 
 def _notify_final_approval(submission: FormSubmission) -> None:
     _dispatch_notification_rules(submission, "workflow_approved")
+    _dispatch_workflow_webhooks(submission, "submission.approved")
 
 
 def _notify_rejection(submission: FormSubmission) -> None:
     _dispatch_notification_rules(submission, "workflow_denied")
+    _dispatch_workflow_webhooks(submission, "submission.rejected")
 
 
 def _due_date_for(workflow: WorkflowDefinition):
@@ -1036,6 +1102,13 @@ def handle_send_back(
         target_stage.name,
         task.id,
     )
+    _dispatch_workflow_webhooks(
+        submission,
+        "submission.returned",
+        task_id=task.id,
+        workflow_id=workflow.id,
+        target_stage_id=target_stage.id,
+    )
 
 
 # --- Post-submission actions ------------------------------------------------
@@ -1498,6 +1571,7 @@ def handle_sub_workflow_send_back(
 
     # 2. Create new tasks at the target stage within the sub-workflow.
     sub_wf = instance.definition.sub_workflow
+    submission = instance.parent_submission
     due_date = _due_date_for(sub_wf)
     _create_sub_workflow_stage_tasks(instance, target_stage, due_date)
 
@@ -1507,4 +1581,11 @@ def handle_sub_workflow_send_back(
         current_stage.name,
         target_stage.name,
         task.id,
+    )
+    _dispatch_workflow_webhooks(
+        submission,
+        "submission.returned",
+        task_id=task.id,
+        workflow_id=sub_wf.id,
+        target_stage_id=target_stage.id,
     )

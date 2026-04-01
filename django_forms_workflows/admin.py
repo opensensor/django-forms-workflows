@@ -9,6 +9,7 @@ import json
 import logging
 
 import nested_admin
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import GroupAdmin
 from django.contrib.auth.models import Group
@@ -41,6 +42,8 @@ from .models import (
     SubWorkflowDefinition,
     SubWorkflowInstance,
     UserProfile,
+    WebhookDeliveryLog,
+    WebhookEndpoint,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -91,6 +94,38 @@ class ChangeHistoryInline(nested_admin.NestedGenericTabularInline):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+class WebhookEndpointAdminForm(forms.ModelForm):
+    events = forms.MultipleChoiceField(
+        choices=WebhookEndpoint.EVENT_TYPES,
+        widget=forms.CheckboxSelectMultiple,
+        required=False,
+        help_text="Select which workflow lifecycle events should trigger this webhook.",
+    )
+
+    class Meta:
+        model = WebhookEndpoint
+        fields = (
+            "workflow",
+            "name",
+            "url",
+            "events",
+            "custom_headers",
+            "is_active",
+            "timeout_seconds",
+            "retry_on_failure",
+            "max_retries",
+            "secret",
+            "description",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["events"].initial = list(self.instance.events or [])
+
+    def clean_events(self):
+        return list(self.cleaned_data.get("events") or [])
 
 
 # Inline for form fields when editing a form definition
@@ -504,13 +539,35 @@ class NotificationRuleInline(nested_admin.NestedStackedInline):
     )
 
 
+class WebhookEndpointInline(nested_admin.NestedStackedInline):
+    model = WebhookEndpoint
+    form = WebhookEndpointAdminForm
+    extra = 0
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    ("name", "is_active"),
+                    "url",
+                    "events",
+                    ("timeout_seconds", "retry_on_failure", "max_retries"),
+                    "custom_headers",
+                    "secret",
+                    "description",
+                )
+            },
+        ),
+    )
+
+
 class WorkflowDefinitionInline(nested_admin.NestedStackedInline):
     """Inline for editing a WorkflowDefinition directly from the FormDefinition
     change page."""
 
     model = WorkflowDefinition
     extra = 0
-    inlines = [WorkflowStageInline, NotificationRuleInline]
+    inlines = [WorkflowStageInline, NotificationRuleInline, WebhookEndpointInline]
     fields = [
         "name_label",
         "requires_approval",
@@ -833,6 +890,20 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                             allow_bulk_export=wf.allow_bulk_export,
                             allow_bulk_pdf_export=wf.allow_bulk_pdf_export,
                         )
+                        for endpoint in wf.webhook_endpoints.all():
+                            WebhookEndpoint.objects.create(
+                                workflow=cloned_wf,
+                                name=endpoint.name,
+                                url=endpoint.url,
+                                secret=endpoint.secret,
+                                events=list(endpoint.events or []),
+                                custom_headers=endpoint.custom_headers,
+                                is_active=endpoint.is_active,
+                                timeout_seconds=endpoint.timeout_seconds,
+                                retry_on_failure=endpoint.retry_on_failure,
+                                max_retries=endpoint.max_retries,
+                                description=endpoint.description,
+                            )
                         for stage in original_stages:
                             cloned_stage = WorkflowStage.objects.create(
                                 workflow=cloned_wf,
@@ -1481,6 +1552,7 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
     inlines = [
         WorkflowStageInline,
         NotificationRuleInline,
+        WebhookEndpointInline,
         ChangeHistoryInline,
     ]
     list_display = (
@@ -1645,6 +1717,100 @@ class NotificationRuleAdmin(admin.ModelAdmin):
     @admin.display(description="Conditions?", boolean=True)
     def has_conditions(self, obj):
         return bool(obj.conditions)
+
+
+@admin.register(WebhookEndpoint)
+class WebhookEndpointAdmin(admin.ModelAdmin):
+    form = WebhookEndpointAdminForm
+    list_display = (
+        "name",
+        "workflow",
+        "url",
+        "is_active",
+        "subscribed_event_count",
+        "updated_at",
+    )
+    list_filter = ("is_active", "workflow__form_definition")
+    search_fields = (
+        "name",
+        "url",
+        "workflow__form_definition__name",
+        "workflow__name_label",
+    )
+    autocomplete_fields = ("workflow",)
+    readonly_fields = ("created_at", "updated_at")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "workflow",
+                    ("name", "is_active"),
+                    "url",
+                    "events",
+                    ("timeout_seconds", "retry_on_failure", "max_retries"),
+                    "custom_headers",
+                    "secret",
+                    "description",
+                )
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "classes": ("collapse",),
+                "fields": ("created_at", "updated_at"),
+            },
+        ),
+    )
+
+    @admin.display(description="Events")
+    def subscribed_event_count(self, obj):
+        return len(obj.events or [])
+
+
+@admin.register(WebhookDeliveryLog)
+class WebhookDeliveryLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "event",
+        "endpoint_name",
+        "workflow",
+        "submission",
+        "success",
+        "status_code",
+        "attempt_number",
+        "delivered_at",
+    )
+    list_filter = ("event", "success", "workflow__form_definition")
+    search_fields = (
+        "endpoint_name",
+        "delivery_url",
+        "error_message",
+        "submission__form_definition__name",
+    )
+    readonly_fields = (
+        "endpoint",
+        "workflow",
+        "submission",
+        "approval_task",
+        "event",
+        "endpoint_name",
+        "delivery_url",
+        "attempt_number",
+        "success",
+        "status_code",
+        "error_message",
+        "request_headers",
+        "payload",
+        "response_body",
+        "delivered_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 def _custom_handler_description():

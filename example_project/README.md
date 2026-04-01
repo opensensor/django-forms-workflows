@@ -1,87 +1,157 @@
-# Django Form Workflows - Example Project
+# Django Form Workflows - Farm Workflows Showcase
 
-This is a minimal Django project demonstrating how to use the `django-forms-workflows` package.
+This example project is a comprehensive farm-themed demo for `django-forms-workflows`.
 
-## Quick Start
+Instead of starting from a blank admin, it can seed a realistic showcase with:
+
+- multi-step forms
+- public/anonymous intake
+- notifications and webhook configuration
+- dynamic assignees, send-back, reassign, and editable approvals
+- sequential + parallel workflow stages
+- sub-workflows
+- prefill sources and post-submission actions
+- API-enabled forms and API token auth
+- batch import and spreadsheet fields
+- analytics-friendly demo submissions
+
+## Quick start
 
 1. **Install dependencies**
+
    ```bash
-   pip install django-forms-workflows
-   # Or with LDAP support:
-   pip install django-forms-workflows[ldap]
+   pip install -e ..
    ```
 
 2. **Run migrations**
+
    ```bash
    python manage.py migrate
    ```
 
-3. **Create a superuser**
+3. **Seed the full demo**
+
    ```bash
-   python manage.py createsuperuser
+   python manage.py seed_farm_demo
    ```
 
 4. **Run the development server**
+
    ```bash
    python manage.py runserver
    ```
 
-5. **Access the application**
-   - Admin: http://localhost:8000/admin
+5. **Open the demo**
+
+   - Home: http://localhost:8000/
    - Forms: http://localhost:8000/forms/
+   - Approval inbox: http://localhost:8000/forms/approvals/
+   - Analytics: http://localhost:8000/forms/analytics/
+   - API docs: http://localhost:8000/api/docs/
+   - Admin: http://localhost:8000/admin/
 
-## What's Included
+## Seeded demo accounts
 
-This example project demonstrates:
+All demo accounts use password `farm123`.
 
-- ✅ Basic Django Form Workflows setup
-- ✅ Form creation through Django Admin
-- ✅ Simple approval workflow
-- ✅ User authentication
-- ✅ Form submission and approval views
+- `farmer_brown` — superuser / admin
+- `farmer_jane` — normal submitter
+- `mechanic_mike` — equipment operator approver
+- `finance_faith` — finance approver
+- `safety_sam` — safety approver
+- `owner_olive` — executive/final approver
+- `irrigation_ivan` — irrigation specialist
+- `integration_ivy` — integration/API token user
 
-## Creating Your First Form
+The seed command also creates a `Farm Demo API Token` and prints it in the command output.
 
-1. Log in to Django Admin at http://localhost:8000/admin
-2. Go to "Form Definitions" and click "Add Form Definition"
-3. Fill in the form details:
-   - **Name**: Contact Request
-   - **Slug**: contact-request
-   - **Description**: A simple contact form
-   - **Is Active**: ✓
+## Demo forms included
 
-4. Add form fields:
-   - Field 1: Name (text, required)
-   - Field 2: Email (email, required)
-   - Field 3: Message (textarea, required)
+### 1. Equipment Repair Request
 
-5. Save the form
+Shows:
 
-6. Visit http://localhost:8000/forms/ to see your form
+- dynamic assignee by email
+- send-back to prior stage
+- reassign + editable approval data
+- approval-step fields
+- multifile uploads
+- notification rules
+- webhook endpoint configuration
 
-## Configuration
+### 2. Capital Purchase Request
 
-See `settings.py` for configuration options:
+Shows:
 
-- `FORMS_WORKFLOWS_LDAP_ATTR_MAP` - LDAP attribute mapping
-- `FORMS_WORKFLOWS_LDAP_SYNC_GROUPS` - Enable/disable group sync
-- `FORMS_WORKFLOWS_LDAP_PROFILE_MODEL` - User profile model
+- multi-step layout
+- conditional fields
+- calculated fields
+- API-enabled form access
+- parallel approvals
+- conditional executive approval stage
+- bulk export / bulk PDF export
+- approval-step fields
+- notification rules + webhook endpoint
 
-## Next Steps
+### 3. Irrigation Expansion Request
 
-- Read the [Configuration Guide](../docs/CONFIGURATION.md)
-- Explore the [Quickstart Guide](../docs/QUICKSTART.md)
-- Check out the [Value Proposition](../docs/VALUE_PROPOSITION.md)
+Shows:
 
-## Project Structure
+- sequential approval logic
+- detached sub-workflows
+- child `Irrigation Zone Checklist` workflow generation
 
-```
-example_project/
-├── manage.py           # Django management script
-├── example/            # Project settings
-│   ├── settings.py     # Django settings
-│   ├── urls.py         # URL configuration
-│   └── wsgi.py         # WSGI configuration
-└── README.md           # This file
-```
+### 4. Safety Incident Report
 
+Shows:
+
+- public/anonymous form submission
+- signature field
+- conditional logic
+- multifile evidence upload
+- PDF generation anytime
+
+### 5. Farmer Contact Update
+
+Shows:
+
+- prefill sources
+- database post-submission action
+- API post-submission action configuration
+
+### 6. Harvest Batch Log
+
+Shows:
+
+- batch import
+- Excel template generation
+
+### 7. Sensor Data Upload
+
+Shows:
+
+- spreadsheet file field
+
+## Recommended tour
+
+1. Visit the home page and open a few showcase forms.
+2. Sign in as `farmer_jane` and submit forms.
+3. Sign in as `finance_faith`, `mechanic_mike`, or `owner_olive` to process approvals.
+4. Explore `/forms/analytics/` to see seeded historical submissions.
+5. Inspect Admin for:
+   - Form Builder
+   - Workflow Builder
+   - Notification Rules
+   - Webhook Endpoints
+   - Webhook Delivery Logs
+   - Post-Submission Actions
+   - API Tokens
+
+## Helpful docs
+
+- [Quickstart](../docs/QUICKSTART.md)
+- [Workflows](../docs/WORKFLOWS.md)
+- [Notifications](../docs/NOTIFICATIONS.md)
+- [Workflow Webhooks](../docs/WEBHOOKS.md)
+- [Post-Submission Actions](../docs/POST_SUBMISSION_ACTIONS.md)
+- [Visual Workflow Builder](../docs/VISUAL_WORKFLOW_BUILDER.md)

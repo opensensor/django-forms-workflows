@@ -96,6 +96,35 @@ class TestConvertWorkflowToVisual:
             for earlier, later in zip(x_positions, x_positions[1:], strict=False)
         )
 
+    def test_parallel_stages_share_a_clean_aligned_column(
+        self, form_definition, approval_group, second_approval_group
+    ):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=True,
+        )
+        first = workflow.stages.create(
+            name="Manager Review", order=1, approval_logic="all"
+        )
+        first.approval_groups.add(approval_group)
+        second = workflow.stages.create(
+            name="Finance Review", order=1, approval_logic="all"
+        )
+        second.approval_groups.add(second_approval_group)
+
+        result = convert_workflow_to_visual(workflow, form_definition)
+
+        stage_nodes = sorted(
+            [node for node in result["nodes"] if node["type"] == "stage"],
+            key=lambda node: node["y"],
+        )
+        join_node = next(node for node in result["nodes"] if node["type"] == "join")
+
+        assert len(stage_nodes) == 2
+        assert stage_nodes[0]["x"] == stage_nodes[1]["x"]
+        assert stage_nodes[1]["y"] - stage_nodes[0]["y"] == 220
+        assert join_node["y"] == 220
+
     def test_backfills_send_back_flag_from_saved_visual_data(
         self, staged_workflow, form_definition
     ):

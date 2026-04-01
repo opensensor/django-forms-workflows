@@ -1,25 +1,152 @@
 {% extends 'django_forms_workflows/base.html' %}
-{% block title %}Farm Landing{% endblock %}
+{% block title %}Farm Workflows Showcase{% endblock %}
 {% block content %}
-<div class="row align-items-center">
-  <div class="col-md-7">
-    <h2 class="mb-3">Welcome to Farm Forms 🚜</h2>
-    <p class="lead">A playful demo app showing approvals, reminders, and escalations — all on a friendly farm.</p>
-    <ul>
-      <li>Equipment Repair Request — any approver can approve; escalates over $1,000</li>
-      <li>Barn Maintenance Request — requires all assigned teams to approve</li>
-      <li>Harvest Report — no approval required</li>
-    </ul>
-    <div class="mt-3 d-flex gap-2">
-      <a href="{% url 'forms_workflows:form_list' %}" class="btn btn-success">Go to Forms</a>
-      {% if not user.is_authenticated %}
-        <a href="{% url 'login' %}" class="btn btn-outline-secondary">Sign in</a>
-      {% endif %}
+<section class="farm-hero rounded-4 p-4 p-lg-5 mb-4">
+  <div class="row align-items-center g-4">
+    <div class="col-lg-8">
+      <span class="badge text-bg-success mb-3">Comprehensive demo site</span>
+      <h1 class="display-6 fw-bold mb-3">Farm Workflows Showcase 🚜</h1>
+      <p class="lead mb-3">
+        This sample site is designed to demonstrate as much of <code>django-forms-workflows</code>
+        as possible in one place: approvals, analytics, notifications, webhooks, public forms,
+        batch import, API access, sub-workflows, prefill sources, and post-submission actions.
+      </p>
+      <div class="d-flex flex-wrap gap-2">
+        <a href="{% url 'forms_workflows:form_list' %}" class="btn btn-success">Browse Demo Forms</a>
+        <a href="{% url 'forms_workflows:approval_inbox' %}" class="btn btn-outline-success">Approval Inbox</a>
+        <a href="{% url 'forms_workflows:analytics_dashboard' %}" class="btn btn-outline-success">Analytics</a>
+        <a href="/api/docs/" class="btn btn-outline-secondary">API Docs</a>
+        <a href="/admin/" class="btn btn-outline-secondary">Admin</a>
+        {% if not user.is_authenticated %}
+          <a href="{% url 'login' %}" class="btn btn-outline-dark">Sign in</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="farm-stat-grid">
+        <div class="farm-stat-card">
+          <div class="farm-stat-value">{{ stats.forms }}</div>
+          <div class="farm-stat-label">Forms</div>
+        </div>
+        <div class="farm-stat-card">
+          <div class="farm-stat-value">{{ stats.workflow_forms }}</div>
+          <div class="farm-stat-label">Workflow Forms</div>
+        </div>
+        <div class="farm-stat-card">
+          <div class="farm-stat-value">{{ stats.submissions }}</div>
+          <div class="farm-stat-label">Seeded Submissions</div>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="col-md-5 text-center">
-    <div class="display-1">🌾🐄🐓</div>
+</section>
+
+{% if not demo_ready %}
+  <div class="alert alert-warning rounded-4">
+    <h2 class="h5">Demo data not seeded yet</h2>
+    <p class="mb-2">Run the farm demo seed command to load the full showcase:</p>
+    <code>python manage.py migrate && python manage.py seed_farm_demo</code>
   </div>
-</div>
+{% endif %}
+
+<section class="mb-5">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="h4 mb-0">Showcase forms</h2>
+    <a href="{% url 'forms_workflows:sync_export' %}" class="small text-decoration-none">Export demo config</a>
+  </div>
+  <div class="row g-4">
+    {% for card in showcase_cards %}
+      <div class="col-lg-6">
+        <div class="card h-100 border-0 farm-showcase-card">
+          <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+              <div>
+                <div class="text-muted small text-uppercase">{{ card.form.category.name }}</div>
+                <h3 class="h5 mb-1">{{ card.form.name }}</h3>
+              </div>
+              <span class="badge text-bg-light">{{ card.form.slug }}</span>
+            </div>
+            <p class="text-muted">{{ card.form.description }}</p>
+            <div class="small text-muted mb-3">
+              {{ card.workflow_count }} workflow{{ card.workflow_count|pluralize }},
+              {{ card.stage_count }} stage{{ card.stage_count|pluralize }}
+              {% if card.webhook_count %}, {{ card.webhook_count }} webhook{{ card.webhook_count|pluralize }}{% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              {% for feature in card.features %}
+                <span class="badge rounded-pill text-bg-success-subtle border farm-feature-pill">{{ feature }}</span>
+              {% endfor %}
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <a href="{{ card.submit_url }}" class="btn btn-sm btn-success">Open form</a>
+              <a href="{{ card.admin_url }}" class="btn btn-sm btn-outline-secondary">Admin</a>
+              <a href="{{ card.builder_url }}" class="btn btn-sm btn-outline-secondary">Form builder</a>
+              <a href="{{ card.workflow_builder_url }}" class="btn btn-sm btn-outline-secondary">Workflow builder</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="row g-4 mb-5">
+  <div class="col-lg-6">
+    <div class="card border-0 h-100">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3">Demo accounts</h2>
+        <p class="text-muted">All seeded demo users use password <code>farm123</code>.</p>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Email</th>
+                <th>Groups</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for demo_user in demo_users %}
+                <tr>
+                  <td><code>{{ demo_user.username }}</code></td>
+                  <td>{{ demo_user.email }}</td>
+                  <td>
+                    {% for group in demo_user.groups.all %}
+                      <span class="badge text-bg-light border me-1 mb-1">{{ group.name }}</span>
+                    {% endfor %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if api_token %}
+          <div class="alert alert-secondary mt-3 mb-0">
+            <strong>Staff-only API token:</strong><br>
+            <code>Bearer {{ api_token.token }}</code>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card border-0 h-100">
+      <div class="card-body p-4">
+        <h2 class="h5 mb-3">Explore the platform</h2>
+        <ul class="list-unstyled farm-link-list mb-0">
+          <li><a href="{% url 'forms_workflows:form_list' %}">Form catalog</a></li>
+          <li><a href="{% url 'forms_workflows:my_submissions' %}">My submissions</a></li>
+          <li><a href="{% url 'forms_workflows:approval_inbox' %}">Approval inbox</a></li>
+          <li><a href="{% url 'forms_workflows:completed_approvals' %}">Completed approvals</a></li>
+          <li><a href="{% url 'forms_workflows:analytics_dashboard' %}">Analytics dashboard</a></li>
+          <li><a href="{% url 'forms_workflows:sync_export' %}">Sync export</a></li>
+          <li><a href="{% url 'forms_workflows:sync_import' %}">Sync import</a></li>
+          <li><a href="/api/docs/">API docs</a></li>
+          <li><a href="/admin/django_forms_workflows/formdefinition/builder/new/">Create a form in the visual builder</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
 {% endblock %}
 

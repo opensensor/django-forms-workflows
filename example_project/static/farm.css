@@ -22,6 +22,55 @@
   border: 1px solid rgba(0,0,0,0.05);
 }
 
+.farm-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.farm-stat-card {
+  background: rgba(255,255,255,0.75);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 1rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.farm-stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--farm-dark);
+}
+
+.farm-stat-label {
+  font-size: 0.85rem;
+  color: #4b5b4f;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.farm-showcase-card {
+  background: rgba(255,255,255,0.95);
+}
+
+.farm-feature-pill {
+  color: var(--farm-dark) !important;
+  background: rgba(58,125,68,0.12) !important;
+}
+
+.farm-link-list li + li {
+  margin-top: 0.65rem;
+}
+
+.farm-link-list a {
+  color: var(--farm-dark);
+  text-decoration: none;
+}
+
+.farm-link-list a:hover {
+  text-decoration: underline;
+}
+
 .card, .table {
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);

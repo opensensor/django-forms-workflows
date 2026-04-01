@@ -791,7 +791,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     # Keep these values comfortably above the visual builder node widths so
     # generated layouts do not bunch up or overlap before the user edits them.
     horizontal_spacing = 380
-    vertical_spacing = 170
+    vertical_spacing = 220
     start_x = 120
     start_y = 220
     current_x = start_x

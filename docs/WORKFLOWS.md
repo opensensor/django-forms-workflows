@@ -11,6 +11,7 @@
 | `StageApprovalGroup` | Through model that orders groups when a stage uses `sequence` logic. |
 | `ApprovalTask` | The runtime approval task assigned to a user or group. |
 | `NotificationRule` | Event-driven email rules for workflow and stage events. |
+| `WebhookEndpoint` | Event-driven outbound webhooks for workflow lifecycle events. |
 
 ## How the engine runs
 
@@ -36,6 +37,7 @@
 - `hide_approval_history` for privacy-sensitive forms
 - `collapse_parallel_stages` for a cleaner approval-history display
 - `allow_bulk_export` and `allow_bulk_pdf_export` for submission list actions
+- first-class webhook endpoints for `submission.created`, `task.created`, `submission.approved`, `submission.rejected`, and `submission.returned`
 
 ### Stage-level features
 
@@ -79,7 +81,8 @@ Supported operators are `equals`, `not_equals`, `gt`, `lt`, `gte`, `lte`, `conta
 4. Attach approval groups to each stage.
 5. Add optional routing features such as dynamic assignees, send-back, reassign, or editable form data.
 6. Add `NotificationRule` rows for submission received, approval request, stage decision, final approval, rejection, or withdrawal.
-7. Add post-submission actions if approvals should update external systems.
+7. Add `WebhookEndpoint` rows if external systems should receive signed workflow-event callbacks.
+8. Add post-submission actions if approvals should update external systems.
 
 ## Visual builder vs. admin inline editing
 
@@ -132,4 +135,5 @@ If the lookup succeeds, the engine creates one personal task for that user inste
 - [Send Back for Correction](SEND_BACK.md)
 - [Sub-Workflows](SUB_WORKFLOWS.md)
 - [Notifications](NOTIFICATIONS.md)
+- [Workflow Webhooks](WEBHOOKS.md)
 - [Post-Submission Actions](POST_SUBMISSION_ACTIONS.md)

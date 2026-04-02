@@ -3,30 +3,31 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Side-by-side field alignment ────────────────────────────────────────
-   When two half-width fields sit in a .row, the shorter one needs to
-   bottom-align its input with the taller one regardless of label length,
-   help-text presence, or wrapped text.  We use flex-column + stretch so
-   the label area grows evenly and the input sits at a consistent position. */
+   When two or more fields sit in a .row.fields-aligned-row, columns
+   stretch to equal height (the default flex behaviour). Each .mb-3
+   wrapper becomes a flex column so the label area grows evenly and
+   the input sits at a consistent vertical position regardless of
+   label length, help-text presence, or wrapped text. */
 
-.row.align-items-start > [class*="col-"] > .mb-3,
-.row.align-items-start > .field-wrapper > .mb-3 {
+.row.fields-aligned-row > [class*="col-"] > .mb-3,
+.row.fields-aligned-row > .field-wrapper > .mb-3 {
     display: flex;
     flex-direction: column;
     height: 100%;
 }
-.row.align-items-start > [class*="col-"] > .mb-3 > label,
-.row.align-items-start > .field-wrapper > .mb-3 > label {
+.row.fields-aligned-row > [class*="col-"] > .mb-3 > label,
+.row.fields-aligned-row > .field-wrapper > .mb-3 > label {
     flex-shrink: 0;
 }
-.row.align-items-start > [class*="col-"] > .mb-3 > .form-control,
-.row.align-items-start > [class*="col-"] > .mb-3 > .form-select,
-.row.align-items-start > .field-wrapper > .mb-3 > .form-control,
-.row.align-items-start > .field-wrapper > .mb-3 > .form-select {
+.row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-control,
+.row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-select,
+.row.fields-aligned-row > .field-wrapper > .mb-3 > .form-control,
+.row.fields-aligned-row > .field-wrapper > .mb-3 > .form-select {
     margin-top: auto;        /* push the input to the bottom of the cell */
 }
 /* Help text sits *after* the input and shouldn't shift it up */
-.row.align-items-start > [class*="col-"] > .mb-3 > .form-text,
-.row.align-items-start > .field-wrapper > .mb-3 > .form-text {
+.row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-text,
+.row.fields-aligned-row > .field-wrapper > .mb-3 > .form-text {
     flex-shrink: 0;
     min-height: 1.4em;       /* reserve space even when empty for alignment */
 }

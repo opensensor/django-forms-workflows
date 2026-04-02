@@ -286,7 +286,7 @@ class DynamicForm(forms.Form):
                                 Field(next_field.field_name),
                                 css_class=f"col-md-6 field-wrapper field-{next_field.field_name}",
                             ),
-                            css_class="align-items-start",
+                            css_class="fields-aligned-row",
                         )
                     )
                     i += 2
@@ -321,7 +321,7 @@ class DynamicForm(forms.Form):
                             )
                             for f in group
                         ],
-                        css_class="align-items-start",
+                        css_class="fields-aligned-row",
                     )
                 )
             else:
@@ -1784,7 +1784,7 @@ class ApprovalStepForm(forms.Form):
                                 Field(next_field.field_name),
                                 css_class=f"col-md-6 field-wrapper field-{next_field.field_name}",
                             ),
-                            css_class="align-items-start",
+                            css_class="fields-aligned-row",
                         )
                     )
                     i += 2
@@ -1818,7 +1818,7 @@ class ApprovalStepForm(forms.Form):
                             )
                             for f in group
                         ],
-                        css_class="align-items-start",
+                        css_class="fields-aligned-row",
                     )
                 )
             else:

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.1] - 2026-04-02
+
+### Fixed
+- **Side-by-side field alignment** — inputs, labels, and help text now align
+  correctly when paired half/third/fourth-width fields have labels of
+  different heights (e.g. one wraps to two lines). Replaced
+  `align-items-start` with a `fields-aligned-row` marker class that uses the
+  default `align-items-stretch` behaviour, allowing `margin-top: auto` on
+  inputs to push them to a consistent vertical position.
+
 ## [0.63.0] - 2026-04-02
 
 ### Added

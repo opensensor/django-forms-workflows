@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-04-02
+
+### Added
+- **Triggering Stage option** for notification rules — new `use_triggering_stage` boolean
+  auto-scopes the rule to whichever stage fired the event at runtime, eliminating
+  the need to create a separate rule per stage.
+- **Workflow-scoped notification rules** — when a notification event is associated with
+  a specific task, rules are now filtered to only the task's workflow instead of firing
+  rules from every workflow attached to the form definition.
+- Migration `0087`.
+
 ## [0.60.0] - 2026-04-02
 
 ### Added

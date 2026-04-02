@@ -971,7 +971,7 @@ def _get_form_field_email(form_data: dict, email_field: str) -> str | None:
 
 
 def _collect_notification_recipients(
-    notif, form_data: dict, submission=None
+    notif, form_data: dict, submission=None, task=None
 ) -> list[str]:
     """Return the deduplicated list of recipient emails for a notification rule.
 
@@ -983,6 +983,10 @@ def _collect_notification_recipients(
     4. notify_stage_assignees → ApprovalTask.assigned_to.email
     5. notify_stage_groups    → all users in the stage's approval groups
     6. notify_groups (M2M)    → all users in explicitly-listed groups
+
+    When ``use_triggering_stage`` is True and a *task* is provided, the
+    task's ``workflow_stage`` is used to scope stage-based recipients
+    instead of ``notif.stage``.
     """
     recipients: list[str] = []
 
@@ -1004,6 +1008,18 @@ def _collect_notification_recipients(
         if addr and "@" in addr:
             _add(addr)
 
+    # Resolve the effective stage for stage-scoped recipient sources.
+    # Priority: use_triggering_stage (from task) > explicit stage FK > all stages.
+    _triggering_stage_id = None
+    if getattr(notif, "use_triggering_stage", False) and task is not None:
+        _triggering_stage_id = getattr(task, "workflow_stage_id", None)
+
+    def _effective_stage_id():
+        """Return the stage ID to scope to, or None for all stages."""
+        if _triggering_stage_id:
+            return _triggering_stage_id
+        return getattr(notif, "stage_id", None)
+
     # 4. Stage assignees (NotificationRule only)
     if getattr(notif, "notify_stage_assignees", False) and submission is not None:
         qs = (
@@ -1012,9 +1028,9 @@ def _collect_notification_recipients(
             .exclude(workflow_stage__assignee_form_field__isnull=True)
             .exclude(workflow_stage__assignee_form_field="")
         )
-        # If rule is stage-scoped, limit to that stage
-        if getattr(notif, "stage_id", None):
-            qs = qs.filter(workflow_stage_id=notif.stage_id)
+        eff_stage = _effective_stage_id()
+        if eff_stage:
+            qs = qs.filter(workflow_stage_id=eff_stage)
         for email in qs.values_list("assigned_to__email", flat=True):
             _add(email)
 
@@ -1023,9 +1039,9 @@ def _collect_notification_recipients(
         from django.contrib.auth import get_user_model
 
         user_model = get_user_model()
-        # Determine which stages to include
-        if getattr(notif, "stage_id", None):
-            stage_ids = [notif.stage_id]
+        eff_stage = _effective_stage_id()
+        if eff_stage:
+            stage_ids = [eff_stage]
         else:
             # All stages in this workflow
             from .models import WorkflowStage
@@ -1152,14 +1168,28 @@ def send_notification_rules(
     workflow = getattr(submission.form_definition, "workflow", None)
     hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
 
-    rules = (
-        NotificationRule.objects.filter(
-            workflow__form_definition=submission.form_definition,
-            event=event,
-        )
+    # Resolve the task (if any) to scope rules to its workflow
+    task = None
+    if task_id:
+        try:
+            task = ApprovalTask.objects.select_related("workflow_stage").get(id=task_id)
+        except ApprovalTask.DoesNotExist:
+            pass
+
+    rules_qs = (
+        NotificationRule.objects.filter(event=event)
         .select_related("workflow", "stage")
         .prefetch_related("notify_groups")
     )
+
+    # Scope rules to the specific workflow that owns the triggering task,
+    # rather than firing rules from every workflow on the form.
+    if task and getattr(task, "workflow_stage_id", None):
+        rules_qs = rules_qs.filter(workflow_id=task.workflow_stage.workflow_id)
+    else:
+        rules_qs = rules_qs.filter(workflow__form_definition=submission.form_definition)
+
+    rules = rules_qs
 
     default_subject_tpl = _EVENT_DEFAULT_SUBJECTS.get(
         event, "{form_name} (ID {submission_id})"
@@ -1190,7 +1220,7 @@ def send_notification_rules(
 
         # Resolve recipients
         recipients = _collect_notification_recipients(
-            rule, form_data, submission=submission
+            rule, form_data, submission=submission, task=task
         )
         if not recipients:
             logger.info(

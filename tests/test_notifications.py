@@ -1,11 +1,14 @@
 from unittest.mock import patch
 
 import pytest
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 
 from django_forms_workflows.models import (
     ApprovalTask,
     FormSubmission,
     NotificationRule,
+    StageApprovalGroup,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -179,3 +182,310 @@ def test_notification_context_includes_form_data(form_definition, user):
     context = mock_send.call_args[0][3]  # 4th positional arg is the context dict
     assert "form_data" in context
     assert context["form_data"]["dept"] == "Engineering"
+
+
+# ── use_triggering_stage tests ─────────────────────────────────────────────
+
+
+class TestNotificationRuleUseTriggieringStageValidation:
+    """Model-level validation for use_triggering_stage."""
+
+    def test_use_triggering_stage_and_stage_raises(self, form_definition):
+        """Cannot set both use_triggering_stage=True and an explicit stage FK."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Stage 1", order=1, approval_logic="all"
+        )
+        rule = NotificationRule(
+            workflow=wf,
+            event="approval_request",
+            stage=stage,
+            use_triggering_stage=True,
+            notify_submitter=True,
+        )
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            rule.clean()
+
+    def test_use_triggering_stage_without_stage_ok(self, form_definition):
+        """use_triggering_stage=True with no stage FK is valid."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        rule = NotificationRule(
+            workflow=wf,
+            event="approval_request",
+            use_triggering_stage=True,
+            notify_submitter=True,
+        )
+        # Should not raise
+        rule.clean()
+
+    def test_str_shows_triggering_stage(self, form_definition):
+        """__str__ includes [triggering stage] when flag is set."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        rule = NotificationRule(
+            workflow=wf,
+            event="approval_request",
+            use_triggering_stage=True,
+            notify_submitter=True,
+        )
+        assert "[triggering stage]" in str(rule)
+
+    def test_str_shows_explicit_stage_name(self, form_definition):
+        """__str__ includes [StageName] when an explicit stage is set."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Director Review", order=1, approval_logic="all"
+        )
+        rule = NotificationRule(
+            workflow=wf,
+            event="approval_request",
+            stage=stage,
+            notify_submitter=True,
+        )
+        assert "[Director Review]" in str(rule)
+
+    def test_str_no_stage_label_when_neither_set(self, form_definition):
+        """__str__ has no stage bracket when neither flag nor FK is set."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        rule = NotificationRule(
+            workflow=wf,
+            event="approval_request",
+            notify_submitter=True,
+        )
+        assert "[" not in str(rule)
+
+
+# ── use_triggering_stage recipient resolution ──────────────────────────────
+
+
+def test_triggering_stage_scopes_assignees(form_definition, user, approver_user):
+    """When use_triggering_stage=True, only the triggering stage's assignee is notified."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage1 = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    stage2 = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 2",
+        order=2,
+        approval_logic="all",
+        assignee_form_field="manager_email",
+        assignee_lookup_type="email",
+    )
+    # Rule with use_triggering_stage — should only notify stage1's assignee
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+    )
+    manager = User.objects.create_user(
+        username="manager", email="manager@example.com", password="pass"
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={
+            "advisor_email": approver_user.email,
+            "manager_email": manager.email,
+        },
+        status="pending_approval",
+    )
+    # Create tasks for both stages; approver on stage1, manager on stage2
+    task1 = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage1,
+        stage_number=1,
+    )
+    ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 2",
+        status="pending",
+        assigned_to=manager,
+        workflow_stage=stage2,
+        stage_number=2,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_request", task_id=task1.id)
+
+    # Only approver (stage1's assignee) should be notified, not manager
+    recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    assert approver_user.email in recipients
+    assert manager.email not in recipients
+
+
+def test_triggering_stage_scopes_groups(
+    form_definition, user, approval_group, second_approval_group
+):
+    """When use_triggering_stage=True, only the triggering stage's groups are notified."""
+    from django.contrib.auth.models import User as AuthUser
+
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage1 = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+    )
+    StageApprovalGroup.objects.create(stage=stage1, group=approval_group)
+    stage2 = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 2",
+        order=2,
+        approval_logic="all",
+    )
+    StageApprovalGroup.objects.create(stage=stage2, group=second_approval_group)
+
+    # Users in each group
+    user_g1 = AuthUser.objects.create_user(
+        username="g1user", email="g1@example.com", password="pass"
+    )
+    user_g1.groups.add(approval_group)
+    user_g2 = AuthUser.objects.create_user(
+        username="g2user", email="g2@example.com", password="pass"
+    )
+    user_g2.groups.add(second_approval_group)
+
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_groups=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task1 = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        workflow_stage=stage1,
+        stage_number=1,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_request", task_id=task1.id)
+
+    recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    assert "g1@example.com" in recipients
+    assert "g2@example.com" not in recipients
+
+
+# ── Workflow scoping tests ─────────────────────────────────────────────────
+
+
+def test_notification_rules_scoped_to_task_workflow(form_definition, user):
+    """When task_id is provided, only rules from the task's workflow fire."""
+    wf1 = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage1 = WorkflowStage.objects.create(
+        workflow=wf1,
+        name="WF1 Stage",
+        order=1,
+        approval_logic="all",
+    )
+    wf2 = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    WorkflowStage.objects.create(
+        workflow=wf2,
+        name="WF2 Stage",
+        order=1,
+        approval_logic="all",
+    )
+
+    # Rule on wf1 — should fire
+    NotificationRule.objects.create(
+        workflow=wf1,
+        event="approval_request",
+        notify_submitter=True,
+        static_emails="wf1@example.com",
+    )
+    # Rule on wf2 — should NOT fire when task belongs to wf1
+    NotificationRule.objects.create(
+        workflow=wf2,
+        event="approval_request",
+        notify_submitter=True,
+        static_emails="wf2@example.com",
+    )
+
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="WF1 Stage",
+        status="pending",
+        workflow_stage=stage1,
+        stage_number=1,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    all_recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    assert "wf1@example.com" in all_recipients
+    assert "wf2@example.com" not in all_recipients
+
+
+def test_no_task_id_fires_all_workflow_rules(form_definition, user):
+    """When no task_id is given, rules from all workflows on the form fire."""
+    wf1 = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    wf2 = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    NotificationRule.objects.create(
+        workflow=wf1,
+        event="submission_received",
+        static_emails="wf1@example.com",
+    )
+    NotificationRule.objects.create(
+        workflow=wf2,
+        event="submission_received",
+        static_emails="wf2@example.com",
+    )
+
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="submitted",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "submission_received")
+
+    all_recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    assert "wf1@example.com" in all_recipients
+    assert "wf2@example.com" in all_recipients

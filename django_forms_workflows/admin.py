@@ -516,7 +516,7 @@ class NotificationRuleInline(nested_admin.NestedStackedInline):
             None,
             {
                 "fields": (
-                    ("event", "stage"),
+                    ("event", "stage", "use_triggering_stage"),
                     (
                         "notify_submitter",
                         "notify_stage_assignees",
@@ -1736,7 +1736,7 @@ class NotificationRuleAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "workflow",
-                    ("event", "stage"),
+                    ("event", "stage", "use_triggering_stage"),
                     (
                         "notify_submitter",
                         "notify_stage_assignees",

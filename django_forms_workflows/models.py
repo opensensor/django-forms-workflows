@@ -1318,7 +1318,17 @@ class NotificationRule(models.Model):
             "Optional. When set, scopes this rule to a specific stage. "
             "Recipient sources like 'Notify stage assignees' and "
             "'Notify stage groups' will reference only this stage. "
-            "When blank, they reference all stages in the workflow."
+            "When blank, they reference all stages in the workflow. "
+            "Ignored when 'Use triggering stage' is checked."
+        ),
+    )
+    use_triggering_stage = models.BooleanField(
+        default=False,
+        help_text=(
+            "When checked, automatically scopes this rule to whichever "
+            "stage triggered the event at runtime. This avoids needing "
+            "to create a separate rule per stage. Overrides the Stage "
+            "dropdown above."
         ),
     )
     event = models.CharField(
@@ -1401,6 +1411,12 @@ class NotificationRule(models.Model):
     def clean(self):
         from django.core.exceptions import ValidationError
 
+        if self.use_triggering_stage and self.stage_id:
+            raise ValidationError(
+                "'Use triggering stage' and a specific 'Stage' are mutually "
+                "exclusive. Either pick a stage or check 'Use triggering stage'."
+            )
+
         has_recipients = (
             self.notify_submitter
             or self.email_field
@@ -1429,7 +1445,12 @@ class NotificationRule(models.Model):
         if self.notify_stage_groups:
             parts.append("stage-groups")
         target = ", ".join(parts) if parts else "groups"
-        stage_label = f" [{self.stage.name}]" if self.stage_id else ""
+        if self.use_triggering_stage:
+            stage_label = " [triggering stage]"
+        elif self.stage_id:
+            stage_label = f" [{self.stage.name}]"
+        else:
+            stage_label = ""
         return f"{self.get_event_display()}{stage_label} → {target}"
 
 

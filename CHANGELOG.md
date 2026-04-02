@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.6] - 2026-04-02
+
+### Fixed
+- **Side-by-side field alignment rewritten with CSS Grid + subgrid** —
+  replaced the flexbox `margin-top: auto` approach (which could never sync
+  positions across separate flex containers) with a CSS Grid layout that
+  uses `subgrid` to share three row tracks (label | input | help text)
+  across all columns. Labels, inputs, and help text now align perfectly
+  regardless of label wrapping or the presence/absence of help text in
+  any column.
+
 ## [0.63.5] - 2026-04-02
 
 ### Fixed

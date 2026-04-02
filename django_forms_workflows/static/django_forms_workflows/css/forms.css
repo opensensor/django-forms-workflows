@@ -2,45 +2,54 @@
    forms.css — Alignment, spacing & responsive polish for django-forms-workflows
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Side-by-side field alignment ────────────────────────────────────────
-   When two or more fields sit in a .row.fields-aligned-row, every column
-   becomes a flex column so .mb-3 can stretch to fill it.  The input/select
-   uses margin-top:auto to push itself to the bottom of the label area,
-   keeping inputs horizontally aligned regardless of label wrapping. */
+/* ── Side-by-side field alignment (CSS Grid + subgrid) ─────────────────
+   When two or more fields sit in a .row.fields-aligned-row we switch from
+   Bootstrap's flexbox row to a CSS Grid so that labels, inputs and help
+   text each share a common row track across columns.  This guarantees
+   perfect horizontal alignment regardless of label wrapping or the
+   presence / absence of help text in any column.
 
-/* 1. Make each column a flex column so .mb-3 can stretch */
-.row.fields-aligned-row > [class*="col-"],
-.row.fields-aligned-row > .field-wrapper {
-    display: flex;
-    flex-direction: column;
-}
+   Grid row tracks:  1 = label  |  2 = input  |  3 = help text / errors
+   ──────────────────────────────────────────────────────────────────────── */
 
-/* 2. .mb-3 fills the column and is itself a flex column */
-.row.fields-aligned-row > [class*="col-"] > .mb-3,
-.row.fields-aligned-row > .field-wrapper > .mb-3 {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-}
+/* 1. The row becomes a CSS Grid; columns flow automatically */
+@media (min-width: 768px) {
+    .row.fields-aligned-row {
+        display: grid !important;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        grid-template-rows: auto auto auto;
+        column-gap: var(--bs-gutter-x, 1.5rem);
+        margin-left: 0;
+        margin-right: 0;
+    }
 
-/* 3. Labels stay at their natural size */
-.row.fields-aligned-row > [class*="col-"] > .mb-3 > label,
-.row.fields-aligned-row > .field-wrapper > .mb-3 > label {
-    flex-shrink: 0;
-}
+    /* 2. Each field-wrapper spans all 3 row tracks and inherits them */
+    .row.fields-aligned-row > .field-wrapper {
+        display: grid;
+        grid-template-rows: subgrid;
+        grid-row: span 3;
+        /* Reset Bootstrap column flex/width — grid handles sizing */
+        width: auto !important;
+        max-width: none !important;
+        flex: none !important;
+        padding-left: 0;
+        padding-right: 0;
+    }
 
-/* 4. Push the input/select to the bottom of the label area */
-.row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-control,
-.row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-select,
-.row.fields-aligned-row > .field-wrapper > .mb-3 > .form-control,
-.row.fields-aligned-row > .field-wrapper > .mb-3 > .form-select {
-    margin-top: auto;
-}
+    /* 3. .mb-3 also inherits the 3 row tracks via subgrid */
+    .row.fields-aligned-row > .field-wrapper > .mb-3 {
+        display: grid;
+        grid-template-rows: subgrid;
+        grid-row: span 3;
+        margin-bottom: 0 !important;  /* grid gap handles spacing */
+    }
 
-/* 5. Help text sits after the input at its natural size */
-.row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-text,
-.row.fields-aligned-row > .field-wrapper > .mb-3 > .form-text {
-    flex-shrink: 0;
+    /* 4. Labels sit at the bottom of their row-track so short labels
+       align with the bottom of taller (wrapping) labels. */
+    .row.fields-aligned-row > .field-wrapper > .mb-3 > label {
+        align-self: end;
+    }
 }
 
 /* ── Consistent field spacing ────────────────────────────────────────── */

@@ -91,7 +91,7 @@ The iframe will not auto-resize in this mode. Set an appropriate `min-height` fo
 
 ## WordPress Plugin
 
-The **DFW Forms** WordPress plugin provides a shortcode and Gutenberg block for easy embedding.
+The **DFW Forms** WordPress plugin provides a shortcode and Gutenberg block for easy embedding. For full installation, configuration, troubleshooting, and security details, see the **[WordPress Plugin Guide](WORDPRESS_PLUGIN.md)**.
 
 ### Installation
 
@@ -165,6 +165,7 @@ Anonymous embed submissions are rate-limited to prevent spam. Configure rate lim
 
 ## Related Docs
 
+- [WordPress Plugin Guide](WORDPRESS_PLUGIN.md) — full plugin installation, usage, troubleshooting, and security
 - [Payments](PAYMENTS.md) — payment collection in embedded forms
 - [Shared Option Lists](SHARED_OPTION_LISTS.md) — centrally managed choice lists
 - [Workflows](WORKFLOWS.md) — approval workflows that process embed submissions

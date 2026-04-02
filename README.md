@@ -21,6 +21,9 @@ Django Forms Workflows bridges the gap between simple form libraries (like Crisp
 - 🔄 **Cross-Instance Sync** — Push/pull form definitions between environments directly from the Django Admin.
 - 🔒 **Enterprise Security** — LDAP/AD & SSO authentication, RBAC with four permission tiers, complete audit trails.
 - 🌐 **REST API** — Opt-in Bearer-token API: list forms, fetch field schema, submit (or save draft), poll status. OpenAPI 3.0 schema + Swagger UI included.
+- 💳 **Pluggable Payments** — Collect payments during form submission with a pluggable provider system. Stripe ships built-in; add custom providers via `register_provider()`.
+- 📋 **Shared Option Lists** — Define reusable choice lists once, reference from any form field. Update the list and every field reflects the change.
+- 🔗 **Dependent Workflows** — Workflows that start only after all other workflows on the form complete, enabling convergence gates after parallel tracks.
 - 📁 **Managed File Uploads** — File uploads with approval, rejection, and version tracking per submission.
 - 🧮 **Formula Fields** — Calculated fields that compute values live from other field values using a template formula.
 - 🏠 **Self-Hosted** — No SaaS fees, full data control.
@@ -71,6 +74,36 @@ Spawn child workflow instances from a parent submission:
 - Sub-workflows support the same send-back mechanism via `handle_sub_workflow_send_back`
 
 See [Sub-Workflows Guide](docs/SUB_WORKFLOWS.md) for a full walkthrough.
+
+### 💳 Payment Collection
+Collect payments as part of the form submission flow:
+- Pluggable provider architecture: `PaymentProvider` ABC, provider registry, `PaymentResult` dataclass
+- Two flow types: **INLINE** (payment form on your site, e.g. Stripe Elements) and **REDIRECT** (external payment page)
+- Built-in **Stripe provider** using PaymentIntents with automatic payment methods
+- `PaymentRecord` model tracks full payment lifecycle (pending → completed/failed/refunded)
+- Configurable per form: provider, amount (fixed or from field), currency, description template
+- Custom providers self-register via `register_provider()` in `AppConfig.ready()`
+
+See [Payment System Guide](docs/PAYMENTS.md).
+
+### 📋 Shared Option Lists
+Define reusable choice lists shared across forms:
+- `SharedOptionList` model with name, slug, items (JSON array of strings or value/label objects)
+- `shared_option_list` FK on `FormField` overrides inline choices for select, radio, multiselect, checkboxes
+- Choice resolution priority: database prefill → shared option list → inline choices
+- Update a list once, every referencing field updates immediately
+- Form builder UI with shared list dropdown on choice-based fields
+
+See [Shared Option Lists Guide](docs/SHARED_OPTION_LISTS.md).
+
+### 🔗 Dependent Workflows
+Workflows that wait for other workflows to complete before starting:
+- `start_trigger = "on_all_complete"` on `WorkflowDefinition`
+- Enables convergence patterns: parallel tracks must all finish before a final review step
+- Peer-level relationship (not parent/child like sub-workflows)
+- Complements sub-workflows — both can coexist on the same form
+
+See the [Dependent Workflows section](docs/WORKFLOWS.md#dependent-workflows) of the Workflows Guide.
 
 ### 🧮 Calculated / Formula Fields
 Auto-compute field values from other field inputs:

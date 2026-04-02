@@ -16,20 +16,23 @@
 ## How the engine runs
 
 1. When a form is submitted, the engine loads **all** `WorkflowDefinition` rows for that form.
-2. Workflow tracks whose `trigger_conditions` match the submission start in parallel.
-3. Within each workflow track, the engine activates the lowest `order` stage(s).
-4. Stages sharing the same `order` value run in parallel.
-5. Each stage resolves according to its own `approval_logic`:
+2. Workflows with `start_trigger = "on_submission"` (the default) whose `trigger_conditions` match the submission start in parallel.
+3. Workflows with `start_trigger = "on_all_complete"` are deferred — they don't start yet.
+4. Within each active workflow track, the engine activates the lowest `order` stage(s).
+5. Stages sharing the same `order` value run in parallel.
+6. Each stage resolves according to its own `approval_logic`:
    - `all` — every task in the stage must approve
    - `any` — the first approval wins
    - `sequence` — groups are activated one at a time using `StageApprovalGroup.position`
-6. When all active workflow tracks complete, the submission is finalized.
+7. When all `on_submission` workflow tracks complete, any `on_all_complete` workflows are started.
+8. The submission is only finalized when all workflows (including deferred ones) are complete.
 
 ## What you can configure today
 
 ### Workflow-level features
 
 - `name_label` for a user-facing track name such as “Finance Approval”
+- `start_trigger` to control when the workflow starts: `on_submission` (default) or `on_all_complete` (see [Dependent workflows](#dependent-workflows) below)
 - `trigger_conditions` to skip entire workflow tracks unless submission data matches
 - `approval_deadline_days` to place a `due_date` on created approval tasks
 - `send_reminder_after_days` and `auto_approve_after_days` for deadline handling
@@ -127,6 +130,38 @@ Set:
 
 If the lookup succeeds, the engine creates one personal task for that user instead of group tasks.
 
+## Dependent workflows
+
+The `start_trigger` field on `WorkflowDefinition` controls when a workflow starts:
+
+| Value | Behavior |
+|---|---|
+| `on_submission` (default) | Starts immediately when the form is submitted |
+| `on_all_complete` | Starts only after every `on_submission` workflow on the form has completed |
+
+This enables a "gate" pattern where parallel tracks must all finish before a final review step:
+
+### Example: Clinical placement approval
+
+| Workflow | `start_trigger` | Stages |
+|---|---|---|
+| Agency Confirmation | `on_submission` | Stage 1: Confirmation sent → Stage 2: Confirmation received |
+| Preceptor Confirmation | `on_submission` | Stage 1: Confirmation sent → Stage 2: Confirmation received |
+| Final Approval | `on_all_complete` | Stage 1: Approve site, preceptor, unit, dates |
+
+The Agency and Preceptor workflows run in parallel. The Final Approval workflow only starts after both have fully completed. The submission is finalized only when the Final Approval workflow also finishes.
+
+### How it differs from sub-workflows
+
+| Feature | Dependent workflows (`on_all_complete`) | Sub-workflows (`SubWorkflowDefinition`) |
+|---|---|---|
+| Relationship | Peer-level workflows on the same form | Parent → child (one parent workflow owns the children) |
+| Trigger | All other workflows complete | Single parent workflow completes (or on submission) |
+| Instance count | Always one | Dynamic (N instances from a `count_field`) |
+| Use case | Convergence gate after parallel tracks | Repeated approval flows (e.g. payment installments) |
+
+Both mechanisms can coexist on the same form.
+
 ## Related guides
 
 - [Quick Start](QUICKSTART.md)
@@ -136,4 +171,6 @@ If the lookup succeeds, the engine creates one personal task for that user inste
 - [Sub-Workflows](SUB_WORKFLOWS.md)
 - [Notifications](NOTIFICATIONS.md)
 - [Workflow Webhooks](WEBHOOKS.md)
+- [Payments](PAYMENTS.md)
+- [Shared Option Lists](SHARED_OPTION_LISTS.md)
 - [Post-Submission Actions](POST_SUBMISSION_ACTIONS.md)

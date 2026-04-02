@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-04-02
+
+### Added
+- **Pluggable Payment System** — Collect payments as part of the form submission flow with a three-layer architecture:
+  - `PaymentProvider` ABC (`payments/base.py`) with `PaymentFlow` (INLINE/REDIRECT), `PaymentStatus` enum, and `PaymentResult` dataclass.
+  - Provider registry (`payments/registry.py`) with `register_provider()` for self-registration in `AppConfig.ready()`.
+  - Built-in **Stripe provider** (`payments/stripe_provider.py`) using PaymentIntents with `automatic_payment_methods`.
+  - `PaymentRecord` model tracking payment lifecycle per submission (provider, transaction_id, amount, currency, status, idempotency_key).
+  - 7 payment config fields on `FormDefinition`: `payment_enabled`, `payment_provider`, `payment_amount_type`, `payment_fixed_amount`, `payment_amount_field`, `payment_currency`, `payment_description_template`.
+  - `pending_payment` status on `FormSubmission`.
+  - 5 URL endpoints: initiate, confirm, return (redirect flow), cancel, webhook.
+  - Admin: `PaymentRecordAdmin` (read-only), `PaymentRecordInline` on submissions, "Payment" fieldset on `FormDefinitionAdmin`.
+  - Form builder: payment settings panel with provider dropdown, amount type, currency.
+  - Sync export/import and clone support for payment fields.
+  - `payment-stripe.js` for Stripe Elements integration.
+  - Templates: `payment_collect.html`, `payment_error.html`.
+  - Migration `0085`.
+
+### Documentation
+- `docs/PAYMENTS.md` — full payment system guide covering architecture, Stripe setup, webhook configuration, custom provider authoring, admin/builder integration, and sync behavior.
+
+### Tests
+- 28 new tests covering PaymentRecord model (CRUD, constraints, cascades, ordering), FormDefinition payment fields, pending_payment status, provider registry (register, get, choices, auto-registration), payment views (initiate, cancel), Stripe provider (name, flow, availability, config), and data structures (enums, dataclass).
+
+## [0.57.0] - 2026-04-02
+
+### Added
+- **Shared Option Lists** — Centrally managed reusable choice lists:
+  - `SharedOptionList` model with `name`, `slug`, `items` (JSON), `is_active`, and `get_choices()` method.
+  - `shared_option_list` FK on `FormField` — when set, overrides inline choices for select, radio, multiselect, and checkboxes fields.
+  - Choice resolution priority: database prefill source → shared option list → inline choices.
+  - `SharedOptionListAdmin` with list display, search, prepopulated slug, JSON editor.
+  - Form builder UI: "Shared Option List" dropdown in field properties for choice-based fields.
+  - Builder API endpoints: list, save, delete shared lists (admin-only).
+  - Sync export/import support (by slug).
+  - Migration `0084`.
+
+### Documentation
+- `docs/SHARED_OPTION_LISTS.md` — feature guide covering model, choice resolution, admin, builder, sync, and usage examples.
+
+### Tests
+- 16 new tests covering SharedOptionList model (CRUD, get_choices with string/dict/mixed/empty items, unique slug, FK relationship, SET_NULL on delete, ordering) and form choice resolution (override, radio, checkboxes, fallback, deleted list fallback).
+
+## [0.56.0] - 2026-04-02
+
+### Added
+- **Dependent Workflow Trigger** — `start_trigger` field on `WorkflowDefinition` with two options:
+  - `on_submission` (default) — starts immediately when the form is submitted.
+  - `on_all_complete` — starts only after every `on_submission` workflow on the form has completed.
+  - Enables "gate" patterns: parallel approval tracks converge, then a final review workflow runs.
+  - Engine: `create_workflow_tasks` filters out deferred workflows; `_try_finalize_all_tracks` starts deferred workflows when on_submission tracks complete via new `_start_deferred_workflows()` helper.
+  - Admin: exposed in `WorkflowDefinitionInline` and `WorkflowDefinitionAdmin` (list_display, list_filter).
+  - Sync, clone, and form builder serialization support.
+  - Migration `0083`.
+
+### Documentation
+- `docs/WORKFLOWS.md` — new "Dependent workflows" section with example and comparison to sub-workflows.
+
 ## [0.54.0] - 2026-04-01
 
 ### Added

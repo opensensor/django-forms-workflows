@@ -922,4 +922,41 @@ def import_payload(payload, conflict="update"):
             form_data, conflict=conflict, category_cache=category_cache
         )
         results.append(result)
+
+    # ── 4. Reset PostgreSQL sequences ─────────────────────────────────────────
+    # Sync deletes and re-creates rows (e.g. NotificationRule, StageApprovalGroup,
+    # PostSubmissionAction) which can leave auto-increment sequences behind the
+    # actual max ID in the table, causing IntegrityError on the next insert.
+    _reset_sequences()
+
     return results
+
+
+def _reset_sequences():
+    """Reset PostgreSQL sequences for all models that sync may delete/recreate.
+
+    Safe to call on any database backend — silently skips non-PostgreSQL.
+    """
+    from django.db import connection
+
+    if connection.vendor != "postgresql":
+        return
+
+    models_to_reset = [
+        NotificationRule,
+        StageApprovalGroup,
+        PostSubmissionAction,
+        WebhookEndpoint,
+        WorkflowStage,
+        FormField,
+    ]
+    with connection.cursor() as cursor:
+        for model in models_to_reset:
+            table = model._meta.db_table
+            pk_col = model._meta.pk.column
+            cursor.execute(
+                f"SELECT setval("
+                f"pg_get_serial_sequence('{table}', '{pk_col}'), "
+                f"COALESCE(MAX({pk_col}), 1)) "
+                f"FROM {table}"
+            )

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-04-02
+
+### Added
+- **Embeddable Forms** — Embed DFW forms on any external website via iframe:
+  - `dfw-embed.js` loader script: creates responsive iframe with auto-resize via `postMessage` (`dfw:loaded`, `dfw:resize`, `dfw:submitted`), configurable theme, accent color, callbacks.
+  - `embed_base.html` minimal layout (no navbar/footer) + `form_embed.html` with full field JS support + `embed_success.html` inline success state.
+  - `form_embed` view with `@xframe_options_exempt`, `SameSite=None; Secure` CSRF cookie, rate limiting for anonymous submissions, submission controls (close date, max submissions).
+  - `embed_enabled` BooleanField on `FormDefinition`.
+  - Admin: embed code panel on FormDefinition change form with three tabs (JS Embed, iframe Fallback, WordPress Shortcode) with copy-to-clipboard buttons.
+  - Form builder: "Embeddable" checkbox in Submission Controls.
+  - sync_api export/import and clone support.
+  - Migration `0086`.
+- **WordPress Plugin** (`wordpress/dfw-forms/`):
+  - `[dfw_form]` shortcode with full attribute sanitization.
+  - Gutenberg block (apiVersion 3, no build step) with live preview and sidebar controls.
+  - Settings page at Settings > DFW Forms with server URL and "Test Connection" button.
+  - JS and iframe embed modes; WordPress.com compatibility notes.
+
+### Fixed
+- **CodeQL #25**: DOM text reinterpreted as HTML in workflow-builder.js — validate workflowId and use `URL()` constructor.
+- **CodeQL #26-28**: Clear-text logging of form slugs in sync_api.py — removed user-supplied values from log messages.
+- **CodeQL #23**: Information exposure via ValidationError in workflow_builder_views.py — log server-side only, return generic error.
+
+### Documentation
+- `docs/EMBEDDING.md` — full embedding guide: JS loader, iframe fallback, WordPress plugin, security considerations (CORS, CSP, CSRF, rate limiting).
+
+### Tests
+- 14 new embed tests: GET/POST, disabled/inactive, theme, accent color sanitisation, closed form, max submissions, audit log, success message piping, no-redirect behavior.
+
 ## [0.58.0] - 2026-04-02
 
 ### Added

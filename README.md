@@ -21,6 +21,7 @@ Django Forms Workflows bridges the gap between simple form libraries (like Crisp
 - 🔄 **Cross-Instance Sync** — Push/pull form definitions between environments directly from the Django Admin.
 - 🔒 **Enterprise Security** — LDAP/AD & SSO authentication, RBAC with four permission tiers, complete audit trails.
 - 🌐 **REST API** — Opt-in Bearer-token API: list forms, fetch field schema, submit (or save draft), poll status. OpenAPI 3.0 schema + Swagger UI included.
+- 🖼️ **Embeddable Forms** — Embed forms on any website via a `<script>` tag or `<iframe>`. Auto-resize, theme/accent color support, postMessage callbacks. WordPress plugin included.
 - 💳 **Pluggable Payments** — Collect payments during form submission with a pluggable provider system. Stripe ships built-in; add custom providers via `register_provider()`.
 - 📋 **Shared Option Lists** — Define reusable choice lists once, reference from any form field. Update the list and every field reflects the change.
 - 🔗 **Dependent Workflows** — Workflows that start only after all other workflows on the form complete, enabling convergence gates after parallel tracks.
@@ -74,6 +75,17 @@ Spawn child workflow instances from a parent submission:
 - Sub-workflows support the same send-back mechanism via `handle_sub_workflow_send_back`
 
 See [Sub-Workflows Guide](docs/SUB_WORKFLOWS.md) for a full walkthrough.
+
+### 🖼️ Embeddable Forms
+Embed DFW forms on any external website:
+- Single `<script>` tag creates a responsive iframe with auto-resize via `postMessage`
+- Configurable theme (`light`/`dark`), accent color, min height
+- Callbacks: `data-on-submit`, `data-on-load` for parent page integration
+- WordPress plugin included (`[dfw_form]` shortcode + Gutenberg block)
+- Admin embed code panel with copy-to-clipboard snippets
+- Inline success state — no redirects, iframe stays self-contained
+
+See [Embedding Guide](docs/EMBEDDING.md).
 
 ### 💳 Payment Collection
 Collect payments as part of the form submission flow:

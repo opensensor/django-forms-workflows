@@ -1,0 +1,70 @@
+/* DFW Form block — editor styles */
+
+.wp-block-dfw-form .dfw-block-placeholder {
+    padding: 24px;
+    text-align: center;
+    background: #f0f0f0;
+    border: 2px dashed #c0c0c0;
+    border-radius: 4px;
+}
+
+.wp-block-dfw-form .dfw-block-placeholder .dashicons {
+    font-size: 36px;
+    width: 36px;
+    height: 36px;
+    margin-bottom: 12px;
+    color: #757575;
+}
+
+.wp-block-dfw-form .dfw-block-placeholder h4 {
+    margin: 0 0 16px;
+    font-size: 16px;
+}
+
+.wp-block-dfw-form .dfw-block-placeholder input[type="text"] {
+    max-width: 300px;
+    margin: 0 auto 12px;
+    display: block;
+}
+
+.wp-block-dfw-form .dfw-block-preview {
+    position: relative;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+    min-height: 200px;
+}
+
+.wp-block-dfw-form .dfw-block-preview iframe {
+    width: 100%;
+    border: none;
+    pointer-events: none;
+}
+
+.wp-block-dfw-form .dfw-block-preview-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.01);
+    cursor: pointer;
+}
+
+.wp-block-dfw-form .dfw-block-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #f0f0f0;
+    border-bottom: 1px solid #ddd;
+    font-size: 12px;
+    color: #757575;
+    font-weight: 500;
+}
+
+.wp-block-dfw-form .dfw-block-label .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}

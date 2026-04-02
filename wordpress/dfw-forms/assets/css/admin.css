@@ -1,0 +1,18 @@
+/* DFW Forms — Admin settings page styles */
+
+.dfw-forms-settings .regular-text {
+    min-width: 400px;
+}
+
+#dfw-test-result {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#dfw-test-result.success {
+    color: #00a32a;
+}
+
+#dfw-test-result.error {
+    color: #d63638;
+}

@@ -1,0 +1,43 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "dfw/form",
+    "version": "1.0.0",
+    "title": "DFW Form",
+    "category": "embed",
+    "icon": "feedback",
+    "description": "Embed a Django Forms Workflows form.",
+    "keywords": [ "form", "embed", "dfw", "django" ],
+    "supports": {
+        "html": false,
+        "align": [ "wide", "full" ]
+    },
+    "textdomain": "dfw-forms",
+    "attributes": {
+        "slug": {
+            "type": "string",
+            "default": ""
+        },
+        "theme": {
+            "type": "string",
+            "default": "",
+            "enum": [ "", "light", "dark" ]
+        },
+        "accentColor": {
+            "type": "string",
+            "default": ""
+        },
+        "minHeight": {
+            "type": "number",
+            "default": 300
+        },
+        "mode": {
+            "type": "string",
+            "default": "js",
+            "enum": [ "js", "iframe" ]
+        }
+    },
+    "editorScript": "file:./edit.js",
+    "editorStyle": "file:./editor.css",
+    "render": "file:./render.php"
+}

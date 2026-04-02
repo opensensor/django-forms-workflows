@@ -89,6 +89,92 @@
             display: none;
             margin-top: 4px;
         }
+        /* Embed code panel */
+        .embed-code-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .embed-code-panel h3 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            color: #333;
+        }
+        .embed-code-panel .embed-warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            color: #664d03;
+        }
+        .embed-code-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #dee2e6;
+            margin-bottom: 16px;
+        }
+        .embed-code-tab {
+            padding: 8px 16px;
+            border: none;
+            background: none;
+            font-size: 13px;
+            font-weight: 500;
+            color: #666;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+        .embed-code-tab:hover {
+            color: #333;
+        }
+        .embed-code-tab.active {
+            color: #0d6efd;
+            border-bottom-color: #0d6efd;
+        }
+        .embed-code-content {
+            display: none;
+        }
+        .embed-code-content.active {
+            display: block;
+        }
+        .embed-code-content pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 14px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.5;
+            overflow-x: auto;
+            margin: 0 0 8px 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .embed-code-content .embed-note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .embed-copy-btn {
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .embed-copy-btn:hover {
+            background: #f0f0f0;
+        }
+        .embed-copy-feedback {
+            font-size: 12px;
+            color: #28a745;
+            display: none;
+            margin-left: 8px;
+        }
     </style>
 {% endblock %}
 
@@ -140,23 +226,75 @@
             </div>
         </div>
     </div>
+    <div class="embed-code-panel">
+        <h3><i class="bi bi-code-slash"></i> Embed Code</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 12px;">
+            Copy a code snippet to embed this form on any website.
+        </p>
+        {% if not original.embed_enabled %}
+        <div class="embed-warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            Embedding is currently disabled for this form. Enable it in the "API &amp; Embedding" section above.
+        </div>
+        {% endif %}
+        <div class="embed-code-tabs">
+            <button type="button" class="embed-code-tab active" data-tab="js">JS Embed</button>
+            <button type="button" class="embed-code-tab" data-tab="iframe">iframe Fallback</button>
+            <button type="button" class="embed-code-tab" data-tab="wordpress">WordPress</button>
+        </div>
+
+        <div class="embed-code-content active" id="embed-tab-js">
+            <pre id="embed-snippet-js"></pre>
+            <button type="button" class="embed-copy-btn" data-target="embed-snippet-js">
+                <i class="bi bi-clipboard"></i> Copy to Clipboard
+            </button>
+            <span class="embed-copy-feedback">Copied!</span>
+            <p class="embed-note">
+                Best option for most websites. The form auto-resizes to fit its content.
+            </p>
+        </div>
+
+        <div class="embed-code-content" id="embed-tab-iframe">
+            <pre id="embed-snippet-iframe"></pre>
+            <button type="button" class="embed-copy-btn" data-target="embed-snippet-iframe">
+                <i class="bi bi-clipboard"></i> Copy to Clipboard
+            </button>
+            <span class="embed-copy-feedback">Copied!</span>
+            <p class="embed-note">
+                Use this if external scripts are restricted (e.g., WordPress.com). You may need to set a fixed height.
+            </p>
+        </div>
+
+        <div class="embed-code-content" id="embed-tab-wordpress">
+            <pre id="embed-snippet-wordpress"></pre>
+            <button type="button" class="embed-copy-btn" data-target="embed-snippet-wordpress">
+                <i class="bi bi-clipboard"></i> Copy to Clipboard
+            </button>
+            <span class="embed-copy-feedback">Copied!</span>
+            <p class="embed-note">
+                Requires the <strong>DFW Forms</strong> WordPress plugin. Configure the server URL under Settings &gt; DFW Forms.
+            </p>
+        </div>
+    </div>
+
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         var qrUrl = '{% url "forms_workflows:form_qr_code" original.slug %}';
         var submitUrl = '{% url "forms_workflows:form_submit" original.slug %}';
+        var embedUrl = '{% url "forms_workflows:form_embed" original.slug %}';
         var absUrl = window.location.origin + submitUrl;
+        var absEmbedUrl = window.location.origin + embedUrl;
+        var absStaticBase = window.location.origin;
         var slug = '{{ original.slug }}';
 
-        // Set URL field
+        // -- QR code panel --
         document.getElementById('adminQrUrl').value = absUrl;
 
-        // Set download links
         document.getElementById('adminQrDownloadSvg').href = qrUrl + '?format=svg';
         document.getElementById('adminQrDownloadSvg').download = slug + '-qr.svg';
         document.getElementById('adminQrDownloadPng').href = qrUrl + '?format=png&size=12';
         document.getElementById('adminQrDownloadPng').download = slug + '-qr.png';
 
-        // Load QR preview
         var preview = document.getElementById('adminQrPreview');
         fetch(qrUrl + '?format=svg')
             .then(function(r) { return r.text(); })
@@ -172,12 +310,43 @@
                 preview.innerHTML = '<span style="color: #dc3545;">Failed to load QR code.<br>Is segno installed?</span>';
             });
 
-        // Copy button
         document.getElementById('adminQrCopyBtn').addEventListener('click', function() {
             navigator.clipboard.writeText(absUrl).then(function() {
                 var fb = document.getElementById('adminQrCopyFeedback');
                 fb.style.display = 'block';
                 setTimeout(function() { fb.style.display = 'none'; }, 2500);
+            });
+        });
+
+        // -- Embed code panel --
+        var jsSnippet = '<script src="' + absStaticBase + '/static/django_forms_workflows/js/dfw-embed.js"\n  data-form="' + slug + '"\n  data-server="' + absStaticBase + '"\n><\/script>';
+        var iframeSnippet = '<iframe src="' + absEmbedUrl + '"\n  style="width:100%;border:none;min-height:500px;"\n  title="Form: ' + slug + '"\n  loading="lazy"\n  allowtransparency="true"\n></iframe>';
+        var wpSnippet = '[dfw_form slug="' + slug + '"]';
+
+        document.getElementById('embed-snippet-js').textContent = jsSnippet;
+        document.getElementById('embed-snippet-iframe').textContent = iframeSnippet;
+        document.getElementById('embed-snippet-wordpress').textContent = wpSnippet;
+
+        // Tab switching
+        document.querySelectorAll('.embed-code-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.embed-code-tab').forEach(function(t) { t.classList.remove('active'); });
+                document.querySelectorAll('.embed-code-content').forEach(function(c) { c.classList.remove('active'); });
+                tab.classList.add('active');
+                document.getElementById('embed-tab-' + tab.getAttribute('data-tab')).classList.add('active');
+            });
+        });
+
+        // Copy buttons
+        document.querySelectorAll('.embed-copy-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var targetId = btn.getAttribute('data-target');
+                var text = document.getElementById(targetId).textContent;
+                navigator.clipboard.writeText(text).then(function() {
+                    var fb = btn.nextElementSibling;
+                    fb.style.display = 'inline';
+                    setTimeout(function() { fb.style.display = 'none'; }, 2500);
+                });
             });
         });
     });

@@ -47,11 +47,22 @@
     var minHeight = parseInt(script.getAttribute('data-min-height')) || 300;
     var loadingText = script.getAttribute('data-loading-text') || 'Loading form...';
 
-    // Normalize server URL (remove trailing slash)
-    server = server.replace(/\/+$/, '');
+    // Validate server is a proper HTTP(S) URL to prevent script injection
+    var sanitisedServer;
+    try {
+        var parsedServer = new URL(server);
+        if (parsedServer.protocol !== 'https:' && parsedServer.protocol !== 'http:') {
+            console.error('[dfw-embed] data-server must be an http(s) URL');
+            return;
+        }
+        sanitisedServer = parsedServer.origin;
+    } catch (e) {
+        console.error('[dfw-embed] Invalid data-server URL:', e.message);
+        return;
+    }
 
-    // Build embed URL
-    var embedUrl = server + '/forms/' + encodeURIComponent(formSlug) + '/embed/';
+    // Build embed URL using validated origin
+    var embedUrl = sanitisedServer + '/forms/' + encodeURIComponent(formSlug) + '/embed/';
     var params = [];
     if (theme) params.push('theme=' + encodeURIComponent(theme));
     if (accentColor) params.push('accent_color=' + encodeURIComponent(accentColor));
@@ -90,15 +101,8 @@
         script.parentNode.insertBefore(container, script.nextSibling);
     }
 
-    // Parse the server origin for message validation
-    var serverOrigin;
-    try {
-        var a = document.createElement('a');
-        a.href = server;
-        serverOrigin = a.protocol + '//' + a.host;
-    } catch (e) {
-        serverOrigin = server;
-    }
+    // Use the already-validated origin for message validation
+    var serverOrigin = sanitisedServer;
 
     // Listen for postMessage events from the iframe
     window.addEventListener('message', function (event) {

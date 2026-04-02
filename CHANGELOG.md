@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.2] - 2026-04-02
+
+### Fixed
+- **Notification rules crash on templates referencing `{{ approver }}`** —
+  `send_notification_rules` did not include a recipient `User` object in the
+  template context, so templates like `approval_request.html` that reference
+  `{{ approver.get_full_name|default:approver.username }}` raised
+  `VariableDoesNotExist`. The exception was silently swallowed by the outer
+  `except Exception` in `_dispatch_notification_rules`, making it appear that
+  notifications simply never fired. Now resolves each recipient's `User`
+  record by email and passes it as `approver` in the per-recipient context.
+
 ## [0.61.1] - 2026-04-02
 
 ### Fixed

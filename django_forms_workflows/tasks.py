@@ -1249,7 +1249,7 @@ def send_notification_rules(
                 form_name=form_name, submission_id=submission.id
             )
 
-        context = {
+        base_context = {
             "submission": submission,
             "form_data": form_data,
             "submission_url": submission_url,
@@ -1258,9 +1258,20 @@ def send_notification_rules(
         }
         if task_id:
             try:
-                context["task"] = ApprovalTask.objects.get(id=task_id)
+                base_context["task"] = ApprovalTask.objects.get(id=task_id)
             except ApprovalTask.DoesNotExist:
                 pass
+
+        # Pre-fetch User objects for all recipients so templates that
+        # reference ``{{ approver }}`` (e.g. approval_request.html) work
+        # identically to the legacy send_approval_request task.
+        from django.contrib.auth import get_user_model
+
+        user_model = get_user_model()
+        _users_by_email: dict = {}
+        if recipients:
+            for u in user_model.objects.filter(email__in=recipients):
+                _users_by_email[u.email] = u
 
         # Check cadence — batch or send immediately
         cadence = (
@@ -1288,11 +1299,15 @@ def send_notification_rules(
             )
         else:
             for recipient in recipients:
+                ctx = {**base_context}
+                recipient_user = _users_by_email.get(recipient)
+                if recipient_user:
+                    ctx["approver"] = recipient_user
                 _send_html_email(
                     subject,
                     [recipient],
                     template,
-                    context,
+                    ctx,
                     notification_type=event,
                     submission_id=submission_id,
                 )

@@ -489,3 +489,52 @@ def test_no_task_id_fires_all_workflow_rules(form_definition, user):
     all_recipients = [call.args[1][0] for call in mock_send.call_args_list]
     assert "wf1@example.com" in all_recipients
     assert "wf2@example.com" in all_recipients
+
+
+# ── approver context in template rendering ─────────────────────────────
+
+
+def test_approval_request_includes_approver_in_context(
+    form_definition, user, approver_user
+):
+    """send_notification_rules passes 'approver' (User) in the template context."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"advisor_email": approver_user.email},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    assert mock_send.call_count >= 1
+    # The context dict is the 4th positional arg (index 3)
+    ctx = mock_send.call_args_list[0].args[3]
+    assert "approver" in ctx
+    assert ctx["approver"].pk == approver_user.pk

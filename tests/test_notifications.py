@@ -538,3 +538,312 @@ def test_approval_request_includes_approver_in_context(
     ctx = mock_send.call_args_list[0].args[3]
     assert "approver" in ctx
     assert ctx["approver"].pk == approver_user.pk
+
+
+# ── body_template rendering ───────────────────────────────────────────
+
+
+def test_body_template_renders_inline_html(form_definition, user, approver_user):
+    """When body_template is set, it renders as a Django template string."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+        body_template="<p>Hello {{ approver.username }}, please review.</p>",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"advisor_email": approver_user.email},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    with (
+        patch(
+            "django_forms_workflows.tasks._send_html_email_from_string"
+        ) as mock_send_str,
+        patch("django_forms_workflows.tasks._send_html_email") as mock_send_file,
+    ):
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    # Should use the string renderer, not the file renderer
+    assert mock_send_str.call_count >= 1
+    assert mock_send_file.call_count == 0
+    # Verify the body_template was passed
+    body_arg = mock_send_str.call_args_list[0].args[2]
+    assert "Hello {{ approver.username }}" in body_arg
+
+
+def test_empty_body_template_uses_file_template(form_definition, user, approver_user):
+    """When body_template is empty, falls back to the file-based template."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+        body_template="",  # empty → use file
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"advisor_email": approver_user.email},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    with (
+        patch(
+            "django_forms_workflows.tasks._send_html_email_from_string"
+        ) as mock_send_str,
+        patch("django_forms_workflows.tasks._send_html_email") as mock_send_file,
+    ):
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    assert mock_send_file.call_count >= 1
+    assert mock_send_str.call_count == 0
+
+
+# ── Built-in send_approval_request no longer dispatched ────────────────
+
+
+def test_notify_task_request_does_not_call_send_approval_request(
+    form_definition, user, approver_user
+):
+    """_notify_task_request no longer dispatches the built-in send_approval_request."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"advisor_email": approver_user.email},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    from django_forms_workflows.workflow_engine import _notify_task_request
+
+    with (
+        patch(
+            "django_forms_workflows.workflow_engine._dispatch_notification_rules"
+        ) as mock_dispatch,
+        patch("django_forms_workflows.tasks.send_approval_request") as mock_builtin,
+    ):
+        _notify_task_request(task)
+
+    # NotificationRule dispatch was called
+    mock_dispatch.assert_called_once()
+    # Built-in was NOT called
+    mock_builtin.delay.assert_not_called()
+
+
+# ── approval_reminder + escalation event types ─────────────────────────
+
+
+def test_approval_reminder_event_type_works(form_definition, user, approver_user):
+    """approval_reminder event type fires via send_notification_rules."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_reminder",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"advisor_email": approver_user.email},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_reminder", task_id=task.id)
+
+    assert mock_send.call_count >= 1
+    recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    assert approver_user.email in recipients
+
+
+# ── notify_stage_groups skipped when assigned_to is resolved ───────────
+
+
+def test_stage_groups_skipped_when_assigned_to_resolved(
+    form_definition, user, approver_user, approval_group
+):
+    """When use_triggering_stage and the task has assigned_to, stage groups are skipped."""
+    from django.contrib.auth.models import User as AuthUser
+
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    StageApprovalGroup.objects.create(stage=stage, group=approval_group)
+
+    # Group member who should NOT be notified
+    group_user = AuthUser.objects.create_user(
+        username="groupmember", email="groupmember@example.com", password="pass"
+    )
+    group_user.groups.add(approval_group)
+
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+        notify_stage_groups=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"advisor_email": approver_user.email},
+        status="pending_approval",
+    )
+    # Task has assigned_to set — groups should be skipped
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    assert approver_user.email in recipients
+    assert "groupmember@example.com" not in recipients
+
+
+def test_stage_groups_fire_when_no_assigned_to(form_definition, user, approval_group):
+    """When the task has no assigned_to (group-only), stage groups DO fire."""
+    from django.contrib.auth.models import User as AuthUser
+
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+    )
+    StageApprovalGroup.objects.create(stage=stage, group=approval_group)
+
+    group_user = AuthUser.objects.create_user(
+        username="groupmember2", email="groupmember2@example.com", password="pass"
+    )
+    group_user.groups.add(approval_group)
+
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_groups=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    # Task with NO assigned_to — groups should fire
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_group=approval_group,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    assert "groupmember2@example.com" in recipients

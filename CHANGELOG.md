@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.62.1] - 2026-04-02
+
+### Fixed
+- **`notify_stage_groups` no longer duplicates when `assigned_to` is resolved** —
+  when `use_triggering_stage=True` and the task has a specific individual assigned
+  (via `assignee_form_field`), stage approval groups are now skipped. The individual
+  was already resolved so the fallback group should not also be notified.
+- **Sub-workflow completion now fires final-decision notifications** —
+  `_promote_parent_if_complete` calls `_notify_final_approval` when all sub-workflows
+  finish and the parent is promoted to approved. Similarly, `_reject_sub_workflow`
+  calls `_notify_rejection` when a rejected child propagates to the parent.
+  Previously, no notification was dispatched at either of these lifecycle points.
+
+### Changed
+- Added Logan Nickerson to README Credits for testing and business requirements.
+
+## [0.62.0] - 2026-04-02
+
+### Changed
+- **NotificationRule is now the single notification system.** The built-in
+  `send_approval_request` task is no longer dispatched from the workflow engine.
+  All notification behaviour is configured exclusively through NotificationRule
+  records.
+- **Reminders ported to rules.** `check_approval_deadlines` now dispatches
+  `approval_reminder` via `send_notification_rules` instead of calling the
+  hardcoded `send_approval_reminder` task.
+
+### Added
+- **New event types**: `approval_reminder` and `escalation` added to
+  NotificationRule.EVENT_TYPES.
+- **`body_template` field** on NotificationRule — custom HTML email body
+  rendered as a Django template string. When set, overrides the built-in
+  file-based template for that event. Supports all context variables
+  (submission, form_data, approver, task, approval_url, etc.).
+- **Data migration 0088** — auto-creates `approval_request` NotificationRule
+  records (with `use_triggering_stage=True`, `notify_stage_assignees=True`,
+  `notify_stage_groups=True`) for every workflow that doesn't already have one,
+  preserving the behaviour of the removed built-in email. Also creates
+  `approval_reminder` rules for workflows with `send_reminder_after_days` set.
+- `_send_html_email_from_string` helper for rendering inline template strings.
+
 ## [0.61.2] - 2026-04-02
 
 ### Fixed

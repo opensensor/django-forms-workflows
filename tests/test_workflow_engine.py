@@ -106,12 +106,12 @@ class TestWebhookDispatch:
         "django_forms_workflows.workflow_engine.transaction.on_commit",
         side_effect=lambda fn: fn(),
     )
-    @patch("django_forms_workflows.tasks.send_approval_request.delay")
+    @patch("django_forms_workflows.tasks.send_notification_rules.delay")
     @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks.delay")
     def test_task_request_dispatches_task_created(
         self,
         mock_webhook_delay,
-        mock_email_delay,
+        mock_notification_delay,
         mock_on_commit,
         workflow,
         user,
@@ -140,19 +140,20 @@ class TestWebhookDispatch:
             workflow.id,
             None,
         )
-        mock_email_delay.assert_called_once_with(task.id)
+        # Only NotificationRule dispatch — no built-in send_approval_request
+        mock_notification_delay.assert_called_once_with(
+            submission.id, "approval_request", task.id
+        )
 
     @patch(
         "django_forms_workflows.workflow_engine.transaction.on_commit",
         side_effect=lambda fn: fn(),
     )
     @patch("django_forms_workflows.tasks.send_notification_rules")
-    @patch("django_forms_workflows.tasks.send_approval_request")
     @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks")
-    def test_task_request_email_falls_back_to_sync_when_delay_fails(
+    def test_task_request_notification_falls_back_to_sync_when_delay_fails(
         self,
         mock_webhook_task,
-        mock_email_task,
         mock_notification_task,
         mock_on_commit,
         workflow,
@@ -171,12 +172,16 @@ class TestWebhookDispatch:
             step_name="Stage 1",
             status="pending",
         )
-        mock_email_task.delay.side_effect = RuntimeError("broker unavailable")
+        mock_notification_task.delay.side_effect = RuntimeError("broker unavailable")
 
         _notify_task_request(task)
 
         mock_on_commit.assert_called()
+        # Notification fell back to synchronous call
         mock_notification_task.delay.assert_called_once_with(
+            submission.id, "approval_request", task.id
+        )
+        mock_notification_task.assert_called_once_with(
             submission.id, "approval_request", task.id
         )
         mock_webhook_task.delay.assert_called_once_with(
@@ -186,8 +191,6 @@ class TestWebhookDispatch:
             workflow.id,
             None,
         )
-        mock_email_task.delay.assert_called_once_with(task.id)
-        mock_email_task.assert_called_once_with(task.id)
 
 
 # ── Legacy flat mode (all) ────────────────────────────────────────────────
@@ -1217,3 +1220,27 @@ class TestSubWorkflowEngine:
         handle_sub_workflow_rejection(task)
         instance.refresh_from_db()
         assert instance.status == "rejected"
+
+    @patch("django_forms_workflows.workflow_engine._notify_final_approval")
+    def test_promote_parent_fires_workflow_approved(
+        self,
+        mock_final,
+        form_definition,
+        user,
+    ):
+        """When all sub-workflows are complete and parent is promoted,
+        _promote_parent_if_complete fires workflow_approved notification."""
+        from django_forms_workflows.workflow_engine import (
+            _promote_parent_if_complete,
+        )
+
+        submission = _make_submission(form_definition, user)
+        submission.status = "pending_approval"
+        submission.save()
+
+        # No sub-workflows pending → should promote and notify
+        _promote_parent_if_complete(submission)
+
+        submission.refresh_from_db()
+        assert submission.status == "approved"
+        mock_final.assert_called_once_with(submission)

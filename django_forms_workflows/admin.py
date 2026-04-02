@@ -529,6 +529,18 @@ class NotificationRuleInline(nested_admin.NestedStackedInline):
             },
         ),
         (
+            "Email body (optional)",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "Custom HTML email body. Rendered as a Django template "
+                    "with the full notification context. Leave blank to use "
+                    "the built-in template for this event type."
+                ),
+                "fields": ("body_template",),
+            },
+        ),
+        (
             "Conditions (optional)",
             {
                 "classes": ("collapse",),
@@ -1746,6 +1758,18 @@ class NotificationRuleAdmin(admin.ModelAdmin):
                     "notify_groups",
                     "subject_template",
                 )
+            },
+        ),
+        (
+            "Email body (optional)",
+            {
+                "classes": ("collapse",),
+                "description": (
+                    "Custom HTML email body. Rendered as a Django template "
+                    "with the full notification context. Leave blank to use "
+                    "the built-in template for this event type."
+                ),
+                "fields": ("body_template",),
             },
         ),
         (

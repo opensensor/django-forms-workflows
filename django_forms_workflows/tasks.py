@@ -149,6 +149,71 @@ def _send_html_email(
             )
 
 
+def _send_html_email_from_string(
+    subject: str,
+    to: Iterable[str],
+    body_template_string: str,
+    context: dict,
+    from_email: str | None = None,
+    *,
+    notification_type: str = "other",
+    submission_id: int | None = None,
+) -> None:
+    """Like _send_html_email but renders an inline Django template string
+    instead of loading a template file.  Used when a NotificationRule has a
+    custom ``body_template``.
+    """
+    from django.template import Context, Template
+
+    to_list = [e for e in to if e]
+    if not to_list:
+        logger.info("Skipping email '%s' (no recipients)", subject)
+        _write_notification_log(
+            notification_type=notification_type,
+            submission_id=submission_id,
+            recipient_email="(none)",
+            subject=subject,
+            status="skipped",
+        )
+        return
+
+    context.setdefault("site_name", _site_name())
+
+    tpl = Template(body_template_string)
+    html_body = tpl.render(Context(context))
+    text_body = strip_tags(html_body)
+    from_addr = from_email or getattr(
+        settings, "DEFAULT_FROM_EMAIL", "no-reply@localhost"
+    )
+
+    msg = EmailMultiAlternatives(
+        subject=subject, body=text_body, from_email=from_addr, to=to_list
+    )
+    msg.attach_alternative(html_body, "text/html")
+    try:
+        msg.send(fail_silently=False)
+        logger.info("Sent email '%s' to %s", subject, to_list)
+        for recipient in to_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=recipient,
+                subject=subject,
+                status="sent",
+            )
+    except Exception as e:  # pragma: no cover
+        logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
+        for recipient in to_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=recipient,
+                subject=subject,
+                status="failed",
+                error_message=str(e),
+            )
+
+
 def _write_notification_log(
     *,
     notification_type: str,
@@ -726,10 +791,12 @@ def check_approval_deadlines() -> str:
             )
             if now > reminder_time:
                 try:
-                    send_approval_reminder.delay(task.id)
+                    send_notification_rules.delay(
+                        submission.id, "approval_reminder", task_id=task.id
+                    )
                 except Exception:
                     logger.debug(
-                        "Could not enqueue send_approval_reminder for task %s",
+                        "Could not enqueue approval_reminder for task %s",
                         task.id,
                         exc_info=True,
                     )
@@ -1035,7 +1102,20 @@ def _collect_notification_recipients(
             _add(email)
 
     # 5. Stage approval groups (NotificationRule only)
-    if getattr(notif, "notify_stage_groups", False) and submission is not None:
+    #    When using the triggering stage and the task already has a specific
+    #    individual assigned (assigned_to), skip the group notification —
+    #    the individual was resolved via assignee_form_field so the fallback
+    #    group should not also be notified.
+    _skip_stage_groups = (
+        getattr(notif, "use_triggering_stage", False)
+        and task is not None
+        and getattr(task, "assigned_to_id", None) is not None
+    )
+    if (
+        getattr(notif, "notify_stage_groups", False)
+        and submission is not None
+        and not _skip_stage_groups
+    ):
         from django.contrib.auth import get_user_model
 
         user_model = get_user_model()
@@ -1117,6 +1197,8 @@ _EVENT_TEMPLATE_MAP: dict[str, str] = {
     "workflow_approved": "emails/approval_notification.html",
     "workflow_denied": "emails/rejection_notification.html",
     "form_withdrawn": "emails/withdrawal_notification.html",
+    "approval_reminder": "emails/approval_reminder.html",
+    "escalation": "emails/escalation_notification.html",
 }
 
 _EVENT_DEFAULT_SUBJECTS: dict[str, str] = {
@@ -1126,6 +1208,8 @@ _EVENT_DEFAULT_SUBJECTS: dict[str, str] = {
     "workflow_approved": "Submission Approved: {form_name} (ID {submission_id})",
     "workflow_denied": "Submission Rejected: {form_name} (ID {submission_id})",
     "form_withdrawn": "Submission Withdrawn: {form_name} (ID {submission_id})",
+    "approval_reminder": "Reminder: Approval Pending for {form_name} (ID {submission_id})",
+    "escalation": "Escalation: {form_name} (ID {submission_id})",
 }
 
 
@@ -1150,8 +1234,8 @@ def send_notification_rules(
         event: The NotificationRule event type (e.g. ``workflow_approved``).
         task_id: Optional ApprovalTask ID (used for approval_request context).
     """
-    template = _EVENT_TEMPLATE_MAP.get(event)
-    if not template:
+    default_template = _EVENT_TEMPLATE_MAP.get(event)
+    if not default_template:
         logger.warning("send_notification_rules: unknown event '%s'", event)
         return
 
@@ -1298,16 +1382,28 @@ def send_notification_rules(
                 scheduled_for,
             )
         else:
+            # Determine template: per-rule body_template overrides file.
+            rule_body = getattr(rule, "body_template", "") or ""
             for recipient in recipients:
                 ctx = {**base_context}
                 recipient_user = _users_by_email.get(recipient)
                 if recipient_user:
                     ctx["approver"] = recipient_user
-                _send_html_email(
-                    subject,
-                    [recipient],
-                    template,
-                    ctx,
-                    notification_type=event,
-                    submission_id=submission_id,
-                )
+                if rule_body.strip():
+                    _send_html_email_from_string(
+                        subject,
+                        [recipient],
+                        rule_body,
+                        ctx,
+                        notification_type=event,
+                        submission_id=submission_id,
+                    )
+                else:
+                    _send_html_email(
+                        subject,
+                        [recipient],
+                        default_template,
+                        ctx,
+                        notification_type=event,
+                        submission_id=submission_id,
+                    )

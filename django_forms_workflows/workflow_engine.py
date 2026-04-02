@@ -135,8 +135,11 @@ def _notify_submission_created(submission: FormSubmission) -> None:
 def _notify_task_request(task: ApprovalTask) -> None:
     """Fire approval_request notifications for a newly activated task.
 
-    Dispatches NotificationRule records (handles cadence/batching internally)
-    and the built-in send_approval_request email to the assigned approver.
+    All notification behaviour is driven by NotificationRule records.
+    The legacy built-in ``send_approval_request`` task is no longer
+    dispatched here — a data migration creates equivalent rules for
+    every existing workflow so that approvers continue to receive
+    emails.
     """
     _dispatch_notification_rules(task.submission, "approval_request", task_id=task.id)
     _dispatch_workflow_webhooks(
@@ -145,26 +148,6 @@ def _notify_task_request(task: ApprovalTask) -> None:
         task_id=task.id,
         workflow_id=task.workflow_stage.workflow_id if task.workflow_stage_id else None,
     )
-    # Built-in approval request email to assigned user/group
-    try:
-        from .tasks import send_approval_request
-
-        def _fire_email() -> None:
-            try:
-                send_approval_request.delay(task.id)
-            except Exception:
-                logger.warning(
-                    "Approval request email fell back to synchronous send for task %s",
-                    task.id,
-                )
-                send_approval_request(task.id)
-
-        transaction.on_commit(_fire_email)
-    except Exception:
-        logger.warning(
-            "Could not dispatch built-in approval request email for task %s",
-            task.id,
-        )
 
 
 def _notify_final_approval(submission: FormSubmission) -> None:
@@ -1310,6 +1293,7 @@ def _promote_parent_if_complete(submission: FormSubmission) -> None:
         "Submission %s promoted to approved — all sub-workflows complete.",
         submission.id,
     )
+    _notify_final_approval(submission)
 
 
 def _finalize_sub_workflow(instance: SubWorkflowInstance) -> None:
@@ -1361,6 +1345,7 @@ def _reject_sub_workflow(instance: SubWorkflowInstance) -> None:
                 submission.id,
                 instance.id,
             )
+            _notify_rejection(submission)
     else:
         # Rejection counts as completion — promote parent if nothing else is pending.
         _promote_parent_if_complete(submission)

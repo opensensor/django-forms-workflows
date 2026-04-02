@@ -1301,6 +1301,8 @@ class NotificationRule(models.Model):
         ("workflow_approved", "Workflow Approved (final decision)"),
         ("workflow_denied", "Workflow Denied (final decision)"),
         ("form_withdrawn", "Form Withdrawn"),
+        ("approval_reminder", "Approval Reminder"),
+        ("escalation", "Escalation"),
     ]
 
     workflow = models.ForeignKey(
@@ -1352,6 +1354,16 @@ class NotificationRule(models.Model):
         help_text=(
             "Custom email subject line. Supports {form_name} and "
             "{submission_id} placeholders. Leave blank for the default."
+        ),
+    )
+    body_template = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Custom email body (HTML). Rendered as a Django template with "
+            "the full notification context (submission, form_data, approver, "
+            "task, approval_url, submission_url, site_name, etc.). "
+            "Leave blank to use the built-in template for this event type."
         ),
     )
 

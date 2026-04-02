@@ -421,6 +421,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full prioritized roadmap with rat
 Built with ❤️ by the Django community.
 
 Special thanks to:
+- Logan Nickerson for his time spent testing and helping with business requirements
 - [Django Crispy Forms](https://github.com/django-crispy-forms/django-crispy-forms)
 - [Celery](https://github.com/celery/celery)
 - [django-auth-ldap](https://github.com/django-auth-ldap/django-auth-ldap)

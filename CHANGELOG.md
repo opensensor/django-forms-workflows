@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.3] - 2026-04-02
+
+### Fixed
+- **Side-by-side field alignment (take 2)** — inputs in paired half-width
+  rows now align correctly even when one label wraps to multiple lines.
+  Made each column a flex container (`display: flex; flex-direction: column`)
+  and `.mb-3` uses `flex: 1` instead of `height: 100%`, creating a proper
+  flex chain that reliably pushes inputs to a consistent vertical position.
+
 ## [0.63.2] - 2026-04-02
 
 ### Fixed

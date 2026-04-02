@@ -3,33 +3,45 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Side-by-side field alignment ────────────────────────────────────────
-   When two or more fields sit in a .row.fields-aligned-row, columns
-   stretch to equal height (the default flex behaviour). Each .mb-3
-   wrapper becomes a flex column so the label area grows evenly and
-   the input sits at a consistent vertical position regardless of
-   label length, help-text presence, or wrapped text. */
+   When two or more fields sit in a .row.fields-aligned-row, every column
+   becomes a flex column so .mb-3 can stretch to fill it.  The input/select
+   uses margin-top:auto to push itself to the bottom of the label area,
+   keeping inputs horizontally aligned regardless of label wrapping. */
 
+/* 1. Make each column a flex column so .mb-3 can stretch */
+.row.fields-aligned-row > [class*="col-"],
+.row.fields-aligned-row > .field-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+/* 2. .mb-3 fills the column and is itself a flex column */
 .row.fields-aligned-row > [class*="col-"] > .mb-3,
 .row.fields-aligned-row > .field-wrapper > .mb-3 {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1 1 auto;
 }
+
+/* 3. Labels stay at their natural size */
 .row.fields-aligned-row > [class*="col-"] > .mb-3 > label,
 .row.fields-aligned-row > .field-wrapper > .mb-3 > label {
     flex-shrink: 0;
 }
+
+/* 4. Push the input/select to the bottom of the label area */
 .row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-control,
 .row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-select,
 .row.fields-aligned-row > .field-wrapper > .mb-3 > .form-control,
 .row.fields-aligned-row > .field-wrapper > .mb-3 > .form-select {
-    margin-top: auto;        /* push the input to the bottom of the cell */
+    margin-top: auto;
 }
-/* Help text sits *after* the input and shouldn't shift it up */
+
+/* 5. Help text sits after the input — reserve consistent space */
 .row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-text,
 .row.fields-aligned-row > .field-wrapper > .mb-3 > .form-text {
     flex-shrink: 0;
-    min-height: 1.4em;       /* reserve space even when empty for alignment */
+    min-height: 1.4em;
 }
 
 /* ── Consistent field spacing ────────────────────────────────────────── */

@@ -496,7 +496,7 @@ class WorkflowStageInline(nested_admin.NestedStackedInline):
         ("assignee_form_field", "assignee_lookup_type"),
         "validate_assignee_group",
         ("allow_reassign", "allow_send_back"),
-        "allow_edit_form_data",
+        ("allow_edit_form_data", "hide_comment_field"),
         "trigger_conditions",
     )
 
@@ -958,6 +958,8 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                                 validate_assignee_group=stage.validate_assignee_group,
                                 allow_reassign=stage.allow_reassign,
                                 allow_send_back=stage.allow_send_back,
+                                allow_edit_form_data=stage.allow_edit_form_data,
+                                hide_comment_field=stage.hide_comment_field,
                             )
                             for sag in StageApprovalGroup.objects.filter(
                                 stage=stage
@@ -1591,14 +1593,11 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
             },
         ),
         (
-            "Editable Form Data",
+            "Approver UI Options",
             {
                 "classes": ("collapse",),
-                "description": (
-                    "When enabled, approvers at this stage can edit the original "
-                    "submission data instead of viewing it read-only."
-                ),
-                "fields": ("allow_edit_form_data",),
+                "description": ("Control what approvers see and can do at this stage."),
+                "fields": ("allow_edit_form_data", "hide_comment_field"),
             },
         ),
         (

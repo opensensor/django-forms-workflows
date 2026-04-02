@@ -1226,6 +1226,14 @@ class WorkflowStage(models.Model):
             "approver approves the submission."
         ),
     )
+    hide_comment_field = models.BooleanField(
+        default=False,
+        help_text=(
+            "Hide the public decision comment field from approvers at this stage. "
+            "Useful for stages where no notifications are sent to the submitter "
+            "or where the comment would not be meaningful."
+        ),
+    )
 
     change_history = GenericRelation(
         "django_forms_workflows.ChangeHistory",

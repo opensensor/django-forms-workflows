@@ -223,11 +223,23 @@ class DynamicForm(forms.Form):
     - Draft saving
     """
 
-    def __init__(self, form_definition, user=None, initial_data=None, *args, **kwargs):
+    def __init__(
+        self,
+        form_definition,
+        user=None,
+        initial_data=None,
+        stashed_files=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.form_definition = form_definition
         self.user = user
         self.initial_data = initial_data or {}
+        # File metadata saved eagerly before validation so file uploads
+        # survive a validation-failure re-render (browsers don't re-send
+        # files).  Also used to carry forward draft / resubmit file data.
+        self.stashed_files = stashed_files or {}
 
         # Build form fields from definition
         # Exclude fields scoped to a workflow stage - those are for approvers only
@@ -430,6 +442,25 @@ class DynamicForm(forms.Form):
         source = DatabaseDataSource()
         return source.execute_choices_query(query_key)
 
+    def _get_existing_file_info(self, field_name):
+        """Return previously-uploaded file metadata for *field_name*, if any.
+
+        Checks ``stashed_files`` (validation-failure recovery) first, then
+        falls back to ``initial_data`` (draft / resubmit).  Returns ``None``
+        if no file info is found.
+        """
+        info = self.stashed_files.get(field_name)
+        if info and isinstance(info, dict) and info.get("filename"):
+            return info
+        if info and isinstance(info, list):
+            return info
+        info = (self.initial_data or {}).get(field_name)
+        if info and isinstance(info, dict) and info.get("filename"):
+            return info
+        if info and isinstance(info, list):
+            return info
+        return None
+
     def add_field(self, field_def, initial_data):
         """Add a field to the form based on field definition"""
 
@@ -471,8 +502,14 @@ class DynamicForm(forms.Form):
                 {
                     "type": "tel",
                     "inputmode": "tel",
+                    "pattern": r"\+?[\d()\- .]{7,25}",
+                    "title": (
+                        "Enter a valid phone number, e.g. 2065551234, "
+                        "(206) 555-1234, or +1 (206) 555-1234"
+                    ),
                     "placeholder": widget_attrs.get(
-                        "placeholder", "e.g. 2065551234 or (206) 555-1234"
+                        "placeholder",
+                        "e.g. 2065551234, (206) 555-1234, or +1 2065551234",
                     ),
                 }
             )
@@ -606,6 +643,19 @@ class DynamicForm(forms.Form):
                     if e.strip()
                 )
                 accept_attrs["accept"] = exts
+
+            # Check for a previously-uploaded file (stashed on validation
+            # failure, saved with a draft, or carried from a resubmission).
+            existing_file = self._get_existing_file_info(field_def.field_name)
+            if existing_file:
+                fname = existing_file.get("filename", "file")
+                extra_help = f"Previously uploaded: <strong>{fname}</strong>. Leave blank to keep it."
+                base_help = field_args.get("help_text", "") or ""
+                field_args["help_text"] = (
+                    f"{base_help} {extra_help}" if base_help else extra_help
+                )
+                field_args["required"] = False
+
             self.fields[field_def.field_name] = forms.FileField(
                 validators=file_validators,
                 widget=forms.ClearableFileInput(attrs=accept_attrs)
@@ -615,10 +665,22 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "multifile":
+            existing_file = self._get_existing_file_info(field_def.field_name)
+            required = field_def.required
+            help_text = field_def.help_text
+            if existing_file:
+                names = (
+                    ", ".join(f.get("filename", "file") for f in existing_file)
+                    if isinstance(existing_file, list)
+                    else existing_file.get("filename", "file")
+                )
+                extra = f"Previously uploaded: <strong>{names}</strong>. Leave blank to keep."
+                help_text = f"{help_text} {extra}" if help_text else extra
+                required = False
             self.fields[field_def.field_name] = MultipleFileField(
-                required=field_def.required,
+                required=required,
                 label=field_def.field_label,
-                help_text=field_def.help_text,
+                help_text=help_text,
             )
 
         elif field_def.field_type == "calculated":
@@ -1441,8 +1503,14 @@ class ApprovalStepForm(forms.Form):
                 {
                     "type": "tel",
                     "inputmode": "tel",
+                    "pattern": r"\+?[\d()\- .]{7,25}",
+                    "title": (
+                        "Enter a valid phone number, e.g. 2065551234, "
+                        "(206) 555-1234, or +1 (206) 555-1234"
+                    ),
                     "placeholder": widget_attrs.get(
-                        "placeholder", "e.g. 2065551234 or (206) 555-1234"
+                        "placeholder",
+                        "e.g. 2065551234, (206) 555-1234, or +1 2065551234",
                     ),
                 }
             )
@@ -1716,6 +1784,7 @@ class ApprovalStepForm(forms.Form):
                                 Field(next_field.field_name),
                                 css_class=f"col-md-6 field-wrapper field-{next_field.field_name}",
                             ),
+                            css_class="align-items-start",
                         )
                     )
                     i += 2
@@ -1727,22 +1796,31 @@ class ApprovalStepForm(forms.Form):
                         )
                     )
                     i += 1
-            elif field.width == "third":
+            elif field.width in ("third", "fourth"):
+                # Collect consecutive same-width fields into a single Row.
+                col_class = "col-md-4" if field.width == "third" else "col-md-3"
+                max_per_row = 3 if field.width == "third" else 4
+                group = []
+                while (
+                    i < len(fields)
+                    and len(group) < max_per_row
+                    and fields[i].width == field.width
+                    and fields[i].field_type != "section"
+                ):
+                    group.append(fields[i])
+                    i += 1
                 layout_fields.append(
-                    Div(
-                        Row(Column(Field(field.field_name), css_class="col-md-4")),
-                        css_class=f"field-wrapper field-{field.field_name}",
+                    Row(
+                        *[
+                            Div(
+                                Field(f.field_name),
+                                css_class=f"{col_class} field-wrapper field-{f.field_name}",
+                            )
+                            for f in group
+                        ],
+                        css_class="align-items-start",
                     )
                 )
-                i += 1
-            elif field.width == "fourth":
-                layout_fields.append(
-                    Div(
-                        Row(Column(Field(field.field_name), css_class="col-md-3")),
-                        css_class=f"field-wrapper field-{field.field_name}",
-                    )
-                )
-                i += 1
             else:
                 layout_fields.append(
                     Div(

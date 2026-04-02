@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-04-02
+
+### Added
+- **`hide_comment_field` on WorkflowStage** — new boolean field allows hiding
+  the public "Decision Comment" textarea from approvers on a per-stage basis.
+  Useful for stages with no submitter notifications or where the comment is
+  not meaningful.
+- **Phone field HTML5 pattern validation** — phone fields now include a
+  `pattern` attribute so browsers provide immediate visual feedback (like email
+  fields do). Rejects non-phone text such as "test" at input time. Country
+  code prefixes (`+1`, `+44`, etc.) are accepted.
+
+### Fixed
+- **File uploads preserved on validation failure** — uploaded files are now
+  saved to storage eagerly before form validation. On a validation-failure
+  re-render the form shows "Previously uploaded: filename" and the field
+  becomes optional, preventing file loss.
+- **File uploads saved with drafts** — clicking "Save Draft" now persists
+  any uploaded files alongside the draft form data.
+- **File carry-forward on resubmit** — when no new file is uploaded,
+  previously-stored file metadata is carried forward instead of being
+  discarded.
+- **Field vertical alignment in approval step forms** — consecutive
+  third/fourth-width fields are now grouped into a single row with
+  `align-items-start`, matching the main form's behaviour and preventing
+  misaligned labels/inputs.
+
 ## [0.62.1] - 2026-04-02
 
 ### Fixed

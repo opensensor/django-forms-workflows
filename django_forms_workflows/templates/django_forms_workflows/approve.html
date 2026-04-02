@@ -345,6 +345,7 @@
 
                     <!-- Decision Section inline -->
                     <h6 class="mb-3"><i class="bi bi-clipboard-check"></i> Your Decision</h6>
+                    {% if not hide_comment_field %}
                     <div class="mb-3">
                         <label for="comments" class="form-label">
                             Decision Comment
@@ -358,6 +359,7 @@
                             This comment is <strong>visible to the submitter</strong> and appears on the public submission record.
                         </div>
                     </div>
+                    {% endif %}
                     <div class="d-grid gap-2 d-md-block">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
                             <i class="bi bi-check-circle"></i> {{ approve_label|default:"Approve" }}
@@ -596,6 +598,7 @@
             <div class="card-body">
                 <form method="post" data-loading-message="Processing your decision...">
                     {% csrf_token %}
+                    {% if not hide_comment_field %}
                     <div class="mb-3">
                         <label for="comments" class="form-label">
                             Decision Comment
@@ -609,6 +612,7 @@
                             This comment is <strong>visible to the submitter</strong> and appears on the public submission record.
                         </div>
                     </div>
+                    {% endif %}
                     <div class="d-grid gap-2 d-md-block">
                         <button type="submit" name="decision" value="approve" class="btn btn-success btn-lg">
                             <i class="bi bi-check-circle"></i> {{ approve_label|default:"Approve" }}

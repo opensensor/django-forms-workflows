@@ -402,6 +402,11 @@ def form_submit(request, slug):
                     "user_agent": request.META.get("HTTP_USER_AGENT", ""),
                 },
             )
+
+            # Persist uploaded files with the draft
+            if request.FILES:
+                _save_draft_files(request.FILES, draft_obj, form_def)
+
             AuditLog.objects.create(
                 action="update" if not created else "create",
                 object_type="FormSubmission",
@@ -416,11 +421,18 @@ def form_submit(request, slug):
         # ------------------------------------------------------------------ #
         # Full submission: validate then save.                                #
         # ------------------------------------------------------------------ #
+
+        # Eagerly persist uploaded files so they survive a validation failure.
+        stashed_files = (
+            _stash_uploaded_files(request.FILES, form_def) if request.FILES else {}
+        )
+
         form = DynamicForm(
             form_definition=form_def,
             user=user_or_none,
             data=request.POST,
             files=request.FILES,
+            stashed_files=stashed_files or None,
         )
 
         if form.is_valid():
@@ -434,8 +446,20 @@ def form_submit(request, slug):
                 submission.form_data = {}
                 submission.save()
 
+            # Merge stashed files with any draft file data so files
+            # uploaded on a previous attempt are preserved.
+            _existing_files = dict(stashed_files)
+            if draft and draft.form_data:
+                for k, v in draft.form_data.items():
+                    if isinstance(v, dict) and v.get("filename"):
+                        _existing_files.setdefault(k, v)
+                    elif isinstance(v, list) and v and isinstance(v[0], dict):
+                        _existing_files.setdefault(k, v)
+
             submission.form_data = serialize_form_data(
-                form.cleaned_data, submission_id=submission.pk
+                form.cleaned_data,
+                submission_id=submission.pk,
+                existing_file_data=_existing_files or None,
             )
             submission.form_data = _re_evaluate_calculated_fields(
                 submission.form_data, form_def
@@ -610,11 +634,16 @@ def form_embed(request, slug):
                 },
             )
 
+        stashed_files = (
+            _stash_uploaded_files(request.FILES, form_def) if request.FILES else {}
+        )
+
         form = DynamicForm(
             form_definition=form_def,
             user=user_or_none,
             data=request.POST,
             files=request.FILES,
+            stashed_files=stashed_files or None,
         )
 
         if form.is_valid():
@@ -628,7 +657,9 @@ def form_embed(request, slug):
             submission.save()
 
             submission.form_data = serialize_form_data(
-                form.cleaned_data, submission_id=submission.pk
+                form.cleaned_data,
+                submission_id=submission.pk,
+                existing_file_data=stashed_files or None,
             )
             submission.form_data = _re_evaluate_calculated_fields(
                 submission.form_data, form_def
@@ -1869,6 +1900,10 @@ def approve_submission(request, task_id):
             "allow_reassign": bool(
                 task.workflow_stage and task.workflow_stage.allow_reassign
             ),
+            # hide the public decision comment textarea
+            "hide_comment_field": bool(
+                task.workflow_stage and task.workflow_stage.hide_comment_field
+            ),
         },
     )
 
@@ -2638,7 +2673,66 @@ def _parse_spreadsheet(file_obj):
         return {"headers": [], "rows": [], "error": "openpyxl not installed"}
 
 
-def serialize_form_data(data, submission_id=None):
+def _save_draft_files(files, draft_obj, form_def):
+    """Persist uploaded files from *request.FILES* into the draft's form_data.
+
+    Called during the draft-save path so that file uploads are not lost when a
+    user clicks "Save Draft" instead of "Submit".
+    """
+    file_field_names = set(
+        form_def.fields.filter(
+            field_type__in=("file", "multifile", "spreadsheet")
+        ).values_list("field_name", flat=True)
+    )
+    for field_name in files:
+        if field_name not in file_field_names:
+            continue
+        file_list = files.getlist(field_name)
+        if len(file_list) > 1:
+            # multifile
+            draft_obj.form_data[field_name] = [
+                _serialize_single_file(f, f"{field_name}_{i}", draft_obj.pk)
+                for i, f in enumerate(file_list)
+            ]
+        else:
+            draft_obj.form_data[field_name] = _serialize_single_file(
+                file_list[0], field_name, draft_obj.pk
+            )
+    draft_obj.save()
+
+
+def _stash_uploaded_files(files, form_def):
+    """Save uploaded files to storage eagerly (before validation).
+
+    Returns a dict of ``{field_name: file_info_dict}`` for every file field
+    found in *files*.  The caller should merge this into the form's
+    ``initial_data`` on a validation-failure re-render so that the template
+    can display the already-uploaded filename and the file field can be made
+    optional.
+    """
+    file_field_names = set(
+        form_def.fields.filter(
+            field_type__in=("file", "multifile", "spreadsheet")
+        ).values_list("field_name", flat=True)
+    )
+    stashed = {}
+    for field_name in files:
+        if field_name not in file_field_names:
+            continue
+        file_list = files.getlist(field_name)
+        if len(file_list) > 1:
+            stashed[field_name] = [
+                _serialize_single_file(f, f"{field_name}_{i}", "pending")
+                for i, f in enumerate(file_list)
+            ]
+        else:
+            stashed[field_name] = _serialize_single_file(
+                file_list[0], field_name, "pending"
+            )
+    return stashed
+
+
+def serialize_form_data(data, submission_id=None, existing_file_data=None):
     """
     Convert form data to JSON-serializable format.
 
@@ -2652,7 +2746,12 @@ def serialize_form_data(data, submission_id=None):
 
     Spreadsheet fields (``spreadsheet`` type) are parsed and stored as a
     dict with ``headers`` and ``rows`` keys.
+
+    If *existing_file_data* is supplied (a dict of ``{field_name: file_info}``),
+    any file field whose cleaned value is empty will carry forward the
+    previously-uploaded file metadata instead of storing ``None``.
     """
+    existing_file_data = existing_file_data or {}
     serialized = {}
     for key, value in data.items():
         if isinstance(value, date | datetime | time):
@@ -2671,6 +2770,9 @@ def serialize_form_data(data, submission_id=None):
                 serialized[key] = _parse_spreadsheet(value)
             else:
                 serialized[key] = _serialize_single_file(value, key, submission_id)
+        elif not value and key in existing_file_data:
+            # No new file uploaded — carry forward the previously-stored file.
+            serialized[key] = existing_file_data[key]
         else:
             serialized[key] = value
     return serialized

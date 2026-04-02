@@ -37,11 +37,10 @@
     margin-top: auto;
 }
 
-/* 5. Help text sits after the input — reserve consistent space */
+/* 5. Help text sits after the input at its natural size */
 .row.fields-aligned-row > [class*="col-"] > .mb-3 > .form-text,
 .row.fields-aligned-row > .field-wrapper > .mb-3 > .form-text {
     flex-shrink: 0;
-    min-height: 1.4em;
 }
 
 /* ── Consistent field spacing ────────────────────────────────────────── */

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.5] - 2026-04-02
+
+### Fixed
+- **Remove min-height on .form-text in aligned rows** — the `min-height: 1.4em`
+  rule on help text elements was reserving blank space after every input in
+  paired rows even when no help text existed, creating excessive vertical gaps.
+  Help text now renders at its natural size.
+
 ## [0.63.4] - 2026-04-02
 
 ### Fixed

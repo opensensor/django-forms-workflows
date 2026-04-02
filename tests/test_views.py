@@ -3,6 +3,7 @@ Tests for django_forms_workflows.views.
 """
 
 from datetime import timedelta
+from unittest import mock
 
 import pytest
 from django.test import Client
@@ -169,6 +170,25 @@ class TestWithdrawSubmission:
         auth_client.post(url)
         sub.refresh_from_db()
         assert sub.status == "approved"  # Should not change
+
+    def test_withdraw_dispatches_form_withdrawn_notification(
+        self, auth_client, form_with_fields, user
+    ):
+        """Withdrawal must call _dispatch_notification_rules with 'form_withdrawn'."""
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={"full_name": "Test"},
+            status="pending_approval",
+        )
+        url = reverse("forms_workflows:withdraw_submission", args=[sub.pk])
+        with mock.patch(
+            "django_forms_workflows.workflow_engine._dispatch_notification_rules"
+        ) as mock_dispatch:
+            auth_client.post(url)
+        mock_dispatch.assert_called_once_with(mock.ANY, "form_withdrawn")
+        # Verify it was called with the right submission
+        assert mock_dispatch.call_args[0][0].id == sub.id
 
 
 # ── submission_detail ────────────────────────────────────────────────────

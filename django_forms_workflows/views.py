@@ -2235,18 +2235,10 @@ def withdraw_submission(request, submission_id):
             comments="Submission withdrawn by submitter",
         )
 
-        # Send withdrawal notifications — respects notification_cadence.
-        try:
-            from .workflow_engine import _notify_workflow_notification_with_cadence
+        # Dispatch form_withdrawn notification rules.
+        from .workflow_engine import _dispatch_notification_rules
 
-            _notify_workflow_notification_with_cadence(
-                submission, "withdrawal_notification"
-            )
-        except Exception:
-            logger.warning(
-                "Could not dispatch withdrawal notifications for submission %s",
-                submission.id,
-            )
+        _dispatch_notification_rules(submission, "form_withdrawn")
 
         messages.success(request, "Submission withdrawn successfully.")
         return redirect("forms_workflows:my_submissions")

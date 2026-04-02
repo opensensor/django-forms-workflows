@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.1] - 2026-04-02
+
+### Fixed
+- **Withdrawal notifications broken** — `withdraw_submission` view imported the
+  removed legacy function `_notify_workflow_notification_with_cadence`; a bare
+  `except Exception` silently swallowed the `ImportError`, so `form_withdrawn`
+  notification rules never fired for any form. Replaced with a direct call to
+  `_dispatch_notification_rules(submission, "form_withdrawn")`.
+
 ## [0.61.0] - 2026-04-02
 
 ### Added

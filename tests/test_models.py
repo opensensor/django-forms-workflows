@@ -7,6 +7,7 @@ from datetime import date
 import pytest
 from django.contrib.auth.models import Group, User
 from django.db import IntegrityError
+from django.db.models import ProtectedError
 
 from django_forms_workflows.models import (
     ActionExecutionLog,
@@ -20,6 +21,7 @@ from django_forms_workflows.models import (
     FormTemplate,
     LDAPGroupProfile,
     ManagedFile,
+    PaymentRecord,
     PostSubmissionAction,
     PrefillSource,
     SharedOptionList,
@@ -999,3 +1001,159 @@ class TestSharedOptionList:
         SharedOptionList.objects.create(name="Alpha", slug="alpha", items=[])
         names = list(SharedOptionList.objects.values_list("name", flat=True))
         assert names == ["Alpha", "Zebra"]
+
+
+# ── PaymentRecord ────────────────────────────────────────────────────────
+
+
+class TestPaymentRecord:
+    def test_create(self, submission):
+        pr = PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            transaction_id="pi_test_123",
+            amount="25.00",
+            currency="usd",
+            status="pending",
+            idempotency_key="key_001",
+        )
+        assert pr.provider_name == "stripe"
+        assert pr.transaction_id == "pi_test_123"
+        assert str(pr.amount) == "25.00"
+        assert pr.status == "pending"
+
+    def test_str(self, submission):
+        pr = PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            transaction_id="pi_test_456",
+            amount="50.00",
+            currency="usd",
+            status="completed",
+            idempotency_key="key_002",
+        )
+        s = str(pr)
+        assert "pi_test_456" in s
+        assert "$50.00" in s
+        assert "Completed" in s
+
+    def test_str_pending_no_transaction(self, submission):
+        pr = PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            amount="10.00",
+            status="pending",
+            idempotency_key="key_003",
+        )
+        assert "(pending)" in str(pr)
+
+    def test_unique_idempotency_key(self, submission):
+        PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            amount="10.00",
+            idempotency_key="unique_key",
+        )
+        with pytest.raises(IntegrityError):
+            PaymentRecord.objects.create(
+                submission=submission,
+                form_definition=submission.form_definition,
+                provider_name="stripe",
+                amount="10.00",
+                idempotency_key="unique_key",
+            )
+
+    def test_cascade_on_submission_delete(self, submission):
+        PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            amount="10.00",
+            idempotency_key="key_cascade",
+        )
+        submission.delete()
+        assert not PaymentRecord.objects.filter(idempotency_key="key_cascade").exists()
+
+    def test_protect_on_form_definition_delete(self, submission):
+        PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            amount="10.00",
+            idempotency_key="key_protect",
+        )
+        with pytest.raises(ProtectedError):
+            submission.form_definition.delete()
+
+    def test_ordering(self, submission):
+        pr1 = PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            amount="10.00",
+            idempotency_key="key_ord_1",
+        )
+        pr2 = PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            amount="20.00",
+            idempotency_key="key_ord_2",
+        )
+        records = list(PaymentRecord.objects.all())
+        # Newest first
+        assert records[0] == pr2
+        assert records[1] == pr1
+
+    def test_related_name_on_submission(self, submission):
+        PaymentRecord.objects.create(
+            submission=submission,
+            form_definition=submission.form_definition,
+            provider_name="stripe",
+            amount="10.00",
+            idempotency_key="key_rel",
+        )
+        assert submission.payment_records.count() == 1
+
+
+class TestFormDefinitionPaymentFields:
+    def test_payment_fields_default(self, form_definition):
+        assert form_definition.payment_enabled is False
+        assert form_definition.payment_provider == ""
+        assert form_definition.payment_amount_type == "fixed"
+        assert form_definition.payment_fixed_amount is None
+        assert form_definition.payment_currency == "usd"
+
+    def test_payment_enabled_form(self, db, category):
+        fd = FormDefinition.objects.create(
+            name="Paid Form",
+            slug="paid-form",
+            category=category,
+            payment_enabled=True,
+            payment_provider="stripe",
+            payment_amount_type="fixed",
+            payment_fixed_amount="99.99",
+            payment_currency="cad",
+            payment_description_template="Payment for {form_name}",
+        )
+        fd.refresh_from_db()
+        assert fd.payment_enabled is True
+        assert fd.payment_provider == "stripe"
+        assert str(fd.payment_fixed_amount) == "99.99"
+        assert fd.payment_currency == "cad"
+
+
+class TestFormSubmissionPendingPayment:
+    def test_pending_payment_status(self, form_with_fields, user):
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={"full_name": "Test"},
+            status="pending_payment",
+        )
+        assert sub.status == "pending_payment"
+        assert sub.get_status_display() == "Pending Payment"

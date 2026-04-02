@@ -37,6 +37,7 @@ from .models import (
     ManagedFile,
     NotificationLog,
     NotificationRule,
+    PaymentRecord,
     PostSubmissionAction,
     PrefillSource,
     SharedOptionList,
@@ -703,6 +704,20 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
             },
         ),
         (
+            "Payment",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "payment_enabled",
+                    "payment_provider",
+                    ("payment_amount_type", "payment_fixed_amount"),
+                    "payment_amount_field",
+                    "payment_currency",
+                    "payment_description_template",
+                ),
+            },
+        ),
+        (
             "Metadata",
             {
                 "fields": ("created_at", "updated_at", "created_by"),
@@ -832,6 +847,13 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                         allow_withdrawal=form.allow_withdrawal,
                         allow_resubmit=form.allow_resubmit,
                         allow_batch_import=form.allow_batch_import,
+                        payment_enabled=form.payment_enabled,
+                        payment_provider=form.payment_provider,
+                        payment_amount_type=form.payment_amount_type,
+                        payment_fixed_amount=form.payment_fixed_amount,
+                        payment_amount_field=form.payment_amount_field,
+                        payment_currency=form.payment_currency,
+                        payment_description_template=form.payment_description_template,
                         created_by=request.user,
                     )
 
@@ -2053,6 +2075,26 @@ class ActionExecutionLogAdmin(admin.ModelAdmin):
         return False
 
 
+class PaymentRecordInline(admin.TabularInline):
+    model = PaymentRecord
+    extra = 0
+    readonly_fields = (
+        "provider_name",
+        "transaction_id",
+        "amount",
+        "currency",
+        "status",
+        "error_message",
+        "created_at",
+        "completed_at",
+        "idempotency_key",
+    )
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(FormSubmission)
 class FormSubmissionAdmin(admin.ModelAdmin):
     list_display = (
@@ -2074,7 +2116,7 @@ class FormSubmissionAdmin(admin.ModelAdmin):
     )
     raw_id_fields = ("submitter",)
     readonly_fields = ("created_at", "submitted_at", "completed_at")
-    inlines = [ChangeHistoryInline]
+    inlines = [PaymentRecordInline, ChangeHistoryInline]
 
 
 @admin.register(ApprovalTask)
@@ -2260,6 +2302,41 @@ class SharedOptionListAdmin(admin.ModelAdmin):
         return len(obj.items or [])
 
     item_count.short_description = "Options"
+
+
+@admin.register(PaymentRecord)
+class PaymentRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        "transaction_id",
+        "submission",
+        "provider_name",
+        "amount",
+        "currency",
+        "status",
+        "created_at",
+        "completed_at",
+    )
+    list_filter = ("status", "provider_name", "currency")
+    search_fields = ("transaction_id", "submission__id", "idempotency_key")
+    readonly_fields = (
+        "submission",
+        "form_definition",
+        "provider_name",
+        "transaction_id",
+        "amount",
+        "currency",
+        "description",
+        "status",
+        "error_message",
+        "provider_data",
+        "created_at",
+        "updated_at",
+        "completed_at",
+        "idempotency_key",
+    )
+
+    def has_add_permission(self, request):
+        return False
 
 
 # --- File Upload Configuration Admin ---

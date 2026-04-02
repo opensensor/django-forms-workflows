@@ -1,0 +1,55 @@
+{% extends "django_forms_workflows/base.html" %}
+{% load static %}
+
+{% block title %}Complete Payment — {{ form_def.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payment-card { max-width: 500px; margin: 0 auto; }
+    #payment-element { min-height: 120px; }
+    #payment-message { display: none; }
+    #payment-message.visible { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card payment-card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-credit-card"></i> Complete Payment</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-info">
+                        <strong>{{ form_def.name }}</strong><br>
+                        Amount: <strong>${{ amount }} {{ currency|upper }}</strong>
+                    </div>
+
+                    <div id="payment-element" class="mb-3"></div>
+                    <div id="payment-message" class="alert alert-danger mb-3"></div>
+
+                    <button id="payment-submit" class="btn btn-primary w-100">
+                        <span id="button-text">Pay Now</span>
+                        <span id="spinner" class="spinner-border spinner-border-sm ms-2" style="display:none;"></span>
+                    </button>
+
+                    <div class="text-center mt-3">
+                        <a href="{% url 'forms_workflows:payment_cancel' submission.id %}"
+                           class="text-muted small">Cancel payment</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    var PAYMENT_CONFIG = {{ client_config_json|safe }};
+    var CONFIRM_URL = "{% url 'forms_workflows:payment_confirm' payment_record.id %}";
+    var CSRF_TOKEN = "{{ csrf_token }}";
+</script>
+<script src="{% static 'django_forms_workflows/js/payment-stripe.js' %}"></script>
+{% endblock %}

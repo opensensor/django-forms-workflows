@@ -233,6 +233,49 @@ class FormDefinition(models.Model):
         ),
     )
 
+    # Payment Configuration
+    payment_enabled = models.BooleanField(
+        default=False,
+        help_text="Require payment for form submission.",
+    )
+    payment_provider = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Registered payment provider key (e.g., 'stripe').",
+    )
+    payment_amount_type = models.CharField(
+        max_length=20,
+        blank=True,
+        default="fixed",
+        choices=[
+            ("fixed", "Fixed Amount"),
+            ("field", "From Form Field"),
+        ],
+    )
+    payment_fixed_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Fixed payment amount (when amount type is 'fixed').",
+    )
+    payment_amount_field = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="field_name of a currency/decimal field for dynamic amounts.",
+    )
+    payment_currency = models.CharField(
+        max_length=3,
+        default="usd",
+        blank=True,
+        help_text="ISO 4217 currency code (e.g., 'usd', 'cad').",
+    )
+    payment_description_template = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Charge description. Supports {field_name} tokens.",
+    )
+
     # Client-Side Enhancements
     enable_multi_step = models.BooleanField(
         default=False,
@@ -1951,6 +1994,7 @@ class FormSubmission(models.Model):
 
     STATUS_CHOICES = [
         ("draft", "Draft"),
+        ("pending_payment", "Pending Payment"),
         ("submitted", "Submitted"),
         ("pending_approval", "Pending Approval"),
         ("approved", "Approved"),
@@ -2013,6 +2057,73 @@ class FormSubmission(models.Model):
     def __str__(self):
         who = self.submitter.username if self.submitter_id else "Anonymous"
         return f"{self.form_definition.name} - {who} - {self.get_status_display()}"
+
+
+class PaymentRecord(models.Model):
+    """
+    Tracks payment lifecycle for a form submission.
+
+    One submission may have multiple payment attempts (failed then
+    succeeded) but only one completed payment.  The ``provider_data``
+    field stores sanitized provider responses for audit — no card
+    numbers or PII.  Generated documents and receipts are served via
+    the existing permission-gated download endpoint, never emailed.
+    """
+
+    PAYMENT_STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("requires_action", "Requires Action"),
+        ("processing", "Processing"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
+        ("cancelled", "Cancelled"),
+        ("refunded", "Refunded"),
+    ]
+
+    submission = models.ForeignKey(
+        "FormSubmission",
+        on_delete=models.CASCADE,
+        related_name="payment_records",
+    )
+    form_definition = models.ForeignKey(
+        FormDefinition,
+        on_delete=models.PROTECT,
+        related_name="payment_records",
+    )
+
+    provider_name = models.CharField(max_length=50)
+    transaction_id = models.CharField(max_length=255, blank=True, db_index=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default="usd")
+    description = models.CharField(max_length=500, blank=True)
+
+    status = models.CharField(
+        max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending"
+    )
+    error_message = models.TextField(blank=True)
+    provider_data = models.JSONField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    idempotency_key = models.CharField(max_length=255, unique=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["submission", "status"]),
+            models.Index(fields=["transaction_id"]),
+        ]
+        verbose_name = "Payment Record"
+        verbose_name_plural = "Payment Records"
+
+    def __str__(self):
+        return (
+            f"Payment {self.transaction_id or '(pending)'} "
+            f"— ${self.amount} {self.currency.upper()} "
+            f"— {self.get_status_display()}"
+        )
 
 
 class ApprovalTask(models.Model):

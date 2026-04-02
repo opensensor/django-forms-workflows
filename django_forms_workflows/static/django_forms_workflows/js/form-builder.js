@@ -1976,6 +1976,25 @@ class FormBuilder {
             document.getElementById('formSuccessRedirectUrl').value = data.success_redirect_url || '';
             document.getElementById('formSuccessRedirectRules').value = data.success_redirect_rules ? JSON.stringify(data.success_redirect_rules) : '';
 
+            // Load payment settings
+            document.getElementById('formPaymentEnabled').checked = data.payment_enabled || false;
+            if (data.payment_enabled) document.getElementById('paymentSettings').style.display = '';
+            // Populate provider dropdown
+            const providerSelect = document.getElementById('formPaymentProvider');
+            providerSelect.innerHTML = '<option value="">-- Select --</option>';
+            (this.config.paymentProviders || []).forEach(([val, label]) => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = label;
+                if (val === data.payment_provider) opt.selected = true;
+                providerSelect.appendChild(opt);
+            });
+            document.getElementById('formPaymentAmountType').value = data.payment_amount_type || 'fixed';
+            if (data.payment_fixed_amount) document.getElementById('formPaymentFixedAmount').value = data.payment_fixed_amount;
+            if (data.payment_amount_field) document.getElementById('formPaymentAmountField').value = data.payment_amount_field;
+            document.getElementById('formPaymentCurrency').value = data.payment_currency || 'usd';
+            if (data.payment_description_template) document.getElementById('formPaymentDescription').value = data.payment_description_template;
+
             // Load submission controls
             if (data.close_date) document.getElementById('formCloseDate').value = data.close_date.slice(0, 16);
             if (data.max_submissions) document.getElementById('formMaxSubmissions').value = data.max_submissions;
@@ -2042,6 +2061,13 @@ class FormBuilder {
             success_message: document.getElementById('formSuccessMessage').value.trim(),
             success_redirect_url: document.getElementById('formSuccessRedirectUrl').value.trim(),
             success_redirect_rules: (() => { try { const v = document.getElementById('formSuccessRedirectRules').value.trim(); return v ? JSON.parse(v) : null; } catch(e) { return null; } })(),
+            payment_enabled: document.getElementById('formPaymentEnabled').checked,
+            payment_provider: document.getElementById('formPaymentProvider').value,
+            payment_amount_type: document.getElementById('formPaymentAmountType').value,
+            payment_fixed_amount: document.getElementById('formPaymentFixedAmount').value || null,
+            payment_amount_field: document.getElementById('formPaymentAmountField').value,
+            payment_currency: document.getElementById('formPaymentCurrency').value,
+            payment_description_template: document.getElementById('formPaymentDescription').value,
             close_date: document.getElementById('formCloseDate').value || null,
             max_submissions: parseInt(document.getElementById('formMaxSubmissions').value) || null,
             one_per_user: document.getElementById('formOnePerUser').checked,

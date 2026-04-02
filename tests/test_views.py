@@ -1585,3 +1585,262 @@ class TestSuccessRouting:
         resp = self._post(auth_client, simple_form)
         assert resp.status_code == 302
         assert resp["Location"].endswith(reverse("forms_workflows:my_submissions"))
+
+
+# ── Payment Provider Registry ────────────────────────────────────────────
+
+
+class TestPaymentRegistry:
+    def test_register_and_get_provider(self):
+        from django_forms_workflows.payments.base import PaymentProvider
+        from django_forms_workflows.payments.registry import (
+            _registry,
+            get_provider,
+            register_provider,
+        )
+
+        class DummyProvider(PaymentProvider):
+            def get_name(self):
+                return "Dummy"
+
+            def get_flow_type(self):
+                from django_forms_workflows.payments.base import PaymentFlow
+
+                return PaymentFlow.INLINE
+
+            def is_available(self):
+                return True
+
+            def create_payment(self, *a, **kw):
+                pass
+
+            def confirm_payment(self, *a, **kw):
+                pass
+
+            def handle_webhook(self, *a, **kw):
+                pass
+
+            def get_client_config(self):
+                return {}
+
+            def get_receipt_data(self, *a, **kw):
+                return {}
+
+            def refund_payment(self, *a, **kw):
+                pass
+
+        register_provider("dummy_test", DummyProvider)
+        try:
+            provider = get_provider("dummy_test")
+            assert provider.get_name() == "Dummy"
+            assert provider.is_available() is True
+        finally:
+            _registry.pop("dummy_test", None)
+
+    def test_get_provider_not_registered(self):
+        from django_forms_workflows.payments.registry import get_provider
+
+        result = get_provider("nonexistent_provider_xyz")
+        assert result is None
+
+    def test_get_available_providers(self):
+        from django_forms_workflows.payments.registry import get_available_providers
+
+        providers = get_available_providers()
+        # Should at least return a dict (may include stripe if available)
+        assert isinstance(providers, dict)
+
+    def test_get_provider_choices(self):
+        from django_forms_workflows.payments.registry import get_provider_choices
+
+        choices = get_provider_choices()
+        assert isinstance(choices, list)
+        # Each choice is a (value, label) tuple
+        for value, label in choices:
+            assert isinstance(value, str)
+            assert isinstance(label, str)
+
+    def test_stripe_auto_registered(self):
+        """Stripe provider is auto-registered in AppConfig.ready()."""
+        from django_forms_workflows.payments.registry import _registry
+
+        assert "stripe" in _registry
+
+
+# ── Payment Views ────────────────────────────────────────────────────────
+
+
+class TestPaymentViews:
+    @pytest.fixture
+    def paid_form(self, db, category, user):
+        fd = FormDefinition.objects.create(
+            name="Paid Form",
+            slug="paid-form",
+            category=category,
+            is_active=True,
+            payment_enabled=True,
+            payment_provider="stripe",
+            payment_amount_type="fixed",
+            payment_fixed_amount="25.00",
+            payment_currency="usd",
+            created_by=user,
+        )
+        return fd
+
+    @pytest.fixture
+    def pending_payment_submission(self, paid_form, user):
+        return FormSubmission.objects.create(
+            form_definition=paid_form,
+            submitter=user,
+            form_data={"name": "Test User"},
+            status="pending_payment",
+        )
+
+    def test_initiate_payment_404_on_wrong_status(self, auth_client, paid_form, user):
+        sub = FormSubmission.objects.create(
+            form_definition=paid_form,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+        url = reverse(
+            "forms_workflows:payment_initiate",
+            args=[sub.id],
+        )
+        resp = auth_client.get(url)
+        assert resp.status_code == 404
+
+    def test_cancel_payment(self, auth_client, paid_form, pending_payment_submission):
+        url = reverse(
+            "forms_workflows:payment_cancel",
+            args=[pending_payment_submission.id],
+        )
+        resp = auth_client.post(url)
+        assert resp.status_code == 302
+        pending_payment_submission.refresh_from_db()
+        # Cancel sets submission back to draft so user can resubmit
+        assert pending_payment_submission.status == "draft"
+
+    def test_cancel_payment_marks_payment_record(
+        self, auth_client, paid_form, pending_payment_submission
+    ):
+        from django_forms_workflows.models import PaymentRecord
+
+        pr = PaymentRecord.objects.create(
+            submission=pending_payment_submission,
+            form_definition=paid_form,
+            provider_name="stripe",
+            amount="25.00",
+            status="pending",
+            idempotency_key="key_cancel_test",
+        )
+        url = reverse(
+            "forms_workflows:payment_cancel",
+            args=[pending_payment_submission.id],
+        )
+        resp = auth_client.post(url)
+        assert resp.status_code == 302
+        pr.refresh_from_db()
+        assert pr.status == "cancelled"
+
+
+# ── Stripe Provider Unit ─────────────────────────────────────────────────
+
+
+class TestStripeProvider:
+    def test_name(self):
+        from django_forms_workflows.payments.stripe_provider import (
+            StripePaymentProvider,
+        )
+
+        p = StripePaymentProvider()
+        assert p.get_name() == "Stripe"
+
+    def test_flow_type_inline(self):
+        from django_forms_workflows.payments.base import PaymentFlow
+        from django_forms_workflows.payments.stripe_provider import (
+            StripePaymentProvider,
+        )
+
+        p = StripePaymentProvider()
+        assert p.get_flow_type() == PaymentFlow.INLINE
+
+    def test_not_available_without_keys(self, settings):
+        from django_forms_workflows.payments.stripe_provider import (
+            StripePaymentProvider,
+        )
+
+        settings.STRIPE_SECRET_KEY = ""
+        settings.STRIPE_PUBLISHABLE_KEY = ""
+        p = StripePaymentProvider()
+        assert p.is_available() is False
+
+    def test_available_with_keys(self, settings):
+        from django_forms_workflows.payments.stripe_provider import (
+            StripePaymentProvider,
+        )
+
+        settings.STRIPE_SECRET_KEY = "sk_test_xxx"
+        settings.STRIPE_PUBLISHABLE_KEY = "pk_test_xxx"
+        p = StripePaymentProvider()
+        assert p.is_available() is True
+
+    def test_client_config(self, settings):
+        from django_forms_workflows.payments.base import PaymentResult, PaymentStatus
+        from django_forms_workflows.payments.stripe_provider import (
+            StripePaymentProvider,
+        )
+
+        settings.STRIPE_PUBLISHABLE_KEY = "pk_test_abc"
+        p = StripePaymentProvider()
+        result = PaymentResult(
+            success=True,
+            status=PaymentStatus.PENDING,
+            client_secret="cs_test_xyz",
+        )
+        config = p.get_client_config(result)
+        assert config["publishable_key"] == "pk_test_abc"
+        assert config["client_secret"] == "cs_test_xyz"
+
+
+# ── Payment Data Structures ──────────────────────────────────────────────
+
+
+class TestPaymentDataStructures:
+    def test_payment_flow_enum(self):
+        from django_forms_workflows.payments.base import PaymentFlow
+
+        assert PaymentFlow.INLINE.value == "inline"
+        assert PaymentFlow.REDIRECT.value == "redirect"
+
+    def test_payment_status_enum(self):
+        from django_forms_workflows.payments.base import PaymentStatus
+
+        assert PaymentStatus.PENDING.value == "pending"
+        assert PaymentStatus.COMPLETED.value == "completed"
+        assert PaymentStatus.FAILED.value == "failed"
+        assert PaymentStatus.REFUNDED.value == "refunded"
+
+    def test_payment_result_dataclass(self):
+        from django_forms_workflows.payments.base import PaymentResult, PaymentStatus
+
+        result = PaymentResult(
+            success=True,
+            transaction_id="tx_123",
+            status=PaymentStatus.COMPLETED,
+        )
+        assert result.success is True
+        assert result.transaction_id == "tx_123"
+        assert result.client_secret == ""
+        assert result.redirect_url == ""
+
+    def test_payment_result_with_redirect(self):
+        from django_forms_workflows.payments.base import PaymentResult, PaymentStatus
+
+        result = PaymentResult(
+            success=True,
+            transaction_id="tx_456",
+            status=PaymentStatus.PENDING,
+            redirect_url="https://pay.example.com/checkout",
+        )
+        assert result.redirect_url == "https://pay.example.com/checkout"

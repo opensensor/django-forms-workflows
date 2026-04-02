@@ -254,11 +254,17 @@ def form_builder_view(request, form_id=None):
         "name"
     )
 
+    # Get available payment providers
+    from .payments import get_provider_choices
+
+    payment_provider_choices = get_provider_choices()
+
     context = {
         "form_definition": form_definition,
         "prefill_sources": prefill_sources,
         "shared_option_lists": shared_option_lists,
         "field_types": field_types_json,
+        "payment_provider_choices_json": json.dumps(payment_provider_choices),
         "is_new": form_id is None,
     }
 
@@ -328,6 +334,15 @@ def form_builder_load(request, form_id):
         else None,
         "max_submissions": form_definition.max_submissions,
         "one_per_user": form_definition.one_per_user,
+        "payment_enabled": form_definition.payment_enabled,
+        "payment_provider": form_definition.payment_provider,
+        "payment_amount_type": form_definition.payment_amount_type,
+        "payment_fixed_amount": str(form_definition.payment_fixed_amount)
+        if form_definition.payment_fixed_amount
+        else None,
+        "payment_amount_field": form_definition.payment_amount_field,
+        "payment_currency": form_definition.payment_currency,
+        "payment_description_template": form_definition.payment_description_template,
         "enable_captcha": form_definition.enable_captcha,
         "enable_multi_step": form_definition.enable_multi_step,
         "form_steps": form_definition.form_steps or [],
@@ -367,6 +382,13 @@ def form_builder_save(request):
         close_date = data.get("close_date") or None
         max_submissions = data.get("max_submissions") or None
         one_per_user = data.get("one_per_user", False)
+        payment_enabled = data.get("payment_enabled", False)
+        payment_provider = data.get("payment_provider", "")
+        payment_amount_type = data.get("payment_amount_type", "fixed")
+        payment_fixed_amount = data.get("payment_fixed_amount") or None
+        payment_amount_field = data.get("payment_amount_field", "")
+        payment_currency = data.get("payment_currency", "usd")
+        payment_description_template = data.get("payment_description_template", "")
         enable_captcha = data.get("enable_captcha", False)
         enable_multi_step = data.get("enable_multi_step", False)
         form_steps = data.get("form_steps", [])
@@ -403,6 +425,15 @@ def form_builder_save(request):
                 form_definition.close_date = close_date
                 form_definition.max_submissions = max_submissions
                 form_definition.one_per_user = one_per_user
+                form_definition.payment_enabled = payment_enabled
+                form_definition.payment_provider = payment_provider
+                form_definition.payment_amount_type = payment_amount_type
+                form_definition.payment_fixed_amount = payment_fixed_amount
+                form_definition.payment_amount_field = payment_amount_field
+                form_definition.payment_currency = payment_currency
+                form_definition.payment_description_template = (
+                    payment_description_template
+                )
                 form_definition.enable_captcha = enable_captcha
                 form_definition.enable_multi_step = enable_multi_step
                 form_definition.form_steps = form_steps
@@ -426,6 +457,13 @@ def form_builder_save(request):
                     close_date=close_date,
                     max_submissions=max_submissions,
                     one_per_user=one_per_user,
+                    payment_enabled=payment_enabled,
+                    payment_provider=payment_provider,
+                    payment_amount_type=payment_amount_type,
+                    payment_fixed_amount=payment_fixed_amount,
+                    payment_amount_field=payment_amount_field,
+                    payment_currency=payment_currency,
+                    payment_description_template=payment_description_template,
                     enable_captcha=enable_captcha,
                     enable_multi_step=enable_multi_step,
                     form_steps=form_steps,

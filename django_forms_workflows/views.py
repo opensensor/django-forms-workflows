@@ -439,6 +439,23 @@ def form_submit(request, slug):
                 submission.form_data, form_def
             )
 
+            # ── Payment gate ──────────────────────────────────────────
+            if form_def.payment_enabled and form_def.payment_provider:
+                submission.status = "pending_payment"
+                submission.save()
+                AuditLog.objects.create(
+                    action="submit",
+                    object_type="FormSubmission",
+                    object_id=submission.id,
+                    user=user_or_none,
+                    user_ip=get_client_ip(request),
+                    comments="Form validated, redirecting to payment",
+                )
+                return redirect(
+                    "forms_workflows:payment_initiate",
+                    submission_id=submission.id,
+                )
+
             submission.status = "submitted"
             submission.submitted_at = timezone.now()
             submission.save()

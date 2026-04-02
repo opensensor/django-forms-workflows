@@ -773,6 +773,61 @@
                         </div>
                     </div>
 
+                    <!-- Payment -->
+                    <div class="col-12 mt-3">
+                        <h6 class="text-muted border-bottom pb-2">
+                            <i class="bi bi-credit-card"></i> Payment
+                        </h6>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="formPaymentEnabled"
+                                   onchange="document.getElementById('paymentSettings').style.display = this.checked ? '' : 'none';">
+                            <label class="form-check-label" for="formPaymentEnabled">Require Payment</label>
+                        </div>
+                    </div>
+                    <div class="col-md-9" id="paymentSettings" style="display:none;">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small">Provider</label>
+                                <select class="form-select form-select-sm" id="formPaymentProvider"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Amount Type</label>
+                                <select class="form-select form-select-sm" id="formPaymentAmountType"
+                                        onchange="document.getElementById('paymentFixedGroup').style.display = this.value==='fixed' ? '' : 'none'; document.getElementById('paymentFieldGroup').style.display = this.value==='field' ? '' : 'none';">
+                                    <option value="fixed">Fixed Amount</option>
+                                    <option value="field">From Form Field</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4" id="paymentFixedGroup">
+                                <label class="form-label small">Amount</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="formPaymentFixedAmount" step="0.01" min="0.01">
+                                </div>
+                            </div>
+                            <div class="col-md-4" id="paymentFieldGroup" style="display:none;">
+                                <label class="form-label small">Amount Field</label>
+                                <input type="text" class="form-control form-control-sm" id="formPaymentAmountField" placeholder="field_name">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Currency</label>
+                                <select class="form-select form-select-sm" id="formPaymentCurrency">
+                                    <option value="usd">USD</option>
+                                    <option value="cad">CAD</option>
+                                    <option value="eur">EUR</option>
+                                    <option value="gbp">GBP</option>
+                                </select>
+                            </div>
+                            <div class="col-md-9">
+                                <label class="form-label small">Description</label>
+                                <input type="text" class="form-control form-control-sm" id="formPaymentDescription"
+                                       placeholder="{form_name} - {student_id}">
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Client-Side Enhancements -->
                     <div class="col-12 mt-3">
                         <h6 class="text-muted border-bottom pb-2">
@@ -1039,6 +1094,7 @@
                 }{% if not forloop.last %},{% endif %}
                 {% endfor %}
             ],
+            paymentProviders: {{ payment_provider_choices_json|safe }},
             apiUrls: {
                 sharedLists: "{% url 'admin:form_builder_api_shared_lists' %}",
                 sharedListSave: "{% url 'admin:form_builder_api_shared_list_save' %}",

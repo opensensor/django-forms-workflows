@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 from . import views
+from .payments import views as payment_views
 from .reporting_views import analytics_dashboard, analytics_export_csv
 from .sso_backends import is_sso_available
 from .sync_views import sync_export_view, sync_import_view
@@ -95,6 +96,32 @@ urlpatterns = [
         "submitted/",
         views.public_submission_confirmation,
         name="public_submission_confirmation",
+    ),
+    # Payment
+    path(
+        "payments/<int:submission_id>/initiate/",
+        payment_views.initiate_payment,
+        name="payment_initiate",
+    ),
+    path(
+        "payments/<int:payment_record_id>/confirm/",
+        payment_views.confirm_payment,
+        name="payment_confirm",
+    ),
+    path(
+        "payments/<int:submission_id>/return/",
+        payment_views.payment_return,
+        name="payment_return",
+    ),
+    path(
+        "payments/<int:submission_id>/cancel/",
+        payment_views.payment_cancel,
+        name="payment_cancel",
+    ),
+    path(
+        "payments/webhook/<str:provider_name>/",
+        payment_views.payment_webhook,
+        name="payment_webhook",
     ),
     # Analytics dashboard
     path("analytics/", analytics_dashboard, name="analytics_dashboard"),

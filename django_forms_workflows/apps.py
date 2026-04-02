@@ -23,3 +23,9 @@ class DjangoFormsWorkflowsConfig(AppConfig):
         from .callback_registry import load_from_settings
 
         load_from_settings()
+
+        # Auto-register bundled payment providers
+        from .payments import register_provider
+        from .payments.stripe_provider import StripePaymentProvider
+
+        register_provider("stripe", StripePaymentProvider)

@@ -429,6 +429,15 @@ def serialize_form(form_definition):
             "auto_save_interval": form_definition.auto_save_interval,
             "pdf_generation": form_definition.pdf_generation,
             "api_enabled": form_definition.api_enabled,
+            "payment_enabled": form_definition.payment_enabled,
+            "payment_provider": form_definition.payment_provider,
+            "payment_amount_type": form_definition.payment_amount_type,
+            "payment_fixed_amount": str(form_definition.payment_fixed_amount)
+            if form_definition.payment_fixed_amount is not None
+            else None,
+            "payment_amount_field": form_definition.payment_amount_field,
+            "payment_currency": form_definition.payment_currency,
+            "payment_description_template": form_definition.payment_description_template,
         },
         "fields": [
             _serialize_field(f) for f in form_definition.fields.all().order_by("order")
@@ -641,6 +650,15 @@ def import_form(form_data, conflict="update", category_cache=None):
         "auto_save_interval": fd.get("auto_save_interval", 30),
         "pdf_generation": fd.get("pdf_generation", False),
         "api_enabled": fd.get("api_enabled", False),
+        "payment_enabled": fd.get("payment_enabled", False),
+        "payment_provider": fd.get("payment_provider", ""),
+        "payment_amount_type": fd.get("payment_amount_type", "fixed"),
+        "payment_fixed_amount": Decimal(fd["payment_fixed_amount"])
+        if fd.get("payment_fixed_amount")
+        else None,
+        "payment_amount_field": fd.get("payment_amount_field", ""),
+        "payment_currency": fd.get("payment_currency", "usd"),
+        "payment_description_template": fd.get("payment_description_template", ""),
     }
 
     form_obj, created = FormDefinition.objects.update_or_create(

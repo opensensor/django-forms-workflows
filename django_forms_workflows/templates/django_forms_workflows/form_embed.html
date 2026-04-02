@@ -1,0 +1,159 @@
+{% extends "django_forms_workflows/embed_base.html" %}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block title %}{{ form_def.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .rating-stars-container { display: inline-flex; gap: 0.15rem; direction: rtl; }
+    .rating-stars-container input { display: none; }
+    .rating-stars-container label { cursor: pointer; font-size: 1.5rem; color: #dee2e6; transition: color 0.15s; }
+    .rating-stars-container label:hover,
+    .rating-stars-container label:hover ~ label,
+    .rating-stars-container input:checked ~ label { color: #ffc107; }
+    .slider-value-display { font-weight: 600; min-width: 3rem; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div>
+    {% if form_def.instructions %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> {{ form_def.instructions|safe }}
+        </div>
+    {% endif %}
+
+    {% if form.errors %}
+    <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+        <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0"></i>
+        <span>
+            <strong>{{ form.errors|length }} field{{ form.errors|length|pluralize }} need{{ form.errors|length|pluralize:"s," }} attention.</strong>
+            Please review and correct the errors below.
+        </span>
+    </div>
+    {% endif %}
+
+    {% crispy form %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'django_forms_workflows/js/form-enhancements.js' %}"></script>
+<script src="{% static 'django_forms_workflows/js/signature-pad.js' %}"></script>
+<script>
+    // Error scroll
+    (function () {
+        var target = document.querySelector('.alert-danger') || document.querySelector('.is-invalid');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    })();
+
+    // Form enhancements
+    document.addEventListener('DOMContentLoaded', function() {
+        var el = document.querySelector('[data-form-enhancements="true"]');
+        if (el) {
+            var config = {{ form_enhancements_config|safe }};
+            config.autoSaveEnabled = false; // No drafts in embed mode
+            window.formEnhancements = new FormEnhancements(el, config);
+        }
+    });
+
+    // Calculated fields
+    (function () {
+        function evaluateFormula(formula, form) {
+            return formula.replace(/\{(\w+)\}/g, function (_, name) {
+                var el = form.querySelector('[name="' + name + '"]');
+                if (!el) return '';
+                if (el.type === 'checkbox') return el.checked ? el.value || 'true' : '';
+                return el.value || '';
+            });
+        }
+        function wireCalculatedFields(form) {
+            var calcFields = form.querySelectorAll('[data-calculated="true"]');
+            if (!calcFields.length) return;
+            var sourceNames = new Set();
+            calcFields.forEach(function (el) {
+                (el.dataset.formula.match(/\{(\w+)\}/g) || []).forEach(function (tok) {
+                    sourceNames.add(tok.slice(1, -1));
+                });
+            });
+            function updateAll() {
+                calcFields.forEach(function (el) { el.value = evaluateFormula(el.dataset.formula || '', form); });
+            }
+            sourceNames.forEach(function (name) {
+                var src = form.querySelector('[name="' + name + '"]');
+                if (src) { src.addEventListener('input', updateAll); src.addEventListener('change', updateAll); }
+            });
+            updateAll();
+        }
+        document.querySelectorAll('form').forEach(wireCalculatedFields);
+    })();
+
+    // Answer piping
+    (function () {
+        var form = document.querySelector('[data-form-enhancements="true"]');
+        if (!form) return;
+        var TOKEN_RE = /\{(\w+)\}/g;
+        var targets = [];
+        form.querySelectorAll('label, .form-text, small').forEach(function (el) {
+            if (TOKEN_RE.test(el.textContent)) { targets.push({ el: el, template: el.textContent }); }
+            TOKEN_RE.lastIndex = 0;
+        });
+        if (!targets.length) return;
+        var names = new Set();
+        targets.forEach(function (t) { var m; TOKEN_RE.lastIndex = 0; while ((m = TOKEN_RE.exec(t.template))) names.add(m[1]); });
+        function update() {
+            targets.forEach(function (t) {
+                t.el.textContent = t.template.replace(TOKEN_RE, function (_, n) {
+                    var el = form.querySelector('[name="' + n + '"]');
+                    if (!el) return '{' + n + '}';
+                    if (el.tagName === 'SELECT') { var o = el.options[el.selectedIndex]; return o ? o.text : ''; }
+                    return el.value || '';
+                });
+            });
+        }
+        names.forEach(function (n) { var el = form.querySelector('[name="' + n + '"]'); if (el) { el.addEventListener('input', update); el.addEventListener('change', update); } });
+        update();
+    })();
+
+    // Rating stars
+    (function () {
+        document.querySelectorAll('.rating-stars-input').forEach(function (select) {
+            var max = parseInt(select.dataset.maxStars) || 5;
+            var c = document.createElement('div'); c.className = 'rating-stars-container';
+            for (var i = max; i >= 1; i--) {
+                var inp = document.createElement('input'); inp.type = 'radio'; inp.name = select.name + '_stars'; inp.value = i; inp.id = select.name + '_star_' + i;
+                if (select.value === String(i)) inp.checked = true;
+                var lbl = document.createElement('label'); lbl.htmlFor = inp.id; lbl.innerHTML = '<i class="bi bi-star-fill"></i>';
+                c.appendChild(inp); c.appendChild(lbl);
+            }
+            c.addEventListener('change', function (e) { select.value = e.target.value; });
+            select.style.display = 'none'; select.parentNode.insertBefore(c, select.nextSibling);
+        });
+    })();
+
+    // Slider value display
+    (function () {
+        document.querySelectorAll('[data-slider-field]').forEach(function (s) {
+            var d = document.createElement('span'); d.className = 'slider-value-display badge bg-primary ms-2'; d.textContent = s.value;
+            s.parentNode.appendChild(d); s.addEventListener('input', function () { d.textContent = s.value; });
+        });
+    })();
+
+    {% if form_def.enable_captcha %}
+    (function () {
+        var siteKey = '{{ captcha_site_key|default:"" }}';
+        var widget = document.querySelector('[data-captcha-widget]');
+        var token = document.querySelector('[data-captcha-field]');
+        if (!widget || !siteKey) return;
+        var script = document.createElement('script');
+        script.src = 'https://www.google.com/recaptcha/api.js?render=explicit';
+        script.async = true; script.defer = true;
+        script.onload = function () {
+            grecaptcha.ready(function () { grecaptcha.render(widget, { sitekey: siteKey, callback: function (t) { token.value = t; } }); });
+        };
+        document.head.appendChild(script);
+    })();
+    {% endif %}
+</script>
+{% endblock %}

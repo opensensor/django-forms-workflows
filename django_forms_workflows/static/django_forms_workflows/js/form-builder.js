@@ -2000,6 +2000,7 @@ class FormBuilder {
             if (data.max_submissions) document.getElementById('formMaxSubmissions').value = data.max_submissions;
             document.getElementById('formOnePerUser').checked = data.one_per_user || false;
             document.getElementById('formEnableCaptcha').checked = data.enable_captcha || false;
+            document.getElementById('formEmbedEnabled').checked = data.embed_enabled || false;
 
             // Load client-side enhancement settings
             document.getElementById('formEnableAutoSave').checked = data.enable_auto_save !== false;
@@ -2072,6 +2073,7 @@ class FormBuilder {
             max_submissions: parseInt(document.getElementById('formMaxSubmissions').value) || null,
             one_per_user: document.getElementById('formOnePerUser').checked,
             enable_captcha: document.getElementById('formEnableCaptcha').checked,
+            embed_enabled: document.getElementById('formEmbedEnabled').checked,
             enable_auto_save: document.getElementById('formEnableAutoSave').checked,
             auto_save_interval: parseInt(document.getElementById('formAutoSaveInterval').value) || 30,
             enable_multi_step: isMultiStep,

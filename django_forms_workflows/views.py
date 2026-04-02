@@ -7,6 +7,7 @@ and submission management.
 
 import json
 import logging
+import re
 from datetime import date, datetime, time
 from decimal import Decimal
 
@@ -19,6 +20,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
+from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.http import require_http_methods
 
 from .forms import DynamicForm
@@ -539,6 +541,181 @@ def form_submit(request, slug):
             "captcha_site_key": captcha_site_key,
         },
     )
+
+
+@xframe_options_exempt
+def form_embed(request, slug):
+    """Render a form in a minimal layout for iframe embedding."""
+    form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
+
+    if not form_def.embed_enabled:
+        return HttpResponseForbidden("Embedding is not enabled for this form.")
+
+    is_anonymous = not request.user.is_authenticated
+
+    # Authentication gate (same as form_submit but no redirect — just 403)
+    if not is_anonymous:
+        if not user_can_view_form(request.user, form_def) or not user_can_submit_form(
+            request.user, form_def
+        ):
+            return HttpResponseForbidden("Permission denied.")
+
+    # Submission controls
+    if form_def.close_date and timezone.now() >= form_def.close_date:
+        return render(
+            request,
+            "django_forms_workflows/embed_success.html",
+            {
+                "form_def": form_def,
+                "success_message": "This form is no longer accepting submissions.",
+            },
+        )
+    if form_def.max_submissions is not None:
+        count = (
+            FormSubmission.objects.filter(form_definition=form_def)
+            .exclude(status="draft")
+            .count()
+        )
+        if count >= form_def.max_submissions:
+            return render(
+                request,
+                "django_forms_workflows/embed_success.html",
+                {
+                    "form_def": form_def,
+                    "success_message": (
+                        "This form has reached its maximum number of submissions."
+                    ),
+                },
+            )
+
+    user_or_none = request.user if not is_anonymous else None
+    theme = request.GET.get("theme", "")
+    # Sanitise accent_color to a valid hex colour to prevent CSS injection
+    _raw_accent = request.GET.get("accent_color", "")
+    accent_color = (
+        _raw_accent if re.fullmatch(r"#[0-9a-fA-F]{3,8}", _raw_accent) else ""
+    )
+
+    if request.method == "POST":
+        # Rate limit anonymous
+        if is_anonymous and not check_rate_limit(request, slug):
+            return render(
+                request,
+                "django_forms_workflows/embed_success.html",
+                {
+                    "form_def": form_def,
+                    "success_message": (
+                        "Too many submissions. Please try again later."
+                    ),
+                },
+            )
+
+        form = DynamicForm(
+            form_definition=form_def,
+            user=user_or_none,
+            data=request.POST,
+            files=request.FILES,
+        )
+
+        if form.is_valid():
+            submission = FormSubmission(
+                form_definition=form_def,
+                submitter=user_or_none,
+                submission_ip=get_client_ip(request),
+                user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            )
+            submission.form_data = {}
+            submission.save()
+
+            submission.form_data = serialize_form_data(
+                form.cleaned_data, submission_id=submission.pk
+            )
+            submission.form_data = _re_evaluate_calculated_fields(
+                submission.form_data, form_def
+            )
+
+            # Payment gate
+            if form_def.payment_enabled and form_def.payment_provider:
+                submission.status = "pending_payment"
+                submission.save()
+                return redirect(
+                    reverse(
+                        "forms_workflows:payment_initiate",
+                        kwargs={"submission_id": submission.id},
+                    )
+                )
+
+            submission.status = "submitted"
+            submission.submitted_at = timezone.now()
+            submission.save()
+
+            AuditLog.objects.create(
+                action="submit",
+                object_type="FormSubmission",
+                object_id=submission.id,
+                user=user_or_none,
+                user_ip=get_client_ip(request),
+                comments="Form submitted (embed)",
+            )
+            create_approval_tasks(submission)
+
+            # Render inline success (no redirect)
+            success_message = ""
+            if form_def.success_message:
+                success_message = _pipe_answer_tokens(
+                    form_def.success_message, submission.form_data or {}
+                )
+
+            return render(
+                request,
+                "django_forms_workflows/embed_success.html",
+                {
+                    "form_def": form_def,
+                    "submission": submission,
+                    "success_message": success_message,
+                    "theme": theme,
+                    "accent_color": accent_color,
+                },
+            )
+    else:
+        form = DynamicForm(form_definition=form_def, user=user_or_none)
+
+    form_enhancements_config = json.dumps(form.get_enhancements_config())
+
+    captcha_site_key = ""
+    if form_def.enable_captcha:
+        from django.conf import settings as django_settings
+
+        captcha_site_key = getattr(
+            django_settings, "FORMS_WORKFLOWS_CAPTCHA_SITE_KEY", ""
+        )
+
+    response = render(
+        request,
+        "django_forms_workflows/form_embed.html",
+        {
+            "form_def": form_def,
+            "form": form,
+            "form_enhancements_config": form_enhancements_config,
+            "captcha_site_key": captcha_site_key,
+            "theme": theme,
+            "accent_color": accent_color,
+        },
+    )
+
+    # Handle cross-origin CSRF cookie for third-party iframe
+    if hasattr(request, "META"):
+        from django.conf import settings as django_settings
+
+        response.set_cookie(
+            django_settings.CSRF_COOKIE_NAME,
+            request.META.get("CSRF_COOKIE", ""),
+            samesite="None",
+            secure=True,
+            httponly=False,
+        )
+
+    return response
 
 
 def _pipe_answer_tokens(text, form_data):

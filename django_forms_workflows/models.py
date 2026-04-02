@@ -203,6 +203,14 @@ class FormDefinition(models.Model):
             "All existing permission checks (submit_groups, view_groups) still apply."
         ),
     )
+    embed_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Allow this form to be embedded on external websites via an iframe. "
+            "The form is served at /forms/<slug>/embed/ with a minimal layout. "
+            "Works best with requires_login=False forms."
+        ),
+    )
     requires_login = models.BooleanField(
         default=True, help_text="Form requires authentication"
     )

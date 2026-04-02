@@ -12,6 +12,7 @@ from django.utils import timezone
 from django_forms_workflows.models import (
     ApprovalTask,
     FormDefinition,
+    FormField,
     FormSubmission,
 )
 from django_forms_workflows.views import _pipe_answer_tokens
@@ -1844,3 +1845,157 @@ class TestPaymentDataStructures:
             redirect_url="https://pay.example.com/checkout",
         )
         assert result.redirect_url == "https://pay.example.com/checkout"
+
+
+# ── Embeddable Forms ─────────────────────────────────────────────────────
+
+
+class TestEmbedView:
+    @pytest.fixture
+    def embed_form(self, db, category, user):
+        fd = FormDefinition.objects.create(
+            name="Embed Form",
+            slug="embed-form",
+            category=category,
+            is_active=True,
+            embed_enabled=True,
+            requires_login=False,
+            created_by=user,
+        )
+        FormField.objects.create(
+            form_definition=fd,
+            field_name="full_name",
+            field_label="Full Name",
+            field_type="text",
+            order=1,
+            required=True,
+        )
+        return fd
+
+    @pytest.fixture
+    def non_embed_form(self, db, category, user):
+        return FormDefinition.objects.create(
+            name="No Embed",
+            slug="no-embed",
+            category=category,
+            is_active=True,
+            embed_enabled=False,
+            created_by=user,
+        )
+
+    def test_get_embed_form(self, client, embed_form):
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert b"embed_base" in resp.content or b"Full Name" in resp.content
+        # Should not have X-Frame-Options header (xframe_options_exempt)
+        assert "X-Frame-Options" not in resp
+
+    def test_embed_disabled_returns_403(self, client, non_embed_form):
+        url = reverse("forms_workflows:form_embed", args=[non_embed_form.slug])
+        resp = client.get(url)
+        assert resp.status_code == 403
+
+    def test_embed_inactive_form_404(self, db, category, user, client):
+        fd = FormDefinition.objects.create(
+            name="Inactive",
+            slug="inactive-embed",
+            category=category,
+            is_active=False,
+            embed_enabled=True,
+            created_by=user,
+        )
+        url = reverse("forms_workflows:form_embed", args=[fd.slug])
+        resp = client.get(url)
+        assert resp.status_code == 404
+
+    def test_embed_submit_valid(self, client, embed_form):
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.post(url, {"full_name": "Jane Doe"})
+        assert resp.status_code == 200
+        # Should render success template
+        assert (
+            b"Submission Received" in resp.content or b"dfw:submitted" in resp.content
+        )
+        # Verify submission was created (may be auto-approved if no workflow)
+        assert FormSubmission.objects.filter(
+            form_definition=embed_form,
+        ).exists()
+
+    def test_embed_submit_invalid(self, client, embed_form):
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.post(url, {"full_name": ""})
+        assert resp.status_code == 200
+        # Should re-render form with errors
+        assert b"attention" in resp.content or b"is-invalid" in resp.content
+        assert not FormSubmission.objects.filter(form_definition=embed_form).exists()
+
+    def test_embed_theme_param(self, client, embed_form):
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.get(url + "?theme=dark")
+        assert resp.status_code == 200
+        assert b'data-bs-theme="dark"' in resp.content
+
+    def test_embed_accent_color_valid(self, client, embed_form):
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.get(url + "?accent_color=%23ff6600")
+        assert resp.status_code == 200
+        assert b"#ff6600" in resp.content
+
+    def test_embed_accent_color_invalid_sanitised(self, client, embed_form):
+        """CSS injection attempt is sanitised — invalid accent_color is dropped."""
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.get(url + "?accent_color=red%3B+background-image%3A+url(evil)")
+        assert resp.status_code == 200
+        assert b"background-image" not in resp.content
+
+    def test_embed_closed_form(self, client, embed_form):
+        embed_form.close_date = timezone.now() - timedelta(hours=1)
+        embed_form.save()
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert b"no longer accepting" in resp.content
+
+    def test_embed_max_submissions_reached(self, client, embed_form, user):
+        embed_form.max_submissions = 1
+        embed_form.save()
+        FormSubmission.objects.create(
+            form_definition=embed_form,
+            submitter=user,
+            form_data={"full_name": "First"},
+            status="submitted",
+        )
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert b"maximum number" in resp.content
+
+    def test_embed_authenticated_user(self, auth_client, embed_form):
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = auth_client.get(url)
+        assert resp.status_code == 200
+
+    def test_embed_creates_audit_log(self, client, embed_form):
+        from django_forms_workflows.models import AuditLog
+
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        client.post(url, {"full_name": "Audit Test"})
+        assert AuditLog.objects.filter(
+            action="submit", comments__contains="embed"
+        ).exists()
+
+    def test_embed_no_redirect_on_submit(self, client, embed_form):
+        """Embed submissions render inline success, never redirect."""
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.post(url, {"full_name": "No Redirect"})
+        # Should be 200 (rendered), not 302 (redirect)
+        assert resp.status_code == 200
+
+    def test_embed_success_message_piping(self, client, embed_form):
+        embed_form.success_message = "Thanks {full_name}!"
+        embed_form.save()
+        url = reverse("forms_workflows:form_embed", args=[embed_form.slug])
+        resp = client.post(url, {"full_name": "Alice"})
+        assert resp.status_code == 200
+        assert b"Thanks Alice!" in resp.content

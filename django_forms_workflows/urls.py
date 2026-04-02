@@ -12,6 +12,7 @@ urlpatterns = [
     # Form list and submission
     path("", views.form_list, name="form_list"),
     path("<slug:slug>/submit/", views.form_submit, name="form_submit"),
+    path("<slug:slug>/embed/", views.form_embed, name="form_embed"),
     path("<slug:slug>/qr/", views.form_qr_code, name="form_qr_code"),
     path("<slug:slug>/auto-save/", views.form_auto_save, name="form_auto_save"),
     # Batch import

@@ -429,6 +429,7 @@ def serialize_form(form_definition):
             "auto_save_interval": form_definition.auto_save_interval,
             "pdf_generation": form_definition.pdf_generation,
             "api_enabled": form_definition.api_enabled,
+            "embed_enabled": form_definition.embed_enabled,
             "payment_enabled": form_definition.payment_enabled,
             "payment_provider": form_definition.payment_provider,
             "payment_amount_type": form_definition.payment_amount_type,
@@ -650,6 +651,7 @@ def import_form(form_data, conflict="update", category_cache=None):
         "auto_save_interval": fd.get("auto_save_interval", 30),
         "pdf_generation": fd.get("pdf_generation", False),
         "api_enabled": fd.get("api_enabled", False),
+        "embed_enabled": fd.get("embed_enabled", False),
         "payment_enabled": fd.get("payment_enabled", False),
         "payment_provider": fd.get("payment_provider", ""),
         "payment_amount_type": fd.get("payment_amount_type", "fixed"),
@@ -835,10 +837,8 @@ def import_form(form_data, conflict="update", category_cache=None):
                 )
             else:
                 logger.warning(
-                    "Sync import: sub-workflow form '%s' not found for form '%s';"
-                    " sub_workflow_config skipped.",
-                    sub_form_slug,
-                    slug,
+                    "Sync import: sub-workflow form not found for parent form;"
+                    " sub_workflow_config skipped."
                 )
         else:
             SubWorkflowDefinition.objects.filter(parent_workflow=wf).delete()
@@ -888,7 +888,7 @@ def import_form(form_data, conflict="update", category_cache=None):
     for action_data in form_data.get("post_actions", []):
         PostSubmissionAction.objects.create(form_definition=form_obj, **action_data)
 
-    logger.info("Sync import: form '%s' %s.", slug, action)
+    logger.info("Sync import: form %s.", action)
     return form_obj, action
 
 

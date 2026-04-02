@@ -344,6 +344,7 @@ def form_builder_load(request, form_id):
         "payment_currency": form_definition.payment_currency,
         "payment_description_template": form_definition.payment_description_template,
         "enable_captcha": form_definition.enable_captcha,
+        "embed_enabled": form_definition.embed_enabled,
         "enable_multi_step": form_definition.enable_multi_step,
         "form_steps": form_definition.form_steps or [],
         "enable_auto_save": form_definition.enable_auto_save,
@@ -390,6 +391,7 @@ def form_builder_save(request):
         payment_currency = data.get("payment_currency", "usd")
         payment_description_template = data.get("payment_description_template", "")
         enable_captcha = data.get("enable_captcha", False)
+        embed_enabled = data.get("embed_enabled", False)
         enable_multi_step = data.get("enable_multi_step", False)
         form_steps = data.get("form_steps", [])
         enable_auto_save = data.get("enable_auto_save", True)
@@ -435,6 +437,7 @@ def form_builder_save(request):
                     payment_description_template
                 )
                 form_definition.enable_captcha = enable_captcha
+                form_definition.embed_enabled = embed_enabled
                 form_definition.enable_multi_step = enable_multi_step
                 form_definition.form_steps = form_steps
                 form_definition.enable_auto_save = enable_auto_save
@@ -465,6 +468,7 @@ def form_builder_save(request):
                     payment_currency=payment_currency,
                     payment_description_template=payment_description_template,
                     enable_captcha=enable_captcha,
+                    embed_enabled=embed_enabled,
                     enable_multi_step=enable_multi_step,
                     form_steps=form_steps,
                     enable_auto_save=enable_auto_save,

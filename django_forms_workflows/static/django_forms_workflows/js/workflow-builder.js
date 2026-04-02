@@ -268,7 +268,12 @@ class WorkflowBuilder {
         if (workflowTrackSelect) {
             workflowTrackSelect.addEventListener('change', (event) => {
                 const workflowId = event.target.value;
-                window.location.href = `${this.config.workflowBuilderUrl}?workflow_id=${workflowId}`;
+                // Validate that workflowId is a safe integer before using in URL
+                if (/^\d+$/.test(workflowId)) {
+                    const url = new URL(this.config.workflowBuilderUrl, window.location.origin);
+                    url.searchParams.set('workflow_id', workflowId);
+                    window.location.href = url.toString();
+                }
             });
         }
 

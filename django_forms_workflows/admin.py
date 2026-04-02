@@ -669,12 +669,13 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
             },
         ),
         (
-            "API Access",
+            "API & Embedding",
             {
                 "classes": ("collapse",),
-                "fields": ("api_enabled",),
+                "fields": ("api_enabled", "embed_enabled"),
                 "description": (
-                    "Enable this form for REST API submission. Requires the API URLs "
+                    "Enable this form for REST API submission or iframe embedding. "
+                    "API requires the API URLs "
                     "to be included in your project's <code>urls.py</code> and a valid "
                     "<strong>APIToken</strong> in the <code>Authorization: Bearer</code> "
                     "header. All existing submit_groups / view_groups permissions still apply."
@@ -847,6 +848,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                         allow_withdrawal=form.allow_withdrawal,
                         allow_resubmit=form.allow_resubmit,
                         allow_batch_import=form.allow_batch_import,
+                        embed_enabled=form.embed_enabled,
                         payment_enabled=form.payment_enabled,
                         payment_provider=form.payment_provider,
                         payment_amount_type=form.payment_amount_type,

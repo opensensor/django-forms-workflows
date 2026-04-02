@@ -1114,7 +1114,7 @@ class TestWorkflowBuilderViews:
         assert resp.status_code == 400
         data = resp.json()
         assert data["success"] is False
-        assert any("assigned to multiple stages" in error for error in data["errors"])
+        assert "validation failed" in data["error"].lower()
 
     def test_save_rejects_invalid_notification_cadence_configuration(
         self, client, superuser, form_definition
@@ -1149,7 +1149,7 @@ class TestWorkflowBuilderViews:
         assert resp.status_code == 400
         data = resp.json()
         assert data["success"] is False
-        assert any("Weekly notification cadence" in error for error in data["errors"])
+        assert "validation failed" in data["error"].lower()
 
     def test_save_updates_selected_workflow_track_only(
         self, client, superuser, form_definition, approval_group

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.2] - 2026-04-02
+
+### Fixed
+- **notify_stage_groups skips group when assigned_to is resolved** — when an
+  approval task has an individual `assigned_to` (resolved via
+  `assignee_form_field`), the fallback stage approval groups are no longer
+  notified. Previously this skip only applied when `use_triggering_stage=True`;
+  it now applies unconditionally, preventing duplicate notifications to both
+  the resolved individual and the group.
+
 ## [0.63.1] - 2026-04-02
 
 ### Fixed

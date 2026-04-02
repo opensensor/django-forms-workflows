@@ -1102,14 +1102,12 @@ def _collect_notification_recipients(
             _add(email)
 
     # 5. Stage approval groups (NotificationRule only)
-    #    When using the triggering stage and the task already has a specific
-    #    individual assigned (assigned_to), skip the group notification —
-    #    the individual was resolved via assignee_form_field so the fallback
-    #    group should not also be notified.
+    #    When the task already has a specific individual assigned
+    #    (assigned_to), skip the group notification — the individual was
+    #    resolved via assignee_form_field so the fallback group should not
+    #    also be notified, regardless of use_triggering_stage.
     _skip_stage_groups = (
-        getattr(notif, "use_triggering_stage", False)
-        and task is not None
-        and getattr(task, "assigned_to_id", None) is not None
+        task is not None and getattr(task, "assigned_to_id", None) is not None
     )
     if (
         getattr(notif, "notify_stage_groups", False)

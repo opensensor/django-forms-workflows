@@ -5,6 +5,10 @@
 
 {% block title %}Approve Submission #{{ submission.id }} - {{ site_name }}{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'django_forms_workflows/css/forms.css' %}">
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-lg-10 mx-auto">

@@ -1254,6 +1254,17 @@ class DynamicForm(forms.Form):
                     {"type": "email", "message": "Please enter a valid email address"}
                 )
 
+            if field.field_type == "phone":
+                validation_rules.append(
+                    {
+                        "type": "phone",
+                        "message": (
+                            "Enter a valid phone number, e.g. 2065551234, "
+                            "(206) 555-1234, or +1 (206) 555-1234"
+                        ),
+                    }
+                )
+
             if field.field_type == "url":
                 validation_rules.append(
                     {"type": "url", "message": "Please enter a valid URL"}

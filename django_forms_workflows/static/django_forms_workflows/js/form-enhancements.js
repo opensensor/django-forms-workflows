@@ -453,6 +453,10 @@ class FormEnhancements {
                        (!Array.isArray(value) || value.length > 0);
             case 'email':
                 return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+            case 'phone':
+                // Must contain at least 7 digits; only digits, spaces, dashes,
+                // dots, parens, and an optional leading + are allowed.
+                return /^\+?[\d()\- .]{7,25}$/.test(value) && (value.match(/\d/g) || []).length >= 7;
             case 'url':
                 try {
                     new URL(value);

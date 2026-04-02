@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.4] - 2026-04-02
+
+### Fixed
+- **forms.css now loaded in form_submit, approve, and form_embed templates** —
+  the package's `base.html` (which includes `forms.css`) was being overridden
+  by host apps that provide their own `base.html` template, causing all
+  alignment CSS to be silently dropped. The stylesheet is now included directly
+  in each template's `extra_css` block so it loads regardless of base template
+  overrides.
+- **Phone field real-time validation** — added a `phone` validation rule type
+  to `get_enhancements_config()` and `form-enhancements.js` so phone fields
+  get immediate red/green feedback on input (like email fields), rejecting
+  non-phone text such as "test" before form submission.
+
 ## [0.63.3] - 2026-04-02
 
 ### Fixed

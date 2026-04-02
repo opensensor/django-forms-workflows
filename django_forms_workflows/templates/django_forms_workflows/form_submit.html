@@ -5,6 +5,7 @@
 {% block title %}{{ form_def.name }} - {{ site_name }}{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'django_forms_workflows/css/forms.css' %}">
 <style>
     /* Rating stars widget */
     .rating-stars-container { display: inline-flex; gap: 0.15rem; direction: rtl; }

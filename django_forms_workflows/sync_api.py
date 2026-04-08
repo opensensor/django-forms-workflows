@@ -408,9 +408,14 @@ def _serialize_post_action(action):
 
 def serialize_form(form_definition):
     """Serialize a FormDefinition (with all related objects) to a plain dict."""
-    workflow = form_definition.workflow
+    all_workflows = list(form_definition.workflows.all().order_by("id"))
 
-    return {
+    # Primary workflow (backward compat: always stored as "workflow")
+    primary_workflow = all_workflows[0] if all_workflows else None
+    # Additional workflows (new: stored in "additional_workflows")
+    extra_workflows = all_workflows[1:] if len(all_workflows) > 1 else []
+
+    result = {
         "schema_version": SYNC_SCHEMA_VERSION,
         "category": _serialize_category(form_definition.category),
         "form": {
@@ -449,12 +454,19 @@ def serialize_form(form_definition):
         "fields": [
             _serialize_field(f) for f in form_definition.fields.all().order_by("order")
         ],
-        "workflow": _serialize_workflow(workflow),
+        "workflow": _serialize_workflow(primary_workflow),
         "post_actions": [
             _serialize_post_action(a)
             for a in form_definition.post_actions.all().order_by("order")
         ],
     }
+
+    if extra_workflows:
+        result["additional_workflows"] = [
+            _serialize_workflow(wf) for wf in extra_workflows
+        ]
+
+    return result
 
 
 def _topo_sort_categories(cat_data_list):
@@ -639,6 +651,169 @@ def _resolve_sub_workflow(sub_wf_form, sub_wf_data, parent_workflow):
     return candidates.first()
 
 
+def _import_single_workflow(
+    form_obj,
+    wf_payload,
+    existing_wfs,
+    wf_idx,
+    imported_wf_ids,
+):
+    """Import one workflow definition for *form_obj*.
+
+    Matches the incoming payload to an existing WorkflowDefinition by stage
+    fingerprint (ordered list of stage names) so that forms with multiple
+    workflows don't collide.  Falls back to positional matching (wf_idx) when
+    stage-based matching fails.
+
+    Returns ``(workflow_obj, stage_order_map)`` where *stage_order_map* maps
+    stage ``order`` → ``WorkflowStage`` for field FK resolution.
+    """
+    from datetime import time as _time
+
+    wf_data = dict(wf_payload)  # don't mutate caller's dict
+    nc_time_str = wf_data.pop("notification_cadence_time", None)
+    nc_time = _time.fromisoformat(nc_time_str) if nc_time_str else None
+    stages_data = wf_data.pop("stages", [])
+    wf_data.pop("sub_workflow_config", None)  # handled separately
+
+    wf_notif_data = wf_data.pop("notification_rules", [])
+    wf_webhook_data = wf_data.pop("webhook_endpoints", [])
+
+    # Silently discard legacy keys
+    for legacy_key in (
+        "escalation_threshold",
+        "approval_groups",
+        "escalation_groups",
+        "approval_logic",
+        "requires_manager_approval",
+        "manager_can_override_group",
+        "escalation_field",
+        "enable_db_updates",
+        "db_update_mappings",
+    ):
+        wf_data.pop(legacy_key, None)
+
+    # ── Find or create the right WorkflowDefinition ───────────────────────
+    incoming_stage_names = [sd.get("name", "") for sd in stages_data]
+    wf = None
+
+    # Try to match by stage fingerprint among existing workflows
+    for existing_wf in existing_wfs:
+        if existing_wf.pk in imported_wf_ids:
+            continue  # already claimed by a previous payload
+        existing_stage_names = list(
+            existing_wf.stages.order_by("order").values_list("name", flat=True)
+        )
+        if existing_stage_names == incoming_stage_names:
+            wf = existing_wf
+            break
+
+    # Fallback: positional matching (first unclaimed existing workflow)
+    if wf is None:
+        unclaimed = [ew for ew in existing_wfs if ew.pk not in imported_wf_ids]
+        if unclaimed:
+            wf = unclaimed[0]
+
+    if wf:
+        # Update existing workflow
+        for k, v in wf_data.items():
+            setattr(wf, k, v)
+        wf.notification_cadence_time = nc_time
+        wf.save()
+    else:
+        # Create new workflow
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_obj,
+            **wf_data,
+            notification_cadence_time=nc_time,
+        )
+
+    # Sync workflow-level notification rules (stage=null)
+    wf.notification_rules.filter(stage__isnull=True).delete()
+    for notif in wf_notif_data:
+        notif = dict(notif)
+        group_names = notif.pop("notify_groups", [])
+        if "notification_type" in notif and "event" not in notif:
+            notif["event"] = notif.pop("notification_type")
+        rule = NotificationRule.objects.create(workflow=wf, stage=None, **notif)
+        for gname in group_names:
+            rule.notify_groups.add(_get_or_create_group(gname))
+
+    wf.webhook_endpoints.all().delete()
+    for endpoint_data in wf_webhook_data:
+        WebhookEndpoint.objects.create(workflow=wf, **endpoint_data)
+
+    # Update stages in-place (matched by order + name) so that existing
+    # ApprovalTask records — which hold a PROTECT FK to WorkflowStage —
+    # are not broken.
+    existing_by_key = {(s.order, s.name): s for s in wf.stages.all()}
+    incoming_keys = {
+        (sd.get("order", idx + 1), sd.get("name", ""))
+        for idx, sd in enumerate(stages_data)
+    }
+
+    # Nullify task references then delete stages absent from incoming data
+    removed = [s for k, s in existing_by_key.items() if k not in incoming_keys]
+    if removed:
+        ApprovalTask.objects.filter(workflow_stage__in=removed).update(
+            workflow_stage=None
+        )
+        for s in removed:
+            s.delete()
+
+    stage_order_map = {}
+    for idx, stage_data in enumerate(stages_data):
+        stage_data = dict(stage_data)
+        # Backwards compat: old exports used assignee_email_field
+        if (
+            "assignee_email_field" in stage_data
+            and "assignee_form_field" not in stage_data
+        ):
+            stage_data["assignee_form_field"] = stage_data.pop("assignee_email_field")
+        else:
+            stage_data.pop("assignee_email_field", None)
+        stage_group_data = stage_data.pop("approval_groups", [])
+        stage_notif_data = stage_data.pop("notification_rules", [])
+        if not stage_notif_data:
+            stage_notif_data = stage_data.pop("form_field_notifications", [])
+        order = stage_data.get("order", idx + 1)
+        name = stage_data.get("name", "")
+        key = (order, name)
+        if key in existing_by_key:
+            stage = existing_by_key[key]
+            for k, v in stage_data.items():
+                setattr(stage, k, v)
+            stage.save()
+        else:
+            stage = WorkflowStage.objects.create(workflow=wf, **stage_data)
+
+        StageApprovalGroup.objects.filter(stage=stage).delete()
+        for pos, entry in enumerate(stage_group_data):
+            if isinstance(entry, dict):
+                group = _get_or_create_group(entry["name"])
+                position = entry.get("position", pos)
+            else:
+                group = _get_or_create_group(entry)
+                position = pos
+            StageApprovalGroup.objects.create(
+                stage=stage, group=group, position=position
+            )
+
+        stage.notification_rules.all().delete()
+        for notif in stage_notif_data:
+            notif = dict(notif)
+            group_names = notif.pop("notify_groups", [])
+            if "notification_type" in notif and "event" not in notif:
+                notif["event"] = notif.pop("notification_type")
+            rule = NotificationRule.objects.create(workflow=wf, stage=stage, **notif)
+            for gname in group_names:
+                rule.notify_groups.add(_get_or_create_group(gname))
+
+        stage_order_map[order] = stage
+
+    return wf, stage_order_map
+
+
 @transaction.atomic
 def import_form(form_data, conflict="update", category_cache=None):
     """
@@ -726,170 +901,80 @@ def import_form(form_data, conflict="update", category_cache=None):
         [_get_or_create_group(n) for n in fd.get("admin_groups", [])]
     )
 
-    # ── Workflow (created BEFORE fields so stage FKs can be resolved) ──────────
+    # ── Workflows (created BEFORE fields so stage FKs can be resolved) ─────────
     stage_order_map = {}  # order → WorkflowStage, used when creating fields
     wf_data = form_data.get("workflow")
+    additional_wf_data = form_data.get("additional_workflows", [])
+
+    # Collect all workflow data payloads to import
+    all_wf_payloads = []
     if wf_data is not None:
-        from datetime import time as _time
+        all_wf_payloads.append(wf_data)
+    all_wf_payloads.extend(additional_wf_data)
 
-        wf_data = dict(wf_data)  # don't mutate caller's dict
-        nc_time_str = wf_data.pop("notification_cadence_time", None)
-        nc_time = _time.fromisoformat(nc_time_str) if nc_time_str else None
-        stages_data = wf_data.pop("stages", [])
-        sub_wf_data = wf_data.pop("sub_workflow_config", None)
-
-        # Pop notification rules before creating the workflow object
-        wf_notif_data = wf_data.pop("notification_rules", [])
-        wf_webhook_data = wf_data.pop("webhook_endpoints", [])
-
-        # Silently discard legacy keys that may appear in old exports
-        for legacy_key in (
-            "escalation_threshold",
-            "approval_groups",
-            "escalation_groups",
-            "approval_logic",
-            "requires_manager_approval",
-            "manager_can_override_group",
-            "escalation_field",
-            "enable_db_updates",
-            "db_update_mappings",
-        ):
-            wf_data.pop(legacy_key, None)
-
-        wf, _ = WorkflowDefinition.objects.update_or_create(
-            form_definition=form_obj,
-            defaults={
-                **wf_data,
-                "notification_cadence_time": nc_time,
-            },
+    if all_wf_payloads:
+        # Get existing workflows for this form, ordered by id.
+        existing_wfs = list(
+            WorkflowDefinition.objects.filter(form_definition=form_obj).order_by("id")
         )
 
-        # Sync workflow-level notification rules (stage=null)
-        wf.notification_rules.filter(stage__isnull=True).delete()
-        for notif in wf_notif_data:
-            notif = dict(notif)
-            group_names = notif.pop("notify_groups", [])
-            if "notification_type" in notif and "event" not in notif:
-                notif["event"] = notif.pop("notification_type")
-            rule = NotificationRule.objects.create(workflow=wf, stage=None, **notif)
-            for gname in group_names:
-                rule.notify_groups.add(_get_or_create_group(gname))
-
-        wf.webhook_endpoints.all().delete()
-        for endpoint_data in wf_webhook_data:
-            WebhookEndpoint.objects.create(workflow=wf, **endpoint_data)
-
-        # Update stages in-place (matched by order + name) so that existing
-        # ApprovalTask records — which hold a PROTECT FK to WorkflowStage —
-        # are not broken.  Parallel stages share the same order number, so
-        # we must key on (order, name) to distinguish them correctly.
-        # Stages absent from the incoming data have their task references
-        # nullified before being deleted.
-        existing_by_key = {(s.order, s.name): s for s in wf.stages.all()}
-        incoming_keys = {
-            (sd.get("order", idx + 1), sd.get("name", ""))
-            for idx, sd in enumerate(stages_data)
-        }
-
-        # Nullify task references then delete stages absent from incoming data
-        removed = [s for k, s in existing_by_key.items() if k not in incoming_keys]
-        if removed:
-            ApprovalTask.objects.filter(workflow_stage__in=removed).update(
-                workflow_stage=None
+        imported_wf_ids = set()
+        for wf_idx, wf_payload in enumerate(all_wf_payloads):
+            wf_obj, s_map = _import_single_workflow(
+                form_obj,
+                wf_payload,
+                existing_wfs,
+                wf_idx,
+                imported_wf_ids,
             )
-            for s in removed:
-                s.delete()
+            imported_wf_ids.add(wf_obj.pk)
+            # Use the primary workflow's stage map for field FK resolution
+            if wf_idx == 0:
+                stage_order_map = s_map
 
-        for idx, stage_data in enumerate(stages_data):
-            stage_data = dict(stage_data)
-            # Backwards compat: old exports used assignee_email_field
-            if (
-                "assignee_email_field" in stage_data
-                and "assignee_form_field" not in stage_data
-            ):
-                stage_data["assignee_form_field"] = stage_data.pop(
-                    "assignee_email_field"
+        # Now resolve sub-workflow configs (must be done after ALL workflows
+        # exist so cross-references can be resolved).
+        all_imported_wfs = list(
+            WorkflowDefinition.objects.filter(form_definition=form_obj).order_by("id")
+        )
+        for wf_idx, wf_payload in enumerate(all_wf_payloads):
+            wf_obj = (
+                all_imported_wfs[wf_idx] if wf_idx < len(all_imported_wfs) else None
+            )
+            if wf_obj is None:
+                continue
+            sub_wf_data = dict(wf_payload).get("sub_workflow_config")
+            if sub_wf_data:
+                sub_form_slug = sub_wf_data.get("sub_workflow_form_slug")
+                sub_wf_form = FormDefinition.objects.filter(slug=sub_form_slug).first()
+                sub_wf = _resolve_sub_workflow(
+                    sub_wf_form, sub_wf_data, parent_workflow=wf_obj
                 )
-            else:
-                stage_data.pop("assignee_email_field", None)
-            stage_group_data = stage_data.pop("approval_groups", [])
-            stage_notif_data = stage_data.pop("notification_rules", [])
-            # Backward compat: legacy exports used "form_field_notifications"
-            if not stage_notif_data:
-                stage_notif_data = stage_data.pop("form_field_notifications", [])
-            order = stage_data.get("order", idx + 1)
-            name = stage_data.get("name", "")
-            key = (order, name)
-            if key in existing_by_key:
-                stage = existing_by_key[key]
-                for k, v in stage_data.items():
-                    setattr(stage, k, v)
-                stage.save()
-            else:
-                stage = WorkflowStage.objects.create(workflow=wf, **stage_data)
-
-            # Sync approval groups with position so sequential stages are
-            # restored in the correct processing order.
-            # Backwards-compatible: old exports used plain name strings; new
-            # exports use {"name": ..., "position": ...} dicts.
-            StageApprovalGroup.objects.filter(stage=stage).delete()
-            for pos, entry in enumerate(stage_group_data):
-                if isinstance(entry, dict):
-                    group = _get_or_create_group(entry["name"])
-                    position = entry.get("position", pos)
+                if sub_wf:
+                    SubWorkflowDefinition.objects.update_or_create(
+                        parent_workflow=wf_obj,
+                        defaults={
+                            "sub_workflow": sub_wf,
+                            "section_label": sub_wf_data.get("section_label", ""),
+                            "count_field": sub_wf_data.get("count_field", ""),
+                            "label_template": sub_wf_data.get(
+                                "label_template", "Sub-workflow {index}"
+                            ),
+                            "trigger": sub_wf_data.get("trigger", "on_approval"),
+                            "data_prefix": sub_wf_data.get("data_prefix", ""),
+                            "detached": sub_wf_data.get("detached", False),
+                            "reject_parent": sub_wf_data.get("reject_parent", False),
+                        },
+                    )
                 else:
-                    group = _get_or_create_group(entry)
-                    position = pos
-                StageApprovalGroup.objects.create(
-                    stage=stage, group=group, position=position
-                )
-
-            # Sync stage-level notification rules
-            stage.notification_rules.all().delete()
-            for notif in stage_notif_data:
-                notif = dict(notif)  # don't mutate caller's dict
-                group_names = notif.pop("notify_groups", [])
-                # Backward compat: legacy exports used "notification_type"
-                if "notification_type" in notif and "event" not in notif:
-                    notif["event"] = notif.pop("notification_type")
-                rule = NotificationRule.objects.create(
-                    workflow=wf, stage=stage, **notif
-                )
-                for gname in group_names:
-                    rule.notify_groups.add(_get_or_create_group(gname))
-
-            stage_order_map[order] = stage
-
-        # ── Sub-workflow config ─────────────────────────────────────────────
-        if sub_wf_data:
-            sub_form_slug = sub_wf_data.get("sub_workflow_form_slug")
-            sub_wf_form = FormDefinition.objects.filter(slug=sub_form_slug).first()
-            sub_wf = _resolve_sub_workflow(sub_wf_form, sub_wf_data, parent_workflow=wf)
-            if sub_wf:
-                SubWorkflowDefinition.objects.update_or_create(
-                    parent_workflow=wf,
-                    defaults={
-                        "sub_workflow": sub_wf,
-                        "section_label": sub_wf_data.get("section_label", ""),
-                        "count_field": sub_wf_data.get("count_field", ""),
-                        "label_template": sub_wf_data.get(
-                            "label_template", "Sub-workflow {index}"
-                        ),
-                        "trigger": sub_wf_data.get("trigger", "on_approval"),
-                        "data_prefix": sub_wf_data.get("data_prefix", ""),
-                        "detached": sub_wf_data.get("detached", False),
-                        "reject_parent": sub_wf_data.get("reject_parent", False),
-                    },
-                )
+                    logger.warning(
+                        "Sync import: sub-workflow form not found for parent form;"
+                        " sub_workflow_config skipped."
+                    )
             else:
-                logger.warning(
-                    "Sync import: sub-workflow form not found for parent form;"
-                    " sub_workflow_config skipped."
-                )
-        else:
-            SubWorkflowDefinition.objects.filter(parent_workflow=wf).delete()
+                SubWorkflowDefinition.objects.filter(parent_workflow=wf_obj).delete()
     else:
-        # Remove workflow if source had none
+        # Remove all workflows if source had none
         WorkflowDefinition.objects.filter(form_definition=form_obj).delete()
 
     # ── Fields ─────────────────────────────────────────────────────────────────

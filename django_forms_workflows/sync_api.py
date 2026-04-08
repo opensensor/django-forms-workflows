@@ -276,8 +276,14 @@ def _serialize_workflow_stage(stage):
 def _serialize_sub_workflow_config(swc):
     if swc is None:
         return None
+    # Include sub-workflow stage names so the importer can disambiguate when
+    # the parent and sub workflows belong to the same FormDefinition.
+    sub_wf_stage_names = list(
+        swc.sub_workflow.stages.order_by("order").values_list("name", flat=True)
+    )
     return {
         "sub_workflow_form_slug": swc.sub_workflow.form_definition.slug,
+        "sub_workflow_stage_names": sub_wf_stage_names,
         "section_label": swc.section_label,
         "count_field": swc.count_field,
         "label_template": swc.label_template,
@@ -593,6 +599,46 @@ def _get_or_create_category(data, category_cache=None):
     return cat
 
 
+def _resolve_sub_workflow(sub_wf_form, sub_wf_data, parent_workflow):
+    """Resolve the correct WorkflowDefinition for a sub-workflow reference.
+
+    When the parent and sub workflows belong to the **same** FormDefinition
+    (e.g. Course Development Request has both a "Contract Approval" parent
+    workflow and a "Payment" sub-workflow on the same form), the naïve
+    ``sub_wf_form.workflow`` (which returns ``.workflows.first()``) will
+    return the parent workflow — producing a self-referencing
+    SubWorkflowDefinition.
+
+    To disambiguate, we:
+    1. Exclude the parent workflow from the candidate set.
+    2. If ``sub_workflow_stage_names`` was serialised, match on the workflow
+       whose stages (by name + order) match the exported data.
+    3. Fall back to the first remaining workflow on the form.
+    """
+    if sub_wf_form is None:
+        return None
+
+    candidates = sub_wf_form.workflows.all()
+
+    # If the parent belongs to the same form, exclude it so we don't
+    # accidentally self-reference.
+    if parent_workflow.form_definition_id == sub_wf_form.id:
+        candidates = candidates.exclude(pk=parent_workflow.pk)
+
+    # Try matching by stage names if available in the serialised payload.
+    expected_stages = sub_wf_data.get("sub_workflow_stage_names")
+    if expected_stages:
+        for candidate in candidates:
+            actual_stages = list(
+                candidate.stages.order_by("order").values_list("name", flat=True)
+            )
+            if actual_stages == expected_stages:
+                return candidate
+
+    # Fall back to the first remaining candidate.
+    return candidates.first()
+
+
 @transaction.atomic
 def import_form(form_data, conflict="update", category_cache=None):
     """
@@ -818,7 +864,7 @@ def import_form(form_data, conflict="update", category_cache=None):
         if sub_wf_data:
             sub_form_slug = sub_wf_data.get("sub_workflow_form_slug")
             sub_wf_form = FormDefinition.objects.filter(slug=sub_form_slug).first()
-            sub_wf = sub_wf_form.workflow if sub_wf_form else None
+            sub_wf = _resolve_sub_workflow(sub_wf_form, sub_wf_data, parent_workflow=wf)
             if sub_wf:
                 SubWorkflowDefinition.objects.update_or_create(
                     parent_workflow=wf,

@@ -1845,41 +1845,17 @@ class ApprovalStepForm(forms.Form):
     def _setup_layout(self):
         """Setup Crispy Forms layout."""
         self.helper = FormHelper()
-        self.helper.form_method = "post"
-        self.helper.form_class = "needs-validation"
+        self.helper.form_tag = False
 
-        layout_fields = []
+        # Only layout fields for the current approval stage.  Submission
+        # data is rendered separately by the template (via _form_data_rows).
         stage_id = self.approval_task.workflow_stage_id
-
-        # Separate fields into current stage vs other (read-only) groups
-        current_stage_defs = []
-        other_defs = []
-        for field_def in self.form_definition.fields.order_by("order"):
-            if field_def.workflow_stage_id == stage_id:
-                current_stage_defs.append(field_def)
-            else:
-                other_defs.append(field_def)
-
-        # Add submitted data section first (read-only)
-        if other_defs:
-            layout_fields.append(
-                HTML('<h3 class="mb-3">Submitted Information (Read-Only)</h3>')
-            )
-            layout_fields.extend(self._build_layout_fields(other_defs))
-
-        # Add current stage fields section with width support
-        current_stage_fields = self._build_layout_fields(current_stage_defs)
-        if current_stage_fields:
-            layout_fields.append(HTML('<hr class="my-4">'))
-            step_name = self.approval_task.step_name or "Review"
-            layout_fields.append(
-                HTML(f'<h3 class="mb-3">{step_name} - Your Input</h3>')
-            )
-            layout_fields.extend(current_stage_fields)
-
-        self.helper.layout = Layout(*layout_fields)
-        self.helper.form_id = f"approval_form_{self.submission.pk}"
-        self.helper.attrs = {"novalidate": True}
+        current_stage_defs = [
+            f
+            for f in self.form_definition.fields.order_by("order")
+            if f.workflow_stage_id == stage_id
+        ]
+        self.helper.layout = Layout(*self._build_layout_fields(current_stage_defs))
 
     def get_updated_form_data(self):
         """

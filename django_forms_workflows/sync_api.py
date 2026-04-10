@@ -1074,6 +1074,7 @@ def _reset_sequences():
         return
 
     models_to_reset = [
+        FormDefinition,
         NotificationRule,
         StageApprovalGroup,
         PostSubmissionAction,

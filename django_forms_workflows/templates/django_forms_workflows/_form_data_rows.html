@@ -1,0 +1,30 @@
+{% load forms_workflows_tags %}
+{% for row in form_data_ordered %}
+    {% if row.type == 'section' %}
+        <tr class="table-light">
+            <td colspan="2" class="pt-3 pb-2 px-3">
+                <h5 class="mb-0">{{ row.label }}</h5>
+            </td>
+        </tr>
+    {% elif row.type == 'pair' or row.type == 'triple' or row.type == 'quad' %}
+        <tr>
+            <td colspan="2" class="p-0">
+                <div class="row g-0">
+                    {% for field in row.fields %}
+                    <div class="{% if row.type == 'pair' %}col-md-6{% elif row.type == 'triple' %}col-md-4{% else %}col-md-3{% endif %} px-3 py-2{% if not forloop.last %} border-end{% endif %}">
+                        <small class="text-muted fw-semibold">{{ field.label }}</small>
+                        <div>{% include "django_forms_workflows/_field_value.html" with entry=field %}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </td>
+        </tr>
+    {% else %}
+        {% with field=row.fields.0 %}
+        <tr>
+            <th style="width: 30%; vertical-align: top;">{{ field.label }}</th>
+            <td>{% include "django_forms_workflows/_field_value.html" with entry=field %}</td>
+        </tr>
+        {% endwith %}
+    {% endif %}
+{% endfor %}

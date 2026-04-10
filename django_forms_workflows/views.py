@@ -2897,55 +2897,128 @@ def _get_choice_label(field, value):
 
 def _build_ordered_form_data(submission, form_data):
     """
-    Return form data as an ordered list of dicts, respecting FormField.order.
+    Return form data as an ordered list of row dicts, respecting FormField.order.
 
-    The raw ``form_data`` JSON dict preserves insertion order (Python 3.7+),
-    but that order reflects when fields were *submitted*, not the declared field
-    order on the form.  This helper re-orders the entries so they match the
-    field definition ordering configured by the form designer.
+    Includes section headers and groups consecutive same-width fields into
+    side-by-side rows, mirroring the layout configured by the form designer.
 
-    Each returned item has:
-      - ``label``: the human-readable field label
-      - ``key``:   the field_name / dict key
-      - ``value``: the resolved value (may be a file-info dict after URL resolution)
+    Each row is a dict with one of the following shapes:
 
-    For choice-based fields (select, radio, multiselect, checkboxes) the stored
-    raw value is replaced by its human-readable label so the detail table shows
-    "S26 - Payroll" instead of "200".
+    ``{'type': 'section',  'label': str}``
+        A section header.
+
+    ``{'type': 'full',  'fields': [entry]}``
+        A single field rendered full width.
+
+    ``{'type': 'pair',  'fields': [entry, entry]}``
+        Two half-width fields rendered side-by-side.
+
+    ``{'type': 'triple',  'fields': [entry, entry, entry]}``
+        Three third-width fields rendered side-by-side.
+
+    ``{'type': 'quad',  'fields': [entry, entry, entry, entry]}``
+        Four quarter-width fields rendered side-by-side.
+
+    Where ``entry`` is ``{'label', 'key', 'value', 'width'}``.
+
+    For choice-based fields the stored raw value is replaced by its
+    human-readable label so the detail table shows "S26 - Payroll" instead
+    of "200".
     """
     if not form_data:
         return []
 
-    ordered = []
-    seen_keys = set()
+    rows: list = []
+    pending_half: list = []
+    pending_third: list = []
+    pending_fourth: list = []
+    seen_keys: set = set()
     stage_field_names: set = set()
 
-    # Walk fields in declared order.  Sections and stage-scoped fields are
-    # excluded — stage-scoped fields belong in their own approval-step
-    # sections, not the main form data table.
-    for field in submission.form_definition.fields.exclude(
-        field_type="section"
-    ).order_by("order"):
-        key = field.field_name
+    def _flush_half():
+        if len(pending_half) == 2:
+            rows.append({"type": "pair", "fields": list(pending_half)})
+        elif len(pending_half) == 1:
+            rows.append({"type": "full", "fields": list(pending_half)})
+        pending_half.clear()
 
-        # Stage-scoped fields have their own sections
+    def _flush_third():
+        while len(pending_third) >= 3:
+            rows.append({"type": "triple", "fields": pending_third[:3]})
+            del pending_third[:3]
+        for entry in pending_third:
+            rows.append({"type": "full", "fields": [entry]})
+        pending_third.clear()
+
+    def _flush_fourth():
+        while len(pending_fourth) >= 4:
+            rows.append({"type": "quad", "fields": pending_fourth[:4]})
+            del pending_fourth[:4]
+        for entry in pending_fourth:
+            rows.append({"type": "full", "fields": [entry]})
+        pending_fourth.clear()
+
+    for field in submission.form_definition.fields.order_by("order"):
+        # Stage-scoped fields (including section headers) belong in their
+        # own approval-step sections, not the main form data table.
         if field.workflow_stage_id is not None:
-            seen_keys.add(key)
-            stage_field_names.add(key)
+            if field.field_type != "section":
+                seen_keys.add(field.field_name)
+                stage_field_names.add(field.field_name)
             continue
 
-        if key in form_data:
-            ordered.append(
-                {
-                    "label": field.field_label,
-                    "key": key,
-                    "value": _get_choice_label(field, form_data[key]),
-                }
-            )
-            seen_keys.add(key)
+        if field.field_type == "section":
+            _flush_half()
+            _flush_third()
+            _flush_fourth()
+            rows.append({"type": "section", "label": field.field_label})
+            continue
 
-    # Append any keys in form_data that aren't represented in field
-    # definitions (legacy entries, etc.) — but NOT stage-scoped fields.
+        key = field.field_name
+        if key not in form_data:
+            continue
+
+        seen_keys.add(key)
+        entry = {
+            "label": field.field_label,
+            "key": key,
+            "value": _get_choice_label(field, form_data[key]),
+            "width": field.width,
+        }
+
+        if field.width == "half":
+            _flush_third()
+            _flush_fourth()
+            pending_half.append(entry)
+            if len(pending_half) == 2:
+                rows.append({"type": "pair", "fields": list(pending_half)})
+                pending_half.clear()
+        elif field.width == "third":
+            _flush_half()
+            _flush_fourth()
+            pending_third.append(entry)
+            if len(pending_third) == 3:
+                rows.append({"type": "triple", "fields": list(pending_third)})
+                pending_third.clear()
+        elif field.width == "fourth":
+            _flush_half()
+            _flush_third()
+            pending_fourth.append(entry)
+            if len(pending_fourth) == 4:
+                rows.append({"type": "quad", "fields": list(pending_fourth)})
+                pending_fourth.clear()
+        else:
+            _flush_half()
+            _flush_third()
+            _flush_fourth()
+            rows.append({"type": "full", "fields": [entry]})
+
+    _flush_half()
+    _flush_third()
+    _flush_fourth()
+
+    # Append any form_data keys not covered by field definitions (legacy
+    # entries, etc.) — but NOT stage-scoped fields.
     def _is_stage_field(k):
         if k in stage_field_names:
             return True
@@ -2954,15 +3027,21 @@ def _build_ordered_form_data(submission, form_data):
 
     for key, value in form_data.items():
         if key not in seen_keys and not _is_stage_field(key):
-            ordered.append(
+            rows.append(
                 {
-                    "label": key.replace("_", " ").title(),
-                    "key": key,
-                    "value": value,
+                    "type": "full",
+                    "fields": [
+                        {
+                            "label": key.replace("_", " ").title(),
+                            "key": key,
+                            "value": value,
+                            "width": "full",
+                        }
+                    ],
                 }
             )
 
-    return ordered
+    return rows
 
 
 def _build_pdf_rows(submission, hide_approval_history=False):

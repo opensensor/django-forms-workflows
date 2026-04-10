@@ -1,0 +1,41 @@
+{% load forms_workflows_tags %}
+{% if entry.value.url %}
+    {% if entry.value.content_type and 'image' in entry.value.content_type %}
+        <div class="mb-2">
+            <img src="{{ entry.value.url }}" alt="{{ entry.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
+        </div>
+    {% endif %}
+    <a href="{{ entry.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-download"></i> {{ entry.value.filename }}
+    </a>
+    <small class="text-muted ms-2">
+        {% if entry.value.size %}({{ entry.value.size|filesizeformat }}){% endif %}
+    </small>
+{% elif entry.value.path %}
+    <span class="text-muted">{{ entry.value.filename }}</span>
+    <small class="text-muted ms-2">(File stored but URL unavailable)</small>
+{% elif entry.value|is_signature %}
+    <img src="{{ entry.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
+{% elif entry.value.0.filename %}
+    <ul class="list-unstyled mb-0">
+    {% for f in entry.value %}
+        <li class="mb-1">
+            {% if f.url %}
+                {% if f.content_type and 'image' in f.content_type %}
+                    <div class="mb-1">
+                        <img src="{{ f.url }}" alt="{{ f.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
+                    </div>
+                {% endif %}
+                <a href="{{ f.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-download"></i> {{ f.filename }}
+                </a>
+                <small class="text-muted ms-2">{% if f.size %}({{ f.size|filesizeformat }}){% endif %}</small>
+            {% else %}
+                <span class="text-muted">{{ f.filename }}</span>
+            {% endif %}
+        </li>
+    {% endfor %}
+    </ul>
+{% else %}
+    {{ entry.value }}
+{% endif %}

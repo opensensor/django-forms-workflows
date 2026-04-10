@@ -173,50 +173,7 @@
                 {{ editable_form|crispy }}
                 {% else %}
                 <table class="table table-bordered table-sm">
-                    {% for entry in form_data_ordered %}
-                        {% if entry.key not in approval_field_names %}
-                        <tr>
-                            <th style="width: 30%;">{{ entry.label }}</th>
-                            <td>
-                                {% if entry.value.url %}
-                                    {# Single file with URL #}
-                                    {% if entry.value.content_type and 'image' in entry.value.content_type %}
-                                        <img src="{{ entry.value.url }}" alt="{{ entry.value.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
-                                    {% endif %}
-                                    <a href="{{ entry.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-download"></i> {{ entry.value.filename }}
-                                    </a>
-                                {% elif entry.value.path %}
-                                    <span class="text-muted">{{ entry.value.filename }}</span>
-                                {% elif entry.value|is_signature %}
-                                    {# Signature — inline base64 image #}
-                                    <img src="{{ entry.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
-                                {% elif entry.value.0.filename %}
-                                    {# Multi-file upload: list of file dicts #}
-                                    <ul class="list-unstyled mb-0">
-                                    {% for f in entry.value %}
-                                        <li class="mb-1">
-                                            {% if f.url %}
-                                                {% if f.content_type and 'image' in f.content_type %}
-                                                    <img src="{{ f.url }}" alt="{{ f.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
-                                                {% endif %}
-                                                <a href="{{ f.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                                    <i class="bi bi-download"></i> {{ f.filename }}
-                                                </a>
-                                                <small class="text-muted ms-1">{% if f.size %}({{ f.size|filesizeformat }}){% endif %}</small>
-                                            {% else %}
-                                                <span class="text-muted">{{ f.filename }}</span>
-                                            {% endif %}
-                                        </li>
-                                    {% endfor %}
-                                    </ul>
-                                {% else %}
-                                    {{ entry.value }}
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endif %}
-                    {% endfor %}
+                    {% include "django_forms_workflows/_form_data_rows.html" %}
                 </table>
                 {% endif %}
             </div>
@@ -447,35 +404,7 @@
                 {{ editable_form|crispy }}
                 {% else %}
                 <table class="table table-bordered">
-                    {% for entry in form_data_ordered %}
-                        <tr>
-                            <th style="width: 30%;">{{ entry.label }}</th>
-                            <td>
-                                {% if entry.value.url %}
-                                    {# File upload with URL - display as image or link #}
-                                    {% if entry.value.content_type and 'image' in entry.value.content_type %}
-                                        <div class="mb-2">
-                                            <img src="{{ entry.value.url }}" alt="{{ entry.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
-                                        </div>
-                                    {% endif %}
-                                    <a href="{{ entry.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-download"></i> {{ entry.value.filename }}
-                                    </a>
-                                    <small class="text-muted ms-2">
-                                        {% if entry.value.size %}({{ entry.value.size|filesizeformat }}){% endif %}
-                                    </small>
-                                {% elif entry.value.path %}
-                                    {# File upload with path but no URL #}
-                                    <span class="text-muted">{{ entry.value.filename }}</span>
-                                    <small class="text-muted ms-2">(File stored but URL unavailable)</small>
-                                {% elif entry.value|is_signature %}
-                                    <img src="{{ entry.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
-                                {% else %}
-                                    {{ entry.value }}
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
+                    {% include "django_forms_workflows/_form_data_rows.html" %}
                 </table>
                 {% endif %}
             </div>

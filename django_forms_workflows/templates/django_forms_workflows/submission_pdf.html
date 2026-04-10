@@ -284,10 +284,16 @@
     </colgroup>
     <tbody>
     {% for field in section.fields %}
+    {% if field.type == 'section' %}
+    <tr>
+        <td colspan="4" class="step-section-header">{{ field.label }}</td>
+    </tr>
+    {% else %}
     <tr>
         <th>{{ field.label }}</th>
         <td colspan="3">{% with v=field.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:360px;max-height:120px;">{% elif v.filename %}{{ v.filename }}{% else %}{{ v }}{% endif %}{% endwith %}</td>
     </tr>
+    {% endif %}
     {% endfor %}
     </tbody>
 </table>

@@ -3208,12 +3208,11 @@ def _build_approval_step_sections(submission):
 
     # Fields keyed by workflow_stage_id.  Store enough metadata to resolve
     # choice labels (select/radio/multiselect/checkboxes) at display time.
+    # Section headers are included so they render in completed-step displays.
     fields_by_stage: dict = defaultdict(list)
-    for field in (
-        submission.form_definition.fields.filter(workflow_stage__isnull=False)
-        .exclude(field_type="section")
-        .order_by("order")
-    ):
+    for field in submission.form_definition.fields.filter(
+        workflow_stage__isnull=False
+    ).order_by("order"):
         fields_by_stage[field.workflow_stage_id].append(
             {
                 "label": field.field_label,
@@ -3248,6 +3247,9 @@ def _build_approval_step_sections(submission):
 
         visible_fields = []
         for f in field_defs:
+            if f.get("field_type") == "section":
+                visible_fields.append({"label": f["label"], "type": "section"})
+                continue
             lookup_key = f"{f['key']}_{swi_index}" if swi_index else f["key"]
             if lookup_key in form_data:
                 raw_value = form_data[lookup_key]

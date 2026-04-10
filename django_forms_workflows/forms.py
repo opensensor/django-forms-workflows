@@ -1413,15 +1413,15 @@ class ApprovalStepForm(forms.Form):
         FormFields belong to it.
         """
         if self.approval_task.workflow_stage_id:
-            qs = (
-                self.form_definition.fields.exclude(field_type="section")
-                .filter(workflow_stage_id=self.approval_task.workflow_stage_id)
-                .order_by("order")
-            )
+            qs = self.form_definition.fields.filter(
+                workflow_stage_id=self.approval_task.workflow_stage_id
+            ).order_by("order")
         else:
             # Workflow with no stages — no stage-specific fields to show.
             qs = self.form_definition.fields.none()
         for field_def in qs:
+            if field_def.field_type == "section":
+                continue  # sections are visual-only; handled in _build_layout_fields
             self._add_field(field_def)
 
     def _add_field(self, field_def):

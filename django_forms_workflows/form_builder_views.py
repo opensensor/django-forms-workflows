@@ -187,12 +187,13 @@ def form_builder_clone(request, form_id):
                         trigger_conditions=stage.trigger_conditions,
                     )
                     for sag in StageApprovalGroup.objects.filter(stage=stage).order_by(
-                        "position"
+                        "role", "position"
                     ):
                         StageApprovalGroup.objects.create(
                             stage=cloned_stage,
                             group=sag.group,
                             position=sag.position,
+                            role=sag.role,
                         )
                 # Clone SubWorkflowDefinition if present
                 try:

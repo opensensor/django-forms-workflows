@@ -237,9 +237,9 @@ def _serialize_workflow_stage(stage):
     # Serialize approval groups with their sequence position so that
     # "sequence" stages are restored in the correct order on import.
     approval_groups = [
-        {"name": sag.group.name, "position": sag.position}
+        {"name": sag.group.name, "position": sag.position, "role": sag.role}
         for sag in stage.stageapprovalgroup_set.select_related("group").order_by(
-            "position"
+            "role", "position"
         )
     ]
     return {
@@ -792,11 +792,13 @@ def _import_single_workflow(
             if isinstance(entry, dict):
                 group = _get_or_create_group(entry["name"])
                 position = entry.get("position", pos)
+                role = entry.get("role", "approval")
             else:
                 group = _get_or_create_group(entry)
                 position = pos
+                role = "approval"
             StageApprovalGroup.objects.create(
-                stage=stage, group=group, position=position
+                stage=stage, group=group, position=position, role=role
             )
 
         stage.notification_rules.all().delete()

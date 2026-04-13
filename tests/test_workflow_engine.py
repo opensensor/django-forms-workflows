@@ -10,6 +10,7 @@ from django_forms_workflows.models import (
     ApprovalTask,
     FormDefinition,
     FormSubmission,
+    StageApprovalGroup,
     SubWorkflowDefinition,
     SubWorkflowInstance,
     WorkflowDefinition,
@@ -1244,3 +1245,148 @@ class TestSubWorkflowEngine:
         submission.refresh_from_db()
         assert submission.status == "approved"
         mock_final.assert_called_once_with(submission)
+
+
+# ── Role-based group validation / reassignment ──────────────────────────
+
+
+class TestValidationRoleGroups:
+    """Test that separate 'validation' role groups are used for dynamic assignee
+    checks, with fallback to approval groups when none are configured."""
+
+    @patch("django_forms_workflows.workflow_engine._notify_final_approval")
+    @patch("django_forms_workflows.workflow_engine._notify_task_request")
+    @patch("django_forms_workflows.workflow_engine._notify_submission_created")
+    def test_validation_group_accepts_member(
+        self, mock_created, mock_task, mock_final, form_definition, user
+    ):
+        """Dynamic assignee passes validation when they belong to a
+        validation-role group, even if not in the approval group."""
+        approval_group = Group.objects.create(name="Approvers VG")
+        validation_group = Group.objects.create(name="Validators VG")
+        assignee = User.objects.create_user(
+            "val_user", email="val@example.com", password="pass"
+        )
+        assignee.groups.add(validation_group)  # NOT in approval_group
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Validated Stage",
+            order=1,
+            approval_logic="all",
+            assignee_form_field="reviewer_email",
+            assignee_lookup_type="email",
+            validate_assignee_group=True,
+        )
+        StageApprovalGroup.objects.create(
+            stage=stage, group=approval_group, role="approval"
+        )
+        StageApprovalGroup.objects.create(
+            stage=stage, group=validation_group, role="validation"
+        )
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={"reviewer_email": "val@example.com"},
+            status="submitted",
+        )
+        create_workflow_tasks(sub)
+        sub.refresh_from_db()
+        assert sub.status == "pending_approval"
+        assert sub.approval_tasks.filter(assigned_to=assignee).count() == 1
+
+    @patch("django_forms_workflows.workflow_engine._notify_final_approval")
+    @patch("django_forms_workflows.workflow_engine._notify_task_request")
+    @patch("django_forms_workflows.workflow_engine._notify_submission_created")
+    def test_validation_group_rejects_non_member(
+        self, mock_created, mock_task, mock_final, form_definition, user
+    ):
+        """Dynamic assignee fails validation when not in a validation-role
+        group and falls back to approval group tasks."""
+        approval_group = Group.objects.create(name="Approvers VG2")
+        validation_group = Group.objects.create(name="Validators VG2")
+        assignee = User.objects.create_user(
+            "val_user2", email="val2@example.com", password="pass"
+        )
+        assignee.groups.add(approval_group)  # In approval but NOT in validation
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Validated Stage 2",
+            order=1,
+            approval_logic="all",
+            assignee_form_field="reviewer_email",
+            assignee_lookup_type="email",
+            validate_assignee_group=True,
+        )
+        StageApprovalGroup.objects.create(
+            stage=stage, group=approval_group, role="approval"
+        )
+        StageApprovalGroup.objects.create(
+            stage=stage, group=validation_group, role="validation"
+        )
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={"reviewer_email": "val2@example.com"},
+            status="submitted",
+        )
+        create_workflow_tasks(sub)
+        sub.refresh_from_db()
+        assert sub.status == "pending_approval"
+        # Should have fallen back to group task, NOT assigned_to
+        assert sub.approval_tasks.filter(assigned_to=assignee).count() == 0
+        assert (
+            sub.approval_tasks.filter(
+                assigned_group=approval_group, status="pending"
+            ).count()
+            == 1
+        )
+
+    @patch("django_forms_workflows.workflow_engine._notify_final_approval")
+    @patch("django_forms_workflows.workflow_engine._notify_task_request")
+    @patch("django_forms_workflows.workflow_engine._notify_submission_created")
+    def test_no_validation_groups_falls_back_to_approval(
+        self, mock_created, mock_task, mock_final, form_definition, user
+    ):
+        """When no validation-role groups exist, validation checks against
+        approval groups (backward-compatible behavior)."""
+        approval_group = Group.objects.create(name="Approvers Fallback")
+        assignee = User.objects.create_user(
+            "fb_user", email="fb@example.com", password="pass"
+        )
+        assignee.groups.add(approval_group)
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Fallback Stage",
+            order=1,
+            approval_logic="all",
+            assignee_form_field="reviewer_email",
+            assignee_lookup_type="email",
+            validate_assignee_group=True,
+        )
+        # Only approval groups — no validation groups
+        stage.approval_groups.add(approval_group)
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={"reviewer_email": "fb@example.com"},
+            status="submitted",
+        )
+        create_workflow_tasks(sub)
+        sub.refresh_from_db()
+        assert sub.status == "pending_approval"
+        assert sub.approval_tasks.filter(assigned_to=assignee).count() == 1

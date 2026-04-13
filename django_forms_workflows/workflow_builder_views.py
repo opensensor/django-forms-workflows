@@ -129,9 +129,14 @@ def _normalize_trigger_conditions(raw_conditions):
 
 def _serialize_stage_approval_groups(stage):
     return [
-        {"id": sag.group_id, "name": sag.group.name, "position": sag.position}
+        {
+            "id": sag.group_id,
+            "name": sag.group.name,
+            "position": sag.position,
+            "role": sag.role,
+        }
         for sag in stage.stageapprovalgroup_set.select_related("group").order_by(
-            "position", "group__name"
+            "role", "position", "group__name"
         )
     ]
 
@@ -1245,6 +1250,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 stage=stage,
                 group_id=group_entry["id"],
                 position=group_entry.get("position", pos),
+                role=group_entry.get("role", "approval"),
             )
 
         stage_node_map[snode.get("id")] = stage

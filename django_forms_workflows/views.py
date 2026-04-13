@@ -1925,13 +1925,13 @@ def reassign_task(request, task_id):
         messages.error(request, "Reassignment is not enabled for this approval step.")
         return redirect("forms_workflows:approval_inbox")
 
-    # Permission: current assignee, any member of the stage's approval groups,
-    # or superuser can reassign.
-    stage_groups = list(stage.approval_groups.all())
-    stage_group_ids = {g.pk for g in stage_groups}
+    # Permission: current assignee, any member of the stage's reassignment
+    # groups (falls back to approval groups), or superuser can reassign.
+    reassign_groups = list(stage.get_reassignment_groups())
+    reassign_group_ids = {g.pk for g in reassign_groups}
     can_reassign = (
         task.assigned_to == request.user
-        or request.user.groups.filter(pk__in=stage_group_ids).exists()
+        or request.user.groups.filter(pk__in=reassign_group_ids).exists()
         or request.user.is_superuser
     )
     if not can_reassign:
@@ -1950,11 +1950,11 @@ def reassign_task(request, task_id):
             messages.error(request, "Selected user not found.")
             return redirect("forms_workflows:reassign_task", task_id=task_id)
 
-        # Validate the new assignee is in one of the stage's approval groups
-        if not new_assignee.groups.filter(pk__in=stage_group_ids).exists():
+        # Validate the new assignee is in one of the stage's reassignment groups
+        if not new_assignee.groups.filter(pk__in=reassign_group_ids).exists():
             messages.error(
                 request,
-                "The selected user is not a member of any approval group for this stage.",
+                "The selected user is not a member of any reassignment group for this stage.",
             )
             return redirect("forms_workflows:reassign_task", task_id=task_id)
 
@@ -1988,7 +1988,7 @@ def reassign_task(request, task_id):
 
     # GET — show reassignment form with eligible users
     eligible_users = (
-        user_model.objects.filter(groups__pk__in=stage_group_ids, is_active=True)
+        user_model.objects.filter(groups__pk__in=reassign_group_ids, is_active=True)
         .distinct()
         .order_by("last_name", "first_name", "username")
     )

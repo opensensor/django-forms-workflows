@@ -1249,6 +1249,39 @@ class WorkflowStage(models.Model):
     def __str__(self) -> str:
         return f"Stage {self.order}: {self.name}"
 
+    # ------------------------------------------------------------------
+    # Helpers to retrieve groups by role (with fallback to approval)
+    # ------------------------------------------------------------------
+
+    def _groups_by_role(self, role: str):
+        """Return groups for *role*, falling back to approval groups if none."""
+        qs = Group.objects.filter(
+            stageapprovalgroup__stage=self,
+            stageapprovalgroup__role=role,
+        ).order_by("stageapprovalgroup__position")
+        if qs.exists():
+            return qs
+        # Fallback: approval groups
+        return Group.objects.filter(
+            stageapprovalgroup__stage=self,
+            stageapprovalgroup__role="approval",
+        ).order_by("stageapprovalgroup__position")
+
+    def get_validation_groups(self):
+        """Groups used to validate a dynamic assignee's membership."""
+        return self._groups_by_role("validation")
+
+    def get_reassignment_groups(self):
+        """Groups that define the eligible reassignment pool."""
+        return self._groups_by_role("reassignment")
+
+    def get_approval_groups(self):
+        """Groups used for fallback task assignment / approval logic."""
+        return Group.objects.filter(
+            stageapprovalgroup__stage=self,
+            stageapprovalgroup__role="approval",
+        ).order_by("stageapprovalgroup__position")
+
 
 class StageApprovalGroup(models.Model):
     """
@@ -1256,7 +1289,27 @@ class StageApprovalGroup(models.Model):
 
     Stores a ``position`` so admins can control the order groups are
     processed when approval_logic is ``"sequence"``.
+
+    The ``role`` field distinguishes the purpose of a group within the stage:
+
+    * **approval** – the default pool used for fallback task assignment and
+      approval logic (AND/OR/sequence).
+    * **validation** – used to check that a dynamically resolved assignee
+      belongs to an allowed group.  When no validation groups are configured,
+      approval groups are used instead.
+    * **reassignment** – defines the eligible pool of users for task
+      reassignment.  When no reassignment groups are configured, approval
+      groups are used instead.
+
+    The same Django ``Group`` may appear under multiple roles for a single
+    stage (e.g. both approval and reassignment).
     """
+
+    ROLE_CHOICES = [
+        ("approval", "Approval (default)"),
+        ("validation", "Assignee validation"),
+        ("reassignment", "Reassignment pool"),
+    ]
 
     stage = models.ForeignKey(
         WorkflowStage,
@@ -1270,15 +1323,30 @@ class StageApprovalGroup(models.Model):
         default=0,
         help_text="Order in which this group is processed (lower = first)",
     )
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default="approval",
+        help_text=(
+            "Purpose of this group in the stage. "
+            "'Approval' groups receive fallback tasks and define the default pool. "
+            "'Validation' groups are checked when verifying a dynamic assignee's "
+            "group membership (falls back to approval groups when none defined). "
+            "'Reassignment' groups define who may be reassigned to "
+            "(falls back to approval groups when none defined)."
+        ),
+    )
 
     class Meta:
-        ordering = ["position"]
-        unique_together = [("stage", "group")]
+        ordering = ["role", "position"]
+        unique_together = [("stage", "group", "role")]
         verbose_name = "Stage Approval Group"
         verbose_name_plural = "Stage Approval Groups"
 
     def __str__(self) -> str:
-        return f"{self.group.name} (pos {self.position})"
+        label = self.get_role_display() if self.role != "approval" else ""
+        suffix = f" [{label}]" if label else ""
+        return f"{self.group.name} (pos {self.position}){suffix}"
 
 
 class NotificationRule(models.Model):

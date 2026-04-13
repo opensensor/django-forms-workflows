@@ -1784,6 +1784,7 @@ class Command(BaseCommand):
                 StageApprovalGroup.objects.update_or_create(
                     stage=stage,
                     group=group,
+                    role="approval",
                     defaults={"position": position},
                 )
 

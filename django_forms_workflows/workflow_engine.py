@@ -586,12 +586,14 @@ def _create_stage_tasks(
     # --- Dynamic assignment (form field → User lookup) ------------------------
     dynamic_assignee = _resolve_dynamic_assignee(submission, stage)
     if dynamic_assignee is not None:
-        # Optionally validate the resolved user belongs to a stage approval group
+        # Optionally validate the resolved user belongs to the stage's
+        # validation groups (falls back to approval groups when none defined).
         if stage.validate_assignee_group and groups:
-            group_ids = {g.pk for g in groups}
-            if not dynamic_assignee.groups.filter(pk__in=group_ids).exists():
+            validation_groups = list(stage.get_validation_groups())
+            validation_group_ids = {g.pk for g in validation_groups}
+            if not dynamic_assignee.groups.filter(pk__in=validation_group_ids).exists():
                 logger.warning(
-                    "Dynamic assignee '%s' is not a member of any approval group "
+                    "Dynamic assignee '%s' is not a member of any validation group "
                     "for stage '%s' (submission %s); falling back to group assignment.",
                     dynamic_assignee.username,
                     stage.name,

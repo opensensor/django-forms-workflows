@@ -477,8 +477,9 @@ class StageApprovalGroupInline(nested_admin.NestedTabularInline):
 
     model = StageApprovalGroup
     extra = 1
-    ordering = ("position",)
+    ordering = ("role", "position")
     autocomplete_fields = ("group",)
+    fields = ("group", "role", "position")
 
 
 class WorkflowStageInline(nested_admin.NestedStackedInline):
@@ -963,11 +964,12 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                             )
                             for sag in StageApprovalGroup.objects.filter(
                                 stage=stage
-                            ).order_by("position"):
+                            ).order_by("role", "position"):
                                 StageApprovalGroup.objects.create(
                                     stage=cloned_stage,
                                     group=sag.group,
                                     position=sag.position,
+                                    role=sag.role,
                                 )
                         # Clone SubWorkflowDefinition if present
                         try:

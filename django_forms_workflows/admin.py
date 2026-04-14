@@ -632,7 +632,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
     list_select_related = ["category"]
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
-    readonly_fields = ("created_at", "updated_at", "created_by")
+    readonly_fields = ("uuid", "created_at", "updated_at", "created_by")
     inlines = [FormFieldInline, WorkflowDefinitionInline, ChangeHistoryInline]
     filter_horizontal = (
         "submit_groups",
@@ -734,7 +734,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
         (
             "Metadata",
             {
-                "fields": ("created_at", "updated_at", "created_by"),
+                "fields": ("uuid", "created_at", "updated_at", "created_by"),
                 "classes": ("collapse",),
             },
         ),
@@ -1557,6 +1557,7 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
     list_select_related = ("workflow", "workflow__form_definition")
     search_fields = ("name", "workflow__form_definition__name")
     ordering = ("workflow", "order")
+    readonly_fields = ("uuid",)
     inlines = [
         StageApprovalGroupInline,
         ChangeHistoryInline,
@@ -1566,6 +1567,7 @@ class WorkflowStageAdmin(nested_admin.NestedModelAdmin):
             None,
             {
                 "fields": (
+                    "uuid",
                     "workflow",
                     ("order", "name"),
                     "approval_logic",
@@ -1646,11 +1648,13 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
         "allow_bulk_pdf_export",
     )
     search_fields = ("form_definition__name",)
+    readonly_fields = ("uuid",)
     fieldsets = (
         (
             None,
             {
                 "fields": (
+                    "uuid",
                     "form_definition",
                     ("name_label", "start_trigger"),
                     "requires_approval",
@@ -2791,6 +2795,7 @@ class SubWorkflowDefinitionAdmin(admin.ModelAdmin):
         "label_template",
     )
     list_filter = ("trigger",)
+    readonly_fields = ("uuid",)
     raw_id_fields = ("parent_workflow", "sub_workflow")
 
 

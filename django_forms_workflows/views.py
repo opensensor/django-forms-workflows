@@ -3992,6 +3992,7 @@ def approval_inbox_ajax(request):
         "workflow_stage",
         "assigned_group",
         "assigned_to",
+        "sub_workflow_instance",
     ).prefetch_related("submission__form_definition__workflows")[start : start + length]
 
     # --- Serialise ---
@@ -4002,8 +4003,17 @@ def approval_inbox_ajax(request):
         can_exp = wf and (wf.allow_bulk_export or wf.allow_bulk_pdf_export)
         approve_url = reverse("forms_workflows:approve_submission", args=[task.id])
         det_url = reverse("forms_workflows:submission_detail", args=[sub.id])
+
+        # For sub-workflow tasks, prefix the stage name with the instance index
+        # so "Payment Request" becomes "Payment 1: Payment Request".
+        stage_name = task.workflow_stage.name if task.workflow_stage else ""
+        swi = task.sub_workflow_instance
+        if swi and stage_name:
+            stage_name = f"Payment {swi.index}: {stage_name}"
+
         row = {
             "DT_RowId": f"row_{task.id}",
+            "DT_RowAttr": {"data-submission-id": str(sub.id)},
             "checkbox": (
                 f'<input type="checkbox" name="submission_ids" value="{sub.id}" class="export-check">'
                 if can_exp
@@ -4021,7 +4031,7 @@ def approval_inbox_ajax(request):
                 sub.submitter.get_full_name() or sub.submitter.username
             ),
             "stage": f"Stage {task.stage_number}" if task.stage_number else "—",
-            "step_num": escape(task.workflow_stage.name if task.workflow_stage else ""),
+            "step_num": escape(stage_name),
             "assigned": escape(
                 task.assigned_group.name
                 if task.assigned_group

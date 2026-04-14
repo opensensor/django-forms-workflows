@@ -62,6 +62,11 @@
   /* Column picker */
   #colPickerDropdown .dropdown-menu { max-height: 340px; overflow-y: auto; }
   #colPickerDropdown .form-check { white-space: nowrap; }
+
+  /* Sub-workflow grouping: rows sharing the same submission get a left border */
+  tr.sw-group-start td { border-top: 2px solid #0d6efd !important; }
+  tr.sw-group td:first-child,
+  tr.sw-group td:nth-child(2) { border-left: 3px solid #0d6efd; }
 </style>
 {% endblock %}
 
@@ -327,6 +332,28 @@ $(document).ready(function() {
             colDefs.push({ visible: false, targets: extraColTargets, orderable: false });
         }
 
+        // After each draw, apply visual grouping to rows sharing a submission
+        function applySubWorkflowGrouping() {
+            var rows = $('#approvalsTable tbody tr');
+            var subIdCounts = {};
+            rows.each(function() {
+                var sid = $(this).attr('data-submission-id');
+                if (sid) subIdCounts[sid] = (subIdCounts[sid] || 0) + 1;
+            });
+            var seen = {};
+            rows.each(function() {
+                var sid = $(this).attr('data-submission-id');
+                $(this).removeClass('sw-group sw-group-start');
+                if (sid && subIdCounts[sid] > 1) {
+                    $(this).addClass('sw-group');
+                    if (!seen[sid]) {
+                        $(this).addClass('sw-group-start');
+                        seen[sid] = true;
+                    }
+                }
+            });
+        }
+
         var table = $('#approvalsTable').DataTable({
             serverSide: true,
             processing: true,
@@ -355,6 +382,7 @@ $(document).ready(function() {
             order: [[{{ default_sort_col }}, 'desc']],
             columnDefs: colDefs,
             pageLength: savedPageLen,
+            drawCallback: function() { applySubWorkflowGrouping(); },
             dom: '<"row"<"col-sm-12"tr>><"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             language: {
                 search: '',

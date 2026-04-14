@@ -254,3 +254,150 @@ class TestImportPayload:
             "employee_ssn_last4 lost its workflow_stage FK during sync"
         )
         assert ssn_field.workflow_stage.name == "HR Processing"
+
+
+class TestUUIDSync:
+    """Tests for UUID-based cross-instance sync identity."""
+
+    def test_schema_version_is_2(self, export_form):
+        qs = FormDefinition.objects.filter(pk=export_form.pk)
+        payload = build_export_payload(qs)
+        assert payload["schema_version"] == 2
+
+    def test_export_includes_uuids(self, export_form):
+        """All serialized levels must include a uuid field."""
+        qs = FormDefinition.objects.filter(pk=export_form.pk)
+        payload = build_export_payload(qs)
+        form_data = payload["forms"][0]
+
+        # Form-level UUID
+        assert "uuid" in form_data["form"]
+        assert form_data["form"]["uuid"] == str(export_form.uuid)
+
+        # Workflow-level UUID
+        wf = export_form.workflows.first()
+        assert form_data["workflow"]["uuid"] == str(wf.uuid)
+
+        # Stage-level UUID
+        stage = wf.stages.first()
+        assert form_data["workflow"]["stages"][0]["uuid"] == str(stage.uuid)
+
+    def test_uuid_roundtrip(self, export_form):
+        """UUIDs should survive an export → delete → import cycle."""
+        original_uuid = str(export_form.uuid)
+        wf = export_form.workflows.first()
+        wf_uuid = str(wf.uuid)
+        stage = wf.stages.first()
+        stage_uuid = str(stage.uuid)
+
+        qs = FormDefinition.objects.filter(pk=export_form.pk)
+        payload = build_export_payload(qs)
+        export_form.delete()
+
+        results = import_payload(payload, conflict="skip")
+        new_fd, action = results[0]
+        assert action == "created"
+        assert str(new_fd.uuid) == original_uuid
+
+        new_wf = new_fd.workflows.first()
+        assert str(new_wf.uuid) == wf_uuid
+
+        new_stage = new_wf.stages.first()
+        assert str(new_stage.uuid) == stage_uuid
+
+    def test_import_matches_by_uuid(self, export_form):
+        """UUID match should find existing form even if slug differs."""
+        qs = FormDefinition.objects.filter(pk=export_form.pk)
+        payload = build_export_payload(qs)
+        # Change the slug in the payload — UUID should still match
+        payload["forms"][0]["form"]["slug"] = "totally-different-slug"
+        payload["forms"][0]["form"]["description"] = "UUID-matched update"
+
+        results = import_payload(payload, conflict="update")
+        fd, action = results[0]
+        assert action == "updated"
+        assert fd.pk == export_form.pk
+        export_form.refresh_from_db()
+        assert export_form.description == "UUID-matched update"
+
+    def test_backward_compat_no_uuid(self, export_form):
+        """Payloads without UUIDs should fall back to slug/heuristic matching."""
+        qs = FormDefinition.objects.filter(pk=export_form.pk)
+        payload = build_export_payload(qs)
+
+        # Strip all UUIDs from the payload
+        form_data = payload["forms"][0]
+        form_data["form"].pop("uuid", None)
+        if form_data.get("workflow"):
+            form_data["workflow"].pop("uuid", None)
+            for stage in form_data["workflow"].get("stages", []):
+                stage.pop("uuid", None)
+        for field in form_data.get("fields", []):
+            field.pop("workflow_stage_uuid", None)
+
+        # Delete and re-import — should still work via slug matching
+        export_form.delete()
+        results = import_payload(payload, conflict="skip")
+        fd, action = results[0]
+        assert action == "created"
+        assert fd.slug == "sync-form"
+
+    def test_uuid_survives_stage_rename(self, db):
+        """UUID matching should find existing stage even if name changes."""
+        fd = FormDefinition.objects.create(
+            name="Rename Test", slug="rename-test", is_active=True
+        )
+        wf = WorkflowDefinition.objects.create(
+            form_definition=fd, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(workflow=wf, name="Old Name", order=1)
+        original_stage_uuid = str(stage.uuid)
+
+        qs = FormDefinition.objects.filter(pk=fd.pk)
+        payload = build_export_payload(qs)
+
+        # Rename the stage in the payload
+        payload["forms"][0]["workflow"]["stages"][0]["name"] = "New Name"
+
+        results = import_payload(payload, conflict="update")
+        updated_fd, _ = results[0]
+
+        updated_stage = updated_fd.workflows.first().stages.first()
+        assert updated_stage.name == "New Name"
+        # Same UUID, same DB record
+        assert str(updated_stage.uuid) == original_stage_uuid
+        assert updated_stage.pk == stage.pk
+
+    def test_field_stage_uuid_resolution(self, db):
+        """workflow_stage_uuid should resolve fields to the correct stage."""
+        fd = FormDefinition.objects.create(
+            name="UUID Stage Test", slug="uuid-stage-test", is_active=True
+        )
+        wf1 = WorkflowDefinition.objects.create(
+            form_definition=fd, requires_approval=True
+        )
+        WorkflowStage.objects.create(workflow=wf1, name="Approve", order=1)
+        wf2 = WorkflowDefinition.objects.create(
+            form_definition=fd, requires_approval=True
+        )
+        target_stage = WorkflowStage.objects.create(
+            workflow=wf2, name="Process", order=1
+        )
+        FormField.objects.create(
+            form_definition=fd,
+            field_name="stage_field",
+            field_label="Stage Field",
+            field_type="text",
+            order=1,
+            workflow_stage=target_stage,
+        )
+
+        qs = FormDefinition.objects.filter(pk=fd.pk)
+        payload = build_export_payload(qs)
+        fd.delete()
+
+        results = import_payload(payload, conflict="skip")
+        new_fd, _ = results[0]
+        field = new_fd.fields.get(field_name="stage_field")
+        assert field.workflow_stage is not None
+        assert field.workflow_stage.name == "Process"

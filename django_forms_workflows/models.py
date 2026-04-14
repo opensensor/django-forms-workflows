@@ -108,6 +108,15 @@ class FormDefinition(models.Model):
     to create and modify forms without deployments.
     """
 
+    # Stable cross-instance identity
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+        help_text="Stable identity for cross-instance sync.",
+    )
+
     # Category
     category = models.ForeignKey(
         FormCategory,
@@ -930,6 +939,14 @@ class WorkflowDefinition(models.Model):
     - Manager approval from LDAP hierarchy
     """
 
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+        help_text="Stable identity for cross-instance sync.",
+    )
+
     form_definition = models.ForeignKey(
         FormDefinition, related_name="workflows", on_delete=models.CASCADE
     )
@@ -1106,6 +1123,14 @@ class WorkflowStage(models.Model):
         ("any", "Any can approve (OR)"),
         ("sequence", "Sequential within stage"),
     ]
+
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+        help_text="Stable identity for cross-instance sync.",
+    )
 
     workflow = models.ForeignKey(
         WorkflowDefinition,
@@ -3177,6 +3202,14 @@ class SubWorkflowDefinition(models.Model):
         ("on_submission", "On Submission"),
         ("on_approval", "After Parent Approval"),
     ]
+
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+        help_text="Stable identity for cross-instance sync.",
+    )
 
     parent_workflow = models.OneToOneField(
         WorkflowDefinition,

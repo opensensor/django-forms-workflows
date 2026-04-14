@@ -47,7 +47,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-SYNC_SCHEMA_VERSION = 1
+SYNC_SCHEMA_VERSION = 2
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -233,6 +233,9 @@ def _serialize_field(field, wf_pk_to_index=None):
         "workflow_stage_order": field.workflow_stage.order
         if field.workflow_stage_id
         else None,
+        "workflow_stage_uuid": str(field.workflow_stage.uuid)
+        if field.workflow_stage_id
+        else None,
         "workflow_index": wf_index,
     }
 
@@ -247,6 +250,7 @@ def _serialize_workflow_stage(stage):
         )
     ]
     return {
+        "uuid": str(stage.uuid),
         "name": stage.name,
         "order": stage.order,
         "approval_logic": stage.approval_logic,
@@ -286,7 +290,9 @@ def _serialize_sub_workflow_config(swc):
         swc.sub_workflow.stages.order_by("order").values_list("name", flat=True)
     )
     return {
+        "uuid": str(swc.uuid),
         "sub_workflow_form_slug": swc.sub_workflow.form_definition.slug,
+        "sub_workflow_uuid": str(swc.sub_workflow.uuid),
         "sub_workflow_stage_names": sub_wf_stage_names,
         "section_label": swc.section_label,
         "count_field": swc.count_field,
@@ -317,6 +323,7 @@ def _serialize_workflow(wf):
     if wf is None:
         return None
     return {
+        "uuid": str(wf.uuid),
         # Identity / display
         "name_label": wf.name_label,
         # Start trigger
@@ -427,6 +434,7 @@ def serialize_form(form_definition):
         "schema_version": SYNC_SCHEMA_VERSION,
         "category": _serialize_category(form_definition.category),
         "form": {
+            "uuid": str(form_definition.uuid),
             "name": form_definition.name,
             "slug": form_definition.slug,
             "description": form_definition.description,
@@ -630,14 +638,22 @@ def _resolve_sub_workflow(sub_wf_form, sub_wf_data, parent_workflow):
     return the parent workflow — producing a self-referencing
     SubWorkflowDefinition.
 
-    To disambiguate, we:
-    1. Exclude the parent workflow from the candidate set.
-    2. If ``sub_workflow_stage_names`` was serialised, match on the workflow
+    Resolution order:
+    1. UUID match (most reliable, works across renames/reorders).
+    2. Exclude the parent workflow from the candidate set.
+    3. If ``sub_workflow_stage_names`` was serialised, match on the workflow
        whose stages (by name + order) match the exported data.
-    3. Fall back to the first remaining workflow on the form.
+    4. Fall back to the first remaining workflow on the form.
     """
     if sub_wf_form is None:
         return None
+
+    # Try UUID-based resolution first — no ambiguity
+    sub_wf_uuid = sub_wf_data.get("sub_workflow_uuid")
+    if sub_wf_uuid:
+        match = WorkflowDefinition.objects.filter(uuid=sub_wf_uuid).first()
+        if match:
+            return match
 
     candidates = sub_wf_form.workflows.all()
 
@@ -680,6 +696,7 @@ def _import_single_workflow(
     from datetime import time as _time
 
     wf_data = dict(wf_payload)  # don't mutate caller's dict
+    incoming_wf_uuid = wf_data.pop("uuid", None)
     nc_time_str = wf_data.pop("notification_cadence_time", None)
     nc_time = _time.fromisoformat(nc_time_str) if nc_time_str else None
     stages_data = wf_data.pop("stages", [])
@@ -706,16 +723,26 @@ def _import_single_workflow(
     incoming_stage_names = [sd.get("name", "") for sd in stages_data]
     wf = None
 
-    # Try to match by stage fingerprint among existing workflows
-    for existing_wf in existing_wfs:
-        if existing_wf.pk in imported_wf_ids:
-            continue  # already claimed by a previous payload
-        existing_stage_names = list(
-            existing_wf.stages.order_by("order").values_list("name", flat=True)
-        )
-        if existing_stage_names == incoming_stage_names:
-            wf = existing_wf
-            break
+    # Try UUID-based matching first
+    if incoming_wf_uuid:
+        for existing_wf in existing_wfs:
+            if existing_wf.pk in imported_wf_ids:
+                continue
+            if str(existing_wf.uuid) == incoming_wf_uuid:
+                wf = existing_wf
+                break
+
+    # Fall back to stage fingerprint matching
+    if wf is None:
+        for existing_wf in existing_wfs:
+            if existing_wf.pk in imported_wf_ids:
+                continue  # already claimed by a previous payload
+            existing_stage_names = list(
+                existing_wf.stages.order_by("order").values_list("name", flat=True)
+            )
+            if existing_stage_names == incoming_stage_names:
+                wf = existing_wf
+                break
 
     # Fallback: positional matching (first unclaimed existing workflow)
     if wf is None:
@@ -724,16 +751,21 @@ def _import_single_workflow(
             wf = unclaimed[0]
 
     if wf:
-        # Update existing workflow
+        # Update existing workflow — converge UUID from source
+        if incoming_wf_uuid:
+            wf.uuid = incoming_wf_uuid
         for k, v in wf_data.items():
             setattr(wf, k, v)
         wf.notification_cadence_time = nc_time
         wf.save()
     else:
         # Create new workflow
+        create_kwargs = dict(wf_data)
+        if incoming_wf_uuid:
+            create_kwargs["uuid"] = incoming_wf_uuid
         wf = WorkflowDefinition.objects.create(
             form_definition=form_obj,
-            **wf_data,
+            **create_kwargs,
             notification_cadence_time=nc_time,
         )
 
@@ -752,17 +784,24 @@ def _import_single_workflow(
     for endpoint_data in wf_webhook_data:
         WebhookEndpoint.objects.create(workflow=wf, **endpoint_data)
 
-    # Update stages in-place (matched by order + name) so that existing
-    # ApprovalTask records — which hold a PROTECT FK to WorkflowStage —
-    # are not broken.
-    existing_by_key = {(s.order, s.name): s for s in wf.stages.all()}
-    incoming_keys = {
-        (sd.get("order", idx + 1), sd.get("name", ""))
-        for idx, sd in enumerate(stages_data)
-    }
+    # Update stages in-place so that existing ApprovalTask records — which
+    # hold a PROTECT FK to WorkflowStage — are not broken.
+    all_existing_stages = list(wf.stages.all())
+    existing_by_key = {(s.order, s.name): s for s in all_existing_stages}
+    existing_by_uuid = {str(s.uuid): s for s in all_existing_stages}
+    incoming_keys = set()
+    incoming_uuids = set()
+    for idx, sd in enumerate(stages_data):
+        incoming_keys.add((sd.get("order", idx + 1), sd.get("name", "")))
+        if sd.get("uuid"):
+            incoming_uuids.add(sd["uuid"])
 
     # Nullify task references then delete stages absent from incoming data
-    removed = [s for k, s in existing_by_key.items() if k not in incoming_keys]
+    removed = [
+        s
+        for s in all_existing_stages
+        if (s.order, s.name) not in incoming_keys and str(s.uuid) not in incoming_uuids
+    ]
     if removed:
         ApprovalTask.objects.filter(workflow_stage__in=removed).update(
             workflow_stage=None
@@ -773,6 +812,7 @@ def _import_single_workflow(
     stage_order_map = {}
     for idx, stage_data in enumerate(stages_data):
         stage_data = dict(stage_data)
+        incoming_stage_uuid = stage_data.pop("uuid", None)
         # Backwards compat: old exports used assignee_email_field
         if (
             "assignee_email_field" in stage_data
@@ -787,14 +827,27 @@ def _import_single_workflow(
             stage_notif_data = stage_data.pop("form_field_notifications", [])
         order = stage_data.get("order", idx + 1)
         name = stage_data.get("name", "")
-        key = (order, name)
-        if key in existing_by_key:
-            stage = existing_by_key[key]
+
+        # UUID-first matching, then (order, name) fallback
+        stage = None
+        if incoming_stage_uuid:
+            stage = existing_by_uuid.get(incoming_stage_uuid)
+        if stage is None:
+            key = (order, name)
+            stage = existing_by_key.get(key)
+
+        if stage:
+            # Converge UUID from source
+            if incoming_stage_uuid:
+                stage_data["uuid"] = incoming_stage_uuid
             for k, v in stage_data.items():
                 setattr(stage, k, v)
             stage.save()
         else:
-            stage = WorkflowStage.objects.create(workflow=wf, **stage_data)
+            create_kwargs = dict(stage_data)
+            if incoming_stage_uuid:
+                create_kwargs["uuid"] = incoming_stage_uuid
+            stage = WorkflowStage.objects.create(workflow=wf, **create_kwargs)
 
         StageApprovalGroup.objects.filter(stage=stage).delete()
         for pos, entry in enumerate(stage_group_data):
@@ -853,10 +906,16 @@ def import_form(form_data, conflict="update", category_cache=None):
 
     fd = form_data.get("form", form_data)  # tolerate bare-form dicts
     slug = fd["slug"]
+    incoming_uuid = fd.get("uuid")
 
     category = _get_or_create_category(form_data.get("category"), category_cache)
 
-    existing = FormDefinition.objects.filter(slug=slug).first()
+    # UUID-first matching, falling back to slug
+    existing = None
+    if incoming_uuid:
+        existing = FormDefinition.objects.filter(uuid=incoming_uuid).first()
+    if not existing:
+        existing = FormDefinition.objects.filter(slug=slug).first()
     if existing:
         if conflict == "skip":
             return existing, "skipped"
@@ -895,11 +954,21 @@ def import_form(form_data, conflict="update", category_cache=None):
         "payment_description_template": fd.get("payment_description_template", ""),
     }
 
-    form_obj, created = FormDefinition.objects.update_or_create(
-        slug=slug,
-        defaults=form_defaults,
-    )
-    action = "created" if created else "updated"
+    # Converge UUID from source when present
+    if incoming_uuid:
+        form_defaults["uuid"] = incoming_uuid
+
+    if existing:
+        # Direct update (handles UUID-matched forms whose slug may differ)
+        form_defaults["slug"] = slug
+        for k, v in form_defaults.items():
+            setattr(existing, k, v)
+        existing.save()
+        form_obj = existing
+        action = "updated"
+    else:
+        form_obj = FormDefinition.objects.create(slug=slug, **form_defaults)
+        action = "created"
 
     # Sync M2M groups
     form_obj.submit_groups.set(
@@ -966,20 +1035,24 @@ def import_form(form_data, conflict="update", category_cache=None):
                     sub_wf_form, sub_wf_data, parent_workflow=wf_obj
                 )
                 if sub_wf:
+                    swc_defaults = {
+                        "sub_workflow": sub_wf,
+                        "section_label": sub_wf_data.get("section_label", ""),
+                        "count_field": sub_wf_data.get("count_field", ""),
+                        "label_template": sub_wf_data.get(
+                            "label_template", "Sub-workflow {index}"
+                        ),
+                        "trigger": sub_wf_data.get("trigger", "on_approval"),
+                        "data_prefix": sub_wf_data.get("data_prefix", ""),
+                        "detached": sub_wf_data.get("detached", False),
+                        "reject_parent": sub_wf_data.get("reject_parent", False),
+                    }
+                    incoming_swc_uuid = sub_wf_data.get("uuid")
+                    if incoming_swc_uuid:
+                        swc_defaults["uuid"] = incoming_swc_uuid
                     SubWorkflowDefinition.objects.update_or_create(
                         parent_workflow=wf_obj,
-                        defaults={
-                            "sub_workflow": sub_wf,
-                            "section_label": sub_wf_data.get("section_label", ""),
-                            "count_field": sub_wf_data.get("count_field", ""),
-                            "label_template": sub_wf_data.get(
-                                "label_template", "Sub-workflow {index}"
-                            ),
-                            "trigger": sub_wf_data.get("trigger", "on_approval"),
-                            "data_prefix": sub_wf_data.get("data_prefix", ""),
-                            "detached": sub_wf_data.get("detached", False),
-                            "reject_parent": sub_wf_data.get("reject_parent", False),
-                        },
+                        defaults=swc_defaults,
                     )
                 else:
                     logger.warning(
@@ -993,6 +1066,12 @@ def import_form(form_data, conflict="update", category_cache=None):
         WorkflowDefinition.objects.filter(form_definition=form_obj).delete()
 
     # ── Fields ─────────────────────────────────────────────────────────────────
+    # Build a UUID lookup for all stages across all workflows (for field FK resolution)
+    all_stages_by_uuid = {}
+    for s_map in stage_order_maps_by_wf.values():
+        for stage in s_map.values():
+            all_stages_by_uuid[str(stage.uuid)] = stage
+
     # Delete existing fields so we get a clean ordered set
     form_obj.fields.all().delete()
     for field_data in form_data.get("fields", []):
@@ -1009,18 +1088,20 @@ def import_form(form_data, conflict="update", category_cache=None):
         min_val = field_data.pop("min_value", None)
         max_val = field_data.pop("max_value", None)
         stage_order = field_data.pop("workflow_stage_order", None)
+        stage_uuid = field_data.pop("workflow_stage_uuid", None)
         wf_index = field_data.pop("workflow_index", None)
-        if stage_order is not None:
-            # Use the per-workflow stage map when workflow_index is present,
-            # falling back to the primary workflow's map for backward compat.
+
+        # UUID-first stage resolution, then workflow_index + order fallback
+        workflow_stage = None
+        if stage_uuid:
+            workflow_stage = all_stages_by_uuid.get(stage_uuid)
+        if workflow_stage is None and stage_order is not None:
             resolved_map = (
                 stage_order_maps_by_wf.get(wf_index, stage_order_map)
                 if wf_index is not None
                 else stage_order_map
             )
             workflow_stage = resolved_map.get(stage_order)
-        else:
-            workflow_stage = None
         # Resolve shared option list by slug (if present)
         sol_slug = field_data.pop("shared_option_list_slug", None)
         shared_option_list = None

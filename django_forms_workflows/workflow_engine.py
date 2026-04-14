@@ -191,8 +191,6 @@ def _finalize_submission(submission: FormSubmission) -> None:
     except Exception as e:
         logger.error("Error in execute_file_workflow_hooks: %s", e, exc_info=True)
 
-    _notify_final_approval(submission)
-
     # Spawn any sub-workflows configured to fire after parent approval
     try:
         _spawn_sub_workflows_for_trigger(submission, "on_approval")
@@ -201,10 +199,17 @@ def _finalize_submission(submission: FormSubmission) -> None:
 
     # If non-detached sub-workflow instances are now pending/in-progress,
     # hold the parent at "pending_approval" until they all complete.
+    # In that case, _promote_parent_if_complete will send the final
+    # notification once all sub-workflows finish.
     try:
         _maybe_set_pending_approval(submission)
     except Exception as e:
         logger.error("Error setting pending_approval status: %s", e, exc_info=True)
+
+    # Only send the final approval notification if the submission is still
+    # approved (not rolled back to pending_approval by sub-workflows).
+    if submission.status == "approved":
+        _notify_final_approval(submission)
 
 
 def _reject_submission(submission: FormSubmission, reason: str = "") -> None:

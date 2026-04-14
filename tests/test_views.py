@@ -468,7 +468,11 @@ class TestBuildOrderedFormData:
         from django_forms_workflows.views import _build_ordered_form_data
 
         ordered = _build_ordered_form_data(submission, submission.form_data)
-        labels = [e["label"] for e in ordered]
+        # Rows are structured dicts; extract labels from field entries
+        labels = []
+        for row in ordered:
+            for field in row.get("fields", []):
+                labels.append(field["label"])
         assert labels[0] == "Full Name"  # order=1
         assert labels[1] == "Email"  # order=2
 

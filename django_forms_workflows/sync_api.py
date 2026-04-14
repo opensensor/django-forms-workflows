@@ -196,7 +196,10 @@ def _serialize_category(cat):
     }
 
 
-def _serialize_field(field):
+def _serialize_field(field, wf_pk_to_index=None):
+    wf_index = None
+    if field.workflow_stage_id and wf_pk_to_index:
+        wf_index = wf_pk_to_index.get(field.workflow_stage.workflow_id)
     return {
         "field_name": field.field_name,
         "field_label": field.field_label,
@@ -230,6 +233,7 @@ def _serialize_field(field):
         "workflow_stage_order": field.workflow_stage.order
         if field.workflow_stage_id
         else None,
+        "workflow_index": wf_index,
     }
 
 
@@ -415,6 +419,10 @@ def serialize_form(form_definition):
     # Additional workflows (new: stored in "additional_workflows")
     extra_workflows = all_workflows[1:] if len(all_workflows) > 1 else []
 
+    # Build a map from workflow PK → index so fields can record which
+    # workflow their stage belongs to (needed for multi-workflow forms).
+    wf_pk_to_index = {wf.pk: idx for idx, wf in enumerate(all_workflows)}
+
     result = {
         "schema_version": SYNC_SCHEMA_VERSION,
         "category": _serialize_category(form_definition.category),
@@ -452,7 +460,8 @@ def serialize_form(form_definition):
             "payment_description_template": form_definition.payment_description_template,
         },
         "fields": [
-            _serialize_field(f) for f in form_definition.fields.all().order_by("order")
+            _serialize_field(f, wf_pk_to_index)
+            for f in form_definition.fields.all().order_by("order")
         ],
         "workflow": _serialize_workflow(primary_workflow),
         "post_actions": [
@@ -905,6 +914,8 @@ def import_form(form_data, conflict="update", category_cache=None):
 
     # ── Workflows (created BEFORE fields so stage FKs can be resolved) ─────────
     stage_order_map = {}  # order → WorkflowStage, used when creating fields
+    # Per-workflow stage maps: wf_index → {order → WorkflowStage}
+    stage_order_maps_by_wf = {}
     wf_data = form_data.get("workflow")
     additional_wf_data = form_data.get("additional_workflows", [])
 
@@ -930,7 +941,9 @@ def import_form(form_data, conflict="update", category_cache=None):
                 imported_wf_ids,
             )
             imported_wf_ids.add(wf_obj.pk)
-            # Use the primary workflow's stage map for field FK resolution
+            stage_order_maps_by_wf[wf_idx] = s_map
+            # Primary workflow's stage map is the default for backward compat
+            # (fields without workflow_index fall back to this).
             if wf_idx == 0:
                 stage_order_map = s_map
 
@@ -996,9 +1009,18 @@ def import_form(form_data, conflict="update", category_cache=None):
         min_val = field_data.pop("min_value", None)
         max_val = field_data.pop("max_value", None)
         stage_order = field_data.pop("workflow_stage_order", None)
-        workflow_stage = (
-            stage_order_map.get(stage_order) if stage_order is not None else None
-        )
+        wf_index = field_data.pop("workflow_index", None)
+        if stage_order is not None:
+            # Use the per-workflow stage map when workflow_index is present,
+            # falling back to the primary workflow's map for backward compat.
+            resolved_map = (
+                stage_order_maps_by_wf.get(wf_index, stage_order_map)
+                if wf_index is not None
+                else stage_order_map
+            )
+            workflow_stage = resolved_map.get(stage_order)
+        else:
+            workflow_stage = None
         # Resolve shared option list by slug (if present)
         sol_slug = field_data.pop("shared_option_list_slug", None)
         shared_option_list = None

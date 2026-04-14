@@ -179,3 +179,78 @@ class TestImportPayload:
         webhook = export_form.workflows.first().webhook_endpoints.first()
         assert webhook is not None
         assert webhook.url == "https://example.com/hooks/workflows"
+
+    def test_multi_workflow_field_stage_resolution(self, db):
+        """Fields assigned to stages in additional workflows must retain
+        their workflow_stage FK after export → import round-trip."""
+        fd = FormDefinition.objects.create(
+            name="Multi WF Form", slug="multi-wf-form", is_active=True
+        )
+        # Primary workflow with one stage
+        wf1 = WorkflowDefinition.objects.create(
+            form_definition=fd, requires_approval=True
+        )
+        WorkflowStage.objects.create(workflow=wf1, name="Contract Approval", order=1)
+        # Additional workflow with multiple stages
+        wf2 = WorkflowDefinition.objects.create(
+            form_definition=fd, requires_approval=True
+        )
+        WorkflowStage.objects.create(workflow=wf2, name="Payment Request", order=1)
+        hr_stage = WorkflowStage.objects.create(
+            workflow=wf2, name="HR Processing", order=2
+        )
+        WorkflowStage.objects.create(workflow=wf2, name="Payroll Processing", order=3)
+        # Field on primary workflow stage (order=1, wf_idx=0)
+        FormField.objects.create(
+            form_definition=fd,
+            field_name="contract_doc",
+            field_label="Contract",
+            field_type="file",
+            order=1,
+            workflow_stage=WorkflowStage.objects.get(workflow=wf1, order=1),
+        )
+        # Fields on additional workflow stage (order=2, wf_idx=1)
+        FormField.objects.create(
+            form_definition=fd,
+            field_name="payment_dept_code",
+            field_label="Department Code",
+            field_type="text",
+            order=2,
+            workflow_stage=hr_stage,
+        )
+        FormField.objects.create(
+            form_definition=fd,
+            field_name="employee_ssn_last4",
+            field_label="Last 4 SSN",
+            field_type="text",
+            order=3,
+            workflow_stage=hr_stage,
+        )
+
+        # Export and re-import into a fresh form
+        qs = FormDefinition.objects.filter(pk=fd.pk)
+        payload = build_export_payload(qs)
+        fd.delete()
+
+        results = import_payload(payload, conflict="skip")
+        assert len(results) == 1
+        new_fd, action = results[0]
+        assert action == "created"
+
+        # Verify field on primary workflow stage
+        contract_field = new_fd.fields.get(field_name="contract_doc")
+        assert contract_field.workflow_stage is not None
+        assert contract_field.workflow_stage.name == "Contract Approval"
+
+        # Verify fields on additional workflow stage are NOT null
+        dept_field = new_fd.fields.get(field_name="payment_dept_code")
+        assert dept_field.workflow_stage is not None, (
+            "payment_dept_code lost its workflow_stage FK during sync"
+        )
+        assert dept_field.workflow_stage.name == "HR Processing"
+
+        ssn_field = new_fd.fields.get(field_name="employee_ssn_last4")
+        assert ssn_field.workflow_stage is not None, (
+            "employee_ssn_last4 lost its workflow_stage FK during sync"
+        )
+        assert ssn_field.workflow_stage.name == "HR Processing"

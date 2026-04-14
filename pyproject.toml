@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-forms-workflows"
-version = "0.67.0"
+version = "0.68.0"
 description = "Enterprise-grade, database-driven form builder with approval workflows and external data integration"
 license = "LGPL-3.0-only"
 readme = "README.md"
@@ -65,6 +65,9 @@ sphinx-autodoc-typehints = { version = ">=1.25", optional = true }
 # Optional QR code generation
 segno = { version = ">=1.6", optional = true }
 
+# Optional Markdown rendering for display_text fields
+markdown = { version = ">=3.4", optional = true }
+
 # Optional picklist dependencies (country + US state field types)
 django-countries = { version = ">=7.0", optional = true }
 django-localflavor = { version = ">=4.0", optional = true }
@@ -86,6 +89,7 @@ gmail = ["google-auth", "google-api-python-client"]
 pdf = ["weasyprint"]
 excel = ["openpyxl"]
 qr = ["segno"]
+markdown = ["markdown"]
 picklists = ["django-countries", "django-localflavor"]
 docs = ["sphinx", "sphinx-rtd-theme", "sphinx-autodoc-typehints"]
 all = [
@@ -97,6 +101,7 @@ all = [
   "weasyprint",
   "openpyxl",
   "segno",
+  "markdown",
   "django-countries", "django-localflavor"
 ]
 dev = ["pytest", "pytest-django", "pytest-cov", "ruff"]

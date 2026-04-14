@@ -3,6 +3,7 @@ Custom template tags and filters for django_forms_workflows.
 """
 
 from django import template
+from django.utils.safestring import mark_safe
 
 register = template.Library()
 
@@ -11,6 +12,30 @@ register = template.Library()
 def is_signature(value):
     """Return True if *value* looks like a signature data-URI (PNG)."""
     return isinstance(value, str) and value.startswith("data:image/png;base64,")
+
+
+@register.filter(is_safe=True)
+def render_markdown(value):
+    """Convert a Markdown string to HTML.
+
+    Uses the ``markdown`` library when installed (with tables, fenced-code
+    and nl2br extensions).  Falls back to escaped text with ``<br>`` tags.
+    """
+    if not value:
+        return ""
+    try:
+        import markdown
+
+        return mark_safe(
+            markdown.markdown(
+                str(value),
+                extensions=["tables", "fenced_code", "nl2br"],
+            )
+        )
+    except ImportError:
+        from django.utils.html import escape
+
+        return mark_safe(escape(str(value)).replace("\n", "<br>"))
 
 
 @register.filter

@@ -238,6 +238,14 @@
                             <h5 class="mb-0">{{ field.label }}</h5>
                         </td>
                     </tr>
+                    {% elif field.type == 'display_text' %}
+                    <tr>
+                        <td colspan="2" class="px-3 py-2">
+                            <div class="card card-body bg-light border mb-0">
+                                {{ field.value|render_markdown }}
+                            </div>
+                        </td>
+                    </tr>
                     {% else %}
                     <tr>
                         <th style="width: 30%; vertical-align: top;">{{ field.label }}</th>

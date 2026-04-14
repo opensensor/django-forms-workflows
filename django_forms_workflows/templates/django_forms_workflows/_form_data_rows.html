@@ -6,6 +6,14 @@
                 <h5 class="mb-0">{{ row.label }}</h5>
             </td>
         </tr>
+    {% elif row.type == 'display_text' %}
+        <tr>
+            <td colspan="2" class="px-3 py-2">
+                <div class="card card-body bg-light border mb-0">
+                    {{ row.value|render_markdown }}
+                </div>
+            </td>
+        </tr>
     {% elif row.type == 'pair' or row.type == 'triple' or row.type == 'quad' %}
         <tr>
             <td colspan="2" class="p-0">

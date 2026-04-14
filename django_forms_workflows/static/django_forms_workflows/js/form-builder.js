@@ -109,6 +109,7 @@ class FormBuilder {
                 icon: 'bi-layout-split',
                 types: [
                     { type: 'section', label: 'Section Header', icon: 'bi-layout-text-sidebar' },
+                    { type: 'display_text', label: 'Display Text', icon: 'bi-card-text' },
                 ]
             }
         ];
@@ -810,6 +811,13 @@ class FormBuilder {
                     <label class="form-label">Formula</label>
                     <input type="text" class="form-control font-monospace" id="propDefaultValue" value="${this.escapeHtml(field.default_value)}" placeholder="e.g. {field_a} + {field_b}">
                     <small class="text-muted">Use <code>{field_name}</code> to reference other fields. Evaluated live on the client and re-validated on the server.</small>
+                </div>
+                ` : ''}
+                ${field.field_type === 'display_text' ? `
+                <div class="col-12">
+                    <label class="form-label">Display Content (Markdown)</label>
+                    <textarea class="form-control font-monospace" id="propDefaultValue" rows="6">${this.escapeHtml(field.default_value || '')}</textarea>
+                    <small class="text-muted">Supports Markdown: **bold**, *italic*, [links](url), lists, etc. This text is shown read-only on the form.</small>
                 </div>
                 ` : ''}
                 ${field.field_type === 'rating' ? `

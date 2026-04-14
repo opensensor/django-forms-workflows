@@ -977,7 +977,15 @@ def my_submissions(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile", "signature"])
+                .exclude(
+                    field_type__in=[
+                        "section",
+                        "display_text",
+                        "file",
+                        "multifile",
+                        "signature",
+                    ]
+                )
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -1397,7 +1405,15 @@ def approval_inbox(request):
             form_def_obj = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=form_def_obj)
-                .exclude(field_type__in=["section", "file", "multifile", "signature"])
+                .exclude(
+                    field_type__in=[
+                        "section",
+                        "display_text",
+                        "file",
+                        "multifile",
+                        "signature",
+                    ]
+                )
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -2193,7 +2209,15 @@ def completed_approvals(request):
             form_def_obj = FormDefinition.objects.get(slug=form_slug)
             form_fields = list(
                 FormField.objects.filter(form_definition=form_def_obj)
-                .exclude(field_type__in=["section", "file", "multifile", "signature"])
+                .exclude(
+                    field_type__in=[
+                        "section",
+                        "display_text",
+                        "file",
+                        "multifile",
+                        "signature",
+                    ]
+                )
                 .order_by("order")
                 .values("field_name", "field_label")
             )
@@ -2974,6 +2998,20 @@ def _build_ordered_form_data(submission, form_data):
             rows.append({"type": "section", "label": field.field_label})
             continue
 
+        if field.field_type == "display_text":
+            _flush_half()
+            _flush_third()
+            _flush_fourth()
+            rows.append(
+                {
+                    "type": "display_text",
+                    "label": field.field_label,
+                    "value": field.default_value or "",
+                }
+            )
+            seen_keys.add(field.field_name)
+            continue
+
         key = field.field_name
         if key not in form_data:
             continue
@@ -3113,6 +3151,19 @@ def _build_pdf_rows(submission, hide_approval_history=False):
             rows.append({"type": "section", "label": field.field_label})
             continue
 
+        if field.field_type == "display_text":
+            flush_half()
+            flush_third()
+            rows.append(
+                {
+                    "type": "display_text",
+                    "label": field.field_label,
+                    "value": field.default_value or "",
+                }
+            )
+            seen_keys.add(field.field_name)
+            continue
+
         key = field.field_name
 
         if key not in form_data:
@@ -3249,6 +3300,15 @@ def _build_approval_step_sections(submission):
         for f in field_defs:
             if f.get("field_type") == "section":
                 visible_fields.append({"label": f["label"], "type": "section"})
+                continue
+            if f.get("field_type") == "display_text":
+                visible_fields.append(
+                    {
+                        "label": f["label"],
+                        "type": "display_text",
+                        "value": form_data.get(f["key"], ""),
+                    }
+                )
                 continue
             lookup_key = f"{f['key']}_{swi_index}" if swi_index else f["key"]
             if lookup_key in form_data:
@@ -3481,7 +3541,11 @@ def bulk_export_submissions(request):
         ws = wb.create_sheet(title=sheet_name)
 
         # Determine columns from form field definitions
-        fields = list(fd.fields.exclude(field_type="section").order_by("order"))
+        fields = list(
+            fd.fields.exclude(field_type__in=["section", "display_text"]).order_by(
+                "order"
+            )
+        )
         field_names = [f.field_name for f in fields]
         field_labels = [f.field_label for f in fields]
 
@@ -3848,7 +3912,15 @@ def completed_approvals_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile", "signature"])
+                .exclude(
+                    field_type__in=[
+                        "section",
+                        "display_text",
+                        "file",
+                        "multifile",
+                        "signature",
+                    ]
+                )
                 .order_by("order")
                 .values("field_name")
             )
@@ -3976,7 +4048,15 @@ def approval_inbox_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile", "signature"])
+                .exclude(
+                    field_type__in=[
+                        "section",
+                        "display_text",
+                        "file",
+                        "multifile",
+                        "signature",
+                    ]
+                )
                 .order_by("order")
                 .values("field_name")
             )
@@ -4013,7 +4093,6 @@ def approval_inbox_ajax(request):
 
         row = {
             "DT_RowId": f"row_{task.id}",
-            "DT_RowAttr": {"data-submission-id": str(sub.id)},
             "checkbox": (
                 f'<input type="checkbox" name="submission_ids" value="{sub.id}" class="export-check">'
                 if can_exp
@@ -4125,7 +4204,15 @@ def my_submissions_ajax(request):
             fd = FormDefinition.objects.get(slug=form_slug)
             extra_fields = list(
                 FormField.objects.filter(form_definition=fd)
-                .exclude(field_type__in=["section", "file", "multifile", "signature"])
+                .exclude(
+                    field_type__in=[
+                        "section",
+                        "display_text",
+                        "file",
+                        "multifile",
+                        "signature",
+                    ]
+                )
                 .order_by("order")
                 .values("field_name")
             )

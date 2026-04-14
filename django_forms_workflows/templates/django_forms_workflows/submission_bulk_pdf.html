@@ -1,3 +1,4 @@
+{% load forms_workflows_tags %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -104,6 +105,8 @@
     {% for row in item.pdf_rows %}
     {% if row.type == 'section' %}
     <tr class="section-row"><td colspan="4">{{ row.label }}</td></tr>
+    {% elif row.type == 'display_text' %}
+    <tr><td colspan="4" style="background: #f8f9fa; padding: 8pt;">{{ row.value|render_markdown }}</td></tr>
     {% elif row.type == 'pair' %}
     <tr>
         <th>{{ row.fields.0.label }}</th>

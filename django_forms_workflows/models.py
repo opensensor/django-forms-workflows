@@ -579,6 +579,7 @@ class FormField(models.Model):
         ("matrix", "Matrix / Grid"),
         ("address", "Address"),
         ("slider", "Slider"),
+        ("display_text", "Display Text (Read Only)"),
     ]
 
     # Relationship

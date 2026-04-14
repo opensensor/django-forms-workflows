@@ -222,6 +222,11 @@
         <td colspan="4">{{ row.label }}</td>
     </tr>
 
+    {% elif row.type == 'display_text' %}
+    <tr>
+        <td colspan="4" style="background: #f8f9fa; padding: 8pt;">{{ row.value|render_markdown }}</td>
+    </tr>
+
     {% elif row.type == 'pair' %}
     <tr>
         <th>{{ row.fields.0.label }}</th>
@@ -287,6 +292,10 @@
     {% if field.type == 'section' %}
     <tr>
         <td colspan="4" class="step-section-header">{{ field.label }}</td>
+    </tr>
+    {% elif field.type == 'display_text' %}
+    <tr>
+        <td colspan="4" style="background: #f8f9fa; padding: 8pt;">{{ field.value|render_markdown }}</td>
     </tr>
     {% else %}
     <tr>

@@ -16,7 +16,10 @@ from crispy_forms.layout import HTML, Column, Div, Field, Layout, Row, Submit
 from django import forms
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.validators import FileExtensionValidator, RegexValidator
+from django.forms.utils import flatatt
 from django.utils.deconstruct import deconstructible
+from django.utils.html import escape as html_escape
+from django.utils.safestring import mark_safe
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,57 @@ try:
     _has_localflavor = True
 except ImportError:
     _has_localflavor = False
+
+try:
+    import markdown as _markdown_lib
+
+    _has_markdown = True
+except ImportError:
+    _has_markdown = False
+
+
+# ---------------------------------------------------------------------------
+# Display-text widget (read-only markdown/plain-text block)
+# ---------------------------------------------------------------------------
+
+
+class DisplayTextWidget(forms.Widget):
+    """Renders a read-only HTML block with an accompanying hidden input.
+
+    The hidden ``<input>`` keeps the field addressable by name so that
+    conditional-logic JS (``querySelector('[name="…"]')``) can still
+    locate and show/hide the surrounding wrapper.
+    """
+
+    def __init__(self, display_html="", attrs=None):
+        self.display_html = display_html
+        super().__init__(attrs)
+
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(attrs, {"type": "hidden", "name": name})
+        if value is not None:
+            final_attrs["value"] = value
+        hidden = f"<input{flatatt(final_attrs)}>"
+        return mark_safe(
+            f'<div class="display-text-content card card-body bg-light border mb-0">'
+            f"{self.display_html}"
+            f"</div>"
+            f"{hidden}"
+        )
+
+
+def _render_display_text(raw_text: str) -> str:
+    """Convert *raw_text* to HTML.  Uses ``markdown`` when installed,
+    otherwise falls back to simple escaped text with line-breaks."""
+    if not raw_text:
+        return ""
+    if _has_markdown:
+        return _markdown_lib.markdown(
+            raw_text,
+            extensions=["tables", "fenced_code", "nl2br"],
+        )
+    # Fallback: escape and convert newlines to <br>
+    return html_escape(raw_text).replace("\n", "<br>")
 
 
 # ---------------------------------------------------------------------------
@@ -812,6 +866,19 @@ class DynamicForm(forms.Form):
                 widget=forms.Textarea(attrs=widget_attrs),
                 max_length=500,
                 **field_args,
+            )
+
+        elif field_def.field_type == "display_text":
+            display_html = _render_display_text(initial or field_def.default_value)
+            self.fields[field_def.field_name] = forms.CharField(
+                required=False,
+                label=field_def.field_label,
+                help_text=field_def.help_text,
+                initial=initial or field_def.default_value,
+                widget=DisplayTextWidget(
+                    display_html=display_html,
+                    attrs={"data-display-text": "true"},
+                ),
             )
 
         elif field_def.field_type == "matrix":

@@ -31,12 +31,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Step 1: Add nullable UUID fields (no unique constraint yet)
+        # Step 1: Add nullable UUID fields with no default (so existing rows get NULL)
         migrations.AddField(
             model_name="formdefinition",
             name="uuid",
             field=models.UUIDField(
-                default=uuid.uuid4, null=True, editable=False, db_index=True,
+                null=True, editable=False, db_index=True,
                 help_text="Stable identity for cross-instance sync.",
             ),
         ),
@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
             model_name="workflowdefinition",
             name="uuid",
             field=models.UUIDField(
-                default=uuid.uuid4, null=True, editable=False, db_index=True,
+                null=True, editable=False, db_index=True,
                 help_text="Stable identity for cross-instance sync.",
             ),
         ),
@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
             model_name="workflowstage",
             name="uuid",
             field=models.UUIDField(
-                default=uuid.uuid4, null=True, editable=False, db_index=True,
+                null=True, editable=False, db_index=True,
                 help_text="Stable identity for cross-instance sync.",
             ),
         ),
@@ -60,7 +60,7 @@ class Migration(migrations.Migration):
             model_name="subworkflowdefinition",
             name="uuid",
             field=models.UUIDField(
-                default=uuid.uuid4, null=True, editable=False, db_index=True,
+                null=True, editable=False, db_index=True,
                 help_text="Stable identity for cross-instance sync.",
             ),
         ),

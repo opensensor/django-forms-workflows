@@ -295,6 +295,16 @@ class DynamicForm(forms.Form):
         # files).  Also used to carry forward draft / resubmit file data.
         self.stashed_files = stashed_files or {}
 
+        # Recover stashed-file metadata carried forward via hidden input from
+        # a prior validation-failure render (browsers cannot re-send files).
+        if not self.stashed_files and self.data:
+            prev = self.data.get("_stashed_files")
+            if prev:
+                try:
+                    self.stashed_files = json.loads(prev)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         # Build form fields from definition
         # Exclude fields scoped to a workflow stage - those are for approvers only
         for field in (
@@ -303,6 +313,15 @@ class DynamicForm(forms.Form):
             .order_by("order")
         ):
             self.add_field(field, initial_data)
+
+        # Embed stashed-file metadata as a hidden field so it survives
+        # validation-failure round-trips (browsers cannot re-send files).
+        if self.stashed_files:
+            self.fields["_stashed_files"] = forms.CharField(
+                widget=forms.HiddenInput(),
+                required=False,
+                initial=json.dumps(self.stashed_files),
+            )
 
         # Setup form layout with Crispy Forms
         self.helper = FormHelper()
@@ -1122,6 +1141,7 @@ class DynamicForm(forms.Form):
         from .conditions import evaluate_conditions
 
         cleaned_data = super().clean()
+        cleaned_data.pop("_stashed_files", None)
 
         # ── CAPTCHA verification ───────────────────────────────────────────
         if self.form_definition.enable_captcha and "captcha_token" in cleaned_data:

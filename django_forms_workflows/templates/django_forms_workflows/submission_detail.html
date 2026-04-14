@@ -148,28 +148,7 @@
                     {% if section.fields %}
                     <div class="px-3 pb-3">
                         <table class="table table-bordered table-sm mb-0">
-                            {% for field in section.fields %}
-                            {% if field.type == 'section' %}
-                            <tr class="table-light">
-                                <td colspan="2" class="pt-3 pb-2 px-3">
-                                    <h5 class="mb-0">{{ field.label }}</h5>
-                                </td>
-                            </tr>
-                            {% elif field.type == 'display_text' %}
-                            <tr>
-                                <td colspan="2" class="px-3 py-2">
-                                    <div class="card card-body bg-light border mb-0">
-                                        {{ field.value|render_markdown }}
-                                    </div>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <th style="width: 30%; vertical-align: top;">{{ field.label }}</th>
-                                <td>{% include "django_forms_workflows/_field_value.html" with entry=field %}</td>
-                            </tr>
-                            {% endif %}
-                            {% endfor %}
+                            {% include "django_forms_workflows/_form_data_rows.html" with form_data_ordered=section.fields %}
                         </table>
                     </div>
                 {% endif %}

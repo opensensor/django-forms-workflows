@@ -194,6 +194,18 @@ class FormFieldInline(nested_admin.NestedStackedInline):
         ),
     )
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "workflow_stage":
+            # Resolve the parent FormDefinition from the request path.
+            parent_id = request.resolver_match.kwargs.get("object_id")
+            if parent_id:
+                kwargs["queryset"] = WorkflowStage.objects.filter(
+                    workflow__form_definition_id=parent_id
+                )
+            else:
+                kwargs["queryset"] = WorkflowStage.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     @admin.display(description="Conditional rules (summary)")
     def conditional_rules_summary(self, obj):
         result = _render_conditional_rules(obj.conditional_rules)
@@ -289,7 +301,7 @@ class FormFieldAdmin(admin.ModelAdmin):
     ]
     search_fields = ["field_name", "field_label"]
     ordering = ["form_definition", "order"]
-    autocomplete_fields = ["form_definition", "prefill_source_config", "workflow_stage"]
+    autocomplete_fields = ["form_definition", "prefill_source_config"]
     readonly_fields = ["conditional_rules_summary"]
 
     fieldsets = (
@@ -350,6 +362,29 @@ class FormFieldAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "workflow_stage":
+            # On change views, limit stages to those belonging to the same
+            # form definition.  On add views, we can't know the form yet so
+            # start with an empty queryset — the autocomplete widget will
+            # populate once a form_definition is selected.
+            obj_id = request.resolver_match.kwargs.get("object_id")
+            if obj_id:
+                try:
+                    fd_id = (
+                        FormField.objects.filter(pk=obj_id)
+                        .values_list("form_definition_id", flat=True)
+                        .first()
+                    )
+                    kwargs["queryset"] = WorkflowStage.objects.filter(
+                        workflow__form_definition_id=fd_id
+                    )
+                except (FormField.DoesNotExist, ValueError):
+                    kwargs["queryset"] = WorkflowStage.objects.none()
+            else:
+                kwargs["queryset"] = WorkflowStage.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     @admin.display(description="Conditional rules")
     def conditional_rules_summary(self, obj):

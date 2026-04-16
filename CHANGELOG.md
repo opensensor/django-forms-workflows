@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-04-16
+
+### Added
+- **User notification preferences** — new self-service page at
+  `/preferences/notifications/` (linked from the user dropdown) that lists
+  every `NotificationRule` the signed-in user is scheduled to receive
+  through their group memberships, grouped by form/workflow. Each row
+  shows the event, stage, and a human-readable explanation of *why* the
+  user receives that notification (e.g. "Approver for stage X via group Y").
+  Users can mute rules individually with a per-row toggle, or bulk
+  mute/unmute all rows. Muting is per-rule, so silencing one HR approval
+  stage does not affect the others.
+- **`UserNotificationPreference` model** — stores `(user, rule, muted)`
+  tuples. `send_notification_rules` filters muted users out of the
+  resolved recipient list before sending or queueing for digest, so both
+  immediate and batched delivery honour preferences. Only group-based
+  recipient sources (`notify_groups`, `notify_stage_groups`) are exposed on
+  the preferences page, because submitter, email-field, static-email, and
+  dynamic-assignee sources are contextual to a specific submission and not
+  amenable to advance opt-out.
+- **Admin** — `UserNotificationPreferenceAdmin` registered for support
+  overrides, with filters on muted state, event, and form.
+
 ## [0.63.6] - 2026-04-02
 
 ### Fixed

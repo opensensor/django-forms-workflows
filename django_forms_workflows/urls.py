@@ -127,6 +127,12 @@ urlpatterns = [
     # Analytics dashboard
     path("analytics/", analytics_dashboard, name="analytics_dashboard"),
     path("analytics/export/", analytics_export_csv, name="analytics_export_csv"),
+    # Notification preferences (self-service per-user opt-out)
+    path(
+        "preferences/notifications/",
+        views.notification_preferences,
+        name="notification_preferences",
+    ),
     # Server-side DataTables AJAX endpoints
     path("my-submissions/data/", views.my_submissions_ajax, name="my_submissions_ajax"),
     path("approvals/data/", views.approval_inbox_ajax, name="approval_inbox_ajax"),

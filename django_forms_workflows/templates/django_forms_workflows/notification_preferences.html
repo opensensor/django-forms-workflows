@@ -1,0 +1,126 @@
+{% extends 'django_forms_workflows/base.html' %}
+
+{% block title %}Notification Preferences - {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h2 class="mb-1"><i class="bi bi-bell"></i> Notification Preferences</h2>
+    <p class="text-muted mb-0">
+      These are every workflow notification you are currently scheduled to receive
+      because of your group memberships. Check a row to <strong>mute</strong> that
+      specific notification.
+    </p>
+  </div>
+  <div class="text-end text-muted small">
+    <div><strong>{{ total_rules }}</strong> rule{{ total_rules|pluralize }} scheduled</div>
+    <div><strong>{{ muted_count }}</strong> currently muted</div>
+  </div>
+</div>
+
+{% if not workflow_groups %}
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    You are not a member of any approval groups that are wired up to notification
+    rules. There is nothing to manage here.
+  </div>
+{% else %}
+  <form method="post" action="{% url 'forms_workflows:notification_preferences' %}">
+    {% csrf_token %}
+
+    <div class="card mb-3">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div class="small text-muted">
+          Uncheck to receive normally. Check to mute.
+          Preferences are per-rule, so muting one stage or event does not affect the others.
+        </div>
+        <div>
+          <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="selectAll">
+            <i class="bi bi-check-square"></i> Mute all
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="clearAll">
+            <i class="bi bi-square"></i> Unmute all
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-save"></i> Save preferences
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {% for group in workflow_groups %}
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>{{ group.form_name }}</strong>
+          <span class="badge bg-secondary">{{ group.rules|length }} rule{{ group.rules|pluralize }}</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle">
+            <thead>
+              <tr>
+                <th style="width: 90px;">Mute</th>
+                <th>Event</th>
+                <th>Stage</th>
+                <th>Why you receive this</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in group.rules %}
+                <tr>
+                  <td>
+                    <div class="form-check form-switch">
+                      <input class="form-check-input mute-toggle"
+                             type="checkbox"
+                             name="muted_rules"
+                             value="{{ entry.rule.id }}"
+                             id="rule-{{ entry.rule.id }}"
+                             {% if entry.muted %}checked{% endif %}>
+                    </div>
+                  </td>
+                  <td>
+                    <label for="rule-{{ entry.rule.id }}" class="mb-0">
+                      {{ entry.rule.get_event_display }}
+                    </label>
+                  </td>
+                  <td class="text-muted">
+                    {% if entry.rule.use_triggering_stage %}
+                      <em>Triggering stage</em>
+                    {% elif entry.rule.stage %}
+                      {{ entry.rule.stage.name }}
+                    {% else %}
+                      <em>All stages</em>
+                    {% endif %}
+                  </td>
+                  <td class="small text-muted">{{ entry.reason }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endfor %}
+
+    <div class="d-flex justify-content-end">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-save"></i> Save preferences
+      </button>
+    </div>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var selectAll = document.getElementById('selectAll');
+    var clearAll = document.getElementById('clearAll');
+    function setAll(state) {
+      document.querySelectorAll('.mute-toggle').forEach(function (el) {
+        el.checked = state;
+      });
+    }
+    if (selectAll) selectAll.addEventListener('click', function () { setAll(true); });
+    if (clearAll) clearAll.addEventListener('click', function () { setAll(false); });
+  });
+</script>
+{% endblock %}

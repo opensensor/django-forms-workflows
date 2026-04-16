@@ -1634,6 +1634,40 @@ class PendingNotification(models.Model):
         )
 
 
+class UserNotificationPreference(models.Model):
+    """Per-user opt-out for a specific NotificationRule.
+
+    A record exists only when the user has explicitly muted a rule.
+    Absence of a record means "send as normal". When ``muted`` is True,
+    ``send_notification_rules`` drops the user's email from the resolved
+    recipient list before sending (or queuing for digest).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_preferences",
+    )
+    rule = models.ForeignKey(
+        "NotificationRule",
+        on_delete=models.CASCADE,
+        related_name="user_preferences",
+    )
+    muted = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Notification Preference"
+        verbose_name_plural = "User Notification Preferences"
+        unique_together = [("user", "rule")]
+        indexes = [models.Index(fields=["rule", "muted"])]
+
+    def __str__(self) -> str:
+        state = "muted" if self.muted else "subscribed"
+        return f"{self.user} [{state}] → rule #{self.rule_id}"
+
+
 class WebhookEndpoint(models.Model):
     """First-class outbound webhook subscriptions for workflow lifecycle events."""
 

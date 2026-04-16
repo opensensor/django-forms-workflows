@@ -44,6 +44,7 @@ from .models import (
     StageApprovalGroup,
     SubWorkflowDefinition,
     SubWorkflowInstance,
+    UserNotificationPreference,
     UserProfile,
     WebhookDeliveryLog,
     WebhookEndpoint,
@@ -1844,6 +1845,21 @@ class NotificationRuleAdmin(admin.ModelAdmin):
     @admin.display(description="Conditions?", boolean=True)
     def has_conditions(self, obj):
         return bool(obj.conditions)
+
+
+@admin.register(UserNotificationPreference)
+class UserNotificationPreferenceAdmin(admin.ModelAdmin):
+    list_display = ("user", "rule", "muted", "updated_at")
+    list_filter = ("muted", "rule__event", "rule__workflow__form_definition")
+    search_fields = (
+        "user__username",
+        "user__email",
+        "user__first_name",
+        "user__last_name",
+        "rule__workflow__form_definition__name",
+    )
+    autocomplete_fields = ("user", "rule")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(WebhookEndpoint)

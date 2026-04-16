@@ -1312,6 +1312,32 @@ def send_notification_rules(
             )
             continue
 
+        # Drop recipients who have muted this rule via per-user preference.
+        # Matches by email, case-insensitively — same key the resolver uses.
+        from django.contrib.auth import get_user_model
+
+        _muted_emails = set(
+            get_user_model()
+            .objects.filter(
+                notification_preferences__rule_id=rule.id,
+                notification_preferences__muted=True,
+                email__in=recipients,
+            )
+            .exclude(email="")
+            .values_list("email", flat=True)
+        )
+        if _muted_emails:
+            before = len(recipients)
+            recipients = [r for r in recipients if r not in _muted_emails]
+            logger.info(
+                "NotificationRule %s: dropped %d muted recipient(s) for submission %s",
+                rule.id,
+                before - len(recipients),
+                submission.id,
+            )
+            if not recipients:
+                continue
+
         # Build subject with answer piping — {field_name} tokens are
         # resolved from form_data alongside the built-in {form_name} and
         # {submission_id} placeholders.

@@ -101,6 +101,12 @@
                                 <li><h6 class="dropdown-header">{{ user.email }}</h6></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
+                                    <a class="dropdown-item" href="{% url 'forms_workflows:notification_preferences' %}">
+                                        <i class="bi bi-bell me-2"></i>Notification Preferences
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
                                     <a class="dropdown-item text-danger" href="{% url 'logout' %}">
                                         <i class="bi bi-box-arrow-right me-2"></i>Logout
                                     </a>

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.1] - 2026-04-16
+
+### Fixed
+- **Approval Step Responses no longer drops unfilled fields.** Stage-scoped
+  fields whose values were absent from `form_data` (i.e. the approver left
+  them blank) were being filtered out of the per-stage sections, leaving
+  section headers with nothing beneath them. Fields defined on a stage now
+  always render — absent values show as empty — so the form designer's
+  section/field structure is preserved on the approval page, submission
+  detail, and PDF exports regardless of which fields the approver
+  actually filled in.
+
 ## [0.71.0] - 2026-04-16
 
 ### Added

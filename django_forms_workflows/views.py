@@ -3411,9 +3411,12 @@ def _build_approval_step_sections(submission):
                 )
                 continue
             lookup_key = f"{f['key']}_{swi_index}" if swi_index else f["key"]
-            if lookup_key not in form_data:
-                continue
-            raw_value = form_data[lookup_key]
+            # Always render stage-scoped fields so the section structure the
+            # form designer configured is preserved. Fields the approver
+            # left blank render with an empty value rather than being
+            # dropped (which left orphan section headers with nothing
+            # beneath them).
+            raw_value = form_data.get(lookup_key, "")
             field_type = f.get("field_type", "")
             if field_type == "currency" and raw_value not in (None, ""):
                 try:

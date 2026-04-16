@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.3] - 2026-04-16
+
+### Fixed
+- **Currency `$` prefix now renders on the approval page.** `approve.html`
+  did not load `form-enhancements.js`, the script that wraps
+  `input[data-input-type="currency"]` in a Bootstrap `input-group` with a
+  leading `$` addon. Currency fields on approver-filled stages were
+  rendering as a plain `0.00` number input. Added the script include so
+  the approval form matches the visual treatment already present on the
+  form-submit page.
+
 ## [0.71.2] - 2026-04-16
 
 ### Fixed

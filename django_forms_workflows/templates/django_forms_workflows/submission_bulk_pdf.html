@@ -51,11 +51,20 @@
         .data-table th { background-color: #f0f0f0; font-weight: bold; font-size: 8pt; color: #333; border: 1px solid #d0d0d0; padding: 3pt 6pt; text-align: left; vertical-align: top; }
         .data-table td { font-size: 9pt; border: 1px solid #d0d0d0; padding: 3pt 6pt; vertical-align: top; }
         .data-table tr { page-break-inside: avoid; break-inside: avoid; }
-        .data-table tr:nth-child(even) th,
-        .data-table tr:nth-child(even) td { background-color: #f9f9f9; }
         .section-row td { background-color: #e8f0f7 !important; color: #1a3a52; font-weight: bold; font-size: 8pt; letter-spacing: 0.3pt; text-transform: uppercase; padding: 4pt 6pt; border: 1px solid #b8ccd8; }
-        .step-section-header { background-color: #1a3a52; color: #fff; font-weight: bold; font-size: 9pt; padding: 4pt 6pt; margin-top: 10pt; border: 1px solid #0f2538; }
-        .step-meta { font-size: 7.5pt; color: #555; margin: 2pt 0 4pt 0; }
+        /* Keep each section header attached to the content that follows it. */
+        .section-row { page-break-after: avoid; break-after: avoid; page-break-inside: avoid; break-inside: avoid; }
+        .step-section-header {
+            background-color: #1a3a52; color: #fff; font-weight: bold; font-size: 9pt;
+            padding: 4pt 6pt; margin-top: 10pt; border: 1px solid #0f2538;
+            page-break-after: avoid; break-after: avoid;
+            page-break-inside: avoid; break-inside: avoid;
+        }
+        .step-meta {
+            font-size: 7.5pt; color: #555; margin: 2pt 0 4pt 0;
+            page-break-before: avoid; break-before: avoid;
+            page-break-after: avoid; break-after: avoid;
+        }
     </style>
 </head>
 <body>

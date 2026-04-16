@@ -106,11 +106,10 @@
             break-inside: avoid;
         }
 
-        /* Alternating row tint — WeasyPrint supports :nth-child fully */
-        .data-table tr:nth-child(even) th,
-        .data-table tr:nth-child(even) td { background-color: #f9f9f9; }
-
-        /* Section rows always keep their own colour regardless of position */
+        /* Section rows always keep their own colour regardless of position.
+           Also keep each section header with the content that follows it —
+           prevents the ugly case where a header renders at the bottom of one
+           page and its fields start on the next. */
         .section-row td {
             background-color: #e8f0f7 !important;
             color: #1a3a52;
@@ -120,6 +119,12 @@
             text-transform: uppercase;
             padding: 4pt 6pt;
             border: 1px solid #b8ccd8;
+        }
+        .section-row {
+            page-break-after: avoid;
+            break-after: avoid;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         /* Approval-step section header */
@@ -134,6 +139,11 @@
             display: table;
             width: 100%;
             box-sizing: border-box;
+            /* Keep the step header with its meta line / following table */
+            page-break-after: avoid;
+            break-after: avoid;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .step-section-header .step-name-cell { display: table-cell; vertical-align: middle; }
         .step-section-header .step-badge-cell {
@@ -151,6 +161,22 @@
             font-weight: bold;
             font-size: 9pt;
             padding: 4pt 8pt;
+        }
+        /* Section divider row inside the step table: stay attached to the
+           following field row rather than orphaning at the bottom of a page. */
+        tr.step-field-section-row {
+            page-break-after: avoid;
+            break-after: avoid;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        /* Meta line (completed by / date / comment) belongs with its header
+           and the following table. */
+        .step-meta {
+            page-break-before: avoid;
+            break-before: avoid;
+            page-break-after: avoid;
+            break-after: avoid;
         }
         .step-badge {
             display: inline-block;
@@ -300,7 +326,7 @@
     <tbody>
     {% for row in section.fields %}
     {% if row.type == 'section' %}
-    <tr>
+    <tr class="step-field-section-row">
         <td colspan="4" class="step-field-section">{{ row.label }}</td>
     </tr>
     {% elif row.type == 'display_text' %}

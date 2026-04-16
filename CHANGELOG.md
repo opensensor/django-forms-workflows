@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.2] - 2026-04-16
+
+### Changed
+- **PDF exports no longer zebra-stripe data rows.** The alternating
+  `:nth-child(even)` tint looked inconsistent when combined with
+  half / third / quarter-width rows (which render as a single wide
+  colspan row containing inline columns). Both
+  `submission_pdf.html` and `submission_bulk_pdf.html` now use a
+  uniform white data-row background.
+- **Approval inbox: dropped the redundant "Stage" column.** The Step
+  label now carries the full context (`"Payment 1: Step 2: HR Processing"`
+  or `"Step 2: HR Approval"`), so a separate numeric stage column is no
+  longer useful. Removed the `<th>`, the DataTables column spec, the
+  `"stage"` key from the AJAX payload, and shifted the default sort
+  column index down one.
+
+### Fixed
+- **PDF page breaks keep section headers attached to their content.**
+  Section dividers (`.section-row`, `.step-section-header`,
+  `.step-field-section-row`) and the per-step meta line (`.step-meta`)
+  now set `page-break-after: avoid` / `break-after: avoid` so a
+  section header no longer orphans at the bottom of one page with its
+  fields starting on the next. Applies to both single-submission and
+  bulk PDFs.
+
 ## [0.72.1] - 2026-04-16
 
 ### Fixed

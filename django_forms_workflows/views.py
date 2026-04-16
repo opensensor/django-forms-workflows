@@ -1456,8 +1456,8 @@ def approval_inbox(request):
     # Compute default sort column index for DataTables (submitted_at)
     _exp_off = 1 if (any_exportable or any_pdf_exportable) else 0
     _cat_off = 0 if category_slug else 1
-    # columns: [checkbox?] [category?] actions form submitter stage step_num assigned submitted_at
-    default_sort_col = _exp_off + _cat_off + 1 + 5  # index of submitted_at
+    # columns: [checkbox?] [category?] actions form submitter step_num assigned submitted_at
+    default_sort_col = _exp_off + _cat_off + 1 + 4  # index of submitted_at
 
     return render(
         request,
@@ -4215,7 +4215,6 @@ def approval_inbox_ajax(request):
             "submitter": escape(
                 sub.submitter.get_full_name() or sub.submitter.username
             ),
-            "stage": f"Stage {task.stage_number}" if task.stage_number else "—",
             "step_num": escape(stage_name),
             "assigned": escape(
                 task.assigned_group.name

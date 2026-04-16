@@ -4910,6 +4910,22 @@ def _notification_rules_for_user(user):
     )
 
 
+# User-facing labels for the preferences page. The model's ``EVENT_TYPES``
+# labels include admin-oriented parentheticals (e.g. "Workflow Approved
+# (final decision)") that make sense when building rules but are noisy for
+# end users managing their own preferences.
+_FRIENDLY_EVENT_LABELS: dict = {
+    "submission_received": "Submission Received",
+    "approval_request": "Approval Request",
+    "stage_decision": "Stage Decision",
+    "workflow_approved": "Workflow Approved",
+    "workflow_denied": "Workflow Denied",
+    "form_withdrawn": "Form Withdrawn",
+    "approval_reminder": "Approval Reminder",
+    "escalation": "Escalation",
+}
+
+
 @login_required
 def notification_preferences(request):
     """Show the signed-in user every NotificationRule they would receive and
@@ -4972,6 +4988,9 @@ def notification_preferences(request):
                 "rule": rule,
                 "muted": rule.id in muted_rule_ids,
                 "reason": _rule_delivery_reason(rule, request.user),
+                "event_label": _FRIENDLY_EVENT_LABELS.get(
+                    rule.event, rule.get_event_display()
+                ),
             }
         )
 

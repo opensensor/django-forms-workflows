@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.70.1] - 2026-04-16
+
+### Fixed
+- **Friendly event labels on notification preferences page** — the model's
+  `NotificationRule.EVENT_TYPES` labels carry admin-oriented parentheticals
+  (e.g. "Workflow Approved (final decision)", "Stage Decision (individual
+  stage completed)") which are useful when authoring rules but noisy for
+  end users managing their own preferences. The preferences page now
+  renders clean labels ("Workflow Approved", "Stage Decision", etc.)
+  consistent with "Form Withdrawn". Admin-facing labels are unchanged.
+
 ## [0.70.0] - 2026-04-16
 
 ### Added

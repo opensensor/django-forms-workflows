@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.1] - 2026-04-16
+
+### Fixed
+- **Approval page now respects field widths on the approval step form.**
+  `approve.html` was rendering `approval_step_form` (and `editable_form`
+  where the stage allows edits) via the `{{ form|crispy }}` filter, which
+  ignores `FormHelper.layout`. The width-aware `Row` / `Column` / `Div`
+  layout built by `ApprovalStepForm._build_layout_fields` was discarded,
+  so half / third / quarter-width fields rendered stacked full width.
+  Switched the three call sites to the `{% crispy form %}` tag so the
+  layout is honored, matching form-submit and form-embed.
+- **Consistent Submission Data row styling.** In
+  `_form_data_rows.html`, full-width rows were splitting the label and
+  value into separate `<th>` / `<td>` cells while half / third / quarter
+  rows rendered the label as a small heading above the value in a single
+  cell. Full-width rows now use the same label-above-value layout so
+  every row in the table reads the same way regardless of width.
+
 ## [0.72.0] - 2026-04-16
 
 ### Changed (potentially breaking)

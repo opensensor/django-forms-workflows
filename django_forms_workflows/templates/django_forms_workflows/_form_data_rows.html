@@ -30,8 +30,10 @@
     {% else %}
         {% with field=row.fields.0 %}
         <tr>
-            <th style="width: 30%; vertical-align: top;">{{ field.label }}</th>
-            <td>{% include "django_forms_workflows/_field_value.html" with entry=field %}</td>
+            <td colspan="2" class="px-3 py-2">
+                <small class="text-muted fw-semibold">{{ field.label }}</small>
+                <div>{% include "django_forms_workflows/_field_value.html" with entry=field %}</div>
+            </td>
         </tr>
         {% endwith %}
     {% endif %}

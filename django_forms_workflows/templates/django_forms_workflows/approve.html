@@ -170,7 +170,7 @@
             </div>
             <div class="card-body">
                 {% if allow_edit_form_data and editable_form %}
-                {{ editable_form|crispy }}
+                {% crispy editable_form %}
                 {% else %}
                 <table class="table table-bordered table-sm">
                     {% include "django_forms_workflows/_form_data_rows.html" %}
@@ -254,7 +254,7 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">Please review the submission above and fill in the required fields below.</p>
-                    {{ approval_step_form|crispy }}
+                    {% crispy approval_step_form %}
 
                     <hr class="my-4">
 
@@ -355,7 +355,7 @@
             </div>
             <div class="card-body">
                 {% if allow_edit_form_data and editable_form %}
-                {{ editable_form|crispy }}
+                {% crispy editable_form %}
                 {% else %}
                 <table class="table table-bordered">
                     {% include "django_forms_workflows/_form_data_rows.html" %}

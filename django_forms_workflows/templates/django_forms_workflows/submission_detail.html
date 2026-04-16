@@ -125,7 +125,7 @@
                     <div class="px-3 pt-3 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                             <div class="d-flex align-items-center gap-2 mb-1">
-                                <h6 class="mb-0 fw-bold">{{ section.step_name }}</h6>
+                                <h6 class="mb-0 fw-bold">{{ section.display_label|default:section.step_name }}</h6>
                                 {% if section.status == "approved" %}
                                 <span class="badge bg-success">&#10003; Approved</span>
                                 {% elif section.status == "rejected" %}
@@ -208,7 +208,7 @@
                 {% elif stage.approved_count > 0 %}bg-primary text-white
                 {% else %}bg-light text-muted{% endif %}">
                 <span>
-                    <strong>{% if workflow_name_label %}{{ workflow_name_label }}{% else %}Stage {{ stage.number }}{% if not stage.has_multiple_stages %}: {{ stage.name }}{% endif %}{% endif %}</strong>
+                    <strong>{% if stage.has_multiple_stages %}Stage {{ stage.number }}{% else %}{{ stage.display_label }}{% endif %}</strong>
                 </span>
                 <span class="badge bg-white
                     {% if stage.rejected_count > 0 %}text-danger
@@ -234,7 +234,7 @@
                         <tbody>
                             {% for task in stage.tasks %}
                             <tr>
-                                <td><strong>{{ task.step_display_name }}</strong></td>
+                                <td><strong>{{ task.display_label }}</strong></td>
                                 <td>
                                     {% if task.assigned_to %}
                                         {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
@@ -303,7 +303,7 @@
                             {% for stage in section.stage_groups %}
                             {% for task in stage.tasks %}
                             <tr>
-                                <td><strong>{{ stage.name }}</strong></td>
+                                <td><strong>{{ task.display_label }}</strong></td>
                                 <td>
                                     {% if task.assigned_to %}
                                         {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}
@@ -355,7 +355,7 @@
                         <tbody>
                             {% for task in approval_tasks %}
                             <tr>
-                                <td>{{ task.step_name }}</td>
+                                <td>{{ task.display_label }}</td>
                                 <td>
                                     {% if task.assigned_to %}
                                         {{ task.assigned_to.get_full_name|default:task.assigned_to.username }}

@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-04-16
+
+### Added
+- **`ApprovalTask.display_label` + `format_stage_label` helper** — single
+  source of truth for the standardised stage label rendered across every
+  surface. Format: `"{swi.label}: Step {stage.order}: {stage.name}"` for
+  sub-workflow tasks, `"Step {stage.order}: {stage.name}"` otherwise. Replaces
+  the hardcoded `"Payment {index}"` string in the approval inbox serializer
+  and scattered one-off formatters on the approval, submission detail, and
+  PDF surfaces.
+
+### Fixed
+- **Approval page "Prior Approval Step Responses" now honours width
+  grouping, section headers, and currency formatting** — the section was
+  iterating `section.fields` as a flat list despite the helper returning
+  width-aware row groups (pair/triple/full/section/display_text). Rendering
+  now delegates to the shared `_form_data_rows.html` partial already used
+  by submission detail, so the layout, currency symbols, and section
+  dividers match the rest of the app.
+- **Standardised stage naming across approval inbox, approval page,
+  submission detail, submission PDF, and bulk PDF.** Removed the
+  `workflow_name_label` override in submission-detail stage headers that
+  was hiding per-stage names, and dropped the hardcoded `"Payment"`
+  prefix in the inbox serializer (consumers should set
+  ``SubWorkflowDefinition.label_template`` appropriately, e.g.
+  `"Payment {index}"`).
+
+### Migration notes
+- If your deployment has a `SubWorkflowDefinition` whose `label_template`
+  includes stage-level detail (e.g. `"Stage 2: Payment {index}"`), update it
+  to just the instance portion (e.g. `"Payment {index}"`). The stage/step
+  information is now appended automatically by the label helper, so the
+  template should only describe the *instance*.
+
 ## [0.70.1] - 2026-04-16
 
 ### Fixed

@@ -1106,6 +1106,7 @@ def submission_detail(request, submission_id):
                 target[stage_key] = {
                     "number": task.stage_number or 0,
                     "name": stage_name,
+                    "display_label": task.display_label,
                     "approval_logic": (
                         task.workflow_stage.approval_logic
                         if task.workflow_stage
@@ -1196,6 +1197,7 @@ def submission_detail(request, submission_id):
                     stage_map[stage_key] = {
                         "number": task.stage_number or 0,
                         "name": stage_name,
+                        "display_label": task.display_label,
                         "approval_logic": approval_logic,
                         "tasks": [],
                         "approved_count": 0,
@@ -3456,8 +3458,8 @@ def _build_approval_step_sections(submission):
                 task.completed_by.get_full_name() or task.completed_by.username
             )
 
-        # Section header: use the stored step_name directly; it now bakes in
-        # the stage's approve_label when tasks are created (workflow_engine.py).
+        # Section header: use the task's centralised display_label so the
+        # section header matches the inbox / approve / PDF rendering exactly.
         stage_order = task.stage_number or task.step_number or 1
         step_name = task.step_name or f"Step {stage_order}"
 
@@ -3465,6 +3467,7 @@ def _build_approval_step_sections(submission):
             {
                 "step_number": stage_order,
                 "step_name": step_name,
+                "display_label": task.display_label,
                 "status": task.status,
                 "group_name": (
                     task.assigned_group.name if task.assigned_group else None
@@ -4186,12 +4189,10 @@ def approval_inbox_ajax(request):
         approve_url = reverse("forms_workflows:approve_submission", args=[task.id])
         det_url = reverse("forms_workflows:submission_detail", args=[sub.id])
 
-        # For sub-workflow tasks, prefix the stage name with the instance index
-        # so "Payment Request" becomes "Payment 1: Payment Request".
-        stage_name = task.workflow_stage.name if task.workflow_stage else ""
-        swi = task.sub_workflow_instance
-        if swi and stage_name:
-            stage_name = f"Payment {swi.index}: {stage_name}"
+        # Standardised label used across inbox, approve page, submission
+        # detail, and PDFs — driven by ApprovalTask.display_label so any
+        # format change happens in one place.
+        stage_name = task.display_label
 
         row = {
             "DT_RowId": f"row_{task.id}",

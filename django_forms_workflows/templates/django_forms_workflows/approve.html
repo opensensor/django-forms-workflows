@@ -209,7 +209,7 @@
             <div class="card-header {% if section.status == 'approved' %}bg-success{% elif section.status == 'rejected' %}bg-danger{% else %}bg-secondary{% endif %} text-white">
                 <h5 class="mb-0">
                     <i class="bi {% if section.status == 'approved' %}bi-check-circle{% elif section.status == 'rejected' %}bi-x-circle{% else %}bi-hourglass{% endif %}"></i>
-                    {{ section.step_name }}
+                    {{ section.display_label|default:section.step_name }}
                     {% if section.status == 'approved' %}
                     <span class="badge bg-light text-success float-end">Approved</span>
                     {% elif section.status == 'rejected' %}
@@ -248,7 +248,7 @@
             <!-- Current Step Fields Section with Decision inline -->
             <div class="card mb-4 border-primary">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-pencil-square"></i> {% if current_step_number %}Step {{ current_step_number }}: {% endif %}{{ task.step_name }}
+                    <h5 class="mb-0"><i class="bi bi-pencil-square"></i> {{ task.display_label }}
                         <span class="badge bg-light text-primary float-end">Your Action Required</span>
                     </h5>
                 </div>
@@ -398,7 +398,7 @@
                     <div class="px-3 pt-3 pb-1 d-flex justify-content-between align-items-start flex-wrap gap-2">
                         <div>
                             <div class="d-flex align-items-center gap-2 mb-1">
-                                <h6 class="mb-0 fw-bold">{{ section.step_name }}</h6>
+                                <h6 class="mb-0 fw-bold">{{ section.display_label|default:section.step_name }}</h6>
                                 {% if section.status == "approved" %}
                                 <span class="badge bg-success">&#10003; Approved</span>
                                 {% elif section.status == "rejected" %}
@@ -421,53 +421,7 @@
                     {% if section.fields %}
                     <div class="px-3 pb-3">
                         <table class="table table-bordered table-sm mb-0">
-                            {% for field in section.fields %}
-                            <tr>
-                                <th style="width: 30%;">{{ field.label }}</th>
-                                <td>
-                                    {% if field.value.url %}
-                                        {% if field.value.content_type and 'image' in field.value.content_type %}
-                                            <div class="mb-2">
-                                                <img src="{{ field.value.url }}" alt="{{ field.value.filename }}" class="img-fluid" style="max-width: 400px; max-height: 400px;">
-                                            </div>
-                                        {% endif %}
-                                        <a href="{{ field.value.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-download"></i> {{ field.value.filename }}
-                                        </a>
-                                        <small class="text-muted ms-2">
-                                            {% if field.value.size %}({{ field.value.size|filesizeformat }}){% endif %}
-                                        </small>
-                                    {% elif field.value.path %}
-                                        <span class="text-muted">{{ field.value.filename }}</span>
-                                        <small class="text-muted ms-2">(File stored but URL unavailable)</small>
-                                    {% elif field.value|is_signature %}
-                                        <img src="{{ field.value }}" alt="Signature" class="img-fluid" style="max-width: 400px; max-height: 160px; border: 1px solid #dee2e6; border-radius: .375rem;">
-                                    {% elif field.value.0.filename %}
-                                        <ul class="list-unstyled mb-0">
-                                        {% for f in field.value %}
-                                            <li class="mb-1">
-                                                {% if f.url %}
-                                                    {% if f.content_type and 'image' in f.content_type %}
-                                                        <div class="mb-1">
-                                                            <img src="{{ f.url }}" alt="{{ f.filename }}" class="img-fluid" style="max-width: 200px; max-height: 200px;">
-                                                        </div>
-                                                    {% endif %}
-                                                    <a href="{{ f.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                                        <i class="bi bi-download"></i> {{ f.filename }}
-                                                    </a>
-                                                    <small class="text-muted ms-2">{% if f.size %}({{ f.size|filesizeformat }}){% endif %}</small>
-                                                {% else %}
-                                                    <span class="text-muted">{{ f.filename }}</span>
-                                                {% endif %}
-                                            </li>
-                                        {% endfor %}
-                                        </ul>
-                                    {% else %}
-                                        {{ field.value }}
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
+                            {% include "django_forms_workflows/_form_data_rows.html" with form_data_ordered=section.fields %}
                         </table>
                     </div>
                     {% endif %}

@@ -2399,6 +2399,45 @@ class ApprovalTask(models.Model):
     def __str__(self):
         return f"{self.step_name} for {self.submission}"
 
+    @property
+    def display_label(self) -> str:
+        """Standardised human-readable label for this approval task.
+
+        Single source of truth shared by the approval inbox, approval page,
+        submission detail, and PDF exports so the same task reads identically
+        across every surface.
+
+        Format:
+          * Sub-workflow task →  ``"{swi.label}: Step {stage.order}: {stage.name}"``
+          * Otherwise        →  ``"Step {stage.order}: {stage.name}"``
+
+        Falls back gracefully when the stage or sub-workflow instance is missing.
+        """
+        stage = self.workflow_stage
+        swi = self.sub_workflow_instance
+        return format_stage_label(stage, swi=swi, fallback_name=self.step_name)
+
+
+def format_stage_label(stage, swi=None, fallback_name: str = "") -> str:
+    """Return the standardised display label for a workflow stage.
+
+    Shared helper used by views and templates that need to render a stage's
+    label the same way the approval inbox does, without needing an
+    ApprovalTask in hand (e.g. historical stages on submission detail or
+    PDF exports).
+    """
+    name = (getattr(stage, "name", None) or fallback_name or "").strip()
+    order = getattr(stage, "order", None)
+    step_part = f"Step {order}: {name}" if order and name else name
+    if swi is not None:
+        try:
+            swi_label = swi.label
+        except Exception:
+            swi_label = ""
+        if swi_label:
+            return f"{swi_label}: {step_part}" if step_part else swi_label
+    return step_part
+
 
 class AuditLog(models.Model):
     """

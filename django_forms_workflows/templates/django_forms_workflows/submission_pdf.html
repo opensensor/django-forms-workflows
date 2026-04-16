@@ -268,7 +268,7 @@
 {% if not hide_approval_history %}
 {% for section in approval_step_sections %}
 <div class="step-section-header">
-    <span class="step-name-cell">{{ section.step_name }}</span>
+    <span class="step-name-cell">{{ section.display_label|default:section.step_name }}</span>
     <span class="step-badge-cell">
         {% if section.status == "approved" %}
         <span class="step-badge step-badge-approved">&#10003; Approved</span>

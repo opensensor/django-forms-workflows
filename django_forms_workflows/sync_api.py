@@ -982,9 +982,6 @@ def import_form(form_data, conflict="update", category_cache=None):
     )
 
     # ── Workflows (created BEFORE fields so stage FKs can be resolved) ─────────
-    stage_order_map = {}  # order → WorkflowStage, used when creating fields
-    # Per-workflow stage maps: wf_index → {order → WorkflowStage}
-    stage_order_maps_by_wf = {}
     wf_data = form_data.get("workflow")
     additional_wf_data = form_data.get("additional_workflows", [])
 
@@ -1002,7 +999,10 @@ def import_form(form_data, conflict="update", category_cache=None):
 
         imported_wf_ids = set()
         for wf_idx, wf_payload in enumerate(all_wf_payloads):
-            wf_obj, s_map = _import_single_workflow(
+            # _import_single_workflow still returns its legacy stage_order_map
+            # for backwards compat, but we no longer consume it — field FK
+            # resolution below matches purely by stage UUID.
+            wf_obj, _ = _import_single_workflow(
                 form_obj,
                 wf_payload,
                 existing_wfs,
@@ -1010,11 +1010,6 @@ def import_form(form_data, conflict="update", category_cache=None):
                 imported_wf_ids,
             )
             imported_wf_ids.add(wf_obj.pk)
-            stage_order_maps_by_wf[wf_idx] = s_map
-            # Primary workflow's stage map is the default for backward compat
-            # (fields without workflow_index fall back to this).
-            if wf_idx == 0:
-                stage_order_map = s_map
 
         # Now resolve sub-workflow configs (must be done after ALL workflows
         # exist so cross-references can be resolved).
@@ -1066,11 +1061,15 @@ def import_form(form_data, conflict="update", category_cache=None):
         WorkflowDefinition.objects.filter(form_definition=form_obj).delete()
 
     # ── Fields ─────────────────────────────────────────────────────────────────
-    # Build a UUID lookup for all stages across all workflows (for field FK resolution)
-    all_stages_by_uuid = {}
-    for s_map in stage_order_maps_by_wf.values():
-        for stage in s_map.values():
-            all_stages_by_uuid[str(stage.uuid)] = stage
+    # UUID lookup across every stage on every workflow for this form. Pulled
+    # straight from the DB — NOT from ``stage_order_maps_by_wf`` — because
+    # that map is keyed by ``stage.order`` and collapses parallel/conditional
+    # stages that share the same order (the collision drops one stage's
+    # UUID from the lookup, which caused fields to land on the wrong stage).
+    all_stages_by_uuid = {
+        str(s.uuid): s
+        for s in WorkflowStage.objects.filter(workflow__form_definition=form_obj)
+    }
 
     # Delete existing fields so we get a clean ordered set
     form_obj.fields.all().delete()
@@ -1087,21 +1086,22 @@ def import_form(form_data, conflict="update", category_cache=None):
         field_data.pop("show_if_value", None)
         min_val = field_data.pop("min_value", None)
         max_val = field_data.pop("max_value", None)
-        stage_order = field_data.pop("workflow_stage_order", None)
+        # Legacy fallback keys (order / workflow_index) are intentionally
+        # discarded — stage resolution is UUID-only so parallel or
+        # conditional stages at the same order can't be conflated.
+        field_data.pop("workflow_stage_order", None)
+        field_data.pop("workflow_index", None)
         stage_uuid = field_data.pop("workflow_stage_uuid", None)
-        wf_index = field_data.pop("workflow_index", None)
 
-        # UUID-first stage resolution, then workflow_index + order fallback
-        workflow_stage = None
-        if stage_uuid:
-            workflow_stage = all_stages_by_uuid.get(stage_uuid)
-        if workflow_stage is None and stage_order is not None:
-            resolved_map = (
-                stage_order_maps_by_wf.get(wf_index, stage_order_map)
-                if wf_index is not None
-                else stage_order_map
+        workflow_stage = all_stages_by_uuid.get(stage_uuid) if stage_uuid else None
+        if stage_uuid and workflow_stage is None:
+            logger.warning(
+                "Sync import: field %r references unknown workflow_stage "
+                "uuid=%s on form %s — stage FK left NULL.",
+                field_data.get("field_name"),
+                stage_uuid,
+                form_obj.slug,
             )
-            workflow_stage = resolved_map.get(stage_order)
         # Resolve shared option list by slug (if present)
         sol_slug = field_data.pop("shared_option_list_slug", None)
         shared_option_list = None

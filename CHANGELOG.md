@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.2] - 2026-04-16
+
+### Fixed
+- **Single-submission PDF: in-table section dividers now span the full
+  table width.** The approval-step field table was reusing the outer
+  `.step-section-header` class on its `<td>` section rows. That class
+  carries `display: table; width: 100%;` (for the surrounding step
+  header `<div>`), which overrode the `<td colspan="4">` and collapsed
+  the section divider into the first column only. Split into a new
+  `.step-field-section` class that is table-row-safe. Bulk PDF was
+  unaffected (it already used a dedicated `.section-row` class).
+
 ## [0.71.1] - 2026-04-16
 
 ### Fixed

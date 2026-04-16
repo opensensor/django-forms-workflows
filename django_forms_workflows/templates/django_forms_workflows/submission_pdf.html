@@ -142,6 +142,16 @@
             text-align: right;
             white-space: nowrap;
         }
+        /* In-table section divider inside the step's field table. Must NOT
+           share display:table / width:100% from the outer header class —
+           those break <td colspan> and collapse the row to the first column. */
+        .step-field-section {
+            background-color: #1a3a52;
+            color: #fff;
+            font-weight: bold;
+            font-size: 9pt;
+            padding: 4pt 8pt;
+        }
         .step-badge {
             display: inline-block;
             padding: 2pt 7pt;
@@ -291,7 +301,7 @@
     {% for row in section.fields %}
     {% if row.type == 'section' %}
     <tr>
-        <td colspan="4" class="step-section-header">{{ row.label }}</td>
+        <td colspan="4" class="step-field-section">{{ row.label }}</td>
     </tr>
     {% elif row.type == 'display_text' %}
     <tr>

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.3] - 2026-04-18
+
+### Fixed
+- **Approval inbox AJAX 500 on anonymous submissions.** The approval
+  inbox and completed-approvals DataTables endpoints, plus the inbox
+  Excel export, accessed `submission.submitter.get_full_name()`
+  directly and raised `AttributeError` for submissions made through
+  public/anonymous forms. A new `_submitter_label()` helper returns
+  `"Anonymous"` for those rows. Regression test added in
+  `TestApprovalInboxView`.
+
 ## [0.72.2] - 2026-04-16
 
 ### Changed

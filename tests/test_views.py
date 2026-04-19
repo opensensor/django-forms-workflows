@@ -141,6 +141,29 @@ class TestApprovalInboxView:
         resp = auth_client.get(url)
         assert resp.status_code == 200
 
+    def test_approval_inbox_ajax_handles_anonymous_submitter(
+        self, auth_client, user, form_with_fields, approval_group
+    ):
+        user.groups.add(approval_group)
+        anon_sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=None,
+            form_data={"full_name": "Walk-in"},
+            status="submitted",
+        )
+        ApprovalTask.objects.create(
+            submission=anon_sub,
+            assigned_group=approval_group,
+            step_name="Review",
+            status="pending",
+        )
+        url = reverse("forms_workflows:approval_inbox_ajax")
+        resp = auth_client.post(url, {"draw": 1, "start": 0, "length": 10})
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["recordsTotal"] >= 1
+        assert any("Anonymous" in row["submitter"] for row in payload["data"])
+
 
 # ── withdraw_submission ──────────────────────────────────────────────────
 

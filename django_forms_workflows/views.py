@@ -3679,7 +3679,7 @@ def bulk_export_submissions(request):
             ws.cell(
                 row=row_idx,
                 column=2,
-                value=sub.submitter.get_full_name() or sub.submitter.username,
+                value=_submitter_label(sub),
             )
             ws.cell(row=row_idx, column=3, value=sub.get_status_display())
             ws.cell(
@@ -3938,6 +3938,16 @@ def _cat_html(cat):
     return f"{icon}{escape(cat.name)}"
 
 
+def _submitter_label(submission):
+    """Return a display name for a submission's submitter, or "Anonymous"
+    when the submission was made through a public/anonymous form.
+    Callers should escape() the result if rendering into HTML."""
+    user = submission.submitter
+    if user is None:
+        return "Anonymous"
+    return user.get_full_name() or user.username
+
+
 # ---------------------------------------------------------------------------
 # AJAX: completed_approvals
 # ---------------------------------------------------------------------------
@@ -4066,9 +4076,7 @@ def completed_approvals_ajax(request):
             ),
             "category": _cat_html(getattr(sub.form_definition, "category", None)),
             "form": escape(sub.form_definition.name),
-            "submitter": escape(
-                sub.submitter.get_full_name() or sub.submitter.username
-            ),
+            "submitter": escape(_submitter_label(sub)),
             "status": _STATUS_BADGE.get(
                 sub.status,
                 f'<span class="badge bg-light text-dark">{escape(sub.status)}</span>',
@@ -4212,9 +4220,7 @@ def approval_inbox_ajax(request):
                 f'<i class="bi bi-eye"></i> View</a>'
             ),
             "form": escape(sub.form_definition.name),
-            "submitter": escape(
-                sub.submitter.get_full_name() or sub.submitter.username
-            ),
+            "submitter": escape(_submitter_label(sub)),
             "step_num": escape(stage_name),
             "assigned": escape(
                 task.assigned_group.name

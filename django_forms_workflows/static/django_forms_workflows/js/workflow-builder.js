@@ -2933,7 +2933,7 @@ class WorkflowBuilder {
                         'contains': 'contains',
                         'not_contains': 'not contains',
                         'is_empty': 'is empty',
-                        'is_not_empty': 'is not empty'
+                        'not_empty': 'is not empty'
                     };
                     const op = operatorSymbols[node.data.operator] || node.data.operator;
                     return `If ${node.data.field} ${op} ${node.data.value || ''}`;

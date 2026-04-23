@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.4] - 2026-04-23
+
+### Fixed
+- **Conditionally-visible fields no longer dropped from submissions.**
+  The form builder UI and client-side evaluator used `is_not_empty`
+  while the server-side `evaluate_conditions` only recognised
+  `not_empty`. Any `show`-gated field whose rule depended on
+  `is_not_empty` was treated as hidden on submit, stripped from
+  `cleaned_data`, and never written to `form_data` — so its label
+  did not render in the submission detail view while client-side JS
+  happily showed and accepted input. Standardised on `not_empty`
+  across `form-builder.js`, `form-enhancements.js`, and
+  `workflow-builder.js`; the dropdown still reads "Is Not Empty" but
+  now emits the canonical value. Data migration
+  `0093_normalize_conditional_operators` rewrites any existing
+  `FormField.conditional_rules` in place.
+
 ## [0.72.3] - 2026-04-18
 
 ### Fixed

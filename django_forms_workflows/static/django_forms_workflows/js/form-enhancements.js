@@ -206,7 +206,7 @@ class FormEnhancements {
                 return !notInValues.includes(String(fieldValue));
             case 'is_empty':
                 return !fieldValue || fieldValue === '' || (Array.isArray(fieldValue) && fieldValue.length === 0);
-            case 'is_not_empty':
+            case 'not_empty':
                 return fieldValue && fieldValue !== '' && (!Array.isArray(fieldValue) || fieldValue.length > 0);
             case 'is_true':
                 return fieldValue === true || fieldValue === 'true' || fieldValue === '1';

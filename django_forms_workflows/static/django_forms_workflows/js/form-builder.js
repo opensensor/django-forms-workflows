@@ -1096,7 +1096,7 @@ class FormBuilder {
                             <option value="greater_than" ${condition.operator === 'greater_than' ? 'selected' : ''}>Greater Than</option>
                             <option value="less_than" ${condition.operator === 'less_than' ? 'selected' : ''}>Less Than</option>
                             <option value="is_empty" ${condition.operator === 'is_empty' ? 'selected' : ''}>Is Empty</option>
-                            <option value="is_not_empty" ${condition.operator === 'is_not_empty' ? 'selected' : ''}>Is Not Empty</option>
+                            <option value="not_empty" ${condition.operator === 'not_empty' || condition.operator === 'is_not_empty' ? 'selected' : ''}>Is Not Empty</option>
                         </select>
                     </div>
                     <div class="col-md-4">

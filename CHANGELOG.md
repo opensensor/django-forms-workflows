@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-04-23
+
+### Added
+- **Per-field `show_help_text_in_detail` flag.** Fields can now opt into
+  rendering their `help_text` alongside the stored value in the
+  submission and approval detail views. Intended for attestation /
+  consent statements attached to initials or signature fields, where
+  the statement the user agreed to should be visible with their
+  initials rather than only at fill-in time. Exposed in the form
+  builder (checkbox under Help Text) and in the Django admin. New
+  migration `0094_formfield_show_help_text_in_detail`.
+
 ## [0.72.4] - 2026-04-23
 
 ### Fixed

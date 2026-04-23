@@ -132,6 +132,7 @@ def form_builder_clone(request, form_id):
                     field_type=field.field_type,
                     required=field.required,
                     help_text=field.help_text,
+                    show_help_text_in_detail=field.show_help_text_in_detail,
                     placeholder=field.placeholder,
                     width=field.width,
                     css_class=field.css_class,
@@ -294,6 +295,7 @@ def form_builder_load(request, form_id):
             "field_type": field.field_type,
             "required": field.required,
             "help_text": field.help_text or "",
+            "show_help_text_in_detail": field.show_help_text_in_detail,
             "placeholder": field.placeholder or "",
             "width": field.width,
             "css_class": field.css_class or "",
@@ -498,6 +500,9 @@ def form_builder_save(request):
                     "field_type": field_data.get("field_type", "text"),
                     "required": field_data.get("required", False),
                     "help_text": field_data.get("help_text", ""),
+                    "show_help_text_in_detail": field_data.get(
+                        "show_help_text_in_detail", False
+                    ),
                     "placeholder": field_data.get("placeholder", ""),
                     "width": field_data.get("width", "full"),
                     "css_class": field_data.get("css_class", ""),
@@ -652,6 +657,9 @@ def form_builder_preview(request):
                     "field_type": field_data.get("field_type", "text"),
                     "required": field_data.get("required", False),
                     "help_text": field_data.get("help_text", ""),
+                    "show_help_text_in_detail": field_data.get(
+                        "show_help_text_in_detail", False
+                    ),
                     "placeholder": field_data.get("placeholder", ""),
                     "width": field_data.get("width", "full"),
                     "css_class": field_data.get("css_class", ""),

@@ -3048,6 +3048,7 @@ def _build_ordered_form_data(submission, form_data):
             "key": key,
             "value": _get_choice_label(field, form_data[key]),
             "width": field.width,
+            "help_text": field.help_text if field.show_help_text_in_detail else "",
         }
 
         if field.width == "half":
@@ -3368,6 +3369,9 @@ def _build_approval_step_sections(submission):
                 "field_type": field.field_type,
                 "choices": field.choices,
                 "width": field.width or "full",
+                "help_text": (
+                    field.help_text if field.show_help_text_in_detail else ""
+                ),
             }
         )
 
@@ -3449,6 +3453,7 @@ def _build_approval_step_sections(submission):
                     "key": lookup_key,
                     "value": raw_value,
                     "width": f.get("width", "full"),
+                    "help_text": f.get("help_text", ""),
                 }
             )
 

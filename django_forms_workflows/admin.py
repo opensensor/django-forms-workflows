@@ -148,6 +148,7 @@ class FormFieldInline(nested_admin.NestedStackedInline):
                     ("order", "field_label", "field_name", "field_type"),
                     ("required", "readonly", "workflow_stage"),
                     ("help_text", "placeholder", "width", "css_class"),
+                    ("show_help_text_in_detail",),
                 )
             },
         ),
@@ -342,7 +343,14 @@ class FormFieldAdmin(admin.ModelAdmin):
         ),
         (
             "Display",
-            {"fields": ("help_text", "placeholder"), "classes": ("collapse",)},
+            {
+                "fields": (
+                    "help_text",
+                    "show_help_text_in_detail",
+                    "placeholder",
+                ),
+                "classes": ("collapse",),
+            },
         ),
         (
             "Conditional Display",
@@ -918,6 +926,7 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                             field_type=field.field_type,
                             required=field.required,
                             help_text=field.help_text,
+                            show_help_text_in_detail=field.show_help_text_in_detail,
                             placeholder=field.placeholder,
                             width=field.width,
                             css_class=field.css_class,

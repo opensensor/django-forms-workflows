@@ -366,6 +366,7 @@ class FormBuilder {
             field_type: fieldType,
             required: false,
             help_text: '',
+            show_help_text_in_detail: false,
             placeholder: '',
             width: 'full',
             css_class: '',
@@ -794,6 +795,12 @@ class FormBuilder {
                 <div class="col-12">
                     <label class="form-label">Help Text</label>
                     <input type="text" class="form-control" id="propHelpText" value="${this.escapeHtml(field.help_text)}">
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="checkbox" id="propShowHelpTextInDetail" ${field.show_help_text_in_detail ? 'checked' : ''}>
+                        <label class="form-check-label small text-muted" for="propShowHelpTextInDetail">
+                            Also show this help text next to the value in the submission/approval detail view (use for attestation / consent statements on initials fields).
+                        </label>
+                    </div>
                 </div>
                 <div class="col-12">
                     <label class="form-label">Placeholder</label>
@@ -1393,6 +1400,7 @@ class FormBuilder {
             field_label: this.getDefaultLabel(fieldType),
             required: false,
             help_text: '',
+            show_help_text_in_detail: false,
             placeholder: '',
             choices: '',
             width: 'full',
@@ -1670,6 +1678,8 @@ class FormBuilder {
         field.field_name = document.getElementById('propFieldName').value;
         field.required = document.getElementById('propRequired').checked;
         field.help_text = document.getElementById('propHelpText').value;
+        const showHelpCheckbox = document.getElementById('propShowHelpTextInDetail');
+        field.show_help_text_in_detail = showHelpCheckbox ? showHelpCheckbox.checked : false;
         field.placeholder = document.getElementById('propPlaceholder').value;
         field.width = document.getElementById('propWidth').value;
         field.css_class = document.getElementById('propCssClass').value;

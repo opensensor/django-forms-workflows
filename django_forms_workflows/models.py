@@ -597,6 +597,14 @@ class FormField(models.Model):
     # Display
     order = models.IntegerField(default=0, help_text="Fields are sorted by this number")
     help_text = models.TextField(blank=True, help_text="Instructions shown below field")
+    show_help_text_in_detail = models.BooleanField(
+        default=False,
+        help_text=(
+            "If checked, the field's help text is shown next to the value in the "
+            "submission and approval detail view. Use for attestation or consent "
+            "statements attached to initials/signature fields."
+        ),
+    )
     placeholder = models.CharField(max_length=200, blank=True)
     css_class = models.CharField(
         max_length=100, blank=True, help_text="CSS classes for styling"

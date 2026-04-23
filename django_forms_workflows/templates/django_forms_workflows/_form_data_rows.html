@@ -21,6 +21,7 @@
                     {% for field in row.fields %}
                     <div class="{% if row.type == 'pair' %}col-md-6{% elif row.type == 'triple' %}col-md-4{% else %}col-md-3{% endif %} px-3 py-2{% if not forloop.last %} border-end{% endif %}">
                         <small class="text-muted fw-semibold">{{ field.label }}</small>
+                        {% if field.help_text %}<div class="small text-secondary fst-italic mb-1">{{ field.help_text }}</div>{% endif %}
                         <div>{% include "django_forms_workflows/_field_value.html" with entry=field %}</div>
                     </div>
                     {% endfor %}
@@ -32,6 +33,7 @@
         <tr>
             <td colspan="2" class="px-3 py-2">
                 <small class="text-muted fw-semibold">{{ field.label }}</small>
+                {% if field.help_text %}<div class="small text-secondary fst-italic mb-1">{{ field.help_text }}</div>{% endif %}
                 <div>{% include "django_forms_workflows/_field_value.html" with entry=field %}</div>
             </td>
         </tr>

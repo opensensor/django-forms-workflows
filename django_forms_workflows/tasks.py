@@ -99,8 +99,10 @@ def _send_html_email(
     *,
     notification_type: str = "other",
     submission_id: int | None = None,
+    cc: Iterable[str] | None = None,
 ) -> None:
     to_list = [e for e in to if e]
+    cc_list = [e for e in (cc or []) if e and e not in to_list]
     if not to_list:
         logger.info("Skipping email '%s' (no recipients)", subject)
         _write_notification_log(
@@ -122,17 +124,34 @@ def _send_html_email(
     )
 
     msg = EmailMultiAlternatives(
-        subject=subject, body=text_body, from_email=from_addr, to=to_list
+        subject=subject,
+        body=text_body,
+        from_email=from_addr,
+        to=to_list,
+        cc=cc_list or None,
     )
     msg.attach_alternative(html_body, "text/html")
     try:
         msg.send(fail_silently=False)
-        logger.info("Sent email '%s' to %s", subject, to_list)
+        logger.info(
+            "Sent email '%s' to %s%s",
+            subject,
+            to_list,
+            f" cc={cc_list}" if cc_list else "",
+        )
         for recipient in to_list:
             _write_notification_log(
                 notification_type=notification_type,
                 submission_id=submission_id,
                 recipient_email=recipient,
+                subject=subject,
+                status="sent",
+            )
+        for recipient in cc_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=f"cc:{recipient}",
                 subject=subject,
                 status="sent",
             )
@@ -143,6 +162,15 @@ def _send_html_email(
                 notification_type=notification_type,
                 submission_id=submission_id,
                 recipient_email=recipient,
+                subject=subject,
+                status="failed",
+                error_message=str(e),
+            )
+        for recipient in cc_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=f"cc:{recipient}",
                 subject=subject,
                 status="failed",
                 error_message=str(e),
@@ -158,6 +186,7 @@ def _send_html_email_from_string(
     *,
     notification_type: str = "other",
     submission_id: int | None = None,
+    cc: Iterable[str] | None = None,
 ) -> None:
     """Like _send_html_email but renders an inline Django template string
     instead of loading a template file.  Used when a NotificationRule has a
@@ -166,6 +195,7 @@ def _send_html_email_from_string(
     from django.template import Context, Template
 
     to_list = [e for e in to if e]
+    cc_list = [e for e in (cc or []) if e and e not in to_list]
     if not to_list:
         logger.info("Skipping email '%s' (no recipients)", subject)
         _write_notification_log(
@@ -187,17 +217,34 @@ def _send_html_email_from_string(
     )
 
     msg = EmailMultiAlternatives(
-        subject=subject, body=text_body, from_email=from_addr, to=to_list
+        subject=subject,
+        body=text_body,
+        from_email=from_addr,
+        to=to_list,
+        cc=cc_list or None,
     )
     msg.attach_alternative(html_body, "text/html")
     try:
         msg.send(fail_silently=False)
-        logger.info("Sent email '%s' to %s", subject, to_list)
+        logger.info(
+            "Sent email '%s' to %s%s",
+            subject,
+            to_list,
+            f" cc={cc_list}" if cc_list else "",
+        )
         for recipient in to_list:
             _write_notification_log(
                 notification_type=notification_type,
                 submission_id=submission_id,
                 recipient_email=recipient,
+                subject=subject,
+                status="sent",
+            )
+        for recipient in cc_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=f"cc:{recipient}",
                 subject=subject,
                 status="sent",
             )
@@ -208,6 +255,15 @@ def _send_html_email_from_string(
                 notification_type=notification_type,
                 submission_id=submission_id,
                 recipient_email=recipient,
+                subject=subject,
+                status="failed",
+                error_message=str(e),
+            )
+        for recipient in cc_list:
+            _write_notification_log(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=f"cc:{recipient}",
                 subject=subject,
                 status="failed",
                 error_message=str(e),
@@ -1167,6 +1223,31 @@ def _collect_notification_recipients(
     return recipients
 
 
+def _collect_notification_cc(notif, form_data: dict) -> list[str]:
+    """Return the deduplicated list of CC emails for a notification rule.
+
+    Combines static and dynamic CC sources:
+
+    1. ``cc_email_field``   → form_data[slug] (dynamic per submission)
+    2. ``cc_static_emails`` → comma-separated fixed addresses
+    """
+    cc: list[str] = []
+
+    def _add(email: str | None) -> None:
+        if email and email not in cc:
+            cc.append(email)
+
+    if getattr(notif, "cc_email_field", ""):
+        _add(_get_form_field_email(form_data, notif.cc_email_field))
+
+    for addr in (getattr(notif, "cc_static_emails", "") or "").split(","):
+        addr = addr.strip()
+        if addr and "@" in addr:
+            _add(addr)
+
+    return cc
+
+
 def _build_form_field_notification_context(
     submission: FormSubmission,
     task: ApprovalTask | None = None,
@@ -1304,6 +1385,9 @@ def send_notification_rules(
         recipients = _collect_notification_recipients(
             rule, form_data, submission=submission, task=task
         )
+        cc_recipients = _collect_notification_cc(rule, form_data)
+        # Prevent duplicate delivery: don't CC anyone already in the TO list.
+        cc_recipients = [c for c in cc_recipients if c not in recipients]
         if not recipients:
             logger.info(
                 "NotificationRule %s: no recipients resolved for submission %s; skipping.",
@@ -1321,7 +1405,7 @@ def send_notification_rules(
             .objects.filter(
                 notification_preferences__rule_id=rule.id,
                 notification_preferences__muted=True,
-                email__in=recipients,
+                email__in=list(recipients) + list(cc_recipients),
             )
             .exclude(email="")
             .values_list("email", flat=True)
@@ -1329,6 +1413,7 @@ def send_notification_rules(
         if _muted_emails:
             before = len(recipients)
             recipients = [r for r in recipients if r not in _muted_emails]
+            cc_recipients = [c for c in cc_recipients if c not in _muted_emails]
             logger.info(
                 "NotificationRule %s: dropped %d muted recipient(s) for submission %s",
                 rule.id,
@@ -1389,7 +1474,11 @@ def send_notification_rules(
         )
         if cadence != "immediate" and workflow is not None:
             scheduled_for = _compute_scheduled_for(workflow, submission)
-            for recipient in recipients:
+            # In batched/digest mode we don't carry the TO/CC distinction —
+            # each recipient just gets the summary email. Queue CCs alongside
+            # TOs so they still receive the digest.
+            queued_emails = list(recipients) + list(cc_recipients)
+            for recipient in queued_emails:
                 PendingNotification.objects.create(
                     workflow=workflow,
                     notification_type=event,
@@ -1400,7 +1489,7 @@ def send_notification_rules(
                 )
             logger.info(
                 "Queued %d %s notification(s) for submission %s (due %s)",
-                len(recipients),
+                len(queued_emails),
                 event,
                 submission.id,
                 scheduled_for,
@@ -1408,11 +1497,17 @@ def send_notification_rules(
         else:
             # Determine template: per-rule body_template overrides file.
             rule_body = getattr(rule, "body_template", "") or ""
+            # Each TO recipient gets a personalized email (approver context).
+            # CCs are attached to the first email only so CC recipients receive
+            # exactly one copy per rule execution rather than one per TO.
+            cc_pending = list(cc_recipients)
             for recipient in recipients:
                 ctx = {**base_context}
                 recipient_user = _users_by_email.get(recipient)
                 if recipient_user:
                     ctx["approver"] = recipient_user
+                email_cc = cc_pending
+                cc_pending = []
                 if rule_body.strip():
                     _send_html_email_from_string(
                         subject,
@@ -1421,6 +1516,7 @@ def send_notification_rules(
                         ctx,
                         notification_type=event,
                         submission_id=submission_id,
+                        cc=email_cc,
                     )
                 else:
                     _send_html_email(
@@ -1430,4 +1526,5 @@ def send_notification_rules(
                         ctx,
                         notification_type=event,
                         submission_id=submission_id,
+                        cc=email_cc,
                     )

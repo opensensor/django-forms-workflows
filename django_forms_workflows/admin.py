@@ -568,6 +568,7 @@ class NotificationRuleInline(nested_admin.NestedStackedInline):
                         "notify_stage_groups",
                     ),
                     ("email_field", "static_emails"),
+                    ("cc_email_field", "cc_static_emails"),
                     "notify_groups",
                     "subject_template",
                 )
@@ -1790,6 +1791,8 @@ class NotificationRuleAdmin(admin.ModelAdmin):
         "stage__name",
         "email_field",
         "static_emails",
+        "cc_email_field",
+        "cc_static_emails",
     )
     autocomplete_fields = ("workflow",)
     fieldsets = (
@@ -1805,6 +1808,7 @@ class NotificationRuleAdmin(admin.ModelAdmin):
                         "notify_stage_groups",
                     ),
                     ("email_field", "static_emails"),
+                    ("cc_email_field", "cc_static_emails"),
                     "notify_groups",
                     "subject_template",
                 )

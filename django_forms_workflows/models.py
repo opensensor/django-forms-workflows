@@ -1498,6 +1498,21 @@ class NotificationRule(models.Model):
         default="",
         help_text="Comma-separated fixed email addresses.",
     )
+    cc_email_field = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=(
+            "Form field slug whose submitted value is a CC email address. "
+            "Resolved from form_data at send time (varies per submission)."
+        ),
+    )
+    cc_static_emails = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text="Comma-separated fixed CC email addresses.",
+    )
     notify_stage_assignees = models.BooleanField(
         default=False,
         help_text=(

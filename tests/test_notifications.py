@@ -847,3 +847,96 @@ def test_stage_groups_fire_when_no_assigned_to(form_definition, user, approval_g
 
     recipients = [call.args[1][0] for call in mock_send.call_args_list]
     assert "groupmember2@example.com" in recipients
+
+
+# ── CC recipients (static and dynamic) ─────────────────────────────────
+
+
+def test_cc_static_and_dynamic_attached_to_first_email(
+    form_definition, user, approver_user
+):
+    """Static and dynamic CC addresses are attached to the first outgoing email."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        notify_submitter=True,
+        static_emails=approver_user.email,
+        cc_static_emails="auditor@example.com, supervisor@example.com",
+        cc_email_field="copy_email",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"copy_email": "dynamic_cc@example.com"},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert mock_send.call_count == 2
+    first_cc = mock_send.call_args_list[0].kwargs.get("cc") or []
+    second_cc = mock_send.call_args_list[1].kwargs.get("cc") or []
+    assert "auditor@example.com" in first_cc
+    assert "supervisor@example.com" in first_cc
+    assert "dynamic_cc@example.com" in first_cc
+    assert second_cc == []
+
+
+def test_cc_duplicate_of_to_is_dropped(form_definition, user):
+    """A CC address that already appears in the TO list is removed from CC."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        notify_submitter=True,
+        cc_static_emails=f"{user.email}, other@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    cc = mock_send.call_args_list[0].kwargs.get("cc") or []
+    assert user.email not in cc
+    assert "other@example.com" in cc
+
+
+def test_cc_passed_to_email_message(form_definition, user):
+    """The CC list propagates all the way to the underlying EmailMultiAlternatives."""
+    from unittest.mock import MagicMock
+
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        notify_submitter=True,
+        cc_static_emails="cc1@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks.EmailMultiAlternatives") as mock_msg_cls:
+        mock_msg_cls.return_value = MagicMock()
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert mock_msg_cls.call_count == 1
+    kwargs = mock_msg_cls.call_args.kwargs
+    assert kwargs["to"] == [user.email]
+    assert kwargs["cc"] == ["cc1@example.com"]

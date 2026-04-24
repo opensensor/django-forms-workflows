@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-04-24
+
+### Added
+- **CC recipients on notification rules (static and dynamic).** Two new
+  fields on `NotificationRule`:
+  - `cc_static_emails` — comma-separated fixed CC addresses.
+  - `cc_email_field` — form field slug whose submitted value is used as
+    a dynamic CC address, resolved per-submission.
+  The TO list still drives one personalised email per recipient (so
+  `{{ approver }}` context and per-user muting keep working); CC
+  addresses are attached to the first outgoing email of each rule
+  execution, so each CC recipient receives exactly one copy. CC
+  addresses that duplicate a TO are dropped, and per-user mute
+  preferences apply to CCs as well. For batched/digest workflows CCs
+  are queued alongside TOs. Admin UI (inline + standalone) and
+  `NotificationLog` (prefixed `cc:` on CC rows) updated accordingly.
+  New migration `0095_notificationrule_cc_fields`.
+
 ## [0.73.0] - 2026-04-23
 
 ### Added

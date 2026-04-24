@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.74.0] - 2026-04-24
 
+### Fixed
+- **Public decision comments now reach the submitter on approval too.**
+  The rejection email (`rejection_notification.html`) has always
+  rendered the approver's public decision comment, but the mirror
+  approval email (`approval_notification.html`) silently dropped it —
+  and `submission_detail.html`'s hidden-history mode (used when a
+  workflow sets `hide_approval_history=True`) also only surfaced the
+  comment on rejections. So an approved submission whose approver left
+  a "Welcome aboard / here's your next step" public note had no way to
+  reach the submitter. Both the approval email template and the
+  approved branch of the privacy-mode submission detail now render
+  `task.comments` exactly like the rejection side does. This makes
+  public-comment behaviour symmetrical on both outcomes; the
+  `hide_approval_history` flag remains purely a "hide the other
+  approval stages' activity" toggle.
+
 ### Added
 - **`reviewer_groups` now round-trips through sync push/pull.** The
   `FormDefinition.reviewer_groups` M2M was silently dropped by the

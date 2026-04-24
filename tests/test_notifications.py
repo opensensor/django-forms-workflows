@@ -940,3 +940,85 @@ def test_cc_passed_to_email_message(form_definition, user):
     kwargs = mock_msg_cls.call_args.kwargs
     assert kwargs["to"] == [user.email]
     assert kwargs["cc"] == ["cc1@example.com"]
+
+
+# ── Public decision comments in final email (symmetry fix) ─────────────
+
+
+def test_approval_email_includes_task_comments(
+    form_definition, user, approver_user, mailoutbox
+):
+    """The workflow_approved email renders task.comments so approvers'
+    public decision comments reach the submitter, mirroring the rejection
+    email's existing behaviour."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf, name="Review", order=1, approval_logic="all"
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        notify_submitter=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Review",
+        status="approved",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+        comments="Welcome aboard — paperwork looks great.",
+    )
+
+    send_notification_rules(submission.id, "workflow_approved", task_id=task.id)
+
+    assert len(mailoutbox) == 1
+    body = mailoutbox[0].alternatives[0][0]
+    assert "Welcome aboard — paperwork looks great." in body
+    assert "Reviewer comments" in body
+
+
+def test_approval_email_omits_comment_block_when_empty(
+    form_definition, user, approver_user, mailoutbox
+):
+    """When task.comments is blank the comment block shouldn't render at all."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf, name="Review", order=1, approval_logic="all"
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        notify_submitter=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Review",
+        status="approved",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+        comments="",
+    )
+
+    send_notification_rules(submission.id, "workflow_approved", task_id=task.id)
+
+    assert len(mailoutbox) == 1
+    body = mailoutbox[0].alternatives[0][0]
+    assert "Reviewer comments" not in body

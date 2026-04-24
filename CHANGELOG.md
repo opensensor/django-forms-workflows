@@ -10,6 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.74.0] - 2026-04-24
 
 ### Added
+- **`reviewer_groups` now round-trips through sync push/pull.** The
+  `FormDefinition.reviewer_groups` M2M was silently dropped by the
+  export/import path, so pulling a form into another environment lost
+  every non-admin reviewer assignment. The sync serializer and importer
+  now treat `reviewer_groups` exactly like `submit_groups` /
+  `view_groups` / `admin_groups` (resolved by group name, auto-created
+  on import). The admin diff viewer also reports reviewer_group
+  additions and removals.
+- **Full `PostSubmissionAction` coverage in the diff viewer.** The
+  admin side-by-side diff only compared a small subset of action fields
+  (primarily email_to / api_endpoint / conditions). It now mirrors the
+  sync serializer and flags changes to every round-tripped field:
+  database action config (`db_alias`, `db_schema`, `db_table`,
+  `db_lookup_field`, `db_user_field`, `db_field_mappings`), LDAP config
+  (`ldap_dn_template`, `ldap_field_mappings`), API config (`api_headers`,
+  `api_body_template`), custom handler config (`custom_handler_path`,
+  `custom_handler_config`), email config (`email_to_field`, `email_cc`,
+  `email_cc_field`, `email_body_template`, `email_template_name`),
+  `is_locked`, `description`, and retry/failure settings
+  (`fail_silently`, `retry_on_failure`, `max_retries`).
+
 - **CC recipients on notification rules (static and dynamic).** Two new
   fields on `NotificationRule`:
   - `cc_static_emails` — comma-separated fixed CC addresses.

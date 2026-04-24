@@ -401,3 +401,57 @@ class TestUUIDSync:
         field = new_fd.fields.get(field_name="stage_field")
         assert field.workflow_stage is not None
         assert field.workflow_stage.name == "Process"
+
+
+class TestReviewerGroupsSync:
+    """reviewer_groups is a FormDefinition M2M (distinct from view/admin
+    groups) — it must round-trip through push/pull."""
+
+    def test_reviewer_groups_exported(self, db):
+        fd = FormDefinition.objects.create(
+            name="Reviewer Form", slug="reviewer-form", is_active=True
+        )
+        g1 = Group.objects.create(name="Auditors")
+        g2 = Group.objects.create(name="Compliance")
+        fd.reviewer_groups.set([g1, g2])
+
+        qs = FormDefinition.objects.filter(pk=fd.pk)
+        payload = build_export_payload(qs)
+        form_data = payload["forms"][0]
+        assert set(form_data["form"]["reviewer_groups"]) == {"Auditors", "Compliance"}
+
+    def test_reviewer_groups_imported(self, db):
+        fd = FormDefinition.objects.create(
+            name="Reviewer Form", slug="reviewer-form", is_active=True
+        )
+        g = Group.objects.create(name="Auditors")
+        fd.reviewer_groups.add(g)
+
+        qs = FormDefinition.objects.filter(pk=fd.pk)
+        payload = build_export_payload(qs)
+        fd.delete()
+        Group.objects.filter(name="Auditors").delete()
+
+        results = import_payload(payload, conflict="skip")
+        new_fd, _ = results[0]
+        assert list(new_fd.reviewer_groups.values_list("name", flat=True)) == [
+            "Auditors"
+        ]
+
+    def test_reviewer_groups_updated_on_existing_form(self, db):
+        fd = FormDefinition.objects.create(
+            name="Reviewer Form", slug="reviewer-form", is_active=True
+        )
+        fd.reviewer_groups.add(Group.objects.create(name="Old Reviewers"))
+        qs = FormDefinition.objects.filter(pk=fd.pk)
+        payload = build_export_payload(qs)
+        # Swap reviewer_groups in the payload
+        payload["forms"][0]["form"]["reviewer_groups"] = ["New Reviewers"]
+
+        results = import_payload(payload, conflict="update")
+        _, action = results[0]
+        assert action == "updated"
+        fd.refresh_from_db()
+        assert list(fd.reviewer_groups.values_list("name", flat=True)) == [
+            "New Reviewers"
+        ]

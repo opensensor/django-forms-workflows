@@ -183,7 +183,7 @@ def _build_summary(forms_data):
             diffs.append(f"category: {b_cat_slug!r} → {o_cat_slug!r}")
 
         # Permission groups
-        for g in ("submit_groups", "view_groups", "admin_groups"):
+        for g in ("submit_groups", "view_groups", "admin_groups", "reviewer_groups"):
             bg = set(b_form.get(g, []))
             og = set(o_form.get(g, []))
             if bg != og:
@@ -216,18 +216,49 @@ def _build_summary(forms_data):
                 )
             b_action_map = {a.get("name"): a for a in b_actions}
             o_action_map = {a.get("name"): a for a in o_actions}
+            # Keep in sync with sync_api._serialize_post_action so every
+            # field that round-trips through push/pull also shows up here.
             action_check_keys = [
                 "action_type",
                 "trigger",
                 "is_active",
                 "order",
+                "is_locked",
+                "description",
+                # Database action
+                "db_alias",
+                "db_schema",
+                "db_table",
+                "db_lookup_field",
+                "db_user_field",
+                "db_field_mappings",
+                # LDAP action
+                "ldap_dn_template",
+                "ldap_field_mappings",
+                # API action
                 "api_endpoint",
                 "api_method",
+                "api_headers",
+                "api_body_template",
+                # Custom handler
+                "custom_handler_path",
+                "custom_handler_config",
+                # Email action
                 "email_to",
+                "email_to_field",
+                "email_cc",
+                "email_cc_field",
                 "email_subject_template",
+                "email_body_template",
+                "email_template_name",
+                # Conditional execution
                 "condition_field",
                 "condition_operator",
                 "condition_value",
+                # Retry / failure handling
+                "fail_silently",
+                "retry_on_failure",
+                "max_retries",
             ]
             for name in sorted(b_action_names & o_action_names):
                 ba, oa = b_action_map[name], o_action_map[name]

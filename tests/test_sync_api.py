@@ -455,3 +455,34 @@ class TestReviewerGroupsSync:
         assert list(fd.reviewer_groups.values_list("name", flat=True)) == [
             "New Reviewers"
         ]
+
+
+class TestShowHelpTextInDetailSync:
+    """FormField.show_help_text_in_detail must round-trip through push/pull
+    — without it, toggling the flag in one environment can't propagate."""
+
+    def test_show_help_text_in_detail_round_trips(self, db):
+        fd = FormDefinition.objects.create(
+            name="HT Form", slug="ht-form", is_active=True
+        )
+        FormField.objects.create(
+            form_definition=fd,
+            field_name="initials",
+            field_label="I Agree",
+            field_type="text",
+            help_text="I have read and agree to the statement above.",
+            show_help_text_in_detail=True,
+            order=1,
+        )
+        qs = FormDefinition.objects.filter(pk=fd.pk)
+        payload = build_export_payload(qs)
+        form_data = payload["forms"][0]
+        exported_field = [
+            f for f in form_data["fields"] if f["field_name"] == "initials"
+        ][0]
+        assert exported_field["show_help_text_in_detail"] is True
+
+        fd.delete()
+        results = import_payload(payload, conflict="skip")
+        new_fd, _ = results[0]
+        assert new_fd.fields.get(field_name="initials").show_help_text_in_detail

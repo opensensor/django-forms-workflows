@@ -206,6 +206,7 @@ def _serialize_field(field, wf_pk_to_index=None):
         "field_type": field.field_type,
         "order": field.order,
         "help_text": field.help_text,
+        "show_help_text_in_detail": field.show_help_text_in_detail,
         "placeholder": field.placeholder,
         "css_class": field.css_class,
         "width": field.width,

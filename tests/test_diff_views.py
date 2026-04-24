@@ -12,6 +12,7 @@ from django.contrib.auth.models import Group
 from django_forms_workflows.diff_views import _build_summary
 from django_forms_workflows.models import (
     FormDefinition,
+    FormField,
     PostSubmissionAction,
 )
 from django_forms_workflows.sync_api import build_export_payload
@@ -107,4 +108,36 @@ class TestPostActionFieldDiff:
 
         assert any(f"Post action 'Act' {field}:" in d for d in diffs), (
             f"Change in '{field}' not surfaced in diff. Got: {diffs}"
+        )
+
+
+class TestShowHelpTextInDetailDiff:
+    """A toggle of show_help_text_in_detail on a field should surface as
+    a modified-field in the diff summary."""
+
+    def test_flag_change_surfaces(self, two_similar_forms):
+        a, b = two_similar_forms
+        FormField.objects.create(
+            form_definition=a,
+            field_name="initials",
+            field_label="Initials",
+            field_type="text",
+            help_text="I agree.",
+            show_help_text_in_detail=False,
+            order=1,
+        )
+        FormField.objects.create(
+            form_definition=b,
+            field_name="initials",
+            field_label="Initials",
+            field_type="text",
+            help_text="I agree.",
+            show_help_text_in_detail=True,
+            order=1,
+        )
+
+        summary = _build_summary(_export_two(a, b))
+        diffs = summary[0]["diffs"]
+        assert any("Fields modified" in d and "initials" in d for d in diffs), (
+            f"show_help_text_in_detail toggle not surfaced. Got: {diffs}"
         )

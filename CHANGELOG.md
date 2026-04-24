@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.1] - 2026-04-24
+
+### Fixed
+- **`FormField.show_help_text_in_detail` now round-trips through sync
+  push/pull and is flagged by the diff viewer.** The attestation-flag
+  shipped in 0.73.0 was never added to `_serialize_field`, so pulling
+  a form into another environment silently reset the toggle to `False`
+  and the admin diff couldn't see that two forms disagreed on it.
+  Serializer now emits the field; the diff viewer already does a full
+  dict comparison per field, so changes now surface in the "Fields
+  modified" line.
+
 ## [0.74.0] - 2026-04-24
 
 ### Fixed

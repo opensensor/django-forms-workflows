@@ -396,7 +396,7 @@ def _lookup_by_full_name(user_model, value, stage, submission):
     if len(matches) > 1:
         # Multiple users share this name — try to disambiguate by
         # restricting to members of the stage's approval groups.
-        approval_groups = list(stage.approval_groups.all())
+        approval_groups = list(stage.get_approval_groups())
         if approval_groups:
             group_ids = {g.pk for g in approval_groups}
             narrowed = [
@@ -586,7 +586,8 @@ def _create_stage_tasks(
     user cannot be resolved.
     """
     stage_num = stage.order
-    groups = list(stage.approval_groups.all().order_by("stageapprovalgroup__position"))
+    # role="approval" only — validation/reassignment groups must not spawn tasks.
+    groups = list(stage.get_approval_groups())
 
     # --- Dynamic assignment (form field → User lookup) ------------------------
     dynamic_assignee = _resolve_dynamic_assignee(submission, stage)
@@ -733,7 +734,7 @@ def _start_deferred_workflows(submission: FormSubmission) -> bool:
             if s.order == first_order and _eval(s.trigger_conditions, form_data)
         ]
         for stage in first_order_stages:
-            groups = list(stage.approval_groups.all())
+            groups = list(stage.get_approval_groups())
             if not stage.requires_manager_approval and not groups:
                 continue
             _create_stage_tasks(submission, stage, due_date=due_date)
@@ -953,12 +954,12 @@ def create_workflow_tasks(submission: FormSubmission) -> None:
         # renamed but triggers were not updated.
         for s in first_order_all:
             if s not in first_order_stages:
-                groups = list(s.approval_groups.all())
+                groups = list(s.get_approval_groups())
                 if groups or s.requires_manager_approval:
                     trigger_skipped = True
 
         for stage in first_order_stages:
-            groups = list(stage.approval_groups.all())
+            groups = list(stage.get_approval_groups())
             if not stage.requires_manager_approval and not groups:
                 continue  # empty stage — skip
             _create_stage_tasks(submission, stage, due_date=due_date)
@@ -1006,9 +1007,8 @@ def handle_approval(
 
         if is_manager_task:
             # Manager gate passed — now create group tasks for same stage
-            groups = list(
-                stage.approval_groups.all().order_by("stageapprovalgroup__position")
-            )
+            # role="approval" only — validation/reassignment must not spawn tasks.
+            groups = list(stage.get_approval_groups())
             if not groups:
                 _advance_to_next_stage(
                     submission, workflow, stages, stage.order, due_date
@@ -1063,9 +1063,8 @@ def handle_approval(
                 )
 
         elif logic == "sequence":
-            groups = list(
-                stage.approval_groups.all().order_by("stageapprovalgroup__position")
-            )
+            # role="approval" only — sequence indexing must match what was created.
+            groups = list(stage.get_approval_groups())
             ids = [g.id for g in groups]
             try:
                 idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]
@@ -1366,7 +1365,8 @@ def _create_sub_workflow_stage_tasks(
     """Create ApprovalTask rows for one stage of a sub-workflow instance."""
     submission = instance.parent_submission
     stage_num = stage.order
-    groups = list(stage.approval_groups.all().order_by("stageapprovalgroup__position"))
+    # role="approval" only — validation/reassignment groups must not spawn tasks.
+    groups = list(stage.get_approval_groups())
 
     manager_task_created = False
     if stage.requires_manager_approval:
@@ -1522,9 +1522,8 @@ def handle_sub_workflow_approval(task: ApprovalTask) -> None:
     )
 
     if is_manager_task:
-        groups = list(
-            stage.approval_groups.all().order_by("stageapprovalgroup__position")
-        )
+        # role="approval" only — validation/reassignment must not spawn tasks.
+        groups = list(stage.get_approval_groups())
         if not groups:
             _advance_sub_workflow(instance, stages, stage.order, due_date)
             return
@@ -1572,9 +1571,8 @@ def handle_sub_workflow_approval(task: ApprovalTask) -> None:
             _advance_sub_workflow(instance, stages, stage.order, due_date)
 
     elif logic == "sequence":
-        groups = list(
-            stage.approval_groups.all().order_by("stageapprovalgroup__position")
-        )
+        # role="approval" only — sequence indexing must match what was created.
+        groups = list(stage.get_approval_groups())
         ids = [g.id for g in groups]
         try:
             idx = ids.index(task.assigned_group_id)  # type: ignore[arg-type]

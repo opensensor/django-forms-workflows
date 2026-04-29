@@ -1390,3 +1390,94 @@ class TestValidationRoleGroups:
         sub.refresh_from_db()
         assert sub.status == "pending_approval"
         assert sub.approval_tasks.filter(assigned_to=assignee).count() == 1
+
+
+# ── Stage role filtering (validation/reassignment must not spawn tasks) ────
+
+
+class TestStageRoleFiltersForTaskCreation:
+    """A WorkflowStage may have groups in three roles: ``approval`` (the
+    default pool), ``validation`` (used to verify a dynamic assignee belongs
+    to an allowed group), and ``reassignment`` (the eligible reassignment
+    pool). Only ``approval``-role groups must spawn ApprovalTask records.
+
+    Regression: the engine used the raw M2M (``stage.approval_groups.all()``)
+    in 11 places, which returned every StageApprovalGroup row regardless of
+    role. A stage with one ``approval`` group plus a ``validation`` group
+    would silently create 2 tasks; with one ``approval`` plus ``validation``
+    plus ``reassignment``, it would create 3 — even though the operator only
+    intended one approver.
+    """
+
+    @patch("django_forms_workflows.workflow_engine._notify_task_request")
+    @patch("django_forms_workflows.workflow_engine._notify_submission_created")
+    def test_only_approval_role_groups_create_tasks(
+        self,
+        mock_created,
+        mock_task_req,
+        form_definition,
+        user,
+        approval_group,
+        second_approval_group,
+    ):
+        """One approval group + one validation group + one reassignment group →
+        exactly ONE task (for the approval group)."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Instructor Approval", order=1, approval_logic="all"
+        )
+        validation_group = Group.objects.create(name="Faculty - All")
+        # The operator's intent: approval=approval_group only;
+        # second_approval_group is the reassignment pool; validation_group
+        # is the assignee-validation pool.
+        StageApprovalGroup.objects.create(
+            stage=stage, group=approval_group, role="approval", position=0
+        )
+        StageApprovalGroup.objects.create(
+            stage=stage, group=validation_group, role="validation", position=0
+        )
+        StageApprovalGroup.objects.create(
+            stage=stage, group=second_approval_group, role="reassignment", position=0
+        )
+
+        sub = _make_submission(form_definition, user)
+        create_workflow_tasks(sub)
+
+        sub.refresh_from_db()
+        assert sub.status == "pending_approval"
+        tasks = list(sub.approval_tasks.all())
+        assert len(tasks) == 1, (
+            f"Expected exactly 1 task (approval role only); got "
+            f"{[t.assigned_group.name for t in tasks if t.assigned_group_id]}"
+        )
+        assert tasks[0].assigned_group_id == approval_group.pk
+
+    @patch("django_forms_workflows.workflow_engine._notify_task_request")
+    @patch("django_forms_workflows.workflow_engine._notify_submission_created")
+    def test_stage_with_only_non_approval_groups_skips(
+        self, mock_created, mock_task_req, form_definition, user
+    ):
+        """A stage with ONLY validation/reassignment groups (no approval
+        role) is effectively empty and must auto-skip — not crash and not
+        spawn ghost tasks under those non-approval groups."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Misconfigured", order=1, approval_logic="all"
+        )
+        validation_only = Group.objects.create(name="Validation Only Group")
+        StageApprovalGroup.objects.create(
+            stage=stage, group=validation_only, role="validation", position=0
+        )
+
+        sub = _make_submission(form_definition, user)
+        create_workflow_tasks(sub)
+
+        sub.refresh_from_db()
+        # No approval tasks created (validation-only group should not spawn one).
+        assert sub.approval_tasks.count() == 0
+        # And the submission auto-completes since no approval was actually required.
+        assert sub.status == "approved"

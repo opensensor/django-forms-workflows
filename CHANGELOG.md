@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.6] - 2026-04-29
+
+### Fixed
+- **`StageApprovalGroup.role` is now respected when creating
+  approval tasks.** The workflow engine fetched stage groups via the
+  raw M2M (`stage.approval_groups.all()`) in 11 places, which returns
+  every row regardless of role. A stage with one `approval` group
+  plus a `validation` group + a `reassignment` group would silently
+  create three pending tasks (one per group) instead of one — even
+  though the operator only intended a single approver. This affected
+  both the group-assignment fallback (no dynamic assignee or dynamic
+  validation rejects) and the manager-gated and sequence-advancement
+  paths, in both parent and sub-workflows. All sites now go through
+  `stage.get_approval_groups()`, which filters strictly to
+  `role="approval"`. A stage with only validation/reassignment-role
+  groups is now correctly treated as empty and auto-skips. Adds
+  regression tests for both scenarios.
+
 ## [0.74.5] - 2026-04-29
 
 ### Fixed

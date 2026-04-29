@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.5] - 2026-04-29
+
+### Fixed
+- **Sync push no longer 500s with `duplicate key value violates unique
+  constraint django_forms_workflows_formcategory_pkey`.** The sequence-
+  reset that protects against Postgres `id` drift was missing entries
+  for `FormCategory`, `PrefillSource`, `WorkflowDefinition`, and
+  `SubWorkflowDefinition` — and only ran *after* the import, so a
+  pre-existing drift on any of those tables (commonly inherited from
+  `pg_dump`/restore or manual fixture inserts) crashed the very first
+  insert with a duplicate-pkey IntegrityError. `_reset_sequences()`
+  now covers every table the sync writes to and runs both before and
+  after the import.
+
 ## [0.74.4] - 2026-04-29
 
 ### Fixed

@@ -1154,6 +1154,13 @@ def import_payload(payload, conflict="update"):
     """
     category_cache = {}
 
+    # ── 0. Reset PostgreSQL sequences BEFORE inserts ──────────────────────────
+    # If a previous load (pg_dump/restore, manual fixture insert, prior sync
+    # that deleted rows) left a sequence behind the actual MAX(id), the very
+    # first INSERT in this import will 500 with a duplicate-pkey IntegrityError.
+    # Resetting up-front is cheap and prevents the failure.
+    _reset_sequences()
+
     # ── 1. Upsert all categories (parents before children) ────────────────────
     for cat_data in _topo_sort_categories(payload.get("categories", [])):
         _get_or_create_category(cat_data, category_cache)
@@ -1170,7 +1177,7 @@ def import_payload(payload, conflict="update"):
         )
         results.append(result)
 
-    # ── 4. Reset PostgreSQL sequences ─────────────────────────────────────────
+    # ── 4. Reset PostgreSQL sequences again to absorb this import's churn ─────
     # Sync deletes and re-creates rows (e.g. NotificationRule, StageApprovalGroup,
     # PostSubmissionAction) which can leave auto-increment sequences behind the
     # actual max ID in the table, causing IntegrityError on the next insert.
@@ -1189,14 +1196,20 @@ def _reset_sequences():
     if connection.vendor != "postgresql":
         return
 
+    # Every model the sync may insert into; missing entries here cause
+    # duplicate-pkey IntegrityErrors on import when a sequence has drifted.
     models_to_reset = [
+        FormCategory,
         FormDefinition,
-        NotificationRule,
-        StageApprovalGroup,
-        PostSubmissionAction,
-        WebhookEndpoint,
-        WorkflowStage,
         FormField,
+        NotificationRule,
+        PostSubmissionAction,
+        PrefillSource,
+        StageApprovalGroup,
+        SubWorkflowDefinition,
+        WebhookEndpoint,
+        WorkflowDefinition,
+        WorkflowStage,
     ]
     with connection.cursor() as cursor:
         for model in models_to_reset:

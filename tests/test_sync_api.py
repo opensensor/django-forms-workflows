@@ -489,6 +489,68 @@ class TestShowHelpTextInDetailSync:
         assert new_fd.fields.get(field_name="initials").show_help_text_in_detail
 
 
+class TestSequenceResetCoverage:
+    """Every model the sync may insert into must be in _reset_sequences's
+    list — missing entries surface as production-only IntegrityErrors that
+    SQLite tests can't reproduce.
+
+    Regression: FormCategory was missing, so a push to a target whose
+    formcategory sequence had drifted (e.g. after pg_dump/restore or a
+    manual fixture insert) returned 500 with
+    "duplicate key value violates unique constraint
+    django_forms_workflows_formcategory_pkey".
+    """
+
+    def test_reset_sequences_covers_every_model_sync_inserts(self):
+        # Inspect the function source to extract its model list. This is
+        # deliberately string-based so a future maintainer can't accidentally
+        # remove a model name without the test failing.
+        import inspect
+
+        from django_forms_workflows import sync_api
+        from django_forms_workflows.sync_api import _reset_sequences  # noqa: F401
+
+        source = inspect.getsource(sync_api._reset_sequences)
+        for required in (
+            "FormCategory",
+            "FormDefinition",
+            "FormField",
+            "NotificationRule",
+            "PostSubmissionAction",
+            "PrefillSource",
+            "StageApprovalGroup",
+            "SubWorkflowDefinition",
+            "WebhookEndpoint",
+            "WorkflowDefinition",
+            "WorkflowStage",
+        ):
+            assert required in source, (
+                f"_reset_sequences must include {required} — sync inserts "
+                f"into this table and a missing entry causes duplicate-pkey "
+                f"errors when the Postgres sequence has drifted."
+            )
+
+    def test_import_payload_runs_reset_sequences_before_and_after(self, db):
+        """Reset must happen before ANY insert (defends against pre-existing
+        drift) AND after (absorbs churn from this import)."""
+        from unittest.mock import patch
+
+        from django_forms_workflows import sync_api
+
+        with patch.object(
+            sync_api, "_reset_sequences", wraps=sync_api._reset_sequences
+        ) as spy:
+            sync_api.import_payload(
+                {
+                    "schema_version": 2,
+                    "categories": [],
+                    "prefill_sources": [],
+                    "forms": [],
+                }
+            )
+        assert spy.call_count == 2
+
+
 class TestNotificationRuleSync:
     """Round-trip every NotificationRule field through export → import.
 

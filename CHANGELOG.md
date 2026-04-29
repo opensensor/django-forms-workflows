@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.2] - 2026-04-29
+
+### Fixed
+- **`NotificationRule` fields now round-trip through sync push/pull and
+  show up in the diff viewer.** Four fields added in migrations 0087,
+  0088, and 0095 (`use_triggering_stage`, `body_template`,
+  `cc_email_field`, `cc_static_emails`) were never wired into either
+  notification-rule serializer in `sync_api`, so pushing or pulling
+  forms between environments silently dropped them and the admin diff
+  couldn't see when two environments disagreed on them. Both
+  stage-scoped and workflow-scoped rule serializers now emit the
+  missing keys; the import side already passed unknown notification
+  keys through as kwargs, so no schema bump is needed.
+
 ## [0.74.1] - 2026-04-24
 
 ### Fixed

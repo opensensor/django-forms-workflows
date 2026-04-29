@@ -9,6 +9,7 @@ from django_forms_workflows.models import (
     FormCategory,
     FormDefinition,
     FormField,
+    NotificationRule,
     PostSubmissionAction,
     PrefillSource,
     WebhookEndpoint,
@@ -486,3 +487,128 @@ class TestShowHelpTextInDetailSync:
         results = import_payload(payload, conflict="skip")
         new_fd, _ = results[0]
         assert new_fd.fields.get(field_name="initials").show_help_text_in_detail
+
+
+class TestNotificationRuleSync:
+    """Round-trip every NotificationRule field through export → import.
+
+    Regression: use_triggering_stage, body_template, cc_email_field, and
+    cc_static_emails were missing from sync_api serialization, so they did not
+    appear in the diff checker and were lost on push/pull between environments.
+    """
+
+    @pytest.fixture
+    def form_with_notification_rules(self, db):
+        cat = FormCategory.objects.create(name="Notif Cat", slug="notif-cat")
+        fd = FormDefinition.objects.create(
+            name="Notif Form",
+            slug="notif-form",
+            category=cat,
+        )
+        wf = WorkflowDefinition.objects.create(
+            form_definition=fd,
+            requires_approval=True,
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Review", order=1, approval_logic="all"
+        )
+        notify_group = Group.objects.create(name="Notif Group")
+
+        # Workflow-level rule (stage=null) using all the previously-dropped fields
+        wf_rule = NotificationRule.objects.create(
+            workflow=wf,
+            stage=None,
+            event="workflow_approved",
+            use_triggering_stage=False,
+            notify_submitter=True,
+            email_field="contact_email",
+            static_emails="ops@example.com",
+            cc_email_field="manager_email",
+            cc_static_emails="audit@example.com,records@example.com",
+            notify_stage_assignees=False,
+            notify_stage_groups=False,
+            subject_template="Approved: {form_name}",
+            body_template="<p>Hello {{ submitter }}</p>",
+            conditions={"field": "amount", "operator": ">", "value": 100},
+        )
+        wf_rule.notify_groups.add(notify_group)
+
+        # Stage-level rule using use_triggering_stage = False with explicit stage
+        stage_rule = NotificationRule.objects.create(
+            workflow=wf,
+            stage=stage,
+            event="approval_request",
+            use_triggering_stage=False,
+            notify_submitter=False,
+            email_field="",
+            static_emails="",
+            cc_email_field="cc_field",
+            cc_static_emails="cc-static@example.com",
+            notify_stage_assignees=True,
+            notify_stage_groups=True,
+            subject_template="Action needed",
+            body_template="<p>Please review</p>",
+        )
+        stage_rule.notify_groups.add(notify_group)
+        return fd
+
+    def test_export_includes_all_notification_rule_fields(
+        self, form_with_notification_rules
+    ):
+        qs = FormDefinition.objects.filter(pk=form_with_notification_rules.pk)
+        payload = build_export_payload(qs)
+        wf_data = payload["forms"][0]["workflow"]
+
+        wf_rules = wf_data["notification_rules"]
+        assert len(wf_rules) == 1
+        wf_rule = wf_rules[0]
+        for key in (
+            "use_triggering_stage",
+            "body_template",
+            "cc_email_field",
+            "cc_static_emails",
+        ):
+            assert key in wf_rule, f"workflow-level rule missing {key}"
+        assert wf_rule["body_template"] == "<p>Hello {{ submitter }}</p>"
+        assert wf_rule["cc_email_field"] == "manager_email"
+        assert wf_rule["cc_static_emails"] == "audit@example.com,records@example.com"
+
+        stage_rules = wf_data["stages"][0]["notification_rules"]
+        assert len(stage_rules) == 1
+        stage_rule = stage_rules[0]
+        for key in (
+            "use_triggering_stage",
+            "body_template",
+            "cc_email_field",
+            "cc_static_emails",
+        ):
+            assert key in stage_rule, f"stage-level rule missing {key}"
+        assert stage_rule["cc_static_emails"] == "cc-static@example.com"
+
+    def test_round_trip_preserves_all_notification_rule_fields(
+        self, form_with_notification_rules
+    ):
+        qs = FormDefinition.objects.filter(pk=form_with_notification_rules.pk)
+        payload = build_export_payload(qs)
+        form_with_notification_rules.delete()
+
+        results = import_payload(payload, conflict="update")
+        new_fd, _ = results[0]
+        new_wf = new_fd.workflows.first()
+
+        wf_rule = new_wf.notification_rules.get(stage__isnull=True)
+        assert wf_rule.event == "workflow_approved"
+        assert wf_rule.use_triggering_stage is False
+        assert wf_rule.body_template == "<p>Hello {{ submitter }}</p>"
+        assert wf_rule.cc_email_field == "manager_email"
+        assert wf_rule.cc_static_emails == "audit@example.com,records@example.com"
+        assert wf_rule.subject_template == "Approved: {form_name}"
+        assert wf_rule.notify_groups.filter(name="Notif Group").exists()
+
+        stage_rule = new_wf.notification_rules.get(stage__isnull=False)
+        assert stage_rule.event == "approval_request"
+        assert stage_rule.cc_email_field == "cc_field"
+        assert stage_rule.cc_static_emails == "cc-static@example.com"
+        assert stage_rule.body_template == "<p>Please review</p>"
+        assert stage_rule.notify_stage_assignees is True
+        assert stage_rule.notify_stage_groups is True

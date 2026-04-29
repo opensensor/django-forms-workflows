@@ -268,12 +268,16 @@ def _serialize_workflow_stage(stage):
         "notification_rules": [
             {
                 "event": r.event,
+                "use_triggering_stage": r.use_triggering_stage,
                 "notify_submitter": r.notify_submitter,
                 "email_field": r.email_field,
                 "static_emails": r.static_emails,
+                "cc_email_field": r.cc_email_field,
+                "cc_static_emails": r.cc_static_emails,
                 "notify_stage_assignees": r.notify_stage_assignees,
                 "notify_stage_groups": r.notify_stage_groups,
                 "subject_template": r.subject_template,
+                "body_template": r.body_template,
                 "conditions": r.conditions,
                 "notify_groups": [g.name for g in r.notify_groups.all()],
             }
@@ -354,12 +358,16 @@ def _serialize_workflow(wf):
         "notification_rules": [
             {
                 "event": r.event,
+                "use_triggering_stage": r.use_triggering_stage,
                 "notify_submitter": r.notify_submitter,
                 "email_field": r.email_field,
                 "static_emails": r.static_emails,
+                "cc_email_field": r.cc_email_field,
+                "cc_static_emails": r.cc_static_emails,
                 "notify_stage_assignees": r.notify_stage_assignees,
                 "notify_stage_groups": r.notify_stage_groups,
                 "subject_template": r.subject_template,
+                "body_template": r.body_template,
                 "conditions": r.conditions,
                 "notify_groups": [g.name for g in r.notify_groups.all()],
             }

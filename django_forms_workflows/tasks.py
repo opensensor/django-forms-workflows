@@ -1358,6 +1358,18 @@ def send_notification_rules(
         event, "{form_name} (ID {submission_id})"
     )
 
+    # Idempotency guard: if this task is being re-executed (e.g. acks_late
+    # requeued it after a worker died mid-send), skip recipients we already
+    # successfully delivered to. Only "sent" entries dedup — "failed" entries
+    # should be retried.
+    already_sent: set[str] = set(
+        NotificationLog.objects.filter(
+            submission_id=submission_id,
+            notification_type=event,
+            status="sent",
+        ).values_list("recipient_email", flat=True)
+    )
+
     for rule in rules:
         # Evaluate optional conditions
         if rule.conditions:
@@ -1388,9 +1400,28 @@ def send_notification_rules(
         cc_recipients = _collect_notification_cc(rule, form_data)
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
+
+        # Drop recipients already successfully delivered (acks_late retry guard).
+        # NotificationLog stores TO entries as the bare email and CC entries as
+        # ``cc:{recipient}`` — match each list against its own log key format.
+        if already_sent:
+            before_to, before_cc = len(recipients), len(cc_recipients)
+            recipients = [r for r in recipients if r not in already_sent]
+            cc_recipients = [c for c in cc_recipients if f"cc:{c}" not in already_sent]
+            skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
+            if skipped:
+                logger.info(
+                    "NotificationRule %s: skipped %d already-sent recipient(s) "
+                    "for submission %s (idempotency)",
+                    rule.id,
+                    skipped,
+                    submission.id,
+                )
+
         if not recipients:
             logger.info(
-                "NotificationRule %s: no recipients resolved for submission %s; skipping.",
+                "NotificationRule %s: no recipients to send to for submission %s; "
+                "skipping (resolved zero, or all already delivered).",
                 rule.id,
                 submission.id,
             )

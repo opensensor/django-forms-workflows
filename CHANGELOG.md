@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.4] - 2026-04-29
+
+### Fixed
+- **`send_notification_rules` is now idempotent on retry.** When a Celery
+  worker dies mid-execution and the broker requeues the task (e.g. with
+  `task_acks_late=True` + `task_reject_on_worker_lost=True`), the second
+  run skips recipients already present in `NotificationLog` with
+  `status=sent`. Failed sends are still retried. Previously a worker
+  crash mid-send could either lose the notification entirely (with
+  default acks-early) or, if acks-late was enabled, double-send to the
+  recipients delivered before the crash. Investigation context: a
+  production submission silently produced zero notification emails
+  while an identical submission a minute later succeeded — most likely
+  a prefork worker process death between ack and the send call.
+
 ## [0.74.3] - 2026-04-29
 
 ### Fixed

@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django_forms_workflows.models import (
     ApprovalTask,
     FormSubmission,
+    NotificationLog,
     NotificationRule,
     StageApprovalGroup,
     WorkflowDefinition,
@@ -1022,3 +1023,123 @@ def test_approval_email_omits_comment_block_when_empty(
     assert len(mailoutbox) == 1
     body = mailoutbox[0].alternatives[0][0]
     assert "Reviewer comments" not in body
+
+
+# ── Idempotency on retry (acks_late + worker death) ────────────────────────
+
+
+class TestSendNotificationRulesIdempotency:
+    """When a Celery worker dies mid-execution and the task is retried (e.g.
+    via ``task_acks_late=True`` + ``task_reject_on_worker_lost=True``), the
+    second run must not re-send to recipients already logged as ``status=sent``.
+
+    Original incident: a submission's notification task was acked but the
+    worker died before sending; with idempotency in place, requeues are safe.
+    """
+
+    def test_recipients_already_in_log_are_skipped(
+        self, form_definition, user, mailoutbox
+    ):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            static_emails="other@example.com",
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+
+        send_notification_rules(submission.id, "submission_received")
+        first_run_emails = len(mailoutbox)
+        assert first_run_emails == 2  # submitter + static
+        assert (
+            NotificationLog.objects.filter(
+                submission_id=submission.id, status="sent"
+            ).count()
+            == 2
+        )
+
+        # Second invocation simulates a Celery requeue. Should be a no-op:
+        # no new emails, no new log rows.
+        send_notification_rules(submission.id, "submission_received")
+        assert len(mailoutbox) == first_run_emails
+        assert (
+            NotificationLog.objects.filter(
+                submission_id=submission.id, status="sent"
+            ).count()
+            == 2
+        )
+
+    def test_partially_sent_recipients_only_retries_missing(
+        self, form_definition, user, mailoutbox
+    ):
+        """If a previous run sent to one of two TOs, only the missing one is sent."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            static_emails="other@example.com",
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        # Simulate the previous run having delivered to "other@example.com"
+        # only (e.g. submitter send was in-flight when the worker died).
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=submission.id,
+            recipient_email="other@example.com",
+            subject="prior",
+            status="sent",
+        )
+
+        send_notification_rules(submission.id, "submission_received")
+
+        # Only the submitter should have been (re-)sent now.
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == [user.email]
+
+    def test_failed_log_entries_do_not_block_retry(
+        self, form_definition, user, mailoutbox
+    ):
+        """A log entry with status=failed must still be retried — only successful
+        sends dedup."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=submission.id,
+            recipient_email=user.email,
+            subject="prior",
+            status="failed",
+            error_message="SMTP timeout",
+        )
+
+        send_notification_rules(submission.id, "submission_received")
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == [user.email]

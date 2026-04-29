@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.3] - 2026-04-29
+
+### Fixed
+- **Notification-rule sync exports are now deterministic across
+  environments.** Two non-determinism sources let DB row order leak
+  into the export payload, producing false-positive
+  `Workflow notification rules: 6 → 6` diffs even when the underlying
+  rules were identical: rule list order relied on Meta ordering that
+  doesn't disambiguate workflow-level rules sharing an event, and
+  `notify_groups` M2M ordering relies on through-row id (varies per
+  instance). Both lists are now sorted by content, so push/pull and
+  the diff viewer give stable results.
+
+### Changed
+- **Diff viewer reports which notification rule changed when counts
+  match.** When stage- or workflow-level notification rule lists
+  differ in content but not in length, the diff now names the rule
+  (by event) and the specific keys that changed instead of showing
+  an opaque `6 → 6` message.
+
 ## [0.74.2] - 2026-04-29
 
 ### Fixed

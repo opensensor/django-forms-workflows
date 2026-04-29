@@ -612,3 +612,54 @@ class TestNotificationRuleSync:
         assert stage_rule.body_template == "<p>Please review</p>"
         assert stage_rule.notify_stage_assignees is True
         assert stage_rule.notify_stage_groups is True
+
+    def test_serialized_rule_order_is_deterministic_across_envs(self, db):
+        """Same rules created in different DB-row orders must serialize identically.
+
+        Regression: when two workflow-level rules share an event, the model's
+        Meta ordering doesn't disambiguate them, so DB row order leaks into
+        the export payload. The diff viewer compared lists with == which
+        produced false-positive 'Workflow notification rules: 6 → 6' diffs.
+        """
+        cat = FormCategory.objects.create(name="Order Cat", slug="order-cat")
+
+        def build_form(slug, group_order_a, group_order_b):
+            fd = FormDefinition.objects.create(
+                name=f"Order {slug}", slug=slug, category=cat
+            )
+            wf = WorkflowDefinition.objects.create(
+                form_definition=fd, requires_approval=True
+            )
+            # Two rules sharing the same event — Meta ordering can't tell
+            # them apart, so the second-key (id) decides DB row order.
+            r1 = NotificationRule.objects.create(
+                workflow=wf,
+                stage=None,
+                event="approval_request",
+                notify_submitter=True,
+                static_emails="a@example.com",
+            )
+            r2 = NotificationRule.objects.create(
+                workflow=wf,
+                stage=None,
+                event="approval_request",
+                notify_submitter=True,
+                static_emails="b@example.com",
+            )
+            # Vary the M2M attach order between the two forms.
+            for gname in group_order_a:
+                r1.notify_groups.add(Group.objects.get_or_create(name=gname)[0])
+            for gname in group_order_b:
+                r2.notify_groups.add(Group.objects.get_or_create(name=gname)[0])
+            return fd
+
+        fd_a = build_form("order-a", ["GroupX", "GroupY"], ["GroupZ"])
+        fd_b = build_form("order-b", ["GroupY", "GroupX"], ["GroupZ"])
+
+        payload_a = build_export_payload(FormDefinition.objects.filter(pk=fd_a.pk))
+        payload_b = build_export_payload(FormDefinition.objects.filter(pk=fd_b.pk))
+        rules_a = payload_a["forms"][0]["workflow"]["notification_rules"]
+        rules_b = payload_b["forms"][0]["workflow"]["notification_rules"]
+        # Lists of dicts must be equal regardless of how rows / M2M attaches
+        # were ordered in the DB.
+        assert rules_a == rules_b

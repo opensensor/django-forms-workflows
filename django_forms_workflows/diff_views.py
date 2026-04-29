@@ -103,6 +103,20 @@ def _build_summary(forms_data):
                     diffs.append(
                         f"Stage '{key[1]}' notifications: {len(b_notifs)} → {len(o_notifs)}"
                     )
+                elif b_notifs != o_notifs:
+                    for idx, (bn, on) in enumerate(
+                        zip(b_notifs, o_notifs, strict=False)
+                    ):
+                        if bn == on:
+                            continue
+                        changed_keys = sorted(
+                            k for k in set(bn) | set(on) if bn.get(k) != on.get(k)
+                        )
+                        label = bn.get("event") or on.get("event") or f"#{idx}"
+                        diffs.append(
+                            f"Stage '{key[1]}' notification '{label}' changed: "
+                            f"{', '.join(changed_keys)}"
+                        )
                 # Approval groups: support both old string lists and new dict lists
                 b_groups = {
                     g["name"] if isinstance(g, dict) else g
@@ -147,10 +161,29 @@ def _build_summary(forms_data):
             # Workflow-level notification rules (stage=null)
             b_wf_notifs = b_wf.get("notification_rules", [])
             o_wf_notifs = o_wf.get("notification_rules", [])
-            if b_wf_notifs != o_wf_notifs:
+            if len(b_wf_notifs) != len(o_wf_notifs):
                 diffs.append(
                     f"Workflow notification rules: {len(b_wf_notifs)} → {len(o_wf_notifs)}"
                 )
+            elif b_wf_notifs != o_wf_notifs:
+                # Same count but content differs — surface what changed.
+                changed = []
+                for idx, (br, or_) in enumerate(
+                    zip(b_wf_notifs, o_wf_notifs, strict=False)
+                ):
+                    if br == or_:
+                        continue
+                    changed_keys = sorted(
+                        k for k in set(br) | set(or_) if br.get(k) != or_.get(k)
+                    )
+                    label = br.get("event") or or_.get("event") or f"#{idx}"
+                    diffs.append(
+                        f"Workflow notification rule '{label}' changed: "
+                        f"{', '.join(changed_keys)}"
+                    )
+                    changed.append(label)
+                if not changed:
+                    diffs.append("Workflow notification rules: order changed")
 
         # Form metadata
         meta_keys = [

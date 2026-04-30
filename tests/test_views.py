@@ -405,6 +405,285 @@ class TestApproveSubmissionView:
         assert b"Send Back for Correction" in resp.content
 
 
+# ── Admin / Reviewer permission tiers on approve view ─────────────────
+
+
+class TestApproveAdminAndReviewerTiers:
+    """Admin = write-on-behalf-of (act on tasks they aren't directly assigned).
+    Reviewer = read-only (page renders but the decision form is hidden and
+    POST is rejected). Audit log captures the surrogate stamp.
+    """
+
+    @pytest.fixture
+    def setup(self, form_with_fields, user, approver_user, approval_group):
+        from django.contrib.auth.models import Group, User
+
+        from django_forms_workflows.models import WorkflowDefinition, WorkflowStage
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Review", order=1, approval_logic="any"
+        )
+        stage.approval_groups.add(approval_group)
+        approver_user.groups.add(approval_group)
+
+        admin_group = Group.objects.create(name="Form Admins")
+        reviewer_group = Group.objects.create(name="Form Reviewers")
+        form_with_fields.admin_groups.add(admin_group)
+        form_with_fields.reviewer_groups.add(reviewer_group)
+
+        admin_user = User.objects.create_user("formadmin", password="x")
+        admin_user.groups.add(admin_group)
+        reviewer_user = User.objects.create_user("formreviewer", password="x")
+        reviewer_user.groups.add(reviewer_group)
+        outsider = User.objects.create_user("outsider", password="x")
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={
+                "full_name": "Test User",
+                "email": "test@example.com",
+                "department": "it",
+                "amount": "500.00",
+                "notes": "Review please",
+            },
+            status="pending_approval",
+        )
+        task = ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            step_name="Review",
+            status="pending",
+            stage_number=1,
+            workflow_stage=stage,
+        )
+        return {
+            "sub": sub,
+            "task": task,
+            "admin_user": admin_user,
+            "reviewer_user": reviewer_user,
+            "outsider": outsider,
+            "approver_user": approver_user,
+        }
+
+    def test_reviewer_get_renders_read_only(self, client, setup):
+        client.force_login(setup["reviewer_user"])
+        url = reverse("forms_workflows:approve_submission", args=[setup["task"].pk])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert resp.context["read_only"] is True
+        assert resp.context["acting_on_behalf"] is False
+        assert b"View only" in resp.content
+        # Decision-form button must NOT render in read-only mode.
+        assert b'name="decision" value="approve"' not in resp.content
+
+    def test_reviewer_post_rejected(self, client, setup):
+        client.force_login(setup["reviewer_user"])
+        url = reverse("forms_workflows:approve_submission", args=[setup["task"].pk])
+        resp = client.post(url, {"decision": "approve", "comments": "nope"})
+        assert resp.status_code == 302
+        setup["task"].refresh_from_db()
+        assert setup["task"].status == "pending"  # unchanged
+
+    def test_admin_get_shows_acting_on_behalf_banner(self, client, setup):
+        client.force_login(setup["admin_user"])
+        url = reverse("forms_workflows:approve_submission", args=[setup["task"].pk])
+        resp = client.get(url)
+        assert resp.status_code == 200
+        assert resp.context["read_only"] is False
+        assert resp.context["acting_on_behalf"] is True
+        assert b"Acting on behalf of" in resp.content
+        # Decision form is rendered for admin.
+        assert b'name="decision" value="approve"' in resp.content
+
+    def test_admin_post_records_actor_and_preserves_assignee(self, client, setup):
+        from django_forms_workflows.models import AuditLog
+
+        client.force_login(setup["admin_user"])
+        url = reverse("forms_workflows:approve_submission", args=[setup["task"].pk])
+        resp = client.post(
+            url, {"decision": "approve", "comments": "approved on behalf"}
+        )
+        assert resp.status_code == 302
+
+        setup["task"].refresh_from_db()
+        assert setup["task"].status == "approved"
+        assert setup["task"].completed_by_id == setup["admin_user"].id
+        # Original assignment preserved for audit.
+        assert setup["task"].assigned_group_id is not None
+        assert setup["task"].assigned_to_id is None  # this task was group-assigned
+
+        audit = AuditLog.objects.filter(
+            object_type="FormSubmission",
+            object_id=setup["sub"].id,
+            action="approve",
+        ).latest("id")
+        assert audit.changes.get("acting_on_behalf") is True
+        assert "assignee" in audit.changes
+
+    def test_assignee_post_does_not_set_acting_on_behalf(self, client, setup):
+        from django_forms_workflows.models import AuditLog
+
+        client.force_login(setup["approver_user"])  # member of approval_group
+        url = reverse("forms_workflows:approve_submission", args=[setup["task"].pk])
+        resp = client.post(url, {"decision": "approve", "comments": "ok"})
+        assert resp.status_code == 302
+
+        audit = AuditLog.objects.filter(
+            object_type="FormSubmission",
+            object_id=setup["sub"].id,
+            action="approve",
+        ).latest("id")
+        assert audit.changes.get("acting_on_behalf") is None
+
+    def test_outsider_blocked(self, client, setup):
+        client.force_login(setup["outsider"])
+        url = reverse("forms_workflows:approve_submission", args=[setup["task"].pk])
+        resp = client.get(url)
+        assert resp.status_code == 302  # redirected with permission error
+
+    def test_section_marks_admin_as_surrogate(self, client, setup):
+        from django_forms_workflows.views import _build_approval_step_sections
+
+        # Admin approves on behalf of the assigned group.
+        client.force_login(setup["admin_user"])
+        url = reverse("forms_workflows:approve_submission", args=[setup["task"].pk])
+        client.post(url, {"decision": "approve", "comments": "ok"})
+
+        sections = _build_approval_step_sections(setup["sub"])
+        assert any(s["is_surrogate"] for s in sections), (
+            f"At least one section should be marked surrogate; got "
+            f"{[(s['completed_by'], s['assigned_to'], s['is_surrogate']) for s in sections]}"
+        )
+
+
+# ── Approval inbox role-scope filter (Mine / Reviewing / Overseeing) ──
+
+
+class TestApprovalInboxRoleFilter:
+    """The pending tab supports three filters when the user has the role:
+    default ``mine`` (direct assignments only — current behavior), ``reviewing``
+    (forms where you're in reviewer_groups, click-through is read-only), and
+    ``overseeing`` (forms where you're in admin_groups, click-through allows
+    acting on behalf of the assignee).
+
+    Pills only render for filters the user has at least one role for, so a
+    user with no admin/reviewer membership sees the inbox unchanged.
+    """
+
+    @pytest.fixture
+    def setup(self, form_with_fields, user, approver_user, approval_group):
+        from django.contrib.auth.models import Group, User
+
+        from django_forms_workflows.models import WorkflowDefinition, WorkflowStage
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Review", order=1, approval_logic="any"
+        )
+        stage.approval_groups.add(approval_group)
+
+        admin_group = Group.objects.create(name="Form Admins (Inbox)")
+        reviewer_group = Group.objects.create(name="Form Reviewers (Inbox)")
+        form_with_fields.admin_groups.add(admin_group)
+        form_with_fields.reviewer_groups.add(reviewer_group)
+
+        admin_user = User.objects.create_user("inbox_admin", password="x")
+        admin_user.groups.add(admin_group)
+        reviewer_user = User.objects.create_user("inbox_reviewer", password="x")
+        reviewer_user.groups.add(reviewer_group)
+        outsider = User.objects.create_user("inbox_outsider", password="x")
+
+        sub = FormSubmission.objects.create(
+            form_definition=form_with_fields,
+            submitter=user,
+            form_data={
+                "full_name": "Test User",
+                "email": "test@example.com",
+                "department": "it",
+                "amount": "500.00",
+                "notes": "Review please",
+            },
+            status="pending_approval",
+        )
+        task = ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            step_name="Review",
+            status="pending",
+            stage_number=1,
+            workflow_stage=stage,
+        )
+        return {
+            "task": task,
+            "admin_user": admin_user,
+            "reviewer_user": reviewer_user,
+            "outsider": outsider,
+        }
+
+    def test_outsider_sees_no_pills(self, client, setup):
+        client.force_login(setup["outsider"])
+        resp = client.get(reverse("forms_workflows:approval_inbox"))
+        assert resp.status_code == 200
+        assert resp.context["available_role_filters"] == []
+        assert resp.context["active_role"] == "mine"
+        # Pills must not render for users without any role membership.
+        assert b"Reviewing" not in resp.content
+        assert b"Overseeing" not in resp.content
+
+    def test_admin_sees_overseeing_pill_only(self, client, setup):
+        client.force_login(setup["admin_user"])
+        resp = client.get(reverse("forms_workflows:approval_inbox"))
+        assert resp.status_code == 200
+        assert resp.context["available_role_filters"] == ["overseeing"]
+        # Mine pill always shows when ANY role pill is rendered.
+        assert b"Overseeing" in resp.content
+        assert b"Reviewing" not in resp.content
+
+    def test_reviewer_sees_reviewing_pill_only(self, client, setup):
+        client.force_login(setup["reviewer_user"])
+        resp = client.get(reverse("forms_workflows:approval_inbox"))
+        assert resp.status_code == 200
+        assert resp.context["available_role_filters"] == ["reviewing"]
+        assert b"Reviewing" in resp.content
+        assert b"Overseeing" not in resp.content
+
+    def test_overseeing_filter_returns_form_admin_pending_tasks(self, client, setup):
+        client.force_login(setup["admin_user"])
+        resp = client.get(
+            reverse("forms_workflows:approval_inbox") + "?role=overseeing"
+        )
+        assert resp.status_code == 200
+        assert resp.context["active_role"] == "overseeing"
+        assert resp.context["total_tasks_count"] == 1
+
+    def test_mine_filter_excludes_admin_form_tasks(self, client, setup):
+        """An admin who isn't directly assigned should see 0 tasks under
+        Mine — Overseeing is what surfaces them."""
+        client.force_login(setup["admin_user"])
+        resp = client.get(reverse("forms_workflows:approval_inbox"))
+        assert resp.status_code == 200
+        assert resp.context["active_role"] == "mine"
+        assert resp.context["total_tasks_count"] == 0
+
+    def test_unknown_role_falls_back_to_mine(self, client, setup):
+        """Tampering with ?role=xyz must fall back to default ('mine'),
+        never expose tasks the user shouldn't see."""
+        client.force_login(setup["outsider"])
+        resp = client.get(
+            reverse("forms_workflows:approval_inbox") + "?role=overseeing"
+        )
+        assert resp.status_code == 200
+        # Outsider has no admin membership → 'overseeing' is filtered out.
+        assert resp.context["active_role"] == "mine"
+        assert resp.context["total_tasks_count"] == 0
+
+
 # ── save_draft ──────────────────────────────────────────────────────────
 
 

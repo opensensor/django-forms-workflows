@@ -90,18 +90,49 @@
       </li>
     </ul>
 
+    {# ── Role-scope filter pills (Mine / Reviewing / Overseeing) ── #}
+    {# Only renders when the user has reviewer or admin membership on at #}
+    {# least one form. Filters are exclusive: each pill replaces the    #}
+    {# query rather than narrowing within it.                            #}
+    {% if available_role_filters %}
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center" role="toolbar" aria-label="Filter by role">
+      <span class="text-muted small fw-semibold me-1">Showing:</span>
+      <a href="?"
+         class="btn btn-sm {% if active_role == 'mine' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if active_role == 'mine' %}aria-current="true"{% endif %}>
+        <i class="bi bi-person-check me-1"></i>Mine
+      </a>
+      {% if 'reviewing' in available_role_filters %}
+      <a href="?role=reviewing"
+         class="btn btn-sm {% if active_role == 'reviewing' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if active_role == 'reviewing' %}aria-current="true"{% endif %}
+         title="Pending tasks on forms where you're a reviewer (read-only)">
+        <i class="bi bi-eye me-1"></i>Reviewing
+      </a>
+      {% endif %}
+      {% if 'overseeing' in available_role_filters %}
+      <a href="?role=overseeing"
+         class="btn btn-sm {% if active_role == 'overseeing' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         {% if active_role == 'overseeing' %}aria-current="true"{% endif %}
+         title="Pending tasks on forms where you're an admin (you can act on behalf of the assignee)">
+        <i class="bi bi-person-gear me-1"></i>Overseeing
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="d-flex align-items-center justify-content-end mb-3">
       <span class="text-muted small">
         {% if active_form %}
           Showing {{ tasks|length }} task{{ tasks|length|pluralize }} in
           <strong>{{ active_category.name }}</strong> &rsaquo; <strong>{{ active_form.name }}</strong>
           &mdash;
-          <a href="?category={{ category_slug }}" class="text-decoration-none">clear form filter</a>
+          <a href="?{% if role_qs %}{{ role_qs }}&{% endif %}category={{ category_slug }}" class="text-decoration-none">clear form filter</a>
         {% elif active_category %}
           Showing {{ tasks|length }} task{{ tasks|length|pluralize }} in
           <strong>{{ active_category.name }}</strong>
           &mdash;
-          <a href="?" class="text-decoration-none">clear filter</a>
+          <a href="?{{ role_qs }}" class="text-decoration-none">clear filter</a>
         {% else %}
           {{ total_tasks_count }} pending task{{ total_tasks_count|pluralize }} total
         {% endif %}
@@ -114,7 +145,7 @@
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="text-muted small fw-semibold me-1">Filter:</span>
 
-        <a href="?"
+        <a href="?{{ role_qs }}"
            class="btn btn-sm {% if not category_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
            {% if not category_slug %}aria-current="true"{% endif %}>
           All
@@ -124,7 +155,7 @@
         </a>
 
         {% for cat in category_counts %}
-        <a href="?category={{ cat.slug }}"
+        <a href="?{% if role_qs %}{{ role_qs }}&{% endif %}category={{ cat.slug }}"
            class="btn btn-sm {% if category_slug == cat.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
            {% if category_slug == cat.slug %}aria-current="true"{% endif %}>
           {% if cat.icon %}<i class="bi {{ cat.icon }} me-1"></i>{% endif %}
@@ -146,14 +177,14 @@
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="text-muted small fw-semibold me-1">Form:</span>
 
-        <a href="?category={{ category_slug }}"
+        <a href="?{% if role_qs %}{{ role_qs }}&{% endif %}category={{ category_slug }}"
            class="btn btn-sm {% if not form_slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
            {% if not form_slug %}aria-current="true"{% endif %}>
           All
         </a>
 
         {% for form_item in form_counts %}
-        <a href="?category={{ category_slug }}&form={{ form_item.slug }}"
+        <a href="?{% if role_qs %}{{ role_qs }}&{% endif %}category={{ category_slug }}&form={{ form_item.slug }}"
            class="btn btn-sm {% if form_slug == form_item.slug %}btn-primary{% else %}btn-outline-secondary{% endif %}"
            {% if form_slug == form_item.slug %}aria-current="true"{% endif %}>
           {{ form_item.name }}
@@ -337,6 +368,7 @@ $(document).ready(function() {
                     d.csrfmiddlewaretoken = '{{ csrf_token }}';
                     {% if category_slug %}d.category = '{{ category_slug|escapejs }}';{% endif %}
                     {% if form_slug %}d.form = '{{ form_slug|escapejs }}';{% endif %}
+                    {% if active_role and active_role != 'mine' %}d.role = '{{ active_role|escapejs }}';{% endif %}
                 }
             },
             columns: [

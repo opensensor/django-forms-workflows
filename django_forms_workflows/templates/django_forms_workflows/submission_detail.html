@@ -134,7 +134,7 @@
                             </div>
                             {% if section.completed_by %}
                             <div class="text-muted small">
-                                by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
+                                by <strong>{{ section.completed_by }}</strong>{% if section.is_surrogate %} <span class="text-muted">(on behalf of {{ section.assigned_to }})</span>{% endif %}{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
                             </div>
                             {% endif %}
                             {% if section.comments %}

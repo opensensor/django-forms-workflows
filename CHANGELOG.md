@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.7] - 2026-04-29
+
+### Added
+- **Admin and Reviewer permission tiers on the approval page are now
+  meaningful.** Previously `admin_groups` and `reviewer_groups` were
+  treated identically everywhere in the codebase — the distinction
+  existed only in `help_text`. Now:
+  - **Reviewer** (`reviewer_groups` member): may view the approval page
+    in read-only mode. The decision form, send-back panel, and reassign
+    button are hidden; a "View only" banner explains why. POST requests
+    are rejected as a defense-in-depth measure even though the buttons
+    aren't rendered.
+  - **Admin** (`admin_groups` member): may act on the task on behalf of
+    the assignee — useful when the assigned approver is unavailable. A
+    "Acting on behalf of {assignee}" banner sets expectation. The audit
+    trail records both the actor (`task.completed_by`) and the original
+    assignment (`task.assigned_to` / `task.assigned_group`), so the
+    surrogate stamp is fully preserved. AuditLog entries also include
+    `acting_on_behalf=True` and the assignee display label in `changes`.
+  - Approval-history rendering across detail page, PDF, bulk PDF, and
+    the approve page now shows "by {actor} (on behalf of {assignee})"
+    when the actor differs from the assignee.
+- **Approval inbox role-scope filter pills.** A new pill bar at the top
+  of the pending tab supports three exclusive filters when the user has
+  the relevant role on at least one form:
+  - **Mine** (default — current behavior): tasks the user is directly
+    assigned to.
+  - **Reviewing**: pending tasks for forms where the user is in
+    `reviewer_groups`. Click-through opens the approval page in
+    read-only mode.
+  - **Overseeing**: pending tasks for forms where the user is in
+    `admin_groups`. Click-through allows acting on behalf of the
+    assignee.
+  Pills only render for roles the user actually has, so the inbox is
+  unchanged for users with no admin/reviewer membership. Category and
+  form sub-filters preserve the active role across navigation.
+
 ## [0.74.6] - 2026-04-29
 
 ### Fixed

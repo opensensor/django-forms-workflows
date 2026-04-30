@@ -14,6 +14,28 @@
     <div class="col-lg-10 mx-auto">
         <h1 class="mb-4">Review Submission</h1>
 
+        {% if read_only %}
+        <div class="alert alert-secondary d-flex align-items-center gap-2 mb-4">
+            <i class="bi bi-eye fs-5"></i>
+            <div>
+                <strong>View only.</strong>
+                You're a reviewer on this form — you can see the submission and approval history,
+                but the decision form is hidden because you aren't authorised to action this step.
+            </div>
+        </div>
+        {% endif %}
+
+        {% if acting_on_behalf %}
+        <div class="alert alert-warning d-flex align-items-center gap-2 mb-4">
+            <i class="bi bi-person-check fs-5"></i>
+            <div>
+                <strong>Acting on behalf of {{ assignee_display|default:"the assignee" }}.</strong>
+                Your decision will be recorded as completed by you, with the original
+                assignee preserved for audit.
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Sub-workflow banner -->
         {% if sub_workflow_instance %}
         <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
@@ -220,7 +242,7 @@
             <div class="card-body">
                 {% if section.completed_by %}
                 <div class="text-muted small mb-2">
-                    by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
+                    by <strong>{{ section.completed_by }}</strong>{% if section.is_surrogate %} <span class="text-muted">(on behalf of {{ section.assigned_to }})</span>{% endif %}{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
                 </div>
                 {% endif %}
                 {% if section.comments %}
@@ -241,6 +263,7 @@
         {% endfor %}
         {% endif %}
 
+        {% if not read_only %}
         <!-- Approval Form with Step Fields -->
         <form method="post" enctype="multipart/form-data" data-loading-message="Processing your decision...">
             {% csrf_token %}
@@ -345,6 +368,7 @@
             </a>
         </div>
         {% endif %}
+        {% endif %}{# /if not read_only — branch 1 write actions #}
 
         {% else %}
         <!-- Standard Approval (No Step Fields) -->
@@ -407,7 +431,7 @@
                             </div>
                             {% if section.completed_by %}
                             <div class="text-muted small">
-                                by <strong>{{ section.completed_by }}</strong>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
+                                by <strong>{{ section.completed_by }}</strong>{% if section.is_surrogate %} <span class="text-muted">(on behalf of {{ section.assigned_to }})</span>{% endif %}{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}
                             </div>
                             {% endif %}
                             {% if section.comments %}
@@ -431,6 +455,7 @@
         </div>
         {% endif %}
 
+        {% if not read_only %}
         <!-- Approval Decision -->
         <div class="card mb-4 border-success">
             <div class="card-header bg-light">
@@ -524,6 +549,7 @@
             </a>
         </div>
         {% endif %}
+        {% endif %}{# /if not read_only — branch 2 write actions #}
 
         {% endif %}
     </div>

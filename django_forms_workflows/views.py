@@ -1300,12 +1300,53 @@ def approval_inbox(request):
     ``category_counts`` list so the UI can render a filter-pill bar showing
     how many pending tasks belong to each category.
     """
-    # Build base queryset of accessible pending tasks (no select_related yet
-    # so the values()/annotate() path stays lightweight).
-    if request.user.is_superuser:
-        base_tasks = ApprovalTask.objects.filter(status="pending")
+    # ── Role-scope filter ─────────────────────────────────────────────────
+    # ?role=mine (default)  – tasks the user is directly assigned to.
+    # ?role=reviewing       – pending tasks for forms where the user is in
+    #                         reviewer_groups (read-only on click-through).
+    # ?role=overseeing      – pending tasks for forms where the user is in
+    #                         admin_groups (can act on behalf of the assignee).
+    # Filters are exclusive (replace, not additive). Pills are only rendered
+    # for roles the user actually has memberships for.
+    user_groups = request.user.groups.all()
+    is_super = request.user.is_superuser
+
+    reviewer_form_ids = list(
+        FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+        .values_list("id", flat=True)
+        .distinct()
+    )
+    admin_form_ids = list(
+        FormDefinition.objects.filter(admin_groups__in=user_groups)
+        .values_list("id", flat=True)
+        .distinct()
+    )
+
+    available_role_filters = []
+    if reviewer_form_ids:
+        available_role_filters.append("reviewing")
+    if admin_form_ids:
+        available_role_filters.append("overseeing")
+
+    requested_role = request.GET.get("role", "").strip().lower()
+    if requested_role in available_role_filters:
+        active_role = requested_role
     else:
-        user_groups = request.user.groups.all()
+        active_role = "mine"
+
+    if is_super:
+        base_tasks = ApprovalTask.objects.filter(status="pending")
+    elif active_role == "reviewing":
+        base_tasks = ApprovalTask.objects.filter(
+            status="pending",
+            submission__form_definition_id__in=reviewer_form_ids,
+        )
+    elif active_role == "overseeing":
+        base_tasks = ApprovalTask.objects.filter(
+            status="pending",
+            submission__form_definition_id__in=admin_form_ids,
+        )
+    else:  # "mine"
         base_tasks = ApprovalTask.objects.filter(status="pending").filter(
             models.Q(assigned_to=request.user)
             | models.Q(assigned_group__in=user_groups)
@@ -1475,6 +1516,18 @@ def approval_inbox(request):
             "any_exportable": any_exportable,
             "any_pdf_exportable": any_pdf_exportable,
             "default_sort_col": default_sort_col,
+            # Role-scope filter (None or "reviewing" or "overseeing");
+            # available_role_filters is the set the user has access to so
+            # the template only renders pills the user can actually use.
+            "active_role": active_role,
+            "available_role_filters": available_role_filters,
+            # Pre-built query-string fragment so category/form pills can
+            # preserve the active role across navigation. Empty for "mine"
+            # (default), "role=reviewing" / "role=overseeing" otherwise.
+            # Templates use `?{{ role_qs }}` for the "All" pill and
+            # `?{% if role_qs %}{{ role_qs }}&{% endif %}category=...` to
+            # chain additional params.
+            "role_qs": (f"role={active_role}" if active_role != "mine" else ""),
         },
     )
 
@@ -1496,16 +1549,43 @@ def approve_submission(request, task_id):
     else:
         field_form_def = form_def
 
-    # Check permission
-    can_approve = (
-        task.assigned_to == request.user
-        or (task.assigned_group and task.assigned_group in request.user.groups.all())
-        or request.user.is_superuser
+    # ── Permission tiers ──────────────────────────────────────────────────
+    # Assignee/group-member: the originally-targeted approver. Always can act.
+    # Admin (member of form_def.admin_groups): can act on behalf of the
+    #   assignee — useful when the assignee is unavailable / unable to use
+    #   the system. The audit trail records the actor via task.completed_by
+    #   while task.assigned_to / assigned_group is preserved.
+    # Reviewer (member of form_def.reviewer_groups): read-only access — may
+    #   view the approval page (data, comments, history) but the decision
+    #   form and send-back panel are hidden, and POST is rejected.
+    is_assignee = task.assigned_to == request.user or (
+        task.assigned_group and task.assigned_group in request.user.groups.all()
     )
+    is_admin = request.user.groups.filter(id__in=form_def.admin_groups.all()).exists()
+    is_reviewer = request.user.groups.filter(
+        id__in=form_def.reviewer_groups.all()
+    ).exists()
+    can_act = is_assignee or is_admin or request.user.is_superuser
+    can_view = can_act or is_reviewer
+    read_only = can_view and not can_act
+    acting_on_behalf = can_act and not is_assignee and not request.user.is_superuser
 
-    if not can_approve:
-        messages.error(request, "You don't have permission to approve this.")
+    if not can_view:
+        messages.error(request, "You don't have permission to view this approval step.")
         return redirect("forms_workflows:approval_inbox")
+
+    if request.method == "POST" and read_only:
+        messages.error(request, "You don't have permission to action this step.")
+        return redirect("forms_workflows:approve_submission", task_id=task_id)
+
+    # Pre-compute the assignee display label for the "acting on behalf of"
+    # banner. Falls back to the group name when the task is group-assigned.
+    if task.assigned_to:
+        assignee_display = task.assigned_to.get_full_name() or task.assigned_to.username
+    elif task.assigned_group:
+        assignee_display = f"group {task.assigned_group.name}"
+    else:
+        assignee_display = ""
 
     if task.status != "pending":
         messages.warning(request, "This task has already been processed.")
@@ -1624,6 +1704,9 @@ def approve_submission(request, task_id):
                 _ctx = {
                     "task": task,
                     "submission": submission,
+                    "read_only": read_only,
+                    "acting_on_behalf": acting_on_behalf,
+                    "assignee_display": assignee_display,
                     "approval_step_form": approval_step_form,
                     "has_approval_step_fields": has_approval_step_fields,
                     "allow_edit_form_data": allow_edit_form_data,
@@ -1686,6 +1769,9 @@ def approve_submission(request, task_id):
                 _ctx = {
                     "task": task,
                     "submission": submission,
+                    "read_only": read_only,
+                    "acting_on_behalf": acting_on_behalf,
+                    "assignee_display": assignee_display,
                     "editable_form": editable_form,
                     "allow_edit_form_data": allow_edit_form_data,
                     "has_approval_step_fields": has_approval_step_fields,
@@ -1763,13 +1849,17 @@ def approve_submission(request, task_id):
             handle_approval(submission, task, workflow)
 
         # Log audit
+        audit_changes = {"task_id": task.id, "comments": comments}
+        if acting_on_behalf:
+            audit_changes["acting_on_behalf"] = True
+            audit_changes["assignee"] = assignee_display
         AuditLog.objects.create(
             action="approve" if decision == "approve" else "reject",
             object_type="FormSubmission",
             object_id=submission.id,
             user=request.user,
             user_ip=get_client_ip(request),
-            changes={"task_id": task.id, "comments": comments},
+            changes=audit_changes,
         )
 
         action_label = "approved" if decision == "approve" else "rejected"
@@ -1944,6 +2034,10 @@ def approve_submission(request, task_id):
             "hide_comment_field": bool(
                 task.workflow_stage and task.workflow_stage.hide_comment_field
             ),
+            # Permission tier flags (see approve_submission permission tiers).
+            "read_only": read_only,
+            "acting_on_behalf": acting_on_behalf,
+            "assignee_display": assignee_display,
         },
     )
 
@@ -3333,13 +3427,15 @@ def _build_approval_step_sections(submission):
     Each returned dict has the shape::
 
         {
-            "step_number":  int,
-            "step_name":    str,
-            "status":       "approved" | "rejected",
-            "group_name":   str | None,
-            "completed_by": str | None,
-            "completed_at": datetime | None,
-            "comments":     str,
+            "step_number":   int,
+            "step_name":     str,
+            "status":        "approved" | "rejected",
+            "group_name":    str | None,
+            "completed_by":  str | None,
+            "completed_at":  datetime | None,
+            "assigned_to":   str,        # display label of the targeted approver
+            "is_surrogate":  bool,       # True when actor != assignee (admin override)
+            "comments":      str,
             "fields": [{"label": str, "key": str, "value": any}, ...],
         }
 
@@ -3466,6 +3562,28 @@ def _build_approval_step_sections(submission):
                 task.completed_by.get_full_name() or task.completed_by.username
             )
 
+        # Surrogate detection: when the actor isn't the assignee (or member
+        # of the assigned group), an admin acted on behalf of the targeted
+        # approver. Surface enough info for templates to render an
+        # "on behalf of {assignee}" badge.
+        assignee_label = ""
+        if task.assigned_to:
+            assignee_label = (
+                task.assigned_to.get_full_name() or task.assigned_to.username
+            )
+        elif task.assigned_group:
+            assignee_label = f"group {task.assigned_group.name}"
+        is_surrogate = False
+        if task.completed_by_id:
+            actor_is_assignee = task.completed_by_id == task.assigned_to_id
+            actor_in_group = bool(
+                task.assigned_group_id
+                and task.completed_by.groups.filter(id=task.assigned_group_id).exists()
+            )
+            is_surrogate = bool(assignee_label) and not (
+                actor_is_assignee or actor_in_group
+            )
+
         # Section header: use the task's centralised display_label so the
         # section header matches the inbox / approve / PDF rendering exactly.
         stage_order = task.stage_number or task.step_number or 1
@@ -3482,6 +3600,8 @@ def _build_approval_step_sections(submission):
                 ),
                 "completed_by": completed_by,
                 "completed_at": task.completed_at,
+                "assigned_to": assignee_label,
+                "is_surrogate": is_surrogate,
                 "comments": task.comments or "",
                 "fields": visible_fields,
             }
@@ -4122,12 +4242,37 @@ def approval_inbox_ajax(request):
     params = request.POST if request.method == "POST" else request.GET
     category_slug = params.get("category", "").strip()
     form_slug = params.get("form", "").strip()
+    requested_role = params.get("role", "").strip().lower()
 
     # --- Base queryset ---
-    if request.user.is_superuser:
+    # Mirrors the role-scope logic in approval_inbox(): the same `?role=`
+    # query-string the page sends in its data: param drives which tasks the
+    # AJAX endpoint returns, so the table contents stay aligned with the
+    # active filter pill.
+    user_groups = request.user.groups.all()
+    if requested_role == "reviewing":
+        privileged_form_ids = (
+            FormDefinition.objects.filter(reviewer_groups__in=user_groups)
+            .values_list("id", flat=True)
+            .distinct()
+        )
+        qs = ApprovalTask.objects.filter(
+            status="pending",
+            submission__form_definition_id__in=privileged_form_ids,
+        )
+    elif requested_role == "overseeing":
+        privileged_form_ids = (
+            FormDefinition.objects.filter(admin_groups__in=user_groups)
+            .values_list("id", flat=True)
+            .distinct()
+        )
+        qs = ApprovalTask.objects.filter(
+            status="pending",
+            submission__form_definition_id__in=privileged_form_ids,
+        )
+    elif request.user.is_superuser:
         qs = ApprovalTask.objects.filter(status="pending")
     else:
-        user_groups = request.user.groups.all()
         qs = ApprovalTask.objects.filter(status="pending").filter(
             models.Q(assigned_to=request.user)
             | models.Q(assigned_group__in=user_groups)

@@ -314,7 +314,7 @@
     </span>
 </div>
 <p class="step-meta">
-    {% if section.completed_by %}<span class="step-meta-by">{{ section.completed_by }}</span>{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}{% endif %}
+    {% if section.completed_by %}<span class="step-meta-by">{{ section.completed_by }}</span>{% if section.is_surrogate %} <span class="step-meta-by">(on behalf of {{ section.assigned_to }})</span>{% endif %}{% if section.completed_at %} &middot; {{ section.completed_at|date:"N j, Y \a\t g:i a" }}{% endif %}{% endif %}
     {% if section.comments %}<br><span class="step-meta-comment">&#8220;{{ section.comments }}&#8221;</span>{% endif %}
 </p>
 {% if section.fields %}

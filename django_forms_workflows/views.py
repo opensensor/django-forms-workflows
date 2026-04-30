@@ -2092,9 +2092,18 @@ def reassign_task(request, task_id):
             )
             return redirect("forms_workflows:reassign_task", task_id=task_id)
 
+        # Clear `assigned_group` alongside setting `assigned_to`. A task
+        # ending up with BOTH set leaks the group label in any consumer
+        # that prefers the group field (the inbox AJAX serializer used to
+        # render "Online Operations" instead of "Jane Doe" after a
+        # group→individual reassignment), and breaks
+        # `notify_stage_groups` resolution (which relies on the
+        # group-fallback marker `assigned_to_id IS NULL`).
         old_assignee = task.assigned_to
+        old_group = task.assigned_group
         task.assigned_to = new_assignee
-        task.save(update_fields=["assigned_to"])
+        task.assigned_group = None
+        task.save(update_fields=["assigned_to", "assigned_group"])
 
         AuditLog.objects.create(
             action="reassign",
@@ -2104,6 +2113,7 @@ def reassign_task(request, task_id):
             user_ip=get_client_ip(request),
             changes={
                 "old_assignee": old_assignee.username if old_assignee else None,
+                "old_group": old_group.name if old_group else None,
                 "new_assignee": new_assignee.username,
                 "submission_id": task.submission_id,
             },
@@ -4372,14 +4382,15 @@ def approval_inbox_ajax(request):
             "form": escape(sub.form_definition.name),
             "submitter": escape(_submitter_label(sub)),
             "step_num": escape(stage_name),
+            # Prefer the individual when both are set. The reassign view
+            # (post-fix) always clears `assigned_group` when setting
+            # `assigned_to`, but defending here covers any task that was
+            # reassigned before the fix landed and still has both fields
+            # populated — the live owner is `assigned_to`.
             "assigned": escape(
-                task.assigned_group.name
-                if task.assigned_group
-                else (
-                    task.assigned_to.get_full_name() or task.assigned_to.username
-                    if task.assigned_to
-                    else "—"
-                )
+                (task.assigned_to.get_full_name() or task.assigned_to.username)
+                if task.assigned_to
+                else (task.assigned_group.name if task.assigned_group else "—")
             ),
             "submitted_at": sub.submitted_at.strftime("%Y-%m-%d %H:%M")
             if sub.submitted_at

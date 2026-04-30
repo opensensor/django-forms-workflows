@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.9] - 2026-04-30
+
+### Fixed
+- **`notify_stage_groups` no longer leaks recipients from configured-
+  but-never-fired stages, and no longer double-notifies fallback groups
+  when dynamic assignment succeeded.** Two related scoping gaps in
+  `_collect_notification_recipients`:
+  - For workflow-level events (`workflow_approved`, `workflow_denied`,
+    `form_withdrawn`) with no triggering task, the resolver iterated
+    every `WorkflowStage` on the workflow and pulled groups from
+    config — including stages whose conditional trigger never matched
+    or that were skipped via send-back. Now scopes to stages that
+    actually produced an `ApprovalTask` on this submission.
+  - For any stage that had dynamic assignment succeed (task
+    `assigned_to_id` set), the fallback group was *also* being paged on
+    top of the assignee. Now only stages whose actual task took the
+    pure group path (`assigned_group_id` set, `assigned_to_id` NULL)
+    contribute group recipients. The pre-existing `_skip_stage_groups`
+    early-out for the per-task `approval_request` path is preserved.
+  - As a parity fix with the engine's role filter shipped in 0.74.6,
+    `StageApprovalGroup` lookups for notifications now filter by
+    `role="approval"` — validation/reassignment-role rows must not
+    spawn tasks AND must not receive notifications.
+
+  Adds three regression tests covering each scenario plus an update to
+  the existing `test_triggering_stage_scopes_groups` to set
+  `assigned_group` on its test task (matching realistic engine output).
+
 ## [0.74.8] - 2026-04-30
 
 ### Fixed

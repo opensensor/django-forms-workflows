@@ -381,12 +381,17 @@ def test_triggering_stage_scopes_groups(
         form_data={},
         status="pending_approval",
     )
+    # Engine fix in 0.74.9: notify_stage_groups now resolves only against
+    # stages whose actual task took the group-fallback path
+    # (assigned_group set, assigned_to NULL). Reflect that here so the
+    # test matches realistic _create_stage_tasks output.
     task1 = ApprovalTask.objects.create(
         submission=submission,
         step_name="Stage 1",
         status="pending",
         workflow_stage=stage1,
         stage_number=1,
+        assigned_group=approval_group,
     )
 
     with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
@@ -1330,3 +1335,161 @@ class TestNotificationRuleStageScoping:
         recipients = [r for m in mailoutbox for r in m.to]
         assert "should-fire@example.com" in recipients
         assert "should-not-fire@example.com" not in recipients
+
+
+# ── notify_stage_groups: only stages that actually generated a group task ──
+
+
+class TestNotifyStageGroupsRespectsActualTaskState:
+    """Two real-world scoping rules for ``notify_stage_groups`` resolution
+    on workflow-level events (``workflow_approved`` / ``workflow_denied`` /
+    ``form_withdrawn``):
+
+    1. Only stages that actually generated an ApprovalTask should
+       contribute. Stages configured but never fired (conditional triggers
+       that never matched, stages skipped via send-back, etc.) leak
+       the wrong recipients if pulled from config alone.
+
+    2. Within those, only stages whose task took the GROUP-FALLBACK path
+       (``assigned_group_id`` set, ``assigned_to_id`` NULL) should
+       contribute. If dynamic assignment succeeded on a stage, the
+       assignee was already paged via stage-4 ``notify_stage_assignees``
+       — paging the fallback group on top of that is double-notification.
+    """
+
+    @pytest.fixture
+    def setup(self, form_definition, user, approver_user, approval_group):
+        from django.contrib.auth.models import Group, User
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        # Stage 1: dynamic-assignment stage. In reality the engine would
+        # create a task with assigned_to set when the form_field resolves.
+        s1 = WorkflowStage.objects.create(
+            workflow=wf,
+            name="Dynamic Stage",
+            order=1,
+            approval_logic="all",
+            assignee_form_field="reviewer_email",
+            assignee_lookup_type="email",
+        )
+        s1_fallback_group = Group.objects.create(name="Dynamic-Stage Fallback")
+        StageApprovalGroup.objects.create(
+            stage=s1, group=s1_fallback_group, role="approval"
+        )
+
+        # Stage 2: pure group stage. A group task always lands here.
+        s2 = WorkflowStage.objects.create(
+            workflow=wf, name="Group Stage", order=2, approval_logic="all"
+        )
+        StageApprovalGroup.objects.create(
+            stage=s2, group=approval_group, role="approval"
+        )
+
+        # Stage 3: configured but its task never fires (e.g. conditional
+        # trigger doesn't match). We deliberately don't create a task for
+        # this stage to simulate "never generated".
+        s3 = WorkflowStage.objects.create(
+            workflow=wf, name="Never Fires", order=3, approval_logic="all"
+        )
+        s3_group = Group.objects.create(name="Never-Fires Group")
+        StageApprovalGroup.objects.create(stage=s3, group=s3_group, role="approval")
+
+        # Users
+        u_dyn = User.objects.create_user("dyn_user", email="dyn@example.com")
+        u_fallback = User.objects.create_user(
+            "fallback_user", email="fallback@example.com"
+        )
+        u_fallback.groups.add(s1_fallback_group)
+        u_group = User.objects.create_user("group_user", email="group@example.com")
+        u_group.groups.add(approval_group)
+        u_skipped = User.objects.create_user(
+            "skipped_user", email="skipped@example.com"
+        )
+        u_skipped.groups.add(s3_group)
+
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+
+        # Stage 1 task — dynamic assignment SUCCEEDED → assigned_to set,
+        # assigned_group is None.
+        ApprovalTask.objects.create(
+            submission=submission,
+            assigned_to=u_dyn,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Dynamic Stage",
+            status="approved",
+            decision="approve",
+        )
+
+        # Stage 2 task — group-fallback path. assigned_to NULL,
+        # assigned_group set.
+        ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            workflow_stage=s2,
+            stage_number=2,
+            step_name="Group Stage",
+            status="approved",
+            decision="approve",
+        )
+
+        # NOTE: no task for s3 — it never generated.
+
+        # Workflow-level rule: notify_stage_groups on workflow_approved.
+        NotificationRule.objects.create(
+            workflow=wf,
+            stage=None,
+            event="workflow_approved",
+            notify_stage_groups=True,
+        )
+        return {
+            "submission": submission,
+            "stages": (s1, s2, s3),
+            "users": {
+                "dyn": u_dyn,
+                "fallback": u_fallback,  # in s1's fallback group
+                "group": u_group,  # in s2's approval group (group-fallback ran)
+                "skipped": u_skipped,  # in s3's group (s3 never fired)
+            },
+        }
+
+    def test_does_not_notify_fallback_group_when_dynamic_assignment_succeeded(
+        self, setup, mailoutbox
+    ):
+        """Stage 1's task was dynamically assigned. Its fallback group
+        must NOT be notified — the assignee already received the email
+        via the stage-4 path (or, in this rule which only sets
+        notify_stage_groups, was deliberately not paged at all)."""
+        send_notification_rules(setup["submission"].id, "workflow_approved")
+        all_to = [r for m in mailoutbox for r in m.to]
+        assert "fallback@example.com" not in all_to, (
+            "fallback group must not be paged for a stage where dynamic "
+            f"assignment took over; got recipients={all_to}"
+        )
+
+    def test_notifies_group_when_group_fallback_path_was_used(self, setup, mailoutbox):
+        """Stage 2's task was group-assigned (no dynamic on this stage).
+        The group's members SHOULD be notified."""
+        send_notification_rules(setup["submission"].id, "workflow_approved")
+        all_to = [r for m in mailoutbox for r in m.to]
+        assert "group@example.com" in all_to
+
+    def test_does_not_notify_groups_for_stages_that_never_generated_a_task(
+        self, setup, mailoutbox
+    ):
+        """Stage 3 has groups configured but never produced a task on
+        this submission (e.g. conditional trigger didn't match). Its
+        group must NOT be paged just because of static config."""
+        send_notification_rules(setup["submission"].id, "workflow_approved")
+        all_to = [r for m in mailoutbox for r in m.to]
+        assert "skipped@example.com" not in all_to, (
+            "stage with no actual task must not contribute recipients "
+            f"from config alone; got recipients={all_to}"
+        )

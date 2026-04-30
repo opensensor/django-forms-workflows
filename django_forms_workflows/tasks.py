@@ -1158,10 +1158,30 @@ def _collect_notification_recipients(
             _add(email)
 
     # 5. Stage approval groups (NotificationRule only)
-    #    When the task already has a specific individual assigned
-    #    (assigned_to), skip the group notification — the individual was
-    #    resolved via assignee_form_field so the fallback group should not
-    #    also be notified, regardless of use_triggering_stage.
+    #
+    # Two scoping rules apply, both to avoid notifying the wrong people:
+    #
+    # (a) Only consider stages that ACTUALLY GENERATED an ApprovalTask on
+    #     this submission. Looking at WorkflowStage config (the prior
+    #     behaviour) leaks recipients from configured-but-never-fired
+    #     stages — e.g. a conditional stage whose trigger never matched,
+    #     or stages skipped via a send-back. The submitter doesn't expect
+    #     "approver-of-the-stage-that-didn't-run" to receive the email.
+    #
+    # (b) Only consider stages whose actual task took the GROUP-FALLBACK
+    #     path (assigned_group_id IS NOT NULL AND assigned_to_id IS NULL).
+    #     If the stage was configured for dynamic assignment AND the
+    #     resolution succeeded, the assignee was already notified via
+    #     stage 4 (notify_stage_assignees); paging the fallback group on
+    #     top of that double-notifies (and confuses the group, who never
+    #     held the task).
+    #
+    # The pre-existing `_skip_stage_groups` early-out (when the triggering
+    # task has assigned_to) is preserved for the approval_request / use_
+    # triggering_stage path — it's still the right behaviour there. For
+    # workflow-level events (workflow_approved/denied/form_withdrawn) no
+    # triggering task is passed, so that gate is false and the per-stage
+    # filter below does the work.
     _skip_stage_groups = (
         task is not None and getattr(task, "assigned_to_id", None) is not None
     )
@@ -1172,34 +1192,52 @@ def _collect_notification_recipients(
     ):
         from django.contrib.auth import get_user_model
 
-        user_model = get_user_model()
-        eff_stage = _effective_stage_id()
-        if eff_stage:
-            stage_ids = [eff_stage]
-        else:
-            # All stages in this workflow
-            from .models import WorkflowStage
-
-            stage_ids = list(
-                WorkflowStage.objects.filter(workflow_id=notif.workflow_id).values_list(
-                    "id", flat=True
-                )
-            )
         from .models import StageApprovalGroup
 
-        group_ids = list(
-            StageApprovalGroup.objects.filter(stage_id__in=stage_ids).values_list(
-                "group_id", flat=True
-            )
-        )
-        if group_ids:
-            for email in (
-                user_model.objects.filter(groups__id__in=group_ids)
-                .exclude(email="")
-                .values_list("email", flat=True)
+        user_model = get_user_model()
+        eff_stage = _effective_stage_id()
+
+        # Step 1 — candidate stages: explicit/triggering stage if set,
+        # else every stage that actually produced a task on this submission.
+        if eff_stage:
+            candidate_stage_ids = [eff_stage]
+        else:
+            candidate_stage_ids = list(
+                submission.approval_tasks.filter(workflow_stage_id__isnull=False)
+                .values_list("workflow_stage_id", flat=True)
                 .distinct()
-            ):
-                _add(email)
+            )
+
+        # Step 2 — narrow to stages whose task took the group-fallback
+        # path on this submission.
+        effective_stage_ids = list(
+            submission.approval_tasks.filter(
+                workflow_stage_id__in=candidate_stage_ids,
+                assigned_group_id__isnull=False,
+                assigned_to_id__isnull=True,
+            )
+            .values_list("workflow_stage_id", flat=True)
+            .distinct()
+        )
+
+        if effective_stage_ids:
+            # Step 3 — only role="approval" rows on those stages count.
+            # Validation/reassignment-role groups must not spawn tasks
+            # (engine fix in 0.74.6) and must not receive notifications
+            # (parity with that fix).
+            group_ids = list(
+                StageApprovalGroup.objects.filter(
+                    stage_id__in=effective_stage_ids, role="approval"
+                ).values_list("group_id", flat=True)
+            )
+            if group_ids:
+                for email in (
+                    user_model.objects.filter(groups__id__in=group_ids)
+                    .exclude(email="")
+                    .values_list("email", flat=True)
+                    .distinct()
+                ):
+                    _add(email)
 
     # 6. Explicit notify_groups M2M (NotificationRule only)
     if hasattr(notif, "notify_groups"):

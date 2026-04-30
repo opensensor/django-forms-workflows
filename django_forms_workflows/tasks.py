@@ -1352,6 +1352,29 @@ def send_notification_rules(
     else:
         rules_qs = rules_qs.filter(workflow__form_definition=submission.form_definition)
 
+    # Stage-scope filter: a rule with an explicit ``stage`` FK is asking to
+    # be scoped to that specific stage. Without this filter, all rules of
+    # the same event on the same workflow fire on every dispatch — so a
+    # ``stage_decision`` rule attached to "Program Director Approval"
+    # would also fire when "Instructor Approval" completes (and vice
+    # versa), producing duplicate emails. ``use_triggering_stage=True``
+    # rules handle scoping at recipient resolution time and must remain
+    # candidates here regardless of which task triggered the event.
+    from django.db.models import Q
+
+    if task and getattr(task, "workflow_stage_id", None):
+        triggering_stage_id = task.workflow_stage_id
+        rules_qs = rules_qs.filter(
+            Q(stage__isnull=True)  # workflow-level rule
+            | Q(stage_id=triggering_stage_id)  # rule scoped to triggering stage
+            | Q(use_triggering_stage=True)  # dynamic-stage rule
+        )
+    else:
+        # No task context — only workflow-level (stage IS NULL) rules and
+        # dynamic-stage rules can fire safely. Stage-scoped rules need a
+        # task to determine relevance.
+        rules_qs = rules_qs.filter(Q(stage__isnull=True) | Q(use_triggering_stage=True))
+
     rules = rules_qs
 
     default_subject_tpl = _EVENT_DEFAULT_SUBJECTS.get(

@@ -1143,3 +1143,190 @@ class TestSendNotificationRulesIdempotency:
         send_notification_rules(submission.id, "submission_received")
         assert len(mailoutbox) == 1
         assert mailoutbox[0].to == [user.email]
+
+
+# ── Stage scoping (rule.stage FK must filter dispatch) ─────────────────────
+
+
+class TestNotificationRuleStageScoping:
+    """A NotificationRule with an explicit ``stage`` FK must only fire when
+    the triggering task is in that stage. Without this filter, two
+    ``stage_decision`` rules — one scoped to "Instructor Approval" and one
+    scoped to "Program Director Approval" — would both fire when EITHER
+    stage completed, producing duplicate emails to the same recipients.
+
+    Workflow-level rules (``stage IS NULL``) and dynamic-stage rules
+    (``use_triggering_stage=True``) remain candidates regardless of the
+    triggering stage.
+
+    Regression: pre-fix, ``send_notification_rules`` only filtered by
+    workflow_id, so all stage-scoped rules of the matching event fired
+    together.
+    """
+
+    def _make_two_stage_workflow(self, form_definition, approval_group):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        s1 = WorkflowStage.objects.create(
+            workflow=wf, name="Instructor Approval", order=1, approval_logic="all"
+        )
+        s2 = WorkflowStage.objects.create(
+            workflow=wf, name="Program Director Approval", order=2, approval_logic="all"
+        )
+        s1.approval_groups.add(approval_group)
+        s2.approval_groups.add(approval_group)
+        return wf, s1, s2
+
+    def test_stage_scoped_rule_only_fires_for_its_stage(
+        self, form_definition, user, approver_user, approval_group, mailoutbox
+    ):
+        wf, s1, s2 = self._make_two_stage_workflow(form_definition, approval_group)
+        # Two stage_decision rules, each scoped to a different stage.
+        # Distinct static_emails so we can identify which rule fired.
+        NotificationRule.objects.create(
+            workflow=wf,
+            stage=s1,
+            event="stage_decision",
+            static_emails="instructor-stage@example.com",
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            stage=s2,
+            event="stage_decision",
+            static_emails="director-stage@example.com",
+        )
+
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="pending_approval",
+        )
+        # Triggering task is in stage 1 (Instructor Approval).
+        triggering_task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_to=approver_user,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Instructor Approval",
+            status="approved",
+            decision="approve",
+        )
+
+        send_notification_rules(
+            submission.id, "stage_decision", task_id=triggering_task.id
+        )
+
+        recipients = [r for m in mailoutbox for r in m.to]
+        assert "instructor-stage@example.com" in recipients
+        assert "director-stage@example.com" not in recipients, (
+            "stage 2 rule must not fire when stage 1 triggered the event"
+        )
+
+    def test_workflow_level_rule_still_fires(
+        self, form_definition, user, approver_user, approval_group, mailoutbox
+    ):
+        """A rule with ``stage IS NULL`` is workflow-level and must fire on
+        every stage_decision event regardless of which stage triggered."""
+        wf, s1, _ = self._make_two_stage_workflow(form_definition, approval_group)
+        NotificationRule.objects.create(
+            workflow=wf,
+            stage=None,  # workflow-level
+            event="stage_decision",
+            static_emails="any-stage@example.com",
+        )
+
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="pending_approval",
+        )
+        triggering_task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_to=approver_user,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Instructor Approval",
+            status="approved",
+            decision="approve",
+        )
+
+        send_notification_rules(
+            submission.id, "stage_decision", task_id=triggering_task.id
+        )
+
+        recipients = [r for m in mailoutbox for r in m.to]
+        assert "any-stage@example.com" in recipients
+
+    def test_use_triggering_stage_rule_still_fires_regardless_of_stage_fk(
+        self, form_definition, user, approver_user, approval_group, mailoutbox
+    ):
+        """``use_triggering_stage=True`` rules scope dynamically at recipient
+        resolution time, so they must remain candidates regardless of the
+        triggering task's stage."""
+        wf, s1, _ = self._make_two_stage_workflow(form_definition, approval_group)
+        NotificationRule.objects.create(
+            workflow=wf,
+            stage=None,
+            use_triggering_stage=True,
+            event="approval_request",
+            notify_stage_groups=True,
+        )
+
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="pending_approval",
+        )
+        approver_user.groups.add(approval_group)
+        triggering_task = ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Instructor Approval",
+            status="pending",
+        )
+
+        send_notification_rules(
+            submission.id, "approval_request", task_id=triggering_task.id
+        )
+
+        recipients = [r for m in mailoutbox for r in m.to]
+        assert approver_user.email in recipients
+
+    def test_stage_scoped_rule_skipped_when_no_task_context(
+        self, form_definition, user, approver_user, approval_group, mailoutbox
+    ):
+        """No task_id passed → stage-scoped rules can't be relevance-tested
+        and must be skipped. Workflow-level rules still fire."""
+        wf, s1, _ = self._make_two_stage_workflow(form_definition, approval_group)
+        NotificationRule.objects.create(
+            workflow=wf,
+            stage=s1,
+            event="workflow_approved",
+            static_emails="should-not-fire@example.com",
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            stage=None,
+            event="workflow_approved",
+            static_emails="should-fire@example.com",
+        )
+
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+
+        # workflow_approved is dispatched without a task_id.
+        send_notification_rules(submission.id, "workflow_approved")
+
+        recipients = [r for m in mailoutbox for r in m.to]
+        assert "should-fire@example.com" in recipients
+        assert "should-not-fire@example.com" not in recipients

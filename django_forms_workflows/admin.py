@@ -2901,12 +2901,71 @@ class NotificationLogAdmin(admin.ModelAdmin):
         "created_at",
     )
     date_hierarchy = "created_at"
+    actions = ["retry_failed_notifications"]
 
     def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
         return False
+
+    @admin.action(description="Retry selected FAILED notifications")
+    def retry_failed_notifications(self, request, queryset):
+        """Re-dispatch ``send_notification_rules`` for selected failed entries.
+
+        Re-fires once per unique ``(submission_id, notification_type)`` pair
+        (rather than once per recipient row) — the idempotency guard inside
+        ``send_notification_rules`` already filters out recipients already
+        logged with ``status='sent'`` for this submission+event, so previously
+        successful sends are never re-delivered. Only ``status='failed'``
+        rows trigger a retry; other selected rows are silently skipped.
+        """
+        from django.db.models import Q
+
+        from .tasks import send_notification_rules
+
+        failed_pairs = set(
+            queryset.filter(status="failed")
+            .exclude(submission_id__isnull=True)
+            .exclude(notification_type="")
+            .values_list("submission_id", "notification_type")
+        )
+
+        queued = 0
+        for submission_id, event in failed_pairs:
+            try:
+                send_notification_rules.delay(submission_id, event)
+                queued += 1
+            except Exception:
+                # Broker unavailable — fall back to synchronous so the admin
+                # still gets feedback rather than a silent no-op.
+                try:
+                    send_notification_rules(submission_id, event)
+                    queued += 1
+                except Exception as exc:  # pragma: no cover
+                    logger.exception(
+                        "retry_failed_notifications: synchronous dispatch "
+                        "failed for submission %s event %s: %s",
+                        submission_id,
+                        event,
+                        exc,
+                    )
+
+        skipped = queryset.exclude(status="failed").count()
+        not_retryable = (
+            queryset.filter(status="failed")
+            .filter(Q(submission_id__isnull=True) | Q(notification_type=""))
+            .count()
+        )
+
+        parts = [f"Re-queued {queued} notification dispatch(es)"]
+        if skipped:
+            parts.append(f"skipped {skipped} non-failed row(s)")
+        if not_retryable:
+            parts.append(
+                f"could not retry {not_retryable} row(s) missing submission/event"
+            )
+        self.message_user(request, "; ".join(parts) + ".")
 
 
 @admin.register(APIToken)

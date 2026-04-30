@@ -23,6 +23,8 @@ Requirements:
 import base64
 import json
 import logging
+import random
+import time
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -31,6 +33,47 @@ from django.conf import settings
 from django.core.mail.backends.base import BaseEmailBackend
 
 logger = logging.getLogger(__name__)
+
+
+# ── Retry policy for transient Gmail API rate limits ──────────────────────
+# Gmail's per-user-per-second quota (250 units; messages.send = 100 units →
+# ~2 sends/sec/user) is easily exceeded by a digest burst or a parallel
+# Celery worker fan-out. Transient breaches return HTTP 429 or HTTP 403 with
+# reason rateLimitExceeded / userRateLimitExceeded — both are safe to retry.
+# dailyLimitExceeded is intentionally NOT retried: the 2,000-msg/day cap on
+# a delegated Workspace user does not reset until midnight Pacific, so
+# burning Celery worker time on retries is pointless. Permission and
+# malformed-payload errors are also non-retryable.
+_RETRYABLE_GMAIL_REASONS = frozenset(
+    {"rateLimitExceeded", "userRateLimitExceeded", "backendError"}
+)
+_MAX_RETRIES = 5
+_BACKOFF_BASE_SECONDS = 1.0
+_BACKOFF_CAP_SECONDS = 60.0
+
+
+def _is_retryable_gmail_error(exc) -> bool:
+    """True iff *exc* is a Gmail HttpError we should retry with backoff."""
+    try:
+        from googleapiclient.errors import HttpError
+    except ImportError:
+        return False
+    if not isinstance(exc, HttpError):
+        return False
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if status == 429:
+        return True
+    if status == 403:
+        # 403 is overloaded — only retry rate/quota cases, not auth errors
+        # or the daily cap. The reason lives in error.errors[].reason.
+        try:
+            payload = json.loads(exc.content.decode("utf-8"))
+            for err in payload.get("error", {}).get("errors", []):
+                if err.get("reason") in _RETRYABLE_GMAIL_REASONS:
+                    return True
+        except (ValueError, AttributeError, KeyError, TypeError):
+            pass
+    return False
 
 
 def get_gmail_service(config):
@@ -121,17 +164,46 @@ class GmailAPIBackend(BaseEmailBackend):
         return sent_count
 
     def _send(self, email_message):
-        """Send a single EmailMessage via Gmail API."""
-        # Convert Django EmailMessage to MIME message
-        mime_message = self._build_mime_message(email_message)
+        """Send a single EmailMessage via Gmail API.
 
-        # Encode the message
+        Retries transient rate-limit errors (HTTP 429, HTTP 403 with reason
+        rateLimitExceeded / userRateLimitExceeded, plus backendError) with
+        exponential backoff plus jitter, up to ``_MAX_RETRIES`` attempts.
+        Non-retryable errors propagate immediately so the caller can write
+        a NotificationLog ``failed`` row.
+        """
+        mime_message = self._build_mime_message(email_message)
         raw_message = base64.urlsafe_b64encode(mime_message.as_bytes()).decode("utf-8")
 
-        # Send via Gmail API
-        self.service.users().messages().send(
-            userId="me", body={"raw": raw_message}
-        ).execute()
+        attempt = 0
+        while True:
+            try:
+                self.service.users().messages().send(
+                    userId="me", body={"raw": raw_message}
+                ).execute()
+                break
+            except Exception as exc:
+                if _is_retryable_gmail_error(exc) and attempt < _MAX_RETRIES:
+                    # Exponential backoff with jitter — multiple workers
+                    # often see the same rate-limit response in lockstep,
+                    # so jitter prevents a thundering-herd retry burst.
+                    delay = min(
+                        _BACKOFF_BASE_SECONDS * (2**attempt),
+                        _BACKOFF_CAP_SECONDS,
+                    )
+                    delay *= random.uniform(0.75, 1.25)
+                    logger.warning(
+                        "Gmail API rate-limited (attempt %d/%d); sleeping "
+                        "%.1fs before retry: %s",
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        delay,
+                        exc,
+                    )
+                    time.sleep(delay)
+                    attempt += 1
+                    continue
+                raise
 
         logger.info(
             f"Email sent via Gmail API to {', '.join(email_message.to)}: "

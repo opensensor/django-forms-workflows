@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.8] - 2026-04-30
+
+### Fixed
+- **Stage-scoped notification rules now only fire for their stage.**
+  A `NotificationRule` with a `stage` FK was firing on every event for
+  the matching workflow regardless of which stage actually triggered it
+  — so a `stage_decision` rule attached to "Program Director Approval"
+  also fired when "Instructor Approval" completed (and vice versa),
+  producing duplicate emails to the same recipients. `send_notification_rules`
+  now filters candidates by `Q(stage__isnull=True) | Q(stage_id=triggering)
+  | Q(use_triggering_stage=True)` so workflow-level and dynamic-stage
+  rules behave unchanged while explicitly stage-scoped rules respect
+  their FK. When no `task_id` is passed (workflow-level events like
+  `workflow_approved`/`workflow_denied`), stage-scoped rules are
+  skipped because they can't be relevance-tested. Adds four regression
+  tests covering each branch.
+- **Gmail API backend retries transient rate-limit errors.** The
+  backend's `_send` previously made a single API call with no retry
+  logic, so any transient burst over Gmail's per-user quota
+  (250 quota-units/sec/user, ~2 sends/sec/user since `messages.send`
+  costs 100 units) propagated `HttpError` up to Celery as an unhandled
+  exception. Now wraps the call in an exponential-backoff loop with
+  jitter, retrying up to 5 times on HTTP 429 and HTTP 403 with reason
+  `rateLimitExceeded` / `userRateLimitExceeded` / `backendError`.
+  `dailyLimitExceeded` (the 2,000-msg/day-per-user Workspace cap) and
+  permission errors are intentionally not retried — daily caps don't
+  reset until midnight Pacific and burning Celery worker time on them
+  is pointless. Tests are skipped automatically when
+  `googleapiclient` isn't installed (it's an optional dep).
+
+### Added
+- **NotificationLog admin: bulk "Retry failed" action.** Select one or
+  more `failed`-status entries from the admin list and re-dispatch
+  `send_notification_rules` for the unique `(submission, event)` pairs.
+  The library's existing idempotency guard prevents previously-
+  successful sends from being re-delivered, so the action is safe to
+  run on a wide selection. Falls back to synchronous dispatch if the
+  Celery broker is unreachable so admins always get feedback. Non-
+  failed rows in the selection are silently skipped.
+
 ## [0.74.7] - 2026-04-29
 
 ### Added

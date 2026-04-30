@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.10] - 2026-04-30
+
+### Added
+- **Custom NotificationRule body templates can now render reviewer
+  comments.** Two new pieces of context are available to any body
+  string (in addition to the existing `submission`, `form_data`,
+  `submission_url`, `approval_url`, `hide_approval_history`):
+  - `task` — the finalizing/rejecting task. For `workflow_approved`
+    and `workflow_denied` it's auto-detected when the caller didn't
+    pass a `task_id`, so `{{ task.comments }}` and
+    `{{ task.workflow_stage.name }}` work in custom bodies for those
+    events. The admin "Retry failed" action benefits from the same
+    auto-detection.
+  - `public_comments` — denormalized list of dicts with
+    `{stage_name, status, actor, comment}` for every approved/rejected
+    task with a non-empty comment, ordered by workflow flow
+    (stage → step → completed_at). Lets a custom body do
+    `{% for c in public_comments %}{{ c.stage_name }}:
+    {{ c.comment }}{% endfor %}` without iterating the model.
+    Pending tasks and tasks without comments are excluded.
+
+### Fixed
+- **`reassign_task` clears `assigned_group` when switching to an
+  individual.** The view set `task.assigned_to = new_assignee` and
+  saved only that field, leaving `task.assigned_group` populated from
+  the original group-fallback assignment. Two consequences:
+  the inbox AJAX serializer mis-attributed reassigned tasks to the
+  group (visible "Online Operations" instead of "Jane Doe" after
+  reassignment), and `notify_stage_groups` resolution (after the
+  0.74.9 fix) misclassified the stage as both dynamic and group at
+  once. Fix clears `assigned_group` and records the cleared value in
+  the AuditLog `changes`. Defensive change in the inbox serializer:
+  prefer `assigned_to` over `assigned_group` when both are set, so
+  any task already reassigned before the fix renders correctly.
+- **`notify_stage_groups` over-aggressive early-out removed.** A prior
+  guard skipped ALL group resolution when the triggering task had
+  `assigned_to` set. With the new auto-detection of the finalizing
+  task on `workflow_approved`/`workflow_denied` events, this could
+  silently swallow group notifications for OTHER stages on the
+  workflow. The per-stage filter shipped in 0.74.9
+  (`assigned_group_id IS NOT NULL AND assigned_to_id IS NULL`) is
+  strictly more correct and supersedes the early-out for both
+  per-task and workflow-level cases.
+
 ## [0.74.9] - 2026-04-30
 
 ### Fixed

@@ -1493,3 +1493,244 @@ class TestNotifyStageGroupsRespectsActualTaskState:
             "stage with no actual task must not contribute recipients "
             f"from config alone; got recipients={all_to}"
         )
+
+
+# ── Custom body templates: public_comments + auto-detected task ────────
+
+
+class TestCustomBodyTemplateContext:
+    """A NotificationRule with a non-empty ``body_template`` renders that
+    string as a Django template against the same context the file
+    template gets. Two extras shipped together:
+
+    1. ``public_comments`` — a list-of-dicts of every approved/rejected
+       task with a non-empty comment, ordered by workflow flow. Lets
+       custom bodies do ``{% for c in public_comments %}...{% endfor %}``
+       without iterating the model.
+    2. For ``workflow_approved`` / ``workflow_denied`` the task is
+       auto-detected when no ``task_id`` is passed — so
+       ``{{ task.comments }}`` works in custom bodies for those events
+       without the engine having to thread the task through, and the
+       admin "Retry failed" action also gets the right task.
+    """
+
+    @pytest.fixture
+    def setup(self, form_definition, user, approver_user, approval_group):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        s1 = WorkflowStage.objects.create(
+            workflow=wf, name="Instructor Approval", order=1, approval_logic="all"
+        )
+        s2 = WorkflowStage.objects.create(
+            workflow=wf, name="Director Approval", order=2, approval_logic="all"
+        )
+        StageApprovalGroup.objects.create(stage=s1, group=approval_group)
+        StageApprovalGroup.objects.create(stage=s2, group=approval_group)
+
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="rejected",
+        )
+        from django.utils import timezone
+
+        # Stage 1 approved with a comment
+        ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Instructor Approval",
+            status="approved",
+            decision="approve",
+            comments="Looks reasonable to me",
+            completed_by=approver_user,
+            completed_at=timezone.now(),
+        )
+        # Stage 2 rejected with a comment (the rejecting task)
+        ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            workflow_stage=s2,
+            stage_number=2,
+            step_name="Director Approval",
+            status="rejected",
+            decision="reject",
+            comments="Need a stricter date range",
+            completed_by=approver_user,
+            completed_at=timezone.now(),
+        )
+        return submission
+
+    def test_custom_body_renders_public_comments_loop(self, setup, mailoutbox):
+        wf = setup.form_definition.workflows.first()
+        body = (
+            "<p>Hi,</p>"
+            "{% for c in public_comments %}"
+            "<p>{{ c.stage_name }} ({{ c.status }}): &ldquo;{{ c.comment }}&rdquo;</p>"
+            "{% endfor %}"
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="workflow_denied",
+            notify_submitter=True,
+            body_template=body,
+        )
+
+        send_notification_rules(setup.id, "workflow_denied")
+
+        assert len(mailoutbox) == 1
+        html = mailoutbox[0].alternatives[0][0]
+        # Both stages' comments rendered, in workflow order.
+        assert "Instructor Approval (approved)" in html
+        assert "Looks reasonable to me" in html
+        assert "Director Approval (rejected)" in html
+        assert "Need a stricter date range" in html
+        # Workflow order: stage 1 should appear before stage 2 in the body.
+        assert html.index("Instructor Approval") < html.index("Director Approval")
+
+    def test_custom_body_addresses_finalizing_task_when_no_task_id_passed(
+        self, setup, mailoutbox
+    ):
+        """For workflow_denied with no explicit task_id, the rejecting task
+        is auto-detected so ``{{ task.comments }}`` and
+        ``{{ task.workflow_stage.name }}`` resolve correctly."""
+        wf = setup.form_definition.workflows.first()
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="workflow_denied",
+            notify_submitter=True,
+            body_template=(
+                "<p>{{ task.workflow_stage.name }} rejected: {{ task.comments }}</p>"
+            ),
+        )
+
+        send_notification_rules(setup.id, "workflow_denied")
+
+        assert len(mailoutbox) == 1
+        html = mailoutbox[0].alternatives[0][0]
+        assert "Director Approval rejected: Need a stricter date range" in html
+
+    def test_custom_body_addresses_finalizing_task_for_workflow_approved(
+        self, form_definition, user, approver_user, approval_group, mailoutbox
+    ):
+        """Symmetric auto-detect for workflow_approved finds the latest
+        approved task."""
+        from django.utils import timezone
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        s1 = WorkflowStage.objects.create(
+            workflow=wf, name="Final Approval", order=1, approval_logic="all"
+        )
+        StageApprovalGroup.objects.create(stage=s1, group=approval_group)
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Final Approval",
+            status="approved",
+            decision="approve",
+            comments="Ship it",
+            completed_by=approver_user,
+            completed_at=timezone.now(),
+        )
+
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="workflow_approved",
+            notify_submitter=True,
+            body_template=(
+                "<p>{{ task.workflow_stage.name }} approved: {{ task.comments }}</p>"
+            ),
+        )
+
+        send_notification_rules(sub.id, "workflow_approved")
+
+        assert len(mailoutbox) == 1
+        html = mailoutbox[0].alternatives[0][0]
+        assert "Final Approval approved: Ship it" in html
+
+    def test_public_comments_excludes_pending_and_empty_comments(
+        self, form_definition, user, approver_user, approval_group, mailoutbox
+    ):
+        """``public_comments`` should only include terminal-status tasks
+        with a non-empty comment — pending tasks and tasks where the
+        approver didn't write anything must not appear."""
+        from django.utils import timezone
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        s1 = WorkflowStage.objects.create(
+            workflow=wf, name="Stage 1", order=1, approval_logic="all"
+        )
+        StageApprovalGroup.objects.create(stage=s1, group=approval_group)
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        # Approved with comment — should appear
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Stage 1",
+            status="approved",
+            decision="approve",
+            comments="Real comment",
+            completed_by=approver_user,
+            completed_at=timezone.now(),
+        )
+        # Approved without comment — should NOT appear
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=2,
+            step_name="Stage 1",
+            status="approved",
+            decision="approve",
+            comments="",
+            completed_by=approver_user,
+            completed_at=timezone.now(),
+        )
+        # Pending — should NOT appear regardless of comment
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=3,
+            step_name="Stage 1",
+            status="pending",
+            comments="Pending — not yet decided",
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="workflow_approved",
+            notify_submitter=True,
+            body_template=(
+                "{% for c in public_comments %}<p>{{ c.comment }}</p>{% endfor %}"
+            ),
+        )
+        send_notification_rules(sub.id, "workflow_approved")
+
+        assert len(mailoutbox) == 1
+        html = mailoutbox[0].alternatives[0][0]
+        assert "Real comment" in html
+        assert "Pending — not yet decided" not in html
+        # Empty comment doesn't render a paragraph
+        assert html.count("<p>") == 1

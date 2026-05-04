@@ -2993,15 +2993,24 @@ class NotificationLogAdmin(admin.ModelAdmin):
         "notification_type",
         "status",
         "recipient_email",
+        "cc_emails",
         "subject",
         "submission",
     )
     list_filter = ("notification_type", "status")
-    search_fields = ("recipient_email", "subject", "submission__id")
+    search_fields = (
+        "recipient_email",
+        "cc_emails",
+        "bcc_emails",
+        "subject",
+        "submission__id",
+    )
     readonly_fields = (
         "notification_type",
         "submission",
         "recipient_email",
+        "cc_emails",
+        "bcc_emails",
         "subject",
         "status",
         "error_message",
@@ -3021,25 +3030,59 @@ class NotificationLogAdmin(admin.ModelAdmin):
         """Re-dispatch ``send_notification_rules`` for selected failed entries.
 
         Re-fires once per unique ``(submission_id, notification_type)`` pair
-        (rather than once per recipient row) — the idempotency guard inside
-        ``send_notification_rules`` already filters out recipients already
-        logged with ``status='sent'`` for this submission+event, so previously
-        successful sends are never re-delivered. Only ``status='failed'``
-        rows trigger a retry; other selected rows are silently skipped.
+        (rather than once per recipient row). The idempotency guard inside
+        ``send_notification_rules`` skips recipients whose *latest* log row
+        for the same submission+event is ``status='sent'`` — so a recipient
+        whose latest attempt failed is retried even if they had a prior
+        successful send. Only ``status='failed'`` rows trigger a retry;
+        other selected rows are reported as skipped.
         """
-        from django.db.models import Q
-
+        from .models import NotificationLog
         from .tasks import send_notification_rules
 
+        failed = queryset.filter(status="failed")
+        no_submission = failed.filter(submission_id__isnull=True).count()
+        no_event = (
+            failed.exclude(submission_id__isnull=True)
+            .filter(notification_type="")
+            .count()
+        )
+
         failed_pairs = set(
-            queryset.filter(status="failed")
-            .exclude(submission_id__isnull=True)
+            failed.exclude(submission_id__isnull=True)
             .exclude(notification_type="")
             .values_list("submission_id", "notification_type")
         )
 
         queued = 0
+        will_retry = 0  # selected failed recipients whose latest log is still failed
+        will_skip_idempotent = (
+            0  # selected failed recipients overshadowed by a later sent
+        )
         for submission_id, event in failed_pairs:
+            selected_recipients = set(
+                failed.filter(
+                    submission_id=submission_id,
+                    notification_type=event,
+                ).values_list("recipient_email", flat=True)
+            )
+            latest_per_email: dict[str, str] = {}
+            for email, status in (
+                NotificationLog.objects.filter(
+                    submission_id=submission_id,
+                    notification_type=event,
+                )
+                .order_by("created_at")
+                .values_list("recipient_email", "status")
+            ):
+                latest_per_email[email] = status
+            for r in selected_recipients:
+                last = latest_per_email.get(r)
+                if last == "failed":
+                    will_retry += 1
+                elif last == "sent":
+                    will_skip_idempotent += 1
+
             try:
                 send_notification_rules.delay(submission_id, event)
                 queued += 1
@@ -3058,20 +3101,25 @@ class NotificationLogAdmin(admin.ModelAdmin):
                         exc,
                     )
 
-        skipped = queryset.exclude(status="failed").count()
-        not_retryable = (
-            queryset.filter(status="failed")
-            .filter(Q(submission_id__isnull=True) | Q(notification_type=""))
-            .count()
-        )
+        skipped_non_failed = queryset.exclude(status="failed").count()
 
-        parts = [f"Re-queued {queued} notification dispatch(es)"]
-        if skipped:
-            parts.append(f"skipped {skipped} non-failed row(s)")
-        if not_retryable:
+        parts = [
+            f"Re-queued {queued} dispatch task(s) covering "
+            f"{will_retry} failed recipient(s)"
+        ]
+        if will_skip_idempotent:
             parts.append(
-                f"could not retry {not_retryable} row(s) missing submission/event"
+                f"{will_skip_idempotent} selected recipient(s) had a later "
+                f"successful send and will be skipped by the idempotency guard"
             )
+        if skipped_non_failed:
+            parts.append(f"skipped {skipped_non_failed} non-failed row(s)")
+        if no_submission:
+            parts.append(
+                f"could not retry {no_submission} row(s) (submission was deleted)"
+            )
+        if no_event:
+            parts.append(f"could not retry {no_event} row(s) (no event type recorded)")
         self.message_user(request, "; ".join(parts) + ".")
 
 

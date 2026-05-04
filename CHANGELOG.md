@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.15] - 2026-05-04
+
+### Fixed
+- **`retry_failed_notifications` admin action reports actionable
+  diagnostics.** Replaces the lumped "missing submission/event"
+  count with separate cases:
+  - ``X dispatch task(s) covering Y failed recipient(s)`` — what
+    will actually be re-attempted.
+  - ``Z selected recipient(s) had a later successful send and will
+    be skipped by the idempotency guard`` — surfaces the skip case
+    where retrying a previously-failed row will be a no-op because
+    a successful send has since been logged for the same recipient.
+  - ``submission was deleted`` and ``no event type recorded`` are
+    reported separately so admins can tell which condition tripped.
+- **Conditional `display_text` rows respected in submission detail and
+  PDF.** ``_build_ordered_form_data`` and ``_build_pdf_rows`` rendered
+  ``display_text`` unconditionally because both took an early
+  ``continue`` before any conditional check ran. Regular input fields
+  were filtered indirectly by the form data they produced; display-only
+  rows had no such filter. Now both views apply the field's
+  ``conditional_rules`` (``show``/``hide`` actions) so display text only
+  appears in views/PDFs when the front-end JS would have shown it.
+- **Password-manager autofill opt-out extended to all generic
+  text-like field types.** Builds on the LDAP-lookup opt-out: 1Password,
+  LastPass, Bitwarden, and Dashlane popovers were appearing on
+  ``text``, ``textarea``, ``phone``, ``number``, ``decimal``, ``currency``,
+  ``date``, ``datetime``, ``time``, ``url``, ``calculated``, ``slider``,
+  ``address``, ``rating``, and ``matrix`` fields and getting in users'
+  way. These inputs are now stamped with the same ignore attributes as
+  the LDAP-lookup widget at form-render time.
+
 ## [0.74.14] - 2026-05-04
 
 ### Fixed

@@ -3355,6 +3355,7 @@ def _build_pdf_rows(submission, hide_approval_history=False):
             "key": key,
             "value": _get_choice_label(field, form_data[key]),
             "width": field.width,
+            "help_text": field.help_text if field.show_help_text_in_detail else "",
         }
 
         if field.width == "half":

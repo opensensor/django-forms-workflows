@@ -93,6 +93,13 @@
             text-align: left;
             vertical-align: top;
         }
+        .data-table .field-help {
+            font-size: 7pt;
+            font-style: italic;
+            color: #666;
+            font-weight: normal;
+            margin-top: 1pt;
+        }
         .data-table td {
             font-size: 9pt;
             border: 1px solid #d0d0d0;
@@ -265,23 +272,23 @@
 
     {% elif row.type == 'pair' %}
     <tr>
-        <th>{{ row.fields.0.label }}</th>
+        <th>{{ row.fields.0.label }}{% if row.fields.0.help_text %}<div class="field-help">{{ row.fields.0.help_text }}</div>{% endif %}</th>
         <td>{% with v=row.fields.0.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:200px;max-height:80px;">{% elif v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
-        <th>{{ row.fields.1.label }}</th>
+        <th>{{ row.fields.1.label }}{% if row.fields.1.help_text %}<div class="field-help">{{ row.fields.1.help_text }}</div>{% endif %}</th>
         <td>{% with v=row.fields.1.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:200px;max-height:80px;">{% elif v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
     </tr>
 
     {% elif row.type == 'triple' %}
     {% for field in row.fields %}
     <tr>
-        <th>{{ field.label }}</th>
+        <th>{{ field.label }}{% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}</th>
         <td colspan="3">{% with v=field.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:360px;max-height:120px;">{% elif v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
     </tr>
     {% endfor %}
 
     {% else %}
     <tr>
-        <th>{{ row.fields.0.label }}</th>
+        <th>{{ row.fields.0.label }}{% if row.fields.0.help_text %}<div class="field-help">{{ row.fields.0.help_text }}</div>{% endif %}</th>
         <td colspan="3">{% with v=row.fields.0.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:360px;max-height:120px;">{% elif v.filename %}{{ v.filename }}{% if v.size %} ({{ v.size|filesizeformat }}){% endif %}{% else %}{{ v }}{% endif %}{% endwith %}</td>
     </tr>
     {% endif %}
@@ -335,15 +342,15 @@
     </tr>
     {% elif row.type == 'pair' %}
     <tr>
-        <th>{{ row.fields.0.label }}</th>
+        <th>{{ row.fields.0.label }}{% if row.fields.0.help_text %}<div class="field-help">{{ row.fields.0.help_text }}</div>{% endif %}</th>
         <td>{% with v=row.fields.0.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:200px;max-height:80px;">{% elif v.filename %}{{ v.filename }}{% else %}{{ v }}{% endif %}{% endwith %}</td>
-        <th>{{ row.fields.1.label }}</th>
+        <th>{{ row.fields.1.label }}{% if row.fields.1.help_text %}<div class="field-help">{{ row.fields.1.help_text }}</div>{% endif %}</th>
         <td>{% with v=row.fields.1.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:200px;max-height:80px;">{% elif v.filename %}{{ v.filename }}{% else %}{{ v }}{% endif %}{% endwith %}</td>
     </tr>
     {% else %}
     {% for field in row.fields %}
     <tr>
-        <th>{{ field.label }}</th>
+        <th>{{ field.label }}{% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}</th>
         <td colspan="3">{% with v=field.value %}{% if v|is_signature %}<img src="{{ v }}" style="max-width:360px;max-height:120px;">{% elif v.filename %}{{ v.filename }}{% else %}{{ v }}{% endif %}{% endwith %}</td>
     </tr>
     {% endfor %}

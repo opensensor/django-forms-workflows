@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.18] - 2026-05-04
+
+### Fixed
+- **`show_help_text_in_detail` now applies to PDF output too.** The
+  submission detail view honored the per-field flag (rendering help
+  text in italics under the label) but the PDF and bulk-PDF templates
+  did not — ``_build_pdf_rows`` never carried ``help_text`` onto the
+  per-field entry dict, so the templates had nothing to render. Added
+  ``help_text`` to ``_build_pdf_rows``, plus rendering hooks in
+  ``submission_pdf.html`` and ``submission_bulk_pdf.html`` (main form
+  table and approval-step section tables in both). Help text appears
+  beneath the label in a smaller italic style, matching the detail
+  view's treatment.
+
 ## [0.74.17] - 2026-05-04
 
 ### Changed

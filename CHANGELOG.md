@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.14] - 2026-05-04
+
+### Fixed
+- **Two-column subgrid no longer overlaps error message and help text.**
+  In `.row.fields-aligned-row` layouts, Crispy Bootstrap5 renders
+  `.invalid-feedback` and `.form-text` as siblings of `.mb-3`. With
+  three row tracks the help text auto-flowed into an implicit row
+  outside the subgrid, overlapping the error message and inflating
+  sibling column heights. Extended the subgrid to four row tracks
+  (label / input / errors / help) so each child has its own track.
+  Empty rows collapse to zero height; fields without errors or
+  without help text don't get extra spacing.
+
 ## [0.74.13] - 2026-05-04
 
 ### Added

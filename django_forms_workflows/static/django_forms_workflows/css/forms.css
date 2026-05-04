@@ -4,12 +4,21 @@
 
 /* ── Side-by-side field alignment (CSS Grid + subgrid) ─────────────────
    When two or more fields sit in a .row.fields-aligned-row we switch from
-   Bootstrap's flexbox row to a CSS Grid so that labels, inputs and help
-   text each share a common row track across columns.  This guarantees
-   perfect horizontal alignment regardless of label wrapping or the
-   presence / absence of help text in any column.
+   Bootstrap's flexbox row to a CSS Grid so that labels, inputs, errors,
+   and help text each share a common row track across columns.  This
+   guarantees perfect horizontal alignment regardless of label wrapping
+   or the presence / absence of help text in any column.
 
-   Grid row tracks:  1 = label  |  2 = input  |  3 = help text / errors
+   Grid row tracks:  1 = label  |  2 = input  |  3 = errors  |  4 = help text
+
+   We need four tracks because Crispy Bootstrap5's
+   ``help_text_and_errors.html`` renders ``.invalid-feedback`` and
+   ``.form-text`` as siblings of ``.mb-3``, giving an errored field with
+   help text four children. With only three row tracks the help text
+   auto-flowed into an implicit row outside the subgrid, overlapping
+   the error message and inflating sibling column heights. Empty rows
+   collapse to zero height so fields without errors or without help
+   text don't get extra spacing.
    ──────────────────────────────────────────────────────────────────────── */
 
 /* 1. The row becomes a CSS Grid; columns flow automatically */
@@ -18,17 +27,17 @@
         display: grid !important;
         grid-auto-flow: column;
         grid-auto-columns: 1fr;
-        grid-template-rows: auto auto auto;
+        grid-template-rows: auto auto auto auto;
         column-gap: var(--bs-gutter-x, 1.5rem);
         margin-left: 0;
         margin-right: 0;
     }
 
-    /* 2. Each field-wrapper spans all 3 row tracks and inherits them */
+    /* 2. Each field-wrapper spans all 4 row tracks and inherits them */
     .row.fields-aligned-row > .field-wrapper {
         display: grid;
         grid-template-rows: subgrid;
-        grid-row: span 3;
+        grid-row: span 4;
         /* Reset Bootstrap column flex/width — grid handles sizing */
         width: auto !important;
         max-width: none !important;
@@ -37,11 +46,11 @@
         padding-right: 0;
     }
 
-    /* 3. .mb-3 also inherits the 3 row tracks via subgrid */
+    /* 3. .mb-3 also inherits the 4 row tracks via subgrid */
     .row.fields-aligned-row > .field-wrapper > .mb-3 {
         display: grid;
         grid-template-rows: subgrid;
-        grid-row: span 3;
+        grid-row: span 4;
         margin-bottom: 0 !important;  /* grid gap handles spacing */
     }
 

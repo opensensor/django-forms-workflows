@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.11] - 2026-05-04
+
+### Added
+- **`search_ldap_users()` now also matches the `mail` attribute.** Lets
+  callers driving autocomplete UIs resolve users who type an email
+  prefix in addition to a name. Additive change — strictly more results,
+  backward compatible with all existing callers.
+
+### Fixed
+- **`NotificationRule` admin stage picklist filtered by selected
+  workflow.** The stage dropdown previously listed every
+  `WorkflowStage` across every workflow, making it easy to pick a
+  stage that didn't belong to the chosen workflow. Now filtered by
+  workflow on both the standalone admin and the inlines (server-side
+  where the workflow is fixed by URL, client-side via a JS hook on
+  the workflow `<select>` when it's editable).
+
 ## [0.74.10] - 2026-04-30
 
 ### Added

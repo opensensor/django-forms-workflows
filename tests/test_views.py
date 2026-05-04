@@ -785,6 +785,103 @@ class TestBuildOrderedFormData:
         assert _build_ordered_form_data(submission, None) == []
 
 
+class TestDisplayTextConditionalRules:
+    """display_text fields must respect their conditional_rules in both
+    the submission detail view and the PDF view (matching the front-end JS)."""
+
+    @pytest.fixture
+    def form_with_conditional_display_text(self, form_definition):
+        from django_forms_workflows.models import FormField
+
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="sponsoring_employee",
+            field_label="Sponsoring Employee",
+            field_type="text",
+            order=1,
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="dep_disclaimer",
+            field_label="Dependent Disclaimer",
+            field_type="display_text",
+            order=2,
+            default_value="To be filled out by the employee for dependent enrollments.",
+            conditional_rules={
+                "action": "show",
+                "field": "sponsoring_employee",
+                "operator": "not_empty",
+            },
+        )
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="dep_init1",
+            field_label="Dep Init 1",
+            field_type="text",
+            order=3,
+            conditional_rules={
+                "action": "show",
+                "field": "sponsoring_employee",
+                "operator": "not_empty",
+            },
+        )
+        return form_definition
+
+    def _make_submission(self, form_def, user, sponsoring_value):
+        data = {}
+        if sponsoring_value:
+            data["sponsoring_employee"] = sponsoring_value
+            data["dep_init1"] = "JD"
+        return FormSubmission.objects.create(
+            form_definition=form_def,
+            submitter=user,
+            form_data=data,
+            status="submitted",
+        )
+
+    def test_ordered_form_data_hides_display_text_when_condition_unmet(
+        self, form_with_conditional_display_text, user
+    ):
+        from django_forms_workflows.views import _build_ordered_form_data
+
+        sub = self._make_submission(form_with_conditional_display_text, user, "")
+        rows = _build_ordered_form_data(sub, sub.form_data)
+        types = [r.get("type") for r in rows]
+        assert "display_text" not in types
+
+    def test_ordered_form_data_shows_display_text_when_condition_met(
+        self, form_with_conditional_display_text, user
+    ):
+        from django_forms_workflows.views import _build_ordered_form_data
+
+        sub = self._make_submission(
+            form_with_conditional_display_text, user, "Jane Doe"
+        )
+        rows = _build_ordered_form_data(sub, sub.form_data)
+        assert any(r.get("type") == "display_text" for r in rows)
+
+    def test_pdf_rows_hides_display_text_when_condition_unmet(
+        self, form_with_conditional_display_text, user
+    ):
+        from django_forms_workflows.views import _build_pdf_rows
+
+        sub = self._make_submission(form_with_conditional_display_text, user, "")
+        rows = _build_pdf_rows(sub)
+        types = [r.get("type") for r in rows]
+        assert "display_text" not in types
+
+    def test_pdf_rows_shows_display_text_when_condition_met(
+        self, form_with_conditional_display_text, user
+    ):
+        from django_forms_workflows.views import _build_pdf_rows
+
+        sub = self._make_submission(
+            form_with_conditional_display_text, user, "Jane Doe"
+        )
+        rows = _build_pdf_rows(sub)
+        assert any(r.get("type") == "display_text" for r in rows)
+
+
 class TestBuildApprovalStepSections:
     def test_no_tasks_returns_empty(self, submission):
         from django_forms_workflows.views import _build_approval_step_sections

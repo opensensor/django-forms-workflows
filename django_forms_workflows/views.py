@@ -3049,6 +3049,44 @@ def _get_choice_label(field, value):
     return value
 
 
+def _display_text_hidden(field, form_data):
+    """Return True if a ``display_text`` field is hidden by its conditional rules.
+
+    Mirrors the ``show``/``hide`` evaluation in ``DynamicForm.clean`` so the
+    submission detail and PDF views render display text only when the
+    front-end JS would have shown it.
+    """
+    rules = field.conditional_rules
+    if not rules:
+        return False
+
+    if isinstance(rules, str):
+        try:
+            rules = json.loads(rules)
+        except json.JSONDecodeError:
+            return False
+
+    if not rules:
+        return False
+
+    from .conditions import evaluate_conditions
+
+    rule_list = rules if isinstance(rules, list) else [rules]
+    data = form_data or {}
+
+    for rule in rule_list:
+        if not isinstance(rule, dict):
+            continue
+        action = rule.get("action", "show")
+        condition_met = evaluate_conditions(rule, data)
+        if action == "show" and not condition_met:
+            return True
+        if action == "hide" and condition_met:
+            return True
+
+    return False
+
+
 def _build_ordered_form_data(submission, form_data):
     """
     Return form data as an ordered list of row dicts, respecting FormField.order.
@@ -3129,6 +3167,9 @@ def _build_ordered_form_data(submission, form_data):
             continue
 
         if field.field_type == "display_text":
+            seen_keys.add(field.field_name)
+            if _display_text_hidden(field, form_data):
+                continue
             _flush_half()
             _flush_third()
             _flush_fourth()
@@ -3139,7 +3180,6 @@ def _build_ordered_form_data(submission, form_data):
                     "value": field.default_value or "",
                 }
             )
-            seen_keys.add(field.field_name)
             continue
 
         key = field.field_name
@@ -3283,6 +3323,9 @@ def _build_pdf_rows(submission, hide_approval_history=False):
             continue
 
         if field.field_type == "display_text":
+            seen_keys.add(field.field_name)
+            if _display_text_hidden(field, form_data):
+                continue
             flush_half()
             flush_third()
             rows.append(
@@ -3292,7 +3335,6 @@ def _build_pdf_rows(submission, hide_approval_history=False):
                     "value": field.default_value or "",
                 }
             )
-            seen_keys.add(field.field_name)
             continue
 
         key = field.field_name

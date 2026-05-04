@@ -132,6 +132,58 @@ class WebhookEndpointAdminForm(forms.ModelForm):
         return list(self.cleaned_data.get("events") or [])
 
 
+class WorkflowFilteredStageSelect(forms.Select):
+    """``<select>`` widget that tags each stage option with its
+    ``data-workflow-id`` so the JS in
+    ``admin_notification_rule_stage_filter.js`` can hide stages that don't
+    belong to the workflow currently selected on the form.
+
+    No DB hits beyond what ``ModelChoiceField`` already does — the
+    workflow id is read from the model instance attached to each
+    ``ModelChoiceIteratorValue``.
+    """
+
+    def create_option(
+        self, name, value, label, selected, index, subindex=None, attrs=None
+    ):
+        option = super().create_option(
+            name, value, label, selected, index, subindex=subindex, attrs=attrs
+        )
+        instance = getattr(value, "instance", None)
+        workflow_id = getattr(instance, "workflow_id", None)
+        if workflow_id is not None:
+            option["attrs"]["data-workflow-id"] = str(workflow_id)
+        return option
+
+
+class NotificationRuleAdminForm(forms.ModelForm):
+    """Used by both the standalone NotificationRule admin and its inlines so
+    the stage ``<select>`` carries ``data-workflow-id`` attributes for
+    client-side filtering.
+    """
+
+    class Meta:
+        model = NotificationRule
+        fields = (
+            "workflow",
+            "stage",
+            "use_triggering_stage",
+            "event",
+            "conditions",
+            "subject_template",
+            "body_template",
+            "notify_submitter",
+            "email_field",
+            "static_emails",
+            "cc_email_field",
+            "cc_static_emails",
+            "notify_stage_assignees",
+            "notify_stage_groups",
+            "notify_groups",
+        )
+        widgets = {"stage": WorkflowFilteredStageSelect()}
+
+
 # Inline for form fields when editing a form definition
 class FormFieldInline(nested_admin.NestedStackedInline):
     model = FormField
@@ -555,7 +607,31 @@ class NotificationRuleInline(nested_admin.NestedStackedInline):
     """
 
     model = NotificationRule
+    form = NotificationRuleAdminForm
     extra = 0
+
+    class Media:
+        js = ("django_forms_workflows/js/admin_notification_rule_stage_filter.js",)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "stage":
+            obj_id = request.resolver_match.kwargs.get("object_id")
+            url_name = request.resolver_match.url_name or ""
+            if obj_id and "_workflowdefinition_" in url_name:
+                # Inline shown on WorkflowDefinitionAdmin — workflow is
+                # exactly the page object.
+                kwargs["queryset"] = WorkflowStage.objects.filter(
+                    workflow_id=obj_id
+                ).order_by("order", "name")
+            elif obj_id and "_formdefinition_" in url_name:
+                # Inline shown nested under FormDefinitionAdmin — narrow to
+                # stages from any workflow on this form definition. JS
+                # then filters per-row by the parent workflow's selection.
+                kwargs["queryset"] = WorkflowStage.objects.filter(
+                    workflow__form_definition_id=obj_id
+                ).order_by("workflow_id", "order", "name")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     fieldsets = (
         (
             None,
@@ -1766,6 +1842,36 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
 @admin.register(NotificationRule)
 class NotificationRuleAdmin(admin.ModelAdmin):
     """Standalone admin for NotificationRule — searchable across all workflows."""
+
+    form = NotificationRuleAdminForm
+
+    class Media:
+        js = ("django_forms_workflows/js/admin_notification_rule_stage_filter.js",)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "stage":
+            obj_id = request.resolver_match.kwargs.get("object_id")
+            workflow_id = None
+            if obj_id:
+                workflow_id = (
+                    NotificationRule.objects.filter(pk=obj_id)
+                    .values_list("workflow_id", flat=True)
+                    .first()
+                )
+            if workflow_id:
+                # Change view: tighten to the rule's own workflow so the JS
+                # filter has nothing to do.
+                kwargs["queryset"] = WorkflowStage.objects.filter(
+                    workflow_id=workflow_id
+                ).order_by("order", "name")
+            else:
+                # Add view: render every stage so the JS can filter once the
+                # user picks a workflow. ``data-workflow-id`` is added by the
+                # widget on each option.
+                kwargs["queryset"] = WorkflowStage.objects.select_related(
+                    "workflow"
+                ).order_by("workflow__form_definition__name", "order", "name")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     list_display = (
         "workflow_form",

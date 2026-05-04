@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.13] - 2026-05-04
+
+### Added
+- **`FORMS_WORKFLOWS_LDAP_DEPARTMENT_ATTR` setting.** Controls which
+  LDAP attribute `search_ldap_users()` reads to populate the
+  `department` field in result dicts. Defaults to `"department"`.
+  Useful for directories that repurpose the standard `department`
+  attribute (e.g. PaperCut print-service codes) and store the
+  human-readable department in an extension attribute like
+  `extensionAttribute2`.
+
 ## [0.74.12] - 2026-05-04
 
 ### Fixed

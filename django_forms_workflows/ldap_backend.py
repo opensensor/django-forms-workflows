@@ -393,6 +393,13 @@ def search_ldap_users(search_term, max_results=10):
         username_attr = getattr(
             settings, "FORMS_WORKFLOWS_LDAP_USERNAME_ATTR", "sAMAccountName"
         )
+        # Department attribute is configurable because some directories use the
+        # standard ``department`` field for other purposes (e.g. PaperCut print
+        # codes) and store the human-readable department in an extension
+        # attribute. Falls back to the standard "department" when unset.
+        department_attr = getattr(
+            settings, "FORMS_WORKFLOWS_LDAP_DEPARTMENT_ATTR", "department"
+        )
 
         # Build search filter.
         # Searches displayName in addition to sAMAccountName, givenName, and sn
@@ -426,7 +433,7 @@ def search_ldap_users(search_term, max_results=10):
                 "givenName",
                 "sn",
                 "mail",
-                "department",
+                department_attr,
                 "title",
             ],
         )
@@ -456,8 +463,8 @@ def search_ldap_users(search_term, max_results=10):
                         else ""
                     ),
                     "department": (
-                        attrs.get("department", [b""])[0].decode("utf-8")
-                        if attrs.get("department")
+                        attrs.get(department_attr, [b""])[0].decode("utf-8")
+                        if attrs.get(department_attr)
                         else ""
                     ),
                     "title": (

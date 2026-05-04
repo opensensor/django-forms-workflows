@@ -118,6 +118,99 @@ class TestDynamicFormFieldGeneration:
             assert name in form.fields, f"Field {name} not found in form"
 
 
+class TestPasswordManagerOptOut:
+    """Non-credential text inputs should opt out of password-manager autofill."""
+
+    PM_OPT_OUT_TYPES = [
+        "text",
+        "textarea",
+        "phone",
+        "number",
+        "decimal",
+        "currency",
+        "date",
+        "datetime",
+        "time",
+        "url",
+        "calculated",
+        "slider",
+        "address",
+        "rating",
+    ]
+
+    def _make_field(self, form_def, field_type, **extra):
+        kwargs = {
+            "form_definition": form_def,
+            "field_name": f"{field_type}_fld",
+            "field_label": field_type.title(),
+            "field_type": field_type,
+            "order": 1,
+        }
+        if field_type == "calculated":
+            kwargs["formula"] = "1+1"
+        kwargs.update(extra)
+        return FormField.objects.create(**kwargs)
+
+    @pytest.mark.parametrize("field_type", PM_OPT_OUT_TYPES)
+    def test_opt_out_attrs_present(self, form_definition, user, field_type):
+        self._make_field(form_definition, field_type)
+        form = DynamicForm(form_definition, user=user)
+        widget_attrs = form.fields[f"{field_type}_fld"].widget.attrs
+        assert widget_attrs.get("autocomplete") == "off"
+        assert widget_attrs.get("data-1p-ignore") == "true"
+        assert widget_attrs.get("data-lpignore") == "true"
+        assert widget_attrs.get("data-bwignore") == "true"
+        assert widget_attrs.get("data-form-type") == "other"
+
+    def test_email_field_keeps_autofill(self, form_definition, user):
+        self._make_field(form_definition, "email")
+        form = DynamicForm(form_definition, user=user)
+        widget_attrs = form.fields["email_fld"].widget.attrs
+        assert "data-1p-ignore" not in widget_attrs
+        assert widget_attrs.get("autocomplete") != "off"
+
+    def test_select_field_keeps_autofill(self, form_definition, user):
+        self._make_field(
+            form_definition,
+            "select",
+            choices=[{"value": "a", "label": "A"}],
+        )
+        form = DynamicForm(form_definition, user=user)
+        widget_attrs = form.fields["select_fld"].widget.attrs
+        assert "data-1p-ignore" not in widget_attrs
+
+    def test_approval_step_form_text_opt_out(self, form_definition, user):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(workflow=wf, name="Review", order=1)
+        FormField.objects.create(
+            form_definition=form_definition,
+            field_name="reviewer_text",
+            field_label="Reviewer Text",
+            field_type="text",
+            order=1,
+            workflow_stage=stage,
+        )
+        from django_forms_workflows.models import FormSubmission
+
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            step_name="Review",
+            workflow_stage=stage,
+            stage_number=1,
+        )
+        form = ApprovalStepForm(form_definition, submission, task, user=user)
+        widget_attrs = form.fields["reviewer_text"].widget.attrs
+        assert widget_attrs.get("data-1p-ignore") == "true"
+
+
 class TestDynamicFormChoices:
     def test_json_choices(self, form_definition, user):
         FormField.objects.create(

@@ -49,6 +49,39 @@ except ImportError:
     _has_markdown = False
 
 
+# Field types where password-manager autofill is unwanted (popovers collide
+# with our enhancements and confuse users on non-credential inputs). Each
+# major password manager honors a different opt-out attribute, so all are set.
+# `email` is intentionally excluded — autofill is genuinely useful there.
+_PM_OPT_OUT_FIELD_TYPES = frozenset(
+    {
+        "text",
+        "textarea",
+        "phone",
+        "number",
+        "decimal",
+        "currency",
+        "date",
+        "datetime",
+        "time",
+        "url",
+        "calculated",
+        "slider",
+        "address",
+        "matrix",
+        "rating",
+    }
+)
+
+_PM_OPT_OUT_ATTRS = {
+    "autocomplete": "off",
+    "data-1p-ignore": "true",
+    "data-lpignore": "true",
+    "data-bwignore": "true",
+    "data-form-type": "other",
+}
+
+
 # ---------------------------------------------------------------------------
 # Display-text widget (read-only markdown/plain-text block)
 # ---------------------------------------------------------------------------
@@ -558,6 +591,8 @@ class DynamicForm(forms.Form):
             widget_attrs["readonly"] = "readonly"
             # Readonly fields should not be required since they can't be edited
             field_args["required"] = False
+        if field_def.field_type in _PM_OPT_OUT_FIELD_TYPES:
+            widget_attrs.update(_PM_OPT_OUT_ATTRS)
 
         # Create appropriate field type
         if field_def.field_type == "text":
@@ -771,6 +806,7 @@ class DynamicForm(forms.Form):
                         "data-calculated": "true",
                         "data-formula": field_def.formula,
                         "class": "form-control form-control-calculated",
+                        **_PM_OPT_OUT_ATTRS,
                     }
                 ),
             )
@@ -1558,6 +1594,9 @@ class ApprovalStepForm(forms.Form):
             widget_attrs["disabled"] = "disabled"
             field_args["required"] = False
 
+        if field_def.field_type in _PM_OPT_OUT_FIELD_TYPES:
+            widget_attrs.update(_PM_OPT_OUT_ATTRS)
+
         # Create appropriate field type
         self._create_field(field_def, field_args, widget_attrs, is_editable)
 
@@ -1748,6 +1787,7 @@ class ApprovalStepForm(forms.Form):
                         "data-calculated": "true",
                         "data-formula": field_def.formula,
                         "class": "form-control form-control-calculated",
+                        **_PM_OPT_OUT_ATTRS,
                     }
                 ),
             )

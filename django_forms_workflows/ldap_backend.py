@@ -399,6 +399,8 @@ def search_ldap_users(search_term, max_results=10):
         # so that full-name values (e.g. "Jarred Simmonds") from form fields are
         # matched correctly.  displayName is the authoritative full-name field in
         # Active Directory and is what the _lookup_by_ldap engine passes here.
+        # ``mail`` is included so callers driving autocomplete UIs can match
+        # users who are typing an email prefix as well as a name.
         if search_term:
             escaped_term = escape_filter_chars(search_term)
             search_filter = (
@@ -406,7 +408,8 @@ def search_ldap_users(search_term, max_results=10):
                 f"(|({username_attr}=*{escaped_term}*)"
                 f"(displayName=*{escaped_term}*)"
                 f"(givenName=*{escaped_term}*)"
-                f"(sn=*{escaped_term}*)))"
+                f"(sn=*{escaped_term}*)"
+                f"(mail=*{escaped_term}*)))"
             )
         else:
             search_filter = "(objectClass=user)"

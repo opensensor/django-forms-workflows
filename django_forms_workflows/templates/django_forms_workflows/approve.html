@@ -265,7 +265,8 @@
 
         {% if not read_only %}
         <!-- Approval Form with Step Fields -->
-        <form method="post" enctype="multipart/form-data" data-loading-message="Processing your decision...">
+        <form method="post" enctype="multipart/form-data" data-loading-message="Processing your decision..."
+              id="approval-decision-form" data-approval-form-enhancements="true">
             {% csrf_token %}
 
             <!-- Current Step Fields Section with Decision inline -->
@@ -559,4 +560,19 @@
 {% block extra_js %}
 <script src="{% static 'django_forms_workflows/js/form-enhancements.js' %}"></script>
 <script src="{% static 'django_forms_workflows/js/signature-pad.js' %}"></script>
+<script>
+    // Wire FormEnhancements to the approval-decision form so per-field
+    // validation (email, phone, url, required, regex) fires on input/blur,
+    // matching the original submission form's behavior. Scoped to a unique
+    // marker — ``data-approval-form-enhancements`` — so it doesn't collide
+    // with the editable_form on the same page (which has its own
+    // ``data-form-enhancements`` marker via the DynamicForm helper).
+    document.addEventListener('DOMContentLoaded', function () {
+        const formElement = document.querySelector('[data-approval-form-enhancements="true"]');
+        const config = {{ approval_form_enhancements_config|default:"null"|safe }};
+        if (formElement && config) {
+            window.approvalFormEnhancements = new FormEnhancements(formElement, config);
+        }
+    });
+</script>
 {% endblock %}

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.16] - 2026-05-04
+
+### Fixed
+- **Approval step form now validates fields on input/blur, matching
+  the original submission form.** Previously ``approve.html`` loaded
+  ``form-enhancements.js`` but never instantiated ``FormEnhancements``,
+  so per-field validation (email format, phone, URL, regex, length,
+  range, custom rules) only ran server-side after the approver clicked
+  the decision button. Added ``ApprovalStepForm.get_enhancements_config()``
+  scoped to current-stage fields, threaded the config through the
+  ``approve_submission`` view, and wired up a JS init block in
+  ``approve.html`` keyed on a unique
+  ``data-approval-form-enhancements`` attribute so it doesn't collide
+  with the editable form on the same page.
+
 ## [0.74.15] - 2026-05-04
 
 ### Fixed

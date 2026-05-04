@@ -1984,6 +1984,119 @@ class ApprovalStepForm(forms.Form):
         ]
         self.helper.layout = Layout(*self._build_layout_fields(current_stage_defs))
 
+    def get_enhancements_config(self):
+        """
+        Generate FormEnhancements JS config for the approval step form.
+
+        Mirrors :meth:`DynamicForm.get_enhancements_config` but only emits
+        per-field validation rules for fields that belong to *this* approval
+        task's workflow stage — those are the only fields the approver can
+        edit on this page. Auto-save, multi-step, conditional rules, and
+        field dependencies are out of scope here (they belong to the original
+        submission flow). Used by the approve view to make the approval form
+        validate fields on input/blur instead of waiting for submit, matching
+        the behavior of the original submission form.
+        """
+        import json
+
+        stage_id = self.approval_task.workflow_stage_id
+        if stage_id is None:
+            stage_fields = []
+        else:
+            stage_fields = self.form_definition.fields.filter(
+                workflow_stage_id=stage_id
+            )
+
+        validation_rules_by_field = []
+        for field in stage_fields:
+            rules = []
+            if field.required:
+                rules.append(
+                    {"type": "required", "message": f"{field.field_label} is required"}
+                )
+            if field.field_type == "email":
+                rules.append(
+                    {"type": "email", "message": "Please enter a valid email address"}
+                )
+            if field.field_type == "phone":
+                rules.append(
+                    {
+                        "type": "phone",
+                        "message": (
+                            "Enter a valid phone number, e.g. 2065551234, "
+                            "(206) 555-1234, or +1 (206) 555-1234"
+                        ),
+                    }
+                )
+            if field.field_type == "url":
+                rules.append({"type": "url", "message": "Please enter a valid URL"})
+            if field.min_length:
+                rules.append(
+                    {
+                        "type": "min",
+                        "value": field.min_length,
+                        "message": f"Minimum {field.min_length} characters required",
+                    }
+                )
+            if field.max_length:
+                rules.append(
+                    {
+                        "type": "max",
+                        "value": field.max_length,
+                        "message": f"Maximum {field.max_length} characters allowed",
+                    }
+                )
+            if field.min_value is not None:
+                rules.append(
+                    {
+                        "type": "min_value",
+                        "value": float(field.min_value),
+                        "message": f"Minimum value is {field.min_value}",
+                    }
+                )
+            if field.max_value is not None:
+                rules.append(
+                    {
+                        "type": "max_value",
+                        "value": float(field.max_value),
+                        "message": f"Maximum value is {field.max_value}",
+                    }
+                )
+            if field.regex_validation:
+                rules.append(
+                    {
+                        "type": "pattern",
+                        "value": field.regex_validation,
+                        "message": field.regex_error_message or "Invalid format",
+                    }
+                )
+            if getattr(field, "validation_rules", None):
+                if isinstance(field.validation_rules, str):
+                    try:
+                        custom_rules = json.loads(field.validation_rules)
+                    except json.JSONDecodeError:
+                        custom_rules = []
+                else:
+                    custom_rules = field.validation_rules
+                if custom_rules:
+                    rules.extend(custom_rules)
+
+            if rules:
+                validation_rules_by_field.append(
+                    {"field": field.field_name, "rules": rules}
+                )
+
+        return {
+            "autoSaveEnabled": False,
+            "autoSaveEndpoint": "",
+            "autoSaveInterval": 30000,
+            "multiStepEnabled": False,
+            "steps": [],
+            "conditionalRules": [],
+            "fieldDependencies": [],
+            "validationRules": validation_rules_by_field,
+        }
+
     def get_updated_form_data(self):
         """
         Get the updated form data after validation.

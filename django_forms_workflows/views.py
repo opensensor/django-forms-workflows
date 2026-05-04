@@ -1996,6 +1996,12 @@ def approve_submission(request, task_id):
     # prior approval step field data (with file URLs resolved).
     approval_step_sections = _build_approval_step_sections(submission)
 
+    approval_form_enhancements_config = (
+        json.dumps(approval_step_form.get_enhancements_config())
+        if approval_step_form is not None
+        else "null"
+    )
+
     return render(
         request,
         "django_forms_workflows/approve.html",
@@ -2003,6 +2009,7 @@ def approve_submission(request, task_id):
             "task": task,
             "submission": submission,
             "approval_step_form": approval_step_form,
+            "approval_form_enhancements_config": approval_form_enhancements_config,
             "has_approval_step_fields": has_approval_step_fields,
             "allow_edit_form_data": allow_edit_form_data,
             "editable_form": editable_form,

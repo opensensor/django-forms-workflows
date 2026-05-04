@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.12] - 2026-05-04
+
+### Fixed
+- **Standalone `FormField` admin now exposes `css_class`.** The
+  inline editor inside `FormDefinition` had it under
+  Help/placeholder/width, and the visual form-builder UI had it under
+  Basic Properties, but the standalone "Form fields" admin's
+  fieldsets omitted `css_class`, making it impossible to set there.
+  Added it to the "Display" section alongside `help_text` and
+  `placeholder`.
+
 ## [0.74.11] - 2026-05-04
 
 ### Added

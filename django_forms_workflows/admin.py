@@ -400,6 +400,7 @@ class FormFieldAdmin(admin.ModelAdmin):
                     "help_text",
                     "show_help_text_in_detail",
                     "placeholder",
+                    "css_class",
                 ),
                 "classes": ("collapse",),
             },

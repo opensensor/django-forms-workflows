@@ -1734,3 +1734,160 @@ class TestCustomBodyTemplateContext:
         assert "Pending — not yet decided" not in html
         # Empty comment doesn't render a paragraph
         assert html.count("<p>") == 1
+
+
+# ── NotificationLog: CC/BCC consolidated on the To row ─────────────────────
+
+
+class TestNotificationLogCcBccConsolidation:
+    """Each send writes one NotificationLog row per To recipient with the full
+    CC/BCC list captured on that row, instead of separate `cc:`-prefixed rows.
+    """
+
+    def test_cc_recorded_on_to_row(self, form_definition, user, mailoutbox):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            cc_static_emails="cc1@example.com, cc2@example.com",
+        )
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+
+        send_notification_rules(sub.id, "submission_received")
+
+        # Exactly one log row (the To recipient); no separate cc: rows.
+        logs = NotificationLog.objects.filter(submission_id=sub.id, status="sent")
+        assert logs.count() == 1
+        log = logs.get()
+        assert log.recipient_email == user.email
+        assert "cc1@example.com" in log.cc_emails
+        assert "cc2@example.com" in log.cc_emails
+        assert log.bcc_emails == ""
+
+        # The actual email also has CCs set.
+        assert mailoutbox[0].cc == ["cc1@example.com", "cc2@example.com"]
+
+    def test_no_separate_cc_prefixed_row(self, form_definition, user, mailoutbox):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            cc_static_emails="bystander@example.com",
+        )
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+
+        send_notification_rules(sub.id, "submission_received")
+
+        cc_prefixed = NotificationLog.objects.filter(
+            submission_id=sub.id, recipient_email__startswith="cc:"
+        )
+        assert cc_prefixed.count() == 0
+
+    def test_cc_dedup_uses_cc_emails_field(self, form_definition, user, mailoutbox):
+        """A successful send's cc_emails entry should prevent re-CC on retry."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            cc_static_emails="cc@example.com",
+        )
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        # Simulate a prior successful send that delivered the To AND CC'd cc@example.com.
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=sub.id,
+            recipient_email=user.email,
+            cc_emails="cc@example.com",
+            subject="prior",
+            status="sent",
+        )
+
+        send_notification_rules(sub.id, "submission_received")
+        # Nothing left to send: the To was already delivered and the CC was
+        # already delivered as part of that send.
+        assert len(mailoutbox) == 0
+
+    def test_cc_prefix_legacy_rows_still_dedup(self, form_definition, user, mailoutbox):
+        """Pre-upgrade `cc:`-prefixed rows from the old format must still
+        suppress retry CCs so an in-flight upgrade doesn't double-deliver."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            cc_static_emails="legacy@example.com",
+        )
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        # Prior rows in the old format.
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=sub.id,
+            recipient_email=user.email,
+            subject="prior",
+            status="sent",
+        )
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=sub.id,
+            recipient_email="cc:legacy@example.com",
+            subject="prior",
+            status="sent",
+        )
+
+        send_notification_rules(sub.id, "submission_received")
+        assert len(mailoutbox) == 0
+
+    def test_bcc_passthrough(self, db, mailoutbox):
+        """_send_html_email_from_string passes BCC to the message and logs it."""
+        from django_forms_workflows.tasks import _send_html_email_from_string
+
+        _send_html_email_from_string(
+            subject="Hi",
+            to=["primary@example.com"],
+            body_template_string="<p>hello</p>",
+            context={},
+            cc=["cc@example.com"],
+            bcc=["secret@example.com"],
+            notification_type="other",
+        )
+
+        assert len(mailoutbox) == 1
+        msg = mailoutbox[0]
+        assert msg.to == ["primary@example.com"]
+        assert msg.cc == ["cc@example.com"]
+        assert msg.bcc == ["secret@example.com"]
+
+        log = NotificationLog.objects.get(recipient_email="primary@example.com")
+        assert log.cc_emails == "cc@example.com"
+        assert log.bcc_emails == "secret@example.com"

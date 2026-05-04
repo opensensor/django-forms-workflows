@@ -100,9 +100,11 @@ def _send_html_email(
     notification_type: str = "other",
     submission_id: int | None = None,
     cc: Iterable[str] | None = None,
+    bcc: Iterable[str] | None = None,
 ) -> None:
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
+    bcc_list = [e for e in (bcc or []) if e and e not in to_list and e not in cc_list]
     if not to_list:
         logger.info("Skipping email '%s' (no recipients)", subject)
         _write_notification_log(
@@ -111,6 +113,8 @@ def _send_html_email(
             recipient_email="(none)",
             subject=subject,
             status="skipped",
+            cc_emails=", ".join(cc_list),
+            bcc_emails=", ".join(bcc_list),
         )
         return
 
@@ -129,15 +133,19 @@ def _send_html_email(
         from_email=from_addr,
         to=to_list,
         cc=cc_list or None,
+        bcc=bcc_list or None,
     )
     msg.attach_alternative(html_body, "text/html")
+    cc_str = ", ".join(cc_list)
+    bcc_str = ", ".join(bcc_list)
     try:
         msg.send(fail_silently=False)
         logger.info(
-            "Sent email '%s' to %s%s",
+            "Sent email '%s' to %s%s%s",
             subject,
             to_list,
             f" cc={cc_list}" if cc_list else "",
+            f" bcc={bcc_list}" if bcc_list else "",
         )
         for recipient in to_list:
             _write_notification_log(
@@ -146,14 +154,8 @@ def _send_html_email(
                 recipient_email=recipient,
                 subject=subject,
                 status="sent",
-            )
-        for recipient in cc_list:
-            _write_notification_log(
-                notification_type=notification_type,
-                submission_id=submission_id,
-                recipient_email=f"cc:{recipient}",
-                subject=subject,
-                status="sent",
+                cc_emails=cc_str,
+                bcc_emails=bcc_str,
             )
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
@@ -165,15 +167,8 @@ def _send_html_email(
                 subject=subject,
                 status="failed",
                 error_message=str(e),
-            )
-        for recipient in cc_list:
-            _write_notification_log(
-                notification_type=notification_type,
-                submission_id=submission_id,
-                recipient_email=f"cc:{recipient}",
-                subject=subject,
-                status="failed",
-                error_message=str(e),
+                cc_emails=cc_str,
+                bcc_emails=bcc_str,
             )
 
 
@@ -187,6 +182,7 @@ def _send_html_email_from_string(
     notification_type: str = "other",
     submission_id: int | None = None,
     cc: Iterable[str] | None = None,
+    bcc: Iterable[str] | None = None,
 ) -> None:
     """Like _send_html_email but renders an inline Django template string
     instead of loading a template file.  Used when a NotificationRule has a
@@ -196,6 +192,7 @@ def _send_html_email_from_string(
 
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
+    bcc_list = [e for e in (bcc or []) if e and e not in to_list and e not in cc_list]
     if not to_list:
         logger.info("Skipping email '%s' (no recipients)", subject)
         _write_notification_log(
@@ -204,6 +201,8 @@ def _send_html_email_from_string(
             recipient_email="(none)",
             subject=subject,
             status="skipped",
+            cc_emails=", ".join(cc_list),
+            bcc_emails=", ".join(bcc_list),
         )
         return
 
@@ -222,15 +221,19 @@ def _send_html_email_from_string(
         from_email=from_addr,
         to=to_list,
         cc=cc_list or None,
+        bcc=bcc_list or None,
     )
     msg.attach_alternative(html_body, "text/html")
+    cc_str = ", ".join(cc_list)
+    bcc_str = ", ".join(bcc_list)
     try:
         msg.send(fail_silently=False)
         logger.info(
-            "Sent email '%s' to %s%s",
+            "Sent email '%s' to %s%s%s",
             subject,
             to_list,
             f" cc={cc_list}" if cc_list else "",
+            f" bcc={bcc_list}" if bcc_list else "",
         )
         for recipient in to_list:
             _write_notification_log(
@@ -239,14 +242,8 @@ def _send_html_email_from_string(
                 recipient_email=recipient,
                 subject=subject,
                 status="sent",
-            )
-        for recipient in cc_list:
-            _write_notification_log(
-                notification_type=notification_type,
-                submission_id=submission_id,
-                recipient_email=f"cc:{recipient}",
-                subject=subject,
-                status="sent",
+                cc_emails=cc_str,
+                bcc_emails=bcc_str,
             )
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
@@ -258,15 +255,8 @@ def _send_html_email_from_string(
                 subject=subject,
                 status="failed",
                 error_message=str(e),
-            )
-        for recipient in cc_list:
-            _write_notification_log(
-                notification_type=notification_type,
-                submission_id=submission_id,
-                recipient_email=f"cc:{recipient}",
-                subject=subject,
-                status="failed",
-                error_message=str(e),
+                cc_emails=cc_str,
+                bcc_emails=bcc_str,
             )
 
 
@@ -278,6 +268,8 @@ def _write_notification_log(
     subject: str,
     status: str,
     error_message: str = "",
+    cc_emails: str = "",
+    bcc_emails: str = "",
 ) -> None:
     """Write a NotificationLog row; never raises so it cannot break email delivery."""
     try:
@@ -288,6 +280,8 @@ def _write_notification_log(
             subject=subject,
             status=status,
             error_message=error_message,
+            cc_emails=cc_emails,
+            bcc_emails=bcc_emails,
         )
     except Exception:  # pragma: no cover
         logger.exception("Failed to write NotificationLog (ignored)")
@@ -1474,13 +1468,25 @@ def send_notification_rules(
     # requeued it after a worker died mid-send), skip recipients we already
     # successfully delivered to. Only "sent" entries dedup — "failed" entries
     # should be retried.
-    already_sent: set[str] = set(
+    _sent_rows = list(
         NotificationLog.objects.filter(
             submission_id=submission_id,
             notification_type=event,
             status="sent",
-        ).values_list("recipient_email", flat=True)
+        ).values_list("recipient_email", "cc_emails", "bcc_emails")
     )
+    already_sent: set[str] = {row[0] for row in _sent_rows}
+    # CC/BCC addresses are stored as comma-separated lists on each To row;
+    # an address was delivered if it appears alongside any successful To send.
+    already_cc_or_bcc: set[str] = set()
+    for _, _cc, _bcc in _sent_rows:
+        for blob in (_cc, _bcc):
+            if not blob:
+                continue
+            for addr in blob.split(","):
+                addr = addr.strip()
+                if addr:
+                    already_cc_or_bcc.add(addr)
 
     for rule in rules:
         # Evaluate optional conditions
@@ -1514,12 +1520,17 @@ def send_notification_rules(
         cc_recipients = [c for c in cc_recipients if c not in recipients]
 
         # Drop recipients already successfully delivered (acks_late retry guard).
-        # NotificationLog stores TO entries as the bare email and CC entries as
-        # ``cc:{recipient}`` — match each list against its own log key format.
-        if already_sent:
+        # New rows store CCs in `cc_emails` on the To row; legacy rows from
+        # before that change used a `cc:{recipient}` prefix on `recipient_email`,
+        # so check both formats during the transition.
+        if already_sent or already_cc_or_bcc:
             before_to, before_cc = len(recipients), len(cc_recipients)
             recipients = [r for r in recipients if r not in already_sent]
-            cc_recipients = [c for c in cc_recipients if f"cc:{c}" not in already_sent]
+            cc_recipients = [
+                c
+                for c in cc_recipients
+                if c not in already_cc_or_bcc and f"cc:{c}" not in already_sent
+            ]
             skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
             if skipped:
                 logger.info(

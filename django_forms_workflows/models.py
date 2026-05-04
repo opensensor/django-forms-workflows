@@ -3471,6 +3471,16 @@ class NotificationLog(models.Model):
         related_name="notification_logs",
     )
     recipient_email = models.EmailField(db_index=True)
+    cc_emails = models.TextField(
+        blank=True,
+        default="",
+        help_text="Comma-separated CC addresses included on this send.",
+    )
+    bcc_emails = models.TextField(
+        blank=True,
+        default="",
+        help_text="Comma-separated BCC addresses included on this send.",
+    )
     subject = models.CharField(max_length=500)
     status = models.CharField(
         max_length=20,

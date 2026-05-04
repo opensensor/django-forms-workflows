@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.17] - 2026-05-04
+
+### Changed
+- **`NotificationLog` consolidates CC/BCC onto the To row.** Previously
+  the dispatcher wrote one row per To recipient AND a separate row per
+  CC with `cc:{email}` jammed into ``recipient_email``, and BCC was not
+  logged at all. ``NotificationLog`` now has dedicated ``cc_emails`` and
+  ``bcc_emails`` ``TextField`` columns (migration ``0096``); each send
+  writes exactly one row per To recipient with the full CC/BCC list
+  captured on that row.
+- ``_send_html_email`` and ``_send_html_email_from_string`` accept a
+  new ``bcc=`` parameter that flows through to
+  ``EmailMultiAlternatives`` and the log row.
+- ``send_notification_rules`` idempotency dedup now reads
+  ``cc_emails``/``bcc_emails`` to know which CC addresses were
+  delivered on a prior successful To send. Legacy ``cc:``-prefixed
+  rows still dedup so an in-flight upgrade can't double-deliver.
+- Admin: ``NotificationLogAdmin`` shows ``cc_emails`` in the list view
+  and makes both new fields searchable and read-only.
+
 ## [0.74.16] - 2026-05-04
 
 ### Fixed

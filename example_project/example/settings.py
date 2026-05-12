@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Required dependencies
+    "nested_admin",
     "crispy_forms",
     "crispy_bootstrap5",
     # Django Form Workflows

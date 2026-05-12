@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     
     # Required dependencies
+    'nested_admin',
     'crispy_forms',
     'crispy_bootstrap5',
     
@@ -84,6 +85,7 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
+    path('_nested_admin/', include('nested_admin.urls')),
     path('admin/', admin.site.urls),
     path('forms/', include('django_forms_workflows.urls')),
 ]

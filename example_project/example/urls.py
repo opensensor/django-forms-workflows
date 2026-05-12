@@ -5,12 +5,13 @@ URL configuration for example project.
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 
 from .views import home
 
 urlpatterns = [
     path("", home, name="home"),
+    re_path(r'^_nested_admin/', include('nested_admin.urls')),
     path("admin/", admin.site.urls),
     path("accounts/", include("django.contrib.auth.urls")),
     path("forms/", include("django_forms_workflows.urls")),

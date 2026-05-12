@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     # Third-party apps
+    'nested_admin',
     'crispy_forms',
     'crispy_bootstrap5',
 
@@ -87,6 +88,7 @@ python manage.py migrate django_forms_workflows
 from django.urls import path, include
 
 urlpatterns = [
+    path('_nested_admin/', include('nested_admin.urls')),
     path('admin/', admin.site.urls),
     path('forms/', include('django_forms_workflows.urls')),
     # ...

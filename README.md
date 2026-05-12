@@ -202,6 +202,7 @@ pip install django-forms-workflows
 ```python
 INSTALLED_APPS = [
     # ...
+    'nested_admin',
     'crispy_forms',
     'crispy_bootstrap5',
     'django_forms_workflows',
@@ -216,6 +217,7 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 ```python
 # urls.py
 urlpatterns = [
+    re_path(r'^_nested_admin/', include('nested_admin.urls')),
     path('forms/', include('django_forms_workflows.urls')),
 ]
 ```

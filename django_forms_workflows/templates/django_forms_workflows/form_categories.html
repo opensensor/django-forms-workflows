@@ -4,7 +4,7 @@
   Context variables
   -----------------
   grouped_forms   : list of category-tree nodes produced by _build_grouped_forms().
-                    Each node is a dict: {"category": FormCategory|None, "forms": [...], "children": [...]}
+                    Each node is a dict: {"category": FormCategory|None, "forms": [...], "children": [...], "total_count": int}
   form_url_name   : URL name for the "Fill Out Form" link
 {% endcomment %}
 
@@ -29,7 +29,7 @@
             aria-controls="cat-general">
             <i class="bi bi-collection me-2"></i>
             General
-            <span class="badge bg-secondary ms-2 fw-normal">{{ node.forms|length }}</span>
+            <span class="badge bg-secondary ms-2 fw-normal">{{ node.total_count }}</span>
           </button>
         </h2>
 

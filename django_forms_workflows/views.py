@@ -95,9 +95,10 @@ def _build_grouped_forms(forms):
     Each node in the returned list is a dict::
 
         {
-            "category": FormCategory | None,   # None = uncategorised bucket
-            "forms":    [FormDefinition, ...], # forms directly under this category
-            "children": [node, ...],           # child category nodes (same structure)
+            "category":   FormCategory | None,   # None = uncategorised bucket
+            "forms":      [FormDefinition, ...], # forms directly under this category
+            "children":   [node, ...],           # child category nodes (same structure)
+            "total_count": int,                  # total forms visible (direct + descendants)
         }
 
     Only categories that contain at least one visible form (directly or via a
@@ -152,17 +153,21 @@ def _build_grouped_forms(forms):
         _has_forms_cache[cat_pk] = result
         return result
 
-    # ---- 4. Recursively assemble the tree ------------------------------
+    # ---- 4. Recursively assemble the tree with total count ------
     def _build_subtree(cat):
         visible_children = [
             _build_subtree(child)
             for child in children_by_parent.get(cat.pk, [])
             if _subtree_has_forms(child.pk)
         ]
+        # Count direct forms + all forms in child categories
+        direct_count = len(forms_by_cat.get(cat.pk, []))
+        children_count = sum(child.get("total_count", 0) for child in visible_children)
         return {
             "category": cat,
             "forms": forms_by_cat.get(cat.pk, []),
             "children": visible_children,
+            "total_count": direct_count + children_count,
         }
 
     top_level = [
@@ -172,7 +177,9 @@ def _build_grouped_forms(forms):
     ]
 
     if uncategorised:
-        top_level.append({"category": None, "forms": uncategorised, "children": []})
+        top_level.append(
+            {"category": None, "forms": uncategorised, "children": [], "total_count": len(uncategorised)}
+        )
 
     return top_level
 

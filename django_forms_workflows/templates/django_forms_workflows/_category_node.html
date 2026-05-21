@@ -3,7 +3,7 @@
 
   Context variables (passed via {% include … with … %})
   ------------------------------------------------------
-  node            : dict with keys "category", "forms", "children"
+  node            : dict with keys "category", "forms", "children", "total_count"
   form_url_name   : URL name for the "Fill Out Form" link
   depth           : integer nesting depth (0 = top-level)
 {% endcomment %}
@@ -24,7 +24,7 @@
       {% endif %}
       {{ cat.name }}
       <span class="badge bg-secondary ms-2 fw-normal">
-        {% with direct=node.forms|length %}{{ direct }}{% endwith %}
+        {{ node.total_count }}
       </span>
     </button>
   </h2>

@@ -1148,7 +1148,7 @@ class WorkflowBuilder {
             </div>
         `;
 
-        const routingSection = `
+        let routingSection = `
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
                 <select class="form-select builder-multiselect-lg" id="stage_groups_${node.id}" name="approval_groups" multiple size="6"
@@ -1157,10 +1157,10 @@ class WorkflowBuilder {
 
         this.groups.forEach(group => {
             const selected = selectedGroupIds.includes(group.id) ? 'selected' : '';
-            html += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
+            routingSection += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
         });
 
-        html += `
+        routingSection += `
                 </select>
                 <small class="text-muted d-block mt-1">Hold Ctrl/Cmd to select multiple groups.</small>
             </div>

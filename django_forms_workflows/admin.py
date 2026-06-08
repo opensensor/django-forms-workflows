@@ -2992,18 +2992,20 @@ class NotificationLogAdmin(admin.ModelAdmin):
         "created_at",
         "notification_type",
         "status",
+        "delivery_state",
         "recipient_email",
         "cc_emails",
         "subject",
         "submission",
     )
-    list_filter = ("notification_type", "status")
+    list_filter = ("notification_type", "status", "delivery_state")
     search_fields = (
         "recipient_email",
         "cc_emails",
         "bcc_emails",
         "subject",
         "submission__id",
+        "rfc2822_message_id",
     )
     readonly_fields = (
         "notification_type",
@@ -3015,6 +3017,10 @@ class NotificationLogAdmin(admin.ModelAdmin):
         "status",
         "error_message",
         "created_at",
+        "rfc2822_message_id",
+        "delivery_state",
+        "delivery_checked_at",
+        "delivery_detail",
     )
     date_hierarchy = "created_at"
     actions = ["retry_failed_notifications"]

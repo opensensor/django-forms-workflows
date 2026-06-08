@@ -259,6 +259,19 @@ class GmailAPIBackend(BaseEmailBackend):
         if email_message.reply_to:
             msg["Reply-To"] = ", ".join(email_message.reply_to)
 
+        # Apply any custom headers set on the EmailMessage (e.g. a Message-ID
+        # we stamp ourselves so delivery can be reconciled against the
+        # Workspace Gmail log). Django's SMTP backend honours extra_headers
+        # automatically; because this backend hand-builds the MIME it must do
+        # so explicitly, or our Message-ID is lost and Gmail assigns an opaque
+        # one we never see. Skip headers already set above so a caller can't
+        # accidentally duplicate To/From/Subject.
+        already_set = {k.lower() for k in msg.keys()}
+        for header, value in (getattr(email_message, "extra_headers", None) or {}).items():
+            if not value or header.lower() in already_set:
+                continue
+            msg[header] = value
+
         return msg
 
     def _add_attachment(self, msg, attachment):

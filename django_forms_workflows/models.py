@@ -3456,6 +3456,23 @@ class NotificationLog(models.Model):
         ("failed", "Failed"),
         ("skipped", "Skipped"),
     ]
+    # Relay/delivery outcome reconciled against the Google Workspace Gmail
+    # log (BigQuery) *after* the send.  ``status`` above records only what the
+    # Gmail API send() call reported synchronously — which returns success even
+    # when the message is silently dropped and never relayed.  ``delivery_state``
+    # records the *actual* fate of the message:
+    #   unconfirmed — sent, not yet reconciled (or no log row found yet)
+    #   delivered   — Workspace log shows a successful relay to the recipient
+    #   bounced     — permanent failure (5xx / NDR); NOT auto-retried
+    #   retried     — a fresh send was dispatched for this recipient
+    #   exhausted   — soft-failed/absent and the per-recipient retry cap is hit
+    DELIVERY_STATES = [
+        ("unconfirmed", "Unconfirmed"),
+        ("delivered", "Delivered"),
+        ("bounced", "Bounced"),
+        ("retried", "Retried"),
+        ("exhausted", "Exhausted (retries spent)"),
+    ]
 
     notification_type = models.CharField(
         max_length=50,
@@ -3491,10 +3508,48 @@ class NotificationLog(models.Model):
     error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
+    # RFC 2822 Message-ID header stamped on the outgoing MIME message at send
+    # time.  This is the join key against the Workspace Gmail log's
+    # ``gmail.message_info.rfc2822_message_id`` field, stored WITH angle
+    # brackets so it matches the log value verbatim.  Empty for legacy rows
+    # and for sends that did not go through the Gmail API backend.
+    rfc2822_message_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Message-ID stamped on the MIME message; join key to the Gmail delivery log.",
+    )
+    delivery_state = models.CharField(
+        max_length=20,
+        choices=DELIVERY_STATES,
+        default="unconfirmed",
+        db_index=True,
+    )
+    delivery_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time delivery reconciliation examined this row.",
+    )
+    delivery_detail = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Reconciliation outcome detail (smtp code / relay error / reason).",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Notification Log"
         verbose_name_plural = "Notification Logs"
+        indexes = [
+            # The reconciliation sweep scans 'sent' + 'unconfirmed' rows within
+            # a time window every run; this composite keeps that cheap.
+            models.Index(
+                fields=["status", "delivery_state", "created_at"],
+                name="notiflog_recon_idx",
+            ),
+        ]
 
     def __str__(self):
         return (

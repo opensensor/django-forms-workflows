@@ -15,6 +15,7 @@ import hmac
 import json
 import logging
 from calendar import monthrange
+from email.utils import make_msgid
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta
@@ -90,6 +91,20 @@ def _site_name() -> str:
     return cfg.get("SITE_NAME", "Django Forms Workflows")
 
 
+def _make_message_id(from_addr: str) -> str:
+    """Return a unique RFC 2822 Message-ID (with angle brackets) for an outgoing email.
+
+    We stamp this ourselves so each send can later be reconciled against the
+    Google Workspace Gmail delivery log (whose ``rfc2822_message_id`` field
+    stores the exact header value). The domain is taken from the sender so the
+    ID reads cleanly; uniqueness comes from ``make_msgid``'s random component.
+    The value is stored verbatim on ``NotificationLog.rfc2822_message_id`` and
+    set as the MIME ``Message-ID`` header (see ``GmailAPIBackend``).
+    """
+    domain = from_addr.rpartition("@")[2].strip().strip(">") or "localhost"
+    return make_msgid(domain=domain)
+
+
 def _send_html_email(
     subject: str,
     to: Iterable[str],
@@ -136,6 +151,10 @@ def _send_html_email(
         bcc=bcc_list or None,
     )
     msg.attach_alternative(html_body, "text/html")
+    # Stamp a Message-ID we control so delivery can be reconciled against the
+    # Workspace Gmail log (see _make_message_id / GmailAPIBackend).
+    message_id = _make_message_id(from_addr)
+    msg.extra_headers["Message-ID"] = message_id
     cc_str = ", ".join(cc_list)
     bcc_str = ", ".join(bcc_list)
     try:
@@ -156,6 +175,7 @@ def _send_html_email(
                 status="sent",
                 cc_emails=cc_str,
                 bcc_emails=bcc_str,
+                rfc2822_message_id=message_id,
             )
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
@@ -224,6 +244,10 @@ def _send_html_email_from_string(
         bcc=bcc_list or None,
     )
     msg.attach_alternative(html_body, "text/html")
+    # Stamp a Message-ID we control so delivery can be reconciled against the
+    # Workspace Gmail log (see _make_message_id / GmailAPIBackend).
+    message_id = _make_message_id(from_addr)
+    msg.extra_headers["Message-ID"] = message_id
     cc_str = ", ".join(cc_list)
     bcc_str = ", ".join(bcc_list)
     try:
@@ -244,6 +268,7 @@ def _send_html_email_from_string(
                 status="sent",
                 cc_emails=cc_str,
                 bcc_emails=bcc_str,
+                rfc2822_message_id=message_id,
             )
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
@@ -270,6 +295,7 @@ def _write_notification_log(
     error_message: str = "",
     cc_emails: str = "",
     bcc_emails: str = "",
+    rfc2822_message_id: str = "",
 ) -> None:
     """Write a NotificationLog row; never raises so it cannot break email delivery."""
     try:
@@ -282,6 +308,7 @@ def _write_notification_log(
             error_message=error_message,
             cc_emails=cc_emails,
             bcc_emails=bcc_emails,
+            rfc2822_message_id=rfc2822_message_id,
         )
     except Exception:  # pragma: no cover
         logger.exception("Failed to write NotificationLog (ignored)")
@@ -1468,12 +1495,21 @@ def send_notification_rules(
     # requeued it after a worker died mid-send), skip recipients we already
     # successfully delivered to. Only "sent" entries dedup — "failed" entries
     # should be retried.
+    #
+    # Exception: rows the delivery-reconciliation sweep marked
+    # ``delivery_state='retried'`` are deliberately excluded here. Such a row
+    # has ``status='sent'`` (the Gmail API send call succeeded) but the
+    # Workspace log showed it was never actually relayed, so reconciliation
+    # re-dispatched this task precisely to resend to that recipient. Leaving it
+    # in ``already_sent`` would make the retry a silent no-op.
     _sent_rows = list(
         NotificationLog.objects.filter(
             submission_id=submission_id,
             notification_type=event,
             status="sent",
-        ).values_list("recipient_email", "cc_emails", "bcc_emails")
+        )
+        .exclude(delivery_state="retried")
+        .values_list("recipient_email", "cc_emails", "bcc_emails")
     )
     already_sent: set[str] = {row[0] for row in _sent_rows}
     # CC/BCC addresses are stored as comma-separated lists on each To row;
@@ -1688,3 +1724,17 @@ def send_notification_rules(
                         submission_id=submission_id,
                         cc=email_cc,
                     )
+
+
+@shared_task(name="django_forms_workflows.reconcile_email_delivery")
+def reconcile_email_delivery() -> str:
+    """Reconcile recent notification sends against the Workspace Gmail log.
+
+    Confirms real delivery, auto-retries silent drops/soft failures, and alerts
+    on hard bounces and retry exhaustion. Scheduled by Celery beat; see
+    ``reconciliation.run_reconciliation`` for the logic and the
+    ``EMAIL_RECONCILIATION`` setting for configuration.
+    """
+    from .reconciliation import run_reconciliation
+
+    return run_reconciliation()

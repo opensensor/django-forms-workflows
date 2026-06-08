@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.75.1] - 2026-06-08
+
+### Added
+- **Email delivery reconciliation against the Google Workspace Gmail log.**
+  The Gmail API `messages().send()` call returns success even when a
+  message is silently dropped and never relayed, so `NotificationLog.status`
+  of `sent` only meant "the send call did not raise" — not that the
+  recipient received anything. A new reconciliation pass closes that gap:
+  - Every notification send now stamps an RFC 2822 `Message-ID` header we
+    control (`_make_message_id`) and stores it on
+    `NotificationLog.rfc2822_message_id`. `GmailAPIBackend._build_mime_message`
+    now honors custom `extra_headers` so the Message-ID survives into the
+    message (previously all custom headers were dropped and Gmail assigned
+    an opaque ID we never saw).
+  - The new `reconcile_email_delivery` Celery task (`reconciliation.py`)
+    joins recent `sent` rows to the Workspace Gmail delivery log in BigQuery
+    on that Message-ID, classifies the real outcome (delivered / hard bounce
+    / soft-fail-or-silent-drop), and records it on new `NotificationLog`
+    fields `delivery_state`, `delivery_checked_at`, `delivery_detail`.
+  - Soft failures and silent drops are **auto-retried** by re-dispatching
+    `send_notification_rules` (the same idempotent path as the admin "Retry"
+    action), capped per recipient. Hard bounces are not retried. Staff are
+    **alerted** by email on hard bounces and on retry exhaustion. The
+    `send_notification_rules` idempotency guard now lets rows the sweep marks
+    `delivery_state='retried'` through, so reconciliation retries are not
+    silently skipped.
+  - Configured via the `EMAIL_RECONCILIATION` setting (disabled by default).
+    Requires the optional `reconciliation` extra (`google-cloud-bigquery`)
+    and read access to the Workspace Gmail log dataset.
+  - `NotificationLogAdmin` now shows and filters on `delivery_state`.
+
+  Migration: `0097_notificationlog_delivery_reconciliation`.
+
 ## [0.74.18] - 2026-05-04
 
 ### Fixed

@@ -39,7 +39,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--ou",
             type=str,
-            help="Organisational Unit to search within (e.g. 'OU=Faculty,DC=sjcme,DC=edu'). "
+            help="Organisational Unit to search within (e.g. 'OU=Faculty,DC=example,DC=com'). "
             "If not provided, uses the default LDAP search base.",
         )
         parser.add_argument(

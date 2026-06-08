@@ -370,7 +370,7 @@ def link_to_existing_user(backend, details, user=None, *args, **kwargs):
 
     # Determine username to look for
     if sso_settings.get("username_from_email", True):
-        # Extract username from email prefix (e.g., "mdavis@sjcme.edu" -> "mdavis")
+        # Extract username from email prefix (e.g., "jdoe@example.com" -> "jdoe")
         username = email.split("@")[0].lower()
     else:
         username = details.get("username", "").lower()

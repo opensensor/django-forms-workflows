@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-forms-workflows"
-version = "0.75.1"
+version = "0.76.0"
 description = "Enterprise-grade, database-driven form builder with approval workflows and external data integration"
 license = "LGPL-3.0-only"
 readme = "README.md"
@@ -51,9 +51,6 @@ mysqlclient = { version = ">=2.2", optional = true }
 google-auth = { version = ">=2.20", optional = true }
 google-api-python-client = { version = ">=2.100", optional = true }
 
-# Optional delivery reconciliation against the Workspace Gmail log (BigQuery)
-google-cloud-bigquery = { version = ">=3.11", optional = true }
-
 # Optional PDF generation
 weasyprint = { version = ">=60.0", optional = true }
 
@@ -89,7 +86,6 @@ mssql = ["mssql-django", "pyodbc"]
 postgresql = ["psycopg2-binary"]
 mysql = ["mysqlclient"]
 gmail = ["google-auth", "google-api-python-client"]
-reconciliation = ["google-cloud-bigquery"]
 pdf = ["weasyprint"]
 excel = ["openpyxl"]
 qr = ["segno"]

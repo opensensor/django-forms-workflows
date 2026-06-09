@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-06-09
+
+### Removed
+- **BigQuery delivery reconciliation.** Removed `reconciliation.py`, the
+  `reconcile_email_delivery` Celery task, and the optional `reconciliation`
+  extra (`google-cloud-bigquery`). Delivery truth no longer comes from the
+  Workspace Gmail log: mail is moving off the Gmail API onto an authenticated
+  ESP (Mailjet) whose own event feed reports delivered/bounced/blocked
+  directly.
+- Consuming projects should drop the `EMAIL_RECONCILIATION` setting and any
+  Celery beat entry for `django_forms_workflows.reconcile_email_delivery`.
+
+### Retained
+- The `NotificationLog` delivery-tracking columns (`rfc2822_message_id`,
+  `delivery_state`, `delivery_checked_at`, `delivery_detail`) and the
+  Message-ID stamping are kept — they are ESP-agnostic and will be repopulated
+  from the Mailjet event feed. No migration change.
+
 ## [0.75.1] - 2026-06-08
 
 ### Added

@@ -15,11 +15,11 @@ import hmac
 import json
 import logging
 from calendar import monthrange
-from email.utils import make_msgid
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from datetime import time as dt_time
+from email.utils import make_msgid
 
 import requests
 from django.conf import settings

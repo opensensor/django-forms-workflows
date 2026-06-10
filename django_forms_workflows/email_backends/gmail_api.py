@@ -267,7 +267,9 @@ class GmailAPIBackend(BaseEmailBackend):
         # one we never see. Skip headers already set above so a caller can't
         # accidentally duplicate To/From/Subject.
         already_set = {k.lower() for k in msg.keys()}
-        for header, value in (getattr(email_message, "extra_headers", None) or {}).items():
+        for header, value in (
+            getattr(email_message, "extra_headers", None) or {}
+        ).items():
             if not value or header.lower() in already_set:
                 continue
             msg[header] = value

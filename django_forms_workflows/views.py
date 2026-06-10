@@ -178,7 +178,12 @@ def _build_grouped_forms(forms):
 
     if uncategorised:
         top_level.append(
-            {"category": None, "forms": uncategorised, "children": [], "total_count": len(uncategorised)}
+            {
+                "category": None,
+                "forms": uncategorised,
+                "children": [],
+                "total_count": len(uncategorised),
+            }
         )
 
     return top_level

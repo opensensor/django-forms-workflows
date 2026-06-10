@@ -15,11 +15,11 @@ import hmac
 import json
 import logging
 from calendar import monthrange
-from email.utils import make_msgid
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from datetime import time as dt_time
+from email.utils import make_msgid
 
 import requests
 from django.conf import settings
@@ -1496,12 +1496,11 @@ def send_notification_rules(
     # successfully delivered to. Only "sent" entries dedup — "failed" entries
     # should be retried.
     #
-    # Exception: rows the delivery-reconciliation sweep marked
-    # ``delivery_state='retried'`` are deliberately excluded here. Such a row
-    # has ``status='sent'`` (the Gmail API send call succeeded) but the
-    # Workspace log showed it was never actually relayed, so reconciliation
-    # re-dispatched this task precisely to resend to that recipient. Leaving it
-    # in ``already_sent`` would make the retry a silent no-op.
+    # Exception: rows a delivery sweep marked ``delivery_state='retried'`` are
+    # deliberately excluded here. Such a row has ``status='sent'`` (the send call
+    # succeeded) but a delivery check showed it was never actually delivered, so
+    # the sweep re-dispatched this task precisely to resend to that recipient.
+    # Leaving it in ``already_sent`` would make the retry a silent no-op.
     _sent_rows = list(
         NotificationLog.objects.filter(
             submission_id=submission_id,
@@ -1724,17 +1723,3 @@ def send_notification_rules(
                         submission_id=submission_id,
                         cc=email_cc,
                     )
-
-
-@shared_task(name="django_forms_workflows.reconcile_email_delivery")
-def reconcile_email_delivery() -> str:
-    """Reconcile recent notification sends against the Workspace Gmail log.
-
-    Confirms real delivery, auto-retries silent drops/soft failures, and alerts
-    on hard bounces and retry exhaustion. Scheduled by Celery beat; see
-    ``reconciliation.run_reconciliation`` for the logic and the
-    ``EMAIL_RECONCILIATION`` setting for configuration.
-    """
-    from .reconciliation import run_reconciliation
-
-    return run_reconciliation()

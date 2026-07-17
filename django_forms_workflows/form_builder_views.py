@@ -370,36 +370,9 @@ def form_builder_save(request):
     try:
         data = json.loads(request.body)
 
-        # Extract form definition data
         form_id = data.get("id")
         form_name = data.get("name", "").strip()
         form_slug = data.get("slug", "").strip()
-        form_description = data.get("description", "").strip()
-        form_instructions = data.get("instructions", "").strip()
-        is_active = data.get("is_active", True)
-        requires_login = data.get("requires_login", True)
-        allow_save_draft = data.get("allow_save_draft", True)
-        allow_withdrawal = data.get("allow_withdrawal", True)
-        success_message = data.get("success_message", "").strip()
-        success_redirect_url = data.get("success_redirect_url", "").strip()
-        success_redirect_rules = data.get("success_redirect_rules") or None
-        close_date = data.get("close_date") or None
-        max_submissions = data.get("max_submissions") or None
-        one_per_user = data.get("one_per_user", False)
-        payment_enabled = data.get("payment_enabled", False)
-        payment_provider = data.get("payment_provider", "")
-        payment_amount_type = data.get("payment_amount_type", "fixed")
-        payment_fixed_amount = data.get("payment_fixed_amount") or None
-        payment_amount_field = data.get("payment_amount_field", "")
-        payment_currency = data.get("payment_currency", "usd")
-        payment_description_template = data.get("payment_description_template", "")
-        enable_captcha = data.get("enable_captcha", False)
-        embed_enabled = data.get("embed_enabled", False)
-        enable_multi_step = data.get("enable_multi_step", False)
-        form_steps = data.get("form_steps", [])
-        enable_auto_save = data.get("enable_auto_save", True)
-        auto_save_interval = data.get("auto_save_interval", 30)
-        fields_data = data.get("fields", [])
 
         # Validate required fields
         if not form_name:
@@ -411,165 +384,15 @@ def form_builder_save(request):
                 {"success": False, "error": "Form slug is required"}, status=400
             )
 
+        form_definition = (
+            get_object_or_404(FormDefinition, id=form_id) if form_id else None
+        )
+
         # Use transaction to ensure atomicity
         with transaction.atomic():
-            # Create or update form definition
-            if form_id:
-                form_definition = get_object_or_404(FormDefinition, id=form_id)
-                form_definition.name = form_name
-                form_definition.slug = form_slug
-                form_definition.description = form_description
-                form_definition.instructions = form_instructions
-                form_definition.is_active = is_active
-                form_definition.requires_login = requires_login
-                form_definition.allow_save_draft = allow_save_draft
-                form_definition.allow_withdrawal = allow_withdrawal
-                form_definition.success_message = success_message
-                form_definition.success_redirect_url = success_redirect_url
-                form_definition.success_redirect_rules = success_redirect_rules
-                form_definition.close_date = close_date
-                form_definition.max_submissions = max_submissions
-                form_definition.one_per_user = one_per_user
-                form_definition.payment_enabled = payment_enabled
-                form_definition.payment_provider = payment_provider
-                form_definition.payment_amount_type = payment_amount_type
-                form_definition.payment_fixed_amount = payment_fixed_amount
-                form_definition.payment_amount_field = payment_amount_field
-                form_definition.payment_currency = payment_currency
-                form_definition.payment_description_template = (
-                    payment_description_template
-                )
-                form_definition.enable_captcha = enable_captcha
-                form_definition.embed_enabled = embed_enabled
-                form_definition.enable_multi_step = enable_multi_step
-                form_definition.form_steps = form_steps
-                form_definition.enable_auto_save = enable_auto_save
-                form_definition.auto_save_interval = auto_save_interval
-                form_definition.version += 1  # Increment version on edit
-                form_definition.save()
-            else:
-                form_definition = FormDefinition.objects.create(
-                    name=form_name,
-                    slug=form_slug,
-                    description=form_description,
-                    instructions=form_instructions,
-                    is_active=is_active,
-                    requires_login=requires_login,
-                    allow_save_draft=allow_save_draft,
-                    allow_withdrawal=allow_withdrawal,
-                    success_message=success_message,
-                    success_redirect_url=success_redirect_url,
-                    success_redirect_rules=success_redirect_rules,
-                    close_date=close_date,
-                    max_submissions=max_submissions,
-                    one_per_user=one_per_user,
-                    payment_enabled=payment_enabled,
-                    payment_provider=payment_provider,
-                    payment_amount_type=payment_amount_type,
-                    payment_fixed_amount=payment_fixed_amount,
-                    payment_amount_field=payment_amount_field,
-                    payment_currency=payment_currency,
-                    payment_description_template=payment_description_template,
-                    enable_captcha=enable_captcha,
-                    embed_enabled=embed_enabled,
-                    enable_multi_step=enable_multi_step,
-                    form_steps=form_steps,
-                    enable_auto_save=enable_auto_save,
-                    auto_save_interval=auto_save_interval,
-                    created_by=request.user,
-                )
-
-            # Track existing field IDs to determine which to delete
-            existing_field_ids = set(
-                form_definition.fields.values_list("id", flat=True)
+            form_definition, field_id_mapping = save_form_definition_from_builder_data(
+                data, request.user, form_definition=form_definition
             )
-            updated_field_ids = set()
-            field_id_mapping = {}  # Map old IDs to new IDs for frontend update
-
-            # Create or update fields
-            for field_data in fields_data:
-                field_id = field_data.get("id")
-                old_id = field_id  # Store original ID for mapping
-
-                # Extract field properties
-                field_props = {
-                    "form_definition": form_definition,
-                    "order": field_data.get("order", 0),
-                    "field_label": field_data.get("field_label", ""),
-                    "field_name": field_data.get("field_name", ""),
-                    "field_type": field_data.get("field_type", "text"),
-                    "required": field_data.get("required", False),
-                    "help_text": field_data.get("help_text", ""),
-                    "show_help_text_in_detail": field_data.get(
-                        "show_help_text_in_detail", False
-                    ),
-                    "placeholder": field_data.get("placeholder", ""),
-                    "width": field_data.get("width", "full"),
-                    "css_class": field_data.get("css_class", ""),
-                    "choices": field_data.get("choices", ""),
-                    "default_value": field_data.get("default_value", ""),
-                    "prefill_source_config_id": field_data.get("prefill_source_id"),
-                    "shared_option_list_id": field_data.get("shared_option_list_id")
-                    or None,
-                }
-
-                # Add validation properties
-                validation = field_data.get("validation", {})
-                field_props.update(
-                    {
-                        "min_value": validation.get("min_value"),
-                        "max_value": validation.get("max_value"),
-                        "min_length": validation.get("min_length"),
-                        "max_length": validation.get("max_length"),
-                        "regex_validation": validation.get("regex_validation", ""),
-                        "regex_error_message": validation.get(
-                            "regex_error_message", ""
-                        ),
-                    }
-                )
-
-                # Add conditional properties
-                conditional = field_data.get("conditional", {})
-                conditional_rules = conditional.get(
-                    "conditional_rules",
-                    field_data.get("conditional_rules"),
-                )
-
-                # Add client-side enhancement properties
-                field_props.update(
-                    {
-                        "conditional_rules": conditional_rules,
-                        "validation_rules": field_data.get("validation_rules"),
-                        "field_dependencies": field_data.get("field_dependencies"),
-                        "step_number": field_data.get("step_number"),
-                    }
-                )
-
-                # Add workflow stage FK (for staged approval workflows)
-                wf_stage_id = field_data.get("workflow_stage_id")
-                if wf_stage_id is not None:
-                    field_props["workflow_stage_id"] = (
-                        int(wf_stage_id) if wf_stage_id else None
-                    )
-                else:
-                    field_props["workflow_stage_id"] = None
-
-                # Create or update field
-                if field_id and isinstance(field_id, int):
-                    # Update existing field
-                    FormField.objects.filter(id=field_id).update(**field_props)
-                    updated_field_ids.add(field_id)
-                    field_id_mapping[str(old_id)] = field_id
-                else:
-                    # Create new field
-                    new_field = FormField.objects.create(**field_props)
-                    updated_field_ids.add(new_field.id)
-                    field_id_mapping[str(old_id)] = new_field.id
-
-            # Delete fields that were removed
-            fields_to_delete = existing_field_ids - updated_field_ids
-            if fields_to_delete:
-                FormField.objects.filter(id__in=fields_to_delete).delete()
 
         return JsonResponse(
             {
@@ -589,6 +412,202 @@ def form_builder_save(request):
         return JsonResponse(
             {"success": False, "error": "An internal error occurred."}, status=500
         )
+
+
+def save_form_definition_from_builder_data(data, user, form_definition=None):
+    """
+    Create or update a FormDefinition and its FormFields from form builder
+    JSON data (see form_builder_save).
+
+    If `form_definition` is given, updates it in place (its version counter
+    is incremented); otherwise creates a new one with created_by=user.
+    Assumes data["name"]/data["slug"] have already been validated non-empty
+    by the caller.
+
+    Returns (form_definition, field_id_mapping), where field_id_mapping maps
+    each submitted field's original "id" (as sent by the client — an int
+    for an existing field, otherwise its client-side placeholder id) to the
+    resulting integer pk, as a str-keyed dict, so the frontend can
+    reconcile IDs for newly-created fields.
+    """
+    form_name = data.get("name", "").strip()
+    form_slug = data.get("slug", "").strip()
+    form_description = data.get("description", "").strip()
+    form_instructions = data.get("instructions", "").strip()
+    is_active = data.get("is_active", True)
+    requires_login = data.get("requires_login", True)
+    allow_save_draft = data.get("allow_save_draft", True)
+    allow_withdrawal = data.get("allow_withdrawal", True)
+    success_message = data.get("success_message", "").strip()
+    success_redirect_url = data.get("success_redirect_url", "").strip()
+    success_redirect_rules = data.get("success_redirect_rules") or None
+    close_date = data.get("close_date") or None
+    max_submissions = data.get("max_submissions") or None
+    one_per_user = data.get("one_per_user", False)
+    payment_enabled = data.get("payment_enabled", False)
+    payment_provider = data.get("payment_provider", "")
+    payment_amount_type = data.get("payment_amount_type", "fixed")
+    payment_fixed_amount = data.get("payment_fixed_amount") or None
+    payment_amount_field = data.get("payment_amount_field", "")
+    payment_currency = data.get("payment_currency", "usd")
+    payment_description_template = data.get("payment_description_template", "")
+    enable_captcha = data.get("enable_captcha", False)
+    embed_enabled = data.get("embed_enabled", False)
+    enable_multi_step = data.get("enable_multi_step", False)
+    form_steps = data.get("form_steps", [])
+    enable_auto_save = data.get("enable_auto_save", True)
+    auto_save_interval = data.get("auto_save_interval", 30)
+    fields_data = data.get("fields", [])
+
+    # Create or update form definition
+    if form_definition is not None:
+        form_definition.name = form_name
+        form_definition.slug = form_slug
+        form_definition.description = form_description
+        form_definition.instructions = form_instructions
+        form_definition.is_active = is_active
+        form_definition.requires_login = requires_login
+        form_definition.allow_save_draft = allow_save_draft
+        form_definition.allow_withdrawal = allow_withdrawal
+        form_definition.success_message = success_message
+        form_definition.success_redirect_url = success_redirect_url
+        form_definition.success_redirect_rules = success_redirect_rules
+        form_definition.close_date = close_date
+        form_definition.max_submissions = max_submissions
+        form_definition.one_per_user = one_per_user
+        form_definition.payment_enabled = payment_enabled
+        form_definition.payment_provider = payment_provider
+        form_definition.payment_amount_type = payment_amount_type
+        form_definition.payment_fixed_amount = payment_fixed_amount
+        form_definition.payment_amount_field = payment_amount_field
+        form_definition.payment_currency = payment_currency
+        form_definition.payment_description_template = payment_description_template
+        form_definition.enable_captcha = enable_captcha
+        form_definition.embed_enabled = embed_enabled
+        form_definition.enable_multi_step = enable_multi_step
+        form_definition.form_steps = form_steps
+        form_definition.enable_auto_save = enable_auto_save
+        form_definition.auto_save_interval = auto_save_interval
+        form_definition.version += 1  # Increment version on edit
+        form_definition.save()
+    else:
+        form_definition = FormDefinition.objects.create(
+            name=form_name,
+            slug=form_slug,
+            description=form_description,
+            instructions=form_instructions,
+            is_active=is_active,
+            requires_login=requires_login,
+            allow_save_draft=allow_save_draft,
+            allow_withdrawal=allow_withdrawal,
+            success_message=success_message,
+            success_redirect_url=success_redirect_url,
+            success_redirect_rules=success_redirect_rules,
+            close_date=close_date,
+            max_submissions=max_submissions,
+            one_per_user=one_per_user,
+            payment_enabled=payment_enabled,
+            payment_provider=payment_provider,
+            payment_amount_type=payment_amount_type,
+            payment_fixed_amount=payment_fixed_amount,
+            payment_amount_field=payment_amount_field,
+            payment_currency=payment_currency,
+            payment_description_template=payment_description_template,
+            enable_captcha=enable_captcha,
+            embed_enabled=embed_enabled,
+            enable_multi_step=enable_multi_step,
+            form_steps=form_steps,
+            enable_auto_save=enable_auto_save,
+            auto_save_interval=auto_save_interval,
+            created_by=user,
+        )
+
+    # Track existing field IDs to determine which to delete
+    existing_field_ids = set(form_definition.fields.values_list("id", flat=True))
+    updated_field_ids = set()
+    field_id_mapping = {}  # Map old IDs to new IDs for frontend update
+
+    # Create or update fields
+    for field_data in fields_data:
+        field_id = field_data.get("id")
+        old_id = field_id  # Store original ID for mapping
+
+        # Extract field properties
+        field_props = {
+            "form_definition": form_definition,
+            "order": field_data.get("order", 0),
+            "field_label": field_data.get("field_label", ""),
+            "field_name": field_data.get("field_name", ""),
+            "field_type": field_data.get("field_type", "text"),
+            "required": field_data.get("required", False),
+            "help_text": field_data.get("help_text", ""),
+            "show_help_text_in_detail": field_data.get(
+                "show_help_text_in_detail", False
+            ),
+            "placeholder": field_data.get("placeholder", ""),
+            "width": field_data.get("width", "full"),
+            "css_class": field_data.get("css_class", ""),
+            "choices": field_data.get("choices", ""),
+            "default_value": field_data.get("default_value", ""),
+            "prefill_source_config_id": field_data.get("prefill_source_id"),
+            "shared_option_list_id": field_data.get("shared_option_list_id") or None,
+        }
+
+        # Add validation properties
+        validation = field_data.get("validation", {})
+        field_props.update(
+            {
+                "min_value": validation.get("min_value"),
+                "max_value": validation.get("max_value"),
+                "min_length": validation.get("min_length"),
+                "max_length": validation.get("max_length"),
+                "regex_validation": validation.get("regex_validation", ""),
+                "regex_error_message": validation.get("regex_error_message", ""),
+            }
+        )
+
+        # Add conditional properties
+        conditional = field_data.get("conditional", {})
+        conditional_rules = conditional.get(
+            "conditional_rules",
+            field_data.get("conditional_rules"),
+        )
+
+        # Add client-side enhancement properties
+        field_props.update(
+            {
+                "conditional_rules": conditional_rules,
+                "validation_rules": field_data.get("validation_rules"),
+                "field_dependencies": field_data.get("field_dependencies"),
+                "step_number": field_data.get("step_number"),
+            }
+        )
+
+        # Add workflow stage FK (for staged approval workflows)
+        wf_stage_id = field_data.get("workflow_stage_id")
+        if wf_stage_id is not None:
+            field_props["workflow_stage_id"] = int(wf_stage_id) if wf_stage_id else None
+        else:
+            field_props["workflow_stage_id"] = None
+
+        # Create or update field
+        if field_id and isinstance(field_id, int):
+            # Update existing field
+            FormField.objects.filter(id=field_id).update(**field_props)
+            updated_field_ids.add(field_id)
+            field_id_mapping[str(old_id)] = field_id
+        else:
+            # Create new field
+            new_field = FormField.objects.create(**field_props)
+            updated_field_ids.add(new_field.id)
+            field_id_mapping[str(old_id)] = new_field.id
+
+    # Delete fields that were removed
+    fields_to_delete = existing_field_ids - updated_field_ids
+    if fields_to_delete:
+        FormField.objects.filter(id__in=fields_to_delete).delete()
+
+    return form_definition, field_id_mapping
 
 
 @staff_member_required

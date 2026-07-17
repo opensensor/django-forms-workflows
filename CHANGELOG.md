@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Form builder save logic factored into a standalone helper.**
+  `form_builder_save`'s create/update logic for `FormDefinition` and its
+  `FormField`s now lives in `save_form_definition_from_builder_data()`,
+  mirroring the existing `convert_visual_to_workflow` split already used by
+  the workflow builder. Makes the logic callable (and unit-testable)
+  independently of the `@staff_member_required`-decorated HTTP view — no
+  behavior or API change.
+
 ## [0.76.0] - 2026-06-09
 
 ### Removed

@@ -8,6 +8,9 @@ from pathlib import Path
 import pytest
 from django.core.exceptions import ValidationError
 
+from django_forms_workflows.form_builder_views import (
+    save_form_definition_from_builder_data,
+)
 from django_forms_workflows.models import (
     FormDefinition,
     NotificationRule,
@@ -1243,6 +1246,143 @@ class TestWorkflowBuilderViews:
             "operator": "OR",
             "conditions": [{"field": "amount", "operator": "gt", "value": "500"}],
         }
+
+
+# ── save_form_definition_from_builder_data ──────────────────────────────────
+
+
+class TestSaveFormDefinitionFromBuilderData:
+    """Tests for the form builder's save logic, factored out of
+    form_builder_save so it can be called directly — mirrors the
+    convert_visual_to_workflow/form_builder_save split above."""
+
+    def test_creates_a_new_form_definition(self, user):
+        data = {
+            "name": "New Form",
+            "slug": "new-form",
+            "description": "A brand new form",
+            "fields": [],
+        }
+        form_definition, field_id_mapping = save_form_definition_from_builder_data(
+            data, user
+        )
+        assert form_definition.pk is not None
+        assert form_definition.name == "New Form"
+        assert form_definition.slug == "new-form"
+        assert form_definition.description == "A brand new form"
+        assert form_definition.created_by == user
+        assert field_id_mapping == {}
+
+    def test_updates_an_existing_form_definition_in_place(self, user, form_definition):
+        data = {
+            "name": "Renamed Form",
+            "slug": form_definition.slug,
+            "description": "Updated description",
+            "fields": [],
+        }
+        result, _ = save_form_definition_from_builder_data(
+            data, user, form_definition=form_definition
+        )
+        assert result.pk == form_definition.pk
+        assert result.name == "Renamed Form"
+        assert result.description == "Updated description"
+
+    def test_increments_version_on_update_but_not_on_create(
+        self, user, form_definition
+    ):
+        assert form_definition.version == 1
+        data = {
+            "name": form_definition.name,
+            "slug": form_definition.slug,
+            "fields": [],
+        }
+        updated, _ = save_form_definition_from_builder_data(
+            data, user, form_definition=form_definition
+        )
+        assert updated.version == 2
+
+        created, _ = save_form_definition_from_builder_data(
+            {"name": "Another Form", "slug": "another-form", "fields": []}, user
+        )
+        assert created.version == 1
+
+    def test_creates_new_fields(self, user, form_definition):
+        data = {
+            "name": form_definition.name,
+            "slug": form_definition.slug,
+            "fields": [
+                {
+                    "id": "temp-1",
+                    "field_name": "new_field",
+                    "field_label": "New Field",
+                    "field_type": "text",
+                    "order": 1,
+                    "required": True,
+                }
+            ],
+        }
+        result, field_id_mapping = save_form_definition_from_builder_data(
+            data, user, form_definition=form_definition
+        )
+        new_field = result.fields.get(field_name="new_field")
+        assert new_field.field_label == "New Field"
+        assert new_field.required is True
+        assert field_id_mapping == {"temp-1": new_field.id}
+
+    def test_updates_an_existing_field(self, user, form_with_fields):
+        field = form_with_fields.fields.get(field_name="full_name")
+        data = {
+            "name": form_with_fields.name,
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": field.id,
+                    "field_name": "full_name",
+                    "field_label": "Renamed Label",
+                    "field_type": "text",
+                    "order": 1,
+                    "required": True,
+                }
+            ],
+        }
+        save_form_definition_from_builder_data(
+            data, user, form_definition=form_with_fields
+        )
+        field.refresh_from_db()
+        assert field.field_label == "Renamed Label"
+
+    def test_deletes_fields_absent_from_the_payload(self, user, form_with_fields):
+        assert form_with_fields.fields.count() == 5
+        data = {
+            "name": form_with_fields.name,
+            "slug": form_with_fields.slug,
+            "fields": [],
+        }
+        save_form_definition_from_builder_data(
+            data, user, form_definition=form_with_fields
+        )
+        assert form_with_fields.fields.count() == 0
+
+    def test_keeps_fields_present_in_the_payload_by_id(self, user, form_with_fields):
+        keep = form_with_fields.fields.get(field_name="email")
+        data = {
+            "name": form_with_fields.name,
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": keep.id,
+                    "field_name": keep.field_name,
+                    "field_label": keep.field_label,
+                    "field_type": keep.field_type,
+                    "order": keep.order,
+                }
+            ],
+        }
+        save_form_definition_from_builder_data(
+            data, user, form_definition=form_with_fields
+        )
+        assert form_with_fields.fields.count() == 1
+        assert form_with_fields.fields.get().pk == keep.pk
 
 
 # ── Form builder view tests ─────────────────────────────────────────────────

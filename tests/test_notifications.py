@@ -892,6 +892,85 @@ def test_cc_static_and_dynamic_attached_to_first_email(
     assert second_cc == []
 
 
+def test_cc_email_field_with_multiple_addresses_is_split(form_definition, user):
+    """A multi-select CC field yields one CC entry per address, not one blob.
+
+    Regression: the raw ``"a@x.edu,b@x.edu"`` value used to be passed
+    through as a single recipient, which the email backend rejects with
+    "must be a single address".
+    """
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        notify_submitter=True,
+        cc_email_field="faculty_emails",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"faculty_emails": "first@example.com, second@example.com"},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    cc = mock_send.call_args_list[0].kwargs.get("cc") or []
+    assert cc == ["first@example.com", "second@example.com"]
+
+
+def test_email_field_with_multiple_addresses_sends_to_each(form_definition, user):
+    """A multi-select recipient field fans out to one email per address."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        email_field="faculty_emails",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"faculty_emails": "first@example.com,second@example.com"},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    recipients = [call.args[1] for call in mock_send.call_args_list]
+    assert recipients == [["first@example.com"], ["second@example.com"]]
+
+
+def test_email_field_stored_as_list_is_flattened(form_definition, user):
+    """A field whose value is a list (not a joined string) works the same."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=False
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="workflow_approved",
+        cc_email_field="faculty_emails",
+        notify_submitter=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"faculty_emails": ["first@example.com", "second@example.com"]},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    cc = mock_send.call_args_list[0].kwargs.get("cc") or []
+    assert cc == ["first@example.com", "second@example.com"]
+
+
 def test_cc_duplicate_of_to_is_dropped(form_definition, user):
     """A CC address that already appears in the TO list is removed from CC."""
     wf = WorkflowDefinition.objects.create(

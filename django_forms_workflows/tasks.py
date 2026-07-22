@@ -1108,10 +1108,22 @@ def _dispatch_conclusion_digest(
 # ---------------------------------------------------------------------------
 
 
-def _get_form_field_email(form_data: dict, email_field: str) -> str | None:
-    """Extract and validate an email address from form_data by field slug."""
-    value = str(form_data.get(email_field, "")).strip()
-    return value if value and "@" in value else None
+def _get_form_field_emails(form_data: dict, email_field: str) -> list[str]:
+    """Extract and validate email addresses from form_data by field slug.
+
+    A multi-select field (e.g. a picklist of faculty) stores several
+    addresses in one value — as a comma-separated string, or as a list —
+    so the value is always split before validation. Returning them
+    separately keeps each address a single recipient; handing the raw
+    ``"a@x.edu,b@x.edu"`` string to the email backend is rejected with
+    "must be a single address".
+    """
+    raw = form_data.get(email_field, "")
+    if isinstance(raw, list | tuple):
+        raw = ",".join(str(part) for part in raw)
+    return [
+        addr for addr in (part.strip() for part in str(raw).split(",")) if "@" in addr
+    ]
 
 
 def _collect_notification_recipients(
@@ -1142,9 +1154,10 @@ def _collect_notification_recipients(
     if getattr(notif, "notify_submitter", False) and submission is not None:
         _add(getattr(getattr(submission, "submitter", None), "email", None))
 
-    # 2. Email field (dynamic from form_data)
+    # 2. Email field (dynamic from form_data; may hold several addresses)
     if notif.email_field:
-        _add(_get_form_field_email(form_data, notif.email_field))
+        for addr in _get_form_field_emails(form_data, notif.email_field):
+            _add(addr)
 
     # 3. Static emails
     for addr in (notif.static_emails or "").split(","):
@@ -1294,7 +1307,8 @@ def _collect_notification_cc(notif, form_data: dict) -> list[str]:
             cc.append(email)
 
     if getattr(notif, "cc_email_field", ""):
-        _add(_get_form_field_email(form_data, notif.cc_email_field))
+        for addr in _get_form_field_emails(form_data, notif.cc_email_field):
+            _add(addr)
 
     for addr in (getattr(notif, "cc_static_emails", "") or "").split(","):
         addr = addr.strip()

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadFormBuilderClass } from './helpers/loadFormBuilderClass.js';
+import { FormBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder.js';
 
 function createInstance(FormBuilder) {
   const instance = Object.create(FormBuilder.prototype);
@@ -18,7 +18,6 @@ describe('FormBuilder#initializePropertyFormTabs', () => {
   });
 
   it('wires the conditional-logic toggle to show/hide its section', () => {
-    const FormBuilder = loadFormBuilderClass();
     const instance = createInstance(FormBuilder);
     const field = { conditional_rules: null, validation_rules: [], field_dependencies: [] };
 
@@ -37,7 +36,6 @@ describe('FormBuilder#initializePropertyFormTabs', () => {
   });
 
   it("initializes all three tabs' lists with the field's current data", () => {
-    const FormBuilder = loadFormBuilderClass();
     const instance = createInstance(FormBuilder);
     const field = {
       conditional_rules: { conditions: [{ field: 'x', operator: 'equals', value: '1' }] },
@@ -53,7 +51,6 @@ describe('FormBuilder#initializePropertyFormTabs', () => {
   });
 
   it('defaults to empty lists when the field has no rules/dependencies yet', () => {
-    const FormBuilder = loadFormBuilderClass();
     const instance = createInstance(FormBuilder);
     const field = {};
 

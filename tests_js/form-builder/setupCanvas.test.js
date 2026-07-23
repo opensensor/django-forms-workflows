@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadFormBuilderClass } from './helpers/loadFormBuilderClass.js';
+import { FormBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder.js';
 
 // setupCanvas() calls Sortable.create(...) before registering its own drop
 // listener; stub it out rather than pulling in the real SortableJS
@@ -24,7 +24,6 @@ describe('FormBuilder#setupCanvas — drop handler', () => {
   });
 
   it('does not call addFieldAtPosition a second time on drop (Sortable\'s onAdd already handles insertion)', () => {
-    const FormBuilder = loadFormBuilderClass();
     const instance = createInstance(FormBuilder);
     instance.draggingFieldType = 'text';
 
@@ -35,7 +34,6 @@ describe('FormBuilder#setupCanvas — drop handler', () => {
   });
 
   it('still cleans up the drag placeholder and dragging class on drop', () => {
-    const FormBuilder = loadFormBuilderClass();
     const instance = createInstance(FormBuilder);
     instance.draggingFieldType = 'text';
     canvas.classList.add('dragging');

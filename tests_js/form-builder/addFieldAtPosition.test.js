@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadFormBuilderClass } from './helpers/loadFormBuilderClass.js';
+import { FormBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder.js';
 
 // Build an instance without running the constructor to avoid calling init() ->
 // setupFieldPalette()/setupCanvas()/setupEventListeners()
@@ -19,7 +19,6 @@ function createInstance(FormBuilder) {
 
 describe('FormBuilder#addFieldAtPosition', () => {
   it('inserts correctly on an empty canvas, when SortableJS reports an out-of-range drop position', () => {
-    const FormBuilder = loadFormBuilderClass();
     const instance = createInstance(FormBuilder);
 
     // Empty canvas: SortableJS's reported evt.newIndex can be 1 here (it
@@ -32,7 +31,6 @@ describe('FormBuilder#addFieldAtPosition', () => {
   });
 
   it('inserts at the requested position when it is already in range', () => {
-    const FormBuilder = loadFormBuilderClass();
     const instance = createInstance(FormBuilder);
     instance.fields = [{ field_name: 'existing' }];
 

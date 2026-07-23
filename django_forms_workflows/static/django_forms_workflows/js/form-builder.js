@@ -5,7 +5,7 @@
  * without code.
  */
 
-class FormBuilder {
+export class FormBuilder {
     constructor(config) {
         this.config = config;
         this.fields = [];

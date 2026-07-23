@@ -306,26 +306,8 @@ class FormBuilder {
         canvas.addEventListener('drop', (e) => {
             e.preventDefault();
 
-            // Check if we're dropping a new field from palette
-            if (this.draggingFieldType) {
-                const fieldType = this.draggingFieldType;
 
-                // Remove placeholder
-                this.cleanupDragPlaceholder();
-
-                // Calculate the position where to insert
-                const afterElement = this.getDragAfterElement(canvas, e.clientY);
-                let insertIndex = this.fields.length;
-
-                if (afterElement) {
-                    const afterIndex = parseInt(afterElement.dataset.index);
-                    if (!isNaN(afterIndex)) {
-                        insertIndex = afterIndex;
-                    }
-                }
-
-                this.addFieldAtPosition(fieldType, insertIndex);
-            }
+            this.cleanupDragPlaceholder();
         });
     }
 

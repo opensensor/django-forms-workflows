@@ -388,14 +388,14 @@ class FormBuilder {
             }
         };
 
-        // Insert at the specified position
-        this.fields.splice(position, 0, field);
+        const insertIndex = Math.min(position, this.fields.length);
+        this.fields.splice(insertIndex, 0, field);
         this.updateFieldOrders();
         this.renderCanvas();
         this.updatePreview();
 
         // Automatically open property editor for new field
-        this.editField(position, true); // true = isNew
+        this.editField(insertIndex, true); // true = isNew
     }
     
     setupEventListeners() {

@@ -351,6 +351,7 @@ graph TB
 - Optional: `openpyxl` for Excel spreadsheet field support (`pip install django-forms-workflows[excel]`)
 - Optional: `django-auth-ldap` for LDAP/AD integration (`pip install django-forms-workflows[ldap]`)
 - Optional: WeasyPrint for PDF export (`pip install django-forms-workflows[pdf]`)
+- Optional: Node.js 20+ / npm, to run the JS test suite (`npm test`) covering the visual Form/Workflow Builder's client-side code
 
 ## Testing
 
@@ -361,6 +362,17 @@ python -m pytest tests/ -v
 ```
 
 The test suite covers models, forms, workflow engine (including dynamic assignees, conditional stages, multi-workflow parallel tracks, sub-workflows), sync API, post-submission action executor, views, signals, conditions, and utilities — **298 tests**.
+
+### JavaScript tests
+
+The visual Form Builder's client-side JS (`django_forms_workflows/static/django_forms_workflows/js/form-builder.js`) has its own suite, run with [Vitest](https://vitest.dev/):
+
+```bash
+npm install
+npm test
+```
+
+`npm run test:watch` re-runs on file changes. Coverage is still minimal (tooling was just added) — see [CONTRIBUTING.md](CONTRIBUTING.md) if you're adding to it.
 
 ## Contributing
 

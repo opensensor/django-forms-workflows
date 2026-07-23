@@ -35,7 +35,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 2. **Make your changes** following the coding standards
 3. **Add tests** for new functionality
 4. **Update documentation** as needed
-5. **Ensure tests pass**: `pytest`
+5. **Ensure tests pass**: `pytest` (and `npm test` if you touched front-end js`)
 6. **Ensure code quality**: `black .`, `flake8`, `isort .`
 7. **Commit with clear messages**
 8. **Push to your fork** and submit a pull request
@@ -84,6 +84,28 @@ flake8
 mypy django_forms_workflows
 ```
 
+### 6. (Optional) Install JS Test Tooling
+
+Only needed if you're changing the visual Form/Workflow Builder's client-side
+JS (`django_forms_workflows/static/django_forms_workflows/js/`). Requires
+Node.js 20+ / npm — an `.nvmrc` is committed at the repo root, so `nvm use`
+picks the right version automatically if you have nvm installed.
+
+```bash
+npm install
+npm test          # run once
+npm run test:watch  # re-run on change, useful while iterating
+```
+
+Test files live in `tests_js/`, its own top-level directory paralleling
+`tests/`. Within it, one subfolder per source file under
+`django_forms_workflows/static/django_forms_workflows/js/`, each holding one test 
+file per method/behavior under test.
+
+There's a `helpers/` subfolder for anything shared across that
+source file's tests (e.g. `tests_js/form-builder/helpers/loadFormBuilderClass.js`,
+which loads the real, un-exported class for testing — see the example below).
+
 ## Coding Standards
 
 ### Python Style
@@ -98,6 +120,16 @@ mypy django_forms_workflows
 - Follow [Django coding style](https://docs.djangoproject.com/en/dev/internals/contributing/writing-code/coding-style/)
 - Use Django's built-in features when possible
 - Avoid reinventing the wheel
+
+### JavaScript Style
+
+- Vanilla JS, no framework or bundler dependency — native ES modules
+  (`<script type="module">`) only
+- New client-side logic for the visual builders should be added as an
+  importable module with a corresponding Vitest test under
+  `tests_js/form-builder/` or `tests_js/workflow-builder/` (as appropriate),
+  rather than appended to the existing `form-builder.js`/`workflow-builder.js`
+  monoliths
 
 ### Documentation
 
@@ -129,6 +161,29 @@ def test_form_submission_with_approval_creates_tasks():
     assert submission.approval_tasks.count() > 0
 ```
 
+JS changes under `django_forms_workflows/static/django_forms_workflows/js/`
+follow the same "add tests with the change" expectation, via Vitest (see
+"Development Setup" above). One file per method/behavior under test, in the
+matching `tests_js/<source-name>/` folder — e.g.
+`tests_js/form-builder/addFieldAtPosition.test.js`:
+
+```js
+import { describe, expect, it, vi } from 'vitest';
+import { loadFormBuilderClass } from './helpers/loadFormBuilderClass.js';
+
+describe('FormBuilder#addFieldAtPosition', () => {
+  it('inserts correctly on an empty canvas, when SortableJS reports an out-of-range drop position', () => {
+    // Arrange / Act / Assert
+  });
+});
+```
+
+`form-builder.js`/`workflow-builder.js` are loaded as classic `<script>`
+tags, not ES modules, so their classes have no `export` —  For now, `loadFormBuilderClass()`
+(and its future `loadWorkflowBuilderClass()` counterpart) evaluates the real,
+unmodified source in a function scope and returns the class from it, rather
+than duplicating any logic in the test.
+
 ## Project Structure
 
 ```
@@ -151,9 +206,12 @@ django-forms-workflows/
 │   ├── migrations/             # Database migrations
 │   └── management/             # Management commands
 ├── docs/                       # Documentation
-├── tests/                      # Test suite
+├── tests/                      # Python test suite (pytest)
+├── tests_js/                   # JS test suite (Vitest); one subfolder per source file, e.g. tests_js/form-builder/
 ├── example_project/            # Example Django project
-├── setup.py                    # Package configuration
+├── pyproject.toml               # Package configuration
+├── package.json                # JS test tooling (Vitest) — dev-only, no runtime JS deps
+├── vitest.config.js
 ├── README.md
 ├── LICENSE
 ├── CHANGELOG.md

@@ -1,0 +1,14 @@
+{
+  "name": "django-forms-workflows-js",
+  "private": true,
+  "type": "module",
+  "description": "JS test tooling for django_forms_workflows's static assets (form-builder.js, workflow-builder.js).",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10",
+    "jsdom": "^25.0.0"
+  }
+}

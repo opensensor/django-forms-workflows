@@ -306,26 +306,8 @@ class FormBuilder {
         canvas.addEventListener('drop', (e) => {
             e.preventDefault();
 
-            // Check if we're dropping a new field from palette
-            if (this.draggingFieldType) {
-                const fieldType = this.draggingFieldType;
 
-                // Remove placeholder
-                this.cleanupDragPlaceholder();
-
-                // Calculate the position where to insert
-                const afterElement = this.getDragAfterElement(canvas, e.clientY);
-                let insertIndex = this.fields.length;
-
-                if (afterElement) {
-                    const afterIndex = parseInt(afterElement.dataset.index);
-                    if (!isNaN(afterIndex)) {
-                        insertIndex = afterIndex;
-                    }
-                }
-
-                this.addFieldAtPosition(fieldType, insertIndex);
-            }
+            this.cleanupDragPlaceholder();
         });
     }
 
@@ -388,14 +370,14 @@ class FormBuilder {
             }
         };
 
-        // Insert at the specified position
-        this.fields.splice(position, 0, field);
+        const insertIndex = Math.min(position, this.fields.length);
+        this.fields.splice(insertIndex, 0, field);
         this.updateFieldOrders();
         this.renderCanvas();
         this.updatePreview();
 
         // Automatically open property editor for new field
-        this.editField(position, true); // true = isNew
+        this.editField(insertIndex, true); // true = isNew
     }
     
     setupEventListeners() {
@@ -676,6 +658,7 @@ class FormBuilder {
         // Build property form
         const form = this.buildPropertyForm(field);
         document.getElementById('fieldPropertyForm').innerHTML = form;
+        this.initializePropertyFormTabs(field);
 
         // Show modal
         const modalElement = document.getElementById('fieldPropertyModal');
@@ -961,16 +944,6 @@ class FormBuilder {
                     </div>
                 </div>
             </div>
-
-            <script>
-                // Toggle conditional rules container
-                document.getElementById('propEnableConditional').addEventListener('change', function(e) {
-                    document.getElementById('conditionalRulesContainer').style.display = e.target.checked ? 'block' : 'none';
-                });
-
-                // Initialize conditions list
-                window.formBuilder.initializeConditionsList(${JSON.stringify(field.conditional_rules?.conditions || [])});
-            </script>
         `;
     }
 
@@ -1005,11 +978,6 @@ class FormBuilder {
                     <small class="text-muted">You can edit the JSON directly for advanced configurations</small>
                 </div>
             </div>
-
-            <script>
-                // Initialize validation rules list
-                window.formBuilder.initializeValidationRulesList(${JSON.stringify(field.validation_rules || [])});
-            </script>
         `;
     }
 
@@ -1050,12 +1018,22 @@ class FormBuilder {
                     <small class="text-muted">You can edit the JSON directly for advanced configurations</small>
                 </div>
             </div>
-
-            <script>
-                // Initialize dependencies list
-                window.formBuilder.initializeDependenciesList(${JSON.stringify(field.field_dependencies || [])});
-            </script>
         `;
+    }
+
+    initializePropertyFormTabs(field) {
+        // Wires up the interactive bits of the Conditional Logic, Validation,
+        // and Dependencies tabs.
+        const enableConditional = document.getElementById('propEnableConditional');
+        const conditionalRulesContainer = document.getElementById('conditionalRulesContainer');
+        if (enableConditional && conditionalRulesContainer) {
+            enableConditional.addEventListener('change', (e) => {
+                conditionalRulesContainer.style.display = e.target.checked ? 'block' : 'none';
+            });
+        }
+        this.initializeConditionsList(field.conditional_rules?.conditions || []);
+        this.initializeValidationRulesList(field.validation_rules || []);
+        this.initializeDependenciesList(field.field_dependencies || []);
     }
 
     initializeConditionsList(conditions) {

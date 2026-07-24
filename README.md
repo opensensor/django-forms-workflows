@@ -351,7 +351,7 @@ graph TB
 - Optional: `openpyxl` for Excel spreadsheet field support (`pip install django-forms-workflows[excel]`)
 - Optional: `django-auth-ldap` for LDAP/AD integration (`pip install django-forms-workflows[ldap]`)
 - Optional: WeasyPrint for PDF export (`pip install django-forms-workflows[pdf]`)
-- Optional: Node.js 20+ / npm, to run the JS test suite (`npm test`) covering the visual Form/Workflow Builder's client-side code
+- Optional: Node.js ^20.19.0 or >=22.12.0 / npm, to run the JS test suite (`npm test`) covering the visual Form/Workflow Builder's client-side code (an `.nvmrc` is committed at the repo root)
 
 ## Testing
 

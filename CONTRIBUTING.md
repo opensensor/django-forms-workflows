@@ -35,7 +35,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 2. **Make your changes** following the coding standards
 3. **Add tests** for new functionality
 4. **Update documentation** as needed
-5. **Ensure tests pass**: `pytest` (and `npm test` if you touched front-end js`)
+5. **Ensure tests pass**: `pytest` (and `npm test` if you touched front-end js)
 6. **Ensure code quality**: `black .`, `flake8`, `isort .`
 7. **Commit with clear messages**
 8. **Push to your fork** and submit a pull request
@@ -88,7 +88,7 @@ mypy django_forms_workflows
 
 Only needed if you're changing the visual Form/Workflow Builder's client-side
 JS (`django_forms_workflows/static/django_forms_workflows/js/`). Requires
-Node.js 20+ / npm — an `.nvmrc` is committed at the repo root, so `nvm use`
+Node.js ^20.19.0 or >=22.12.0 / npm — an `.nvmrc` is committed at the repo root, so `nvm use`
 picks the right version automatically if you have nvm installed.
 
 ```bash

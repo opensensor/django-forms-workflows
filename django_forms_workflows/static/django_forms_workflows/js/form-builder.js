@@ -1221,6 +1221,8 @@ export class FormBuilder {
 
             // Move all fields to first step if they're not assigned
             this.organizeFieldsIntoSteps();
+
+            this.updatePreview();
         } else {
             // Switch to single-step mode
             singleCanvas.style.display = 'block';
@@ -1607,6 +1609,7 @@ export class FormBuilder {
 
         // Re-render main canvas
         this.renderCanvas();
+        this.updatePreview();
     }
 
     updateFieldOrderFromSteps() {

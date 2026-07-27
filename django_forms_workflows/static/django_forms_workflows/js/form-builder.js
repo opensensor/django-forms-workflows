@@ -6,10 +6,12 @@
  */
 
 import { historyMethods } from './form-builder-history.js';
+import { createBuilderStore } from './form-builder-store.js';
 
 export class FormBuilder {
     constructor(config) {
         this.config = config;
+        this.store = createBuilderStore();
         this.fields = [];
         this.currentFieldIndex = null;
         this.fieldIdCounter = 1;
@@ -25,7 +27,17 @@ export class FormBuilder {
 
         this.init();
     }
-    
+
+    // fields/formSteps live on this.store now (single source of truth for
+    // history's undo/redo snapshots); these proxy the existing this.fields/
+    // this.formSteps call sites throughout this file so they don't all need
+    // to change in this pass.
+    get fields() { return this.store.fields; }
+    set fields(value) { this.store.setFields(value); }
+
+    get formSteps() { return this.store.formSteps; }
+    set formSteps(value) { this.store.setFormSteps(value); }
+
     init() {
         this.setupFieldPalette();
         this.setupCanvas();

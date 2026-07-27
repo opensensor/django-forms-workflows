@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FormBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder.js';
+import { createBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder-store.js';
 
 // setupCanvas() calls Sortable.create(...) before registering its own drop
 // listener; stub it out rather than pulling in the real SortableJS
@@ -9,6 +10,7 @@ function createInstance(FormBuilder) {
   global.Sortable = { create: vi.fn(() => ({})) };
 
   const instance = Object.create(FormBuilder.prototype);
+  instance.store = createBuilderStore();
   instance.fields = [];
   instance.dragPlaceholder = null;
   instance.addFieldAtPosition = vi.fn();

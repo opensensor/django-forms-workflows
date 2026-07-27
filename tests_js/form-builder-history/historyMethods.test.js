@@ -29,10 +29,10 @@ afterEach(() => {
 
 describe('historyMethods.snapshotHistoryState', () => {
   it('snapshots both fields and formSteps together', () => {
-    const ctx = createContext([{ field_name: 'a' }], [{ label: 'Step 1', fields: ['a'] }]);
+    const ctx = createContext([{ field_name: 'a' }], [{ title: 'Step 1', fields: ['a'] }]);
 
     expect(ctx.snapshotHistoryState()).toEqual(
-      JSON.stringify({ fields: [{ field_name: 'a' }], formSteps: [{ label: 'Step 1', fields: ['a'] }] })
+      JSON.stringify({ fields: [{ field_name: 'a' }], formSteps: [{ title: 'Step 1', fields: ['a'] }] })
     );
   });
 });

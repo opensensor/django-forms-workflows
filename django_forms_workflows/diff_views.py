@@ -11,6 +11,74 @@ from .models import FormDefinition
 from .sync_api import build_export_payload
 
 
+def _payload_workflows(payload):
+    """Return every workflow in a serialized payload, primary first.
+
+    ``serialize_form`` splits a form's workflows across two keys — ``workflow``
+    holds the first one by id, ``additional_workflows`` holds the rest — so
+    anything reading only ``workflow`` is blind to sub-workflows.
+    """
+    workflows = []
+    primary = payload.get("workflow")
+    if primary:
+        workflows.append(primary)
+    workflows.extend(wf for wf in (payload.get("additional_workflows") or []) if wf)
+    return workflows
+
+
+def _pair_workflows(b_wfs, o_wfs):
+    """Pair base/other workflows, yielding ``(index, base_wf, other_wf)`` tuples.
+
+    Matched on ``uuid`` first, because creation order — and therefore position
+    in the list — is not guaranteed to agree between environments. Whatever
+    uuid matching leaves over is paired by position, which covers payloads
+    predating the uuid field and the standalone diff view, where two *different*
+    forms are compared and no uuid will ever match. Anything still unpaired is
+    reported as added or removed.
+    """
+    o_by_uuid = {}
+    for idx, wf in enumerate(o_wfs):
+        uid = wf.get("uuid")
+        if uid:
+            o_by_uuid.setdefault(uid, []).append(idx)
+
+    pairs = []
+    matched_o = set()
+    unmatched_b = []
+    for idx, wf in enumerate(b_wfs):
+        candidates = o_by_uuid.get(wf.get("uuid")) or []
+        match = next((c for c in candidates if c not in matched_o), None)
+        if match is None:
+            unmatched_b.append(idx)
+        else:
+            matched_o.add(match)
+            pairs.append((idx, wf, o_wfs[match]))
+
+    leftover_o = [i for i in range(len(o_wfs)) if i not in matched_o]
+    for b_idx, o_idx in zip(unmatched_b, leftover_o, strict=False):
+        pairs.append((b_idx, b_wfs[b_idx], o_wfs[o_idx]))
+    overlap = min(len(unmatched_b), len(leftover_o))
+    for b_idx in unmatched_b[overlap:]:
+        pairs.append((b_idx, b_wfs[b_idx], None))
+    for o_idx in leftover_o[overlap:]:
+        pairs.append((o_idx, None, o_wfs[o_idx]))
+
+    pairs.sort(key=lambda p: p[0])
+    return pairs
+
+
+def _workflow_label(wf, index):
+    """Label a workflow in the summary bullets.
+
+    ``name_label`` is what distinguishes a parent workflow from its
+    sub-workflows on the same form, so it is preferred when set.
+    """
+    name_label = (wf or {}).get("name_label")
+    if name_label:
+        return f"Workflow '{name_label}'"
+    return "Workflow" if index == 0 else f"Workflow #{index + 1}"
+
+
 def _build_summary(forms_data):
     """Build a supplemental summary of key differences between serialized forms."""
     if len(forms_data) < 2:
@@ -49,19 +117,21 @@ def _build_summary(forms_data):
         if changed_fields:
             diffs.append(f"Fields modified: {', '.join(changed_fields)}")
 
-        # Workflow differences
-        b_wf = base.get("workflow")
-        o_wf = other.get("workflow")
-        if (b_wf is None) != (o_wf is None):
-            diffs.append(
-                f"Workflow: {'present' if b_wf else 'absent'}"
-                f" → {'present' if o_wf else 'absent'}"
-            )
-        elif b_wf and o_wf:
+        # Workflow differences — every workflow, not only the primary one.
+        for wf_index, b_wf, o_wf in _pair_workflows(
+            _payload_workflows(base), _payload_workflows(other)
+        ):
+            wf_label = _workflow_label(b_wf or o_wf, wf_index)
+            if b_wf is None or o_wf is None:
+                diffs.append(
+                    f"{wf_label}: {'present' if b_wf else 'absent'}"
+                    f" → {'present' if o_wf else 'absent'}"
+                )
+                continue
             b_stages = b_wf.get("stages", [])
             o_stages = o_wf.get("stages", [])
             if len(b_stages) != len(o_stages):
-                diffs.append(f"Workflow stages: {len(b_stages)} → {len(o_stages)}")
+                diffs.append(f"{wf_label} stages: {len(b_stages)} → {len(o_stages)}")
 
             # Per-stage comparison keyed on (order, name) to handle parallel stages
             b_stage_map = {(s.get("order"), s.get("name")): s for s in b_stages}
@@ -69,10 +139,13 @@ def _build_summary(forms_data):
             added_stages = sorted(o_stage_map.keys() - b_stage_map.keys())
             removed_stages = sorted(b_stage_map.keys() - o_stage_map.keys())
             if added_stages:
-                diffs.append(f"Stages added: {', '.join(n for _, n in added_stages)}")
+                diffs.append(
+                    f"{wf_label} stages added: {', '.join(n for _, n in added_stages)}"
+                )
             if removed_stages:
                 diffs.append(
-                    f"Stages removed: {', '.join(n for _, n in removed_stages)}"
+                    f"{wf_label} stages removed: "
+                    f"{', '.join(n for _, n in removed_stages)}"
                 )
             stage_field_keys = [
                 "assignee_form_field",
@@ -91,7 +164,8 @@ def _build_summary(forms_data):
                 for sk in stage_field_keys:
                     if bs.get(sk) != os_.get(sk):
                         diffs.append(
-                            f"Stage '{key[1]}' {sk}: {bs.get(sk)!r} → {os_.get(sk)!r}"
+                            f"{wf_label} stage '{key[1]}' {sk}: "
+                            f"{bs.get(sk)!r} → {os_.get(sk)!r}"
                         )
                 b_notifs = bs.get(
                     "notification_rules", bs.get("form_field_notifications", [])
@@ -101,7 +175,8 @@ def _build_summary(forms_data):
                 )
                 if len(b_notifs) != len(o_notifs):
                     diffs.append(
-                        f"Stage '{key[1]}' notifications: {len(b_notifs)} → {len(o_notifs)}"
+                        f"{wf_label} stage '{key[1]}' notifications: "
+                        f"{len(b_notifs)} → {len(o_notifs)}"
                     )
                 elif b_notifs != o_notifs:
                     for idx, (bn, on) in enumerate(
@@ -114,8 +189,8 @@ def _build_summary(forms_data):
                         )
                         label = bn.get("event") or on.get("event") or f"#{idx}"
                         diffs.append(
-                            f"Stage '{key[1]}' notification '{label}' changed: "
-                            f"{', '.join(changed_keys)}"
+                            f"{wf_label} stage '{key[1]}' notification "
+                            f"'{label}' changed: {', '.join(changed_keys)}"
                         )
                 # Approval groups: support both old string lists and new dict lists
                 b_groups = {
@@ -135,12 +210,14 @@ def _build_summary(forms_data):
                     if removed_g:
                         parts.append(f"-{', '.join(sorted(removed_g))}")
                     diffs.append(
-                        f"Stage '{key[1]}' approval_groups: {'; '.join(parts)}"
+                        f"{wf_label} stage '{key[1]}' approval_groups: "
+                        f"{'; '.join(parts)}"
                     )
 
             wf_setting_keys = [
                 "requires_approval",
                 "name_label",
+                "start_trigger",
                 "hide_approval_history",
                 "collapse_parallel_stages",
                 "allow_bulk_export",
@@ -156,14 +233,34 @@ def _build_summary(forms_data):
             ]
             for key in wf_setting_keys:
                 if b_wf.get(key) != o_wf.get(key):
-                    diffs.append(f"Workflow {key}: {b_wf.get(key)} → {o_wf.get(key)}")
+                    diffs.append(f"{wf_label} {key}: {b_wf.get(key)} → {o_wf.get(key)}")
+
+            # Sub-workflow wiring. Compared by changed key rather than dumped
+            # whole — the config is a nested dict and printing both sides makes
+            # the summary unreadable.
+            b_swc = b_wf.get("sub_workflow_config")
+            o_swc = o_wf.get("sub_workflow_config")
+            if (b_swc is None) != (o_swc is None):
+                diffs.append(
+                    f"{wf_label} sub_workflow_config: "
+                    f"{'present' if b_swc else 'absent'}"
+                    f" → {'present' if o_swc else 'absent'}"
+                )
+            elif b_swc and o_swc and b_swc != o_swc:
+                swc_keys = sorted(
+                    k for k in set(b_swc) | set(o_swc) if b_swc.get(k) != o_swc.get(k)
+                )
+                diffs.append(
+                    f"{wf_label} sub_workflow_config changed: {', '.join(swc_keys)}"
+                )
 
             # Workflow-level notification rules (stage=null)
             b_wf_notifs = b_wf.get("notification_rules", [])
             o_wf_notifs = o_wf.get("notification_rules", [])
             if len(b_wf_notifs) != len(o_wf_notifs):
                 diffs.append(
-                    f"Workflow notification rules: {len(b_wf_notifs)} → {len(o_wf_notifs)}"
+                    f"{wf_label} notification rules: "
+                    f"{len(b_wf_notifs)} → {len(o_wf_notifs)}"
                 )
             elif b_wf_notifs != o_wf_notifs:
                 # Same count but content differs — surface what changed.
@@ -178,12 +275,12 @@ def _build_summary(forms_data):
                     )
                     label = br.get("event") or or_.get("event") or f"#{idx}"
                     diffs.append(
-                        f"Workflow notification rule '{label}' changed: "
+                        f"{wf_label} notification rule '{label}' changed: "
                         f"{', '.join(changed_keys)}"
                     )
                     changed.append(label)
                 if not changed:
-                    diffs.append("Workflow notification rules: order changed")
+                    diffs.append(f"{wf_label} notification rules: order changed")
 
         # Form metadata
         meta_keys = [

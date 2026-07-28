@@ -156,7 +156,9 @@ class TestPasswordManagerOptOut:
         self._make_field(form_definition, field_type)
         form = DynamicForm(form_definition, user=user)
         widget_attrs = form.fields[f"{field_type}_fld"].widget.attrs
-        assert widget_attrs.get("autocomplete") == "off"
+        # ``autocomplete`` is left alone so the browser still offers previously
+        # typed values — only the password managers are opted out.
+        assert "autocomplete" not in widget_attrs
         assert widget_attrs.get("data-1p-ignore") == "true"
         assert widget_attrs.get("data-lpignore") == "true"
         assert widget_attrs.get("data-bwignore") == "true"

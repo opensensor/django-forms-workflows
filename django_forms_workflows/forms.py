@@ -73,8 +73,13 @@ _PM_OPT_OUT_FIELD_TYPES = frozenset(
     }
 )
 
+# Deliberately *no* ``autocomplete: "off"`` here. That attribute also turns off
+# the browser's own saved-value suggestions, which users rely on for fields like
+# Position, Department Name, and Supervisor. The ``data-*`` attributes below are
+# what actually silence the password managers. Fields that render their own
+# suggestion UI (LDAP lookup) still set ``autocomplete="off"`` themselves — see
+# ``applyAutofillOptOut`` in ``ldap-lookup.js``.
 _PM_OPT_OUT_ATTRS = {
-    "autocomplete": "off",
     "data-1p-ignore": "true",
     "data-lpignore": "true",
     "data-bwignore": "true",

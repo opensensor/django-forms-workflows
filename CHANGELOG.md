@@ -15,6 +15,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the workflow builder. Makes the logic callable (and unit-testable)
   independently of the `@staff_member_required`-decorated HTTP view — no
   behavior or API change.
+- **Notification rules identify their workflow in the admin.** The standalone
+  `NotificationRule` list rendered only `workflow.form_definition.name`, so a
+  rule on a parent workflow and a rule on its sub-workflow both displayed the
+  same form name — and for workflow-level rules the Stage column reads
+  "— (all stages)" on either one, giving nothing to tell them apart. The
+  workflow column now appends `WorkflowDefinition.name_label` when set
+  (`Course Development Request — Payment`), `workflow__name_label` was added to
+  `search_fields`, and `workflow` was added to `list_filter`. `name_label` also
+  joins `WorkflowDefinitionAdmin.search_fields` so the rule form's `workflow`
+  autocomplete can match on it, and `WorkflowDefinition.__str__` now carries the
+  label so every FK picker, autocomplete result, and log entry disambiguates.
+
+### Fixed
+- **Browser value suggestions restored on generic text fields.** The
+  password-manager opt-out added in 0.74.15 set `autocomplete="off"` alongside
+  the `data-1p-ignore` / `data-lpignore` / `data-bwignore` / `data-form-type`
+  attributes on every field type in `_PM_OPT_OUT_FIELD_TYPES`. Those `data-*`
+  attributes are what actually silence 1Password, LastPass, Bitwarden, and
+  Dashlane; `autocomplete="off"` additionally disabled the *browser's* own
+  saved-value dropdown, which users relied on for fields like Position/Job
+  Title, Department Name, and Supervisor. `autocomplete` is no longer set, so
+  native suggestions work again while password-manager popovers stay
+  suppressed. Fields with their own suggestion UI (LDAP lookup) are unaffected
+  — `ldap-lookup.js` sets `autocomplete="off"` on them directly.
+- **Diff and sync summaries no longer ignore sub-workflows.** `_build_summary`
+  read only the `"workflow"` key, but `serialize_form` stores the first
+  workflow there and every other one under `"additional_workflows"`. A
+  sub-workflow's stages, settings, and notification rules were therefore
+  serialized into the payload but never compared — invisible in the standalone
+  Diff view and in the Sync **Push** and **Pull** previews, all three of which
+  share this function. Every workflow is now compared. Pairs are matched on
+  `uuid` (creation order, and so list position, need not agree across
+  environments) and fall back to position for payloads predating the field and
+  for the diff view's cross-form comparisons; unpaired workflows are reported
+  as added/removed. Bullets are prefixed with the workflow's `name_label`
+  (`Workflow 'Payment' stages added: Bursar`) so parent and sub-workflow
+  changes are distinguishable. `start_trigger` and `sub_workflow_config` — the
+  two settings that define sub-workflow sequencing — are now compared as well.
 
 ## [0.76.0] - 2026-06-09
 

@@ -13,7 +13,10 @@ from django_forms_workflows.diff_views import _build_summary
 from django_forms_workflows.models import (
     FormDefinition,
     FormField,
+    NotificationRule,
     PostSubmissionAction,
+    WorkflowDefinition,
+    WorkflowStage,
 )
 from django_forms_workflows.sync_api import build_export_payload
 
@@ -140,4 +143,105 @@ class TestShowHelpTextInDetailDiff:
         diffs = summary[0]["diffs"]
         assert any("Fields modified" in d and "initials" in d for d in diffs), (
             f"show_help_text_in_detail toggle not surfaced. Got: {diffs}"
+        )
+
+
+class TestSubWorkflowDiff:
+    """``serialize_form`` puts every workflow after the first into
+    ``additional_workflows``. The summary has to read that key too, or a form's
+    sub-workflows are invisible to the diff view and the sync push/pull
+    previews that share this function."""
+
+    def _make_workflows(self, form):
+        """A parent workflow plus a sub-workflow, as on a real staged form."""
+        parent = WorkflowDefinition.objects.create(
+            form_definition=form, name_label="Contract"
+        )
+        WorkflowStage.objects.create(workflow=parent, name="Dean", order=1)
+        sub = WorkflowDefinition.objects.create(
+            form_definition=form,
+            name_label="Payment",
+            start_trigger="on_all_complete",
+        )
+        WorkflowStage.objects.create(workflow=sub, name="Payroll", order=1)
+        return parent, sub
+
+    def test_sub_workflow_notification_rule_surfaces(self, two_similar_forms):
+        a, b = two_similar_forms
+        self._make_workflows(a)
+        _, b_sub = self._make_workflows(b)
+        NotificationRule.objects.create(
+            workflow=b_sub, event="workflow_approved", notify_submitter=True
+        )
+
+        diffs = _build_summary(_export_two(a, b))[0]["diffs"]
+
+        assert any("Workflow 'Payment' notification rules" in d for d in diffs), (
+            f"Sub-workflow notification rule not surfaced. Got: {diffs}"
+        )
+
+    def test_sub_workflow_stage_change_surfaces(self, two_similar_forms):
+        a, b = two_similar_forms
+        self._make_workflows(a)
+        _, b_sub = self._make_workflows(b)
+        WorkflowStage.objects.create(workflow=b_sub, name="Bursar", order=2)
+
+        diffs = _build_summary(_export_two(a, b))[0]["diffs"]
+
+        assert any("Workflow 'Payment' stages: 1 → 2" in d for d in diffs), (
+            f"Sub-workflow stage count not surfaced. Got: {diffs}"
+        )
+        assert any("Workflow 'Payment' stages added: Bursar" in d for d in diffs), (
+            f"Sub-workflow added stage not surfaced. Got: {diffs}"
+        )
+
+    def test_parent_workflow_diff_still_labeled(self, two_similar_forms):
+        """The primary workflow keeps its own label rather than absorbing the
+        sub-workflow's changes."""
+        a, b = two_similar_forms
+        a_parent, _ = self._make_workflows(a)
+        self._make_workflows(b)
+        a_parent.requires_approval = False
+        a_parent.save()
+
+        diffs = _build_summary(_export_two(a, b))[0]["diffs"]
+
+        assert any("Workflow 'Contract' requires_approval" in d for d in diffs), (
+            f"Parent workflow change not surfaced. Got: {diffs}"
+        )
+
+    def test_extra_workflow_reported_as_added(self, two_similar_forms):
+        a, b = two_similar_forms
+        WorkflowDefinition.objects.create(form_definition=a, name_label="Contract")
+        self._make_workflows(b)
+
+        diffs = _build_summary(_export_two(a, b))[0]["diffs"]
+
+        assert any("Workflow 'Payment': absent → present" in d for d in diffs), (
+            f"Added sub-workflow not surfaced. Got: {diffs}"
+        )
+
+    def test_sub_workflows_matched_by_uuid_not_position(self):
+        """Workflows are ordered by id, which need not agree across
+        environments — pairing on position alone would diff a form's parent
+        against its own sub-workflow."""
+        primary = {"uuid": "u-parent", "name_label": "Contract", "stages": []}
+        payment = {"uuid": "u-pay", "name_label": "Payment", "stages": []}
+        shipping = {"uuid": "u-ship", "name_label": "Shipping", "stages": []}
+        base = {
+            "form": {},
+            "workflow": primary,
+            "additional_workflows": [payment, shipping],
+        }
+        other = {
+            "form": {},
+            "workflow": primary,
+            # Same two sub-workflows, opposite order.
+            "additional_workflows": [shipping, payment],
+        }
+
+        diffs = _build_summary([base, other])[0]["diffs"]
+
+        assert not any("name_label" in d for d in diffs), (
+            f"Reordered sub-workflows diffed against each other. Got: {diffs}"
         )

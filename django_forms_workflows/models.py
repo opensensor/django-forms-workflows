@@ -1111,6 +1111,12 @@ class WorkflowDefinition(models.Model):
         verbose_name_plural = "Workflow Definitions"
 
     def __str__(self):
+        # ``name_label`` is the only thing distinguishing sibling workflows on
+        # the same form (e.g. a parent and its sub-workflow), so it has to show
+        # up anywhere a workflow is rendered by name — admin FK pickers,
+        # autocomplete results, list columns, and log entries.
+        if self.name_label:
+            return f"Workflow for {self.form_definition.name} — {self.name_label}"
         return f"Workflow for {self.form_definition.name}"
 
 

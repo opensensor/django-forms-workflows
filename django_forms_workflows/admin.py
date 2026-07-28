@@ -1770,7 +1770,7 @@ class WorkflowDefinitionAdmin(nested_admin.NestedModelAdmin):
         "allow_bulk_export",
         "allow_bulk_pdf_export",
     )
-    search_fields = ("form_definition__name",)
+    search_fields = ("form_definition__name", "name_label")
     readonly_fields = ("uuid",)
     fieldsets = (
         (
@@ -1891,10 +1891,12 @@ class NotificationRuleAdmin(admin.ModelAdmin):
         "notify_stage_assignees",
         "notify_stage_groups",
         "workflow__form_definition",
+        "workflow",
     )
     list_select_related = ("workflow__form_definition", "stage")
     search_fields = (
         "workflow__form_definition__name",
+        "workflow__name_label",
         "stage__name",
         "email_field",
         "static_emails",
@@ -1950,7 +1952,15 @@ class NotificationRuleAdmin(admin.ModelAdmin):
         description="Form / Workflow", ordering="workflow__form_definition__name"
     )
     def workflow_form(self, obj):
-        return obj.workflow.form_definition.name if obj.workflow_id else "—"
+        if not obj.workflow_id:
+            return "—"
+        # Append ``name_label`` so a rule on a parent workflow and one on its
+        # sub-workflow are distinguishable here — both share a form name, and
+        # for workflow-level rules the Stage column reads "— (all stages)" on
+        # either one.
+        name = obj.workflow.form_definition.name
+        label = obj.workflow.name_label
+        return f"{name} — {label}" if label else name
 
     @admin.display(description="Stage", ordering="stage__name")
     def stage_name(self, obj):

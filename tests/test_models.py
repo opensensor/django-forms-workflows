@@ -260,6 +260,15 @@ class TestWorkflowDefinition:
         assert workflow.requires_approval is True
         assert str(workflow) == "Workflow for Test Form"
 
+    def test_str_includes_name_label(self, form_definition):
+        """Sibling workflows on one form are only distinguishable by
+        ``name_label``, so it has to appear wherever a workflow is rendered by
+        name — admin FK pickers, autocomplete results, list columns."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, name_label="Payment"
+        )
+        assert str(wf) == "Workflow for Test Form — Payment"
+
     def test_staged_workflow(self, staged_workflow):
         stages = list(staged_workflow.stages.order_by("order"))
         assert len(stages) == 2

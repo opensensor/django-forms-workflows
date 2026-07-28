@@ -24,12 +24,12 @@ describe('createBuilderStore', () => {
   it('accepts initial state', () => {
     const store = createBuilderStore({
       fields: [{ field_name: 'text_1' }],
-      formSteps: [{ label: 'Step 1', fields: ['text_1'] }],
+      formSteps: [{ title: 'Step 1', fields: ['text_1'] }],
       fieldIdCounter: 5,
     });
 
     expect(store.fields).toEqual([{ field_name: 'text_1' }]);
-    expect(store.formSteps).toEqual([{ label: 'Step 1', fields: ['text_1'] }]);
+    expect(store.formSteps).toEqual([{ title: 'Step 1', fields: ['text_1'] }]);
     expect(store.fieldIdCounter).toBe(5);
   });
 });
@@ -51,10 +51,10 @@ describe('BuilderStore.setFields / setFormSteps', () => {
     let received = null;
     store.addEventListener('form-steps-changed', (e) => { received = e.detail.formSteps; });
 
-    store.setFormSteps([{ label: 'Step 1', fields: [] }]);
+    store.setFormSteps([{ title: 'Step 1', fields: [] }]);
 
-    expect(store.formSteps).toEqual([{ label: 'Step 1', fields: [] }]);
-    expect(received).toEqual([{ label: 'Step 1', fields: [] }]);
+    expect(store.formSteps).toEqual([{ title: 'Step 1', fields: [] }]);
+    expect(received).toEqual([{ title: 'Step 1', fields: [] }]);
   });
 });
 
@@ -109,11 +109,11 @@ describe('BuilderStore.snapshot / restore', () => {
   it('snapshot captures fields and formSteps together', () => {
     const store = createBuilderStore({
       fields: [{ field_name: 'a' }],
-      formSteps: [{ label: 'Step 1', fields: ['a'] }],
+      formSteps: [{ title: 'Step 1', fields: ['a'] }],
     });
 
     expect(store.snapshot()).toEqual(
-      JSON.stringify({ fields: [{ field_name: 'a' }], formSteps: [{ label: 'Step 1', fields: ['a'] }] })
+      JSON.stringify({ fields: [{ field_name: 'a' }], formSteps: [{ title: 'Step 1', fields: ['a'] }] })
     );
   });
 
@@ -126,13 +126,13 @@ describe('BuilderStore.snapshot / restore', () => {
 
     const snapshot = JSON.stringify({
       fields: [{ field_name: 'restored' }],
-      formSteps: [{ label: 'Step 1', fields: ['restored'] }],
+      formSteps: [{ title: 'Step 1', fields: ['restored'] }],
     });
     store.restore(snapshot);
 
     expect(store.fields).toEqual([{ field_name: 'restored' }]);
-    expect(store.formSteps).toEqual([{ label: 'Step 1', fields: ['restored'] }]);
+    expect(store.formSteps).toEqual([{ title: 'Step 1', fields: ['restored'] }]);
     expect(fieldsChanged).toEqual([[{ field_name: 'restored' }]]);
-    expect(formStepsChanged).toEqual([[{ label: 'Step 1', fields: ['restored'] }]]);
+    expect(formStepsChanged).toEqual([[{ title: 'Step 1', fields: ['restored'] }]]);
   });
 });

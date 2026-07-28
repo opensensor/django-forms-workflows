@@ -148,6 +148,16 @@ describe('apiMethods.loadForm', () => {
     expect(ctx.formSteps[0].label).toBeUndefined();
   });
 
+  it('seeds the field id counter past the highest loaded field name', async () => {
+    stubLoadResponse({ fields: [{ field_name: 'text_1' }, { field_name: 'text_7' }] });
+    const ctx = createContext();
+    ctx.updatePreview = vi.fn();
+
+    await ctx.loadForm();
+
+    expect(ctx.store.fieldIdCounter).toBe(8);
+  });
+
   it('renders the single-step canvas when multi-step is off', async () => {
     stubLoadResponse({ enable_multi_step: false });
     const ctx = createContext();
@@ -258,6 +268,22 @@ describe('apiMethods.loadTemplate', () => {
     expect(ctx.fields).toEqual([{ field_name: 'text_1' }]);
     expect(ctx.renderCanvas).toHaveBeenCalledTimes(1);
     expect(window.alert).toHaveBeenCalledWith('Template loaded successfully! You can now customize the form.');
+  });
+
+  it('seeds the field id counter past the highest field name in the template', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        template_data: { name: 'Template A', fields: [{ field_name: 'text_3' }] },
+      }),
+    }));
+    const ctx = createContext({ config: { apiUrls: { loadTemplate: '/templates/{id}/' } } });
+    ctx.updatePreview = vi.fn();
+
+    await ctx.loadTemplate('1');
+
+    expect(ctx.store.fieldIdCounter).toBe(4);
   });
 
   it('alerts on invalid template data instead of throwing', async () => {

@@ -161,6 +161,7 @@ export const apiMethods = {
 
             // Load fields
             this.fields = data.fields || [];
+            this.store.seedFieldIdCounterFromFields(this.fields);
 
             // If multi-step is enabled, switch to multi-step mode
             if (data.enable_multi_step) {
@@ -393,6 +394,7 @@ export const apiMethods = {
 
                 // Load fields
                 this.fields = templateData.fields || [];
+                this.store.seedFieldIdCounterFromFields(this.fields);
                 this.renderCanvas();
                 this.updatePreview();
 

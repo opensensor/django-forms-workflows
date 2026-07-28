@@ -39,6 +39,9 @@ export class FormBuilder {
     get formSteps() { return this.store.formSteps; }
     set formSteps(value) { this.store.setFormSteps(value); }
 
+    get fieldIdCounter() { return this.store.fieldIdCounter; }
+    set fieldIdCounter(value) { this.store.fieldIdCounter = value; }
+
     init() {
         this.setupFieldPalette();
         this.setupCanvas();

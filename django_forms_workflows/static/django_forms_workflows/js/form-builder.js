@@ -1531,6 +1531,7 @@ export class FormBuilder {
         });
 
         this.formSteps[stepIndex].fields = fieldNames;
+        this.updatePreview();
     }
 
     updateStepFieldCount(stepIndex) {

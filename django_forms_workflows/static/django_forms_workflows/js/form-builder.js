@@ -1366,6 +1366,8 @@ export class FormBuilder {
         const fieldConfig = this.fieldTypes.find(ft => ft.type === fieldType);
         if (!fieldConfig) return;
 
+        this.pushUndo();
+
         const fieldName = this.getDefaultName(fieldType);
         const newField = {
             id: `new_${this.fieldIdCounter++}`,

@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FormBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder.js';
+import { createBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder-store.js';
 
 // Build an instance without running the constructor to avoid calling init() ->
 // setupFieldPalette()/setupCanvas()/setupEventListeners()
 function createInstance(FormBuilder) {
   const instance = Object.create(FormBuilder.prototype);
+  instance.store = createBuilderStore();
   instance.fields = [];
   instance.fieldIdCounter = 1;
   instance.undoStack = [];

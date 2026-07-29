@@ -76,17 +76,19 @@ afterEach(() => {
 describe('apiMethods.updatePreview', () => {
   it('debounces: only the last call within the window triggers generatePreview', () => {
     vi.useFakeTimers();
-    const ctx = createContext();
-    ctx.generatePreview = vi.fn();
+    try {
+      const ctx = createContext();
+      ctx.generatePreview = vi.fn();
 
-    ctx.updatePreview();
-    ctx.updatePreview();
-    ctx.updatePreview();
-    vi.advanceTimersByTime(500);
+      ctx.updatePreview();
+      ctx.updatePreview();
+      ctx.updatePreview();
+      vi.advanceTimersByTime(500);
 
-    expect(ctx.generatePreview).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
-  });
+      expect(ctx.generatePreview).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
 });
 
 describe('apiMethods.generatePreview', () => {

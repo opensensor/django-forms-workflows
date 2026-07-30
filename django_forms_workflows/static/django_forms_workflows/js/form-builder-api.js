@@ -319,7 +319,7 @@ export const apiMethods = {
                 // Render templates
                 let html = '';
                 for (const [category, templates] of Object.entries(grouped)) {
-                    html += `<div class="col-12"><h6 class="text-muted">${category}</h6></div>`;
+                    html += `<div class="col-12"><h6 class="text-muted">${this.escapeHtml(String(category ?? ''))}</h6></div>`;
                     templates.forEach(template => {
                         html += `
                             <div class="col-md-4">

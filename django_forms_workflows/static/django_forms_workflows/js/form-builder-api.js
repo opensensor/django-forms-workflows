@@ -329,7 +329,7 @@ export const apiMethods = {
                                         <p class="card-text small text-muted">${this.escapeHtml(template.description)}</p>
                                         <div class="d-flex justify-content-between align-items-center">
                                             <small class="text-muted">
-                                                <i class="bi bi-people"></i> Used ${template.usage_count} times
+                                                <i class="bi bi-people"></i> Used ${this.escapeHtml(String(template.usage_count ?? 0))} times
                                             </small>
                                             <button class="btn btn-sm btn-primary">Use Template</button>
                                         </div>

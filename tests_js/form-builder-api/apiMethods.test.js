@@ -89,6 +89,7 @@ describe('apiMethods.updatePreview', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
 });
 
 describe('apiMethods.generatePreview', () => {

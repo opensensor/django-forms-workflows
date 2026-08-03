@@ -384,8 +384,6 @@ def _lookup_by_full_name(user_model, value, stage, submission):
             first_name__iexact=first_name, last_name__iexact=last_name
         )
     else:
-        first_name = None
-        last_name = value
         qs = user_model.objects.filter(last_name__iexact=value)
 
     matches = list(qs[:3])  # fetch up to 3 to detect duplicates cheaply

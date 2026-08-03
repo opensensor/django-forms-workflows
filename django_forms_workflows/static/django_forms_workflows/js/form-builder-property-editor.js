@@ -247,12 +247,6 @@ export const propertyEditorMethods = {
 
         const conditionalRulesJson = field.conditional_rules ? JSON.stringify(field.conditional_rules, null, 2) : '';
 
-        // Get list of other fields for dropdown
-        const otherFields = this.fields.filter(f => f.field_name !== field.field_name);
-        const fieldOptions = otherFields.map(f =>
-            `<option value="${f.field_name}">${this.escapeHtml(f.field_label)} (${f.field_name})</option>`
-        ).join('');
-
         return `
             <div class="row g-3">
                 <div class="col-12">
@@ -349,12 +343,6 @@ export const propertyEditorMethods = {
         }
 
         const dependenciesJson = field.field_dependencies.length > 0 ? JSON.stringify(field.field_dependencies, null, 2) : '';
-
-        // Get list of other fields for dropdown
-        const otherFields = this.fields.filter(f => f.field_name !== field.field_name);
-        const fieldOptions = otherFields.map(f =>
-            `<option value="${f.field_name}">${this.escapeHtml(f.field_label)} (${f.field_name})</option>`
-        ).join('');
 
         return `
             <div class="row g-3">

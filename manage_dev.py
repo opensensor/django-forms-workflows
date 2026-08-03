@@ -1,6 +1,5 @@
 """Minimal manage.py for running makemigrations inside the package repo."""
 
-import os
 import sys
 
 # Minimal inline settings so we can run makemigrations without a full project

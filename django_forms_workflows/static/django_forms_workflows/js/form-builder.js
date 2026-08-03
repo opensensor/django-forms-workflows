@@ -919,6 +919,8 @@ export class FormBuilder {
 
         if (!field) return;
 
+        this.pushUndo();
+
         // Find which step the field was in before
         let sourceStepIndex = -1;
         this.formSteps.forEach((step, idx) => {
@@ -966,6 +968,8 @@ export class FormBuilder {
     updateFieldOrderInStep(stepIndex) {
         const canvas = document.getElementById(`step-canvas-${stepIndex}`);
         if (!canvas) return;
+
+        this.pushUndo();
 
         const fieldElements = canvas.querySelectorAll('.field-item');
         const fieldNames = [];

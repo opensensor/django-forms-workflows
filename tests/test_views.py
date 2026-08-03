@@ -2044,7 +2044,7 @@ class TestPaymentRegistry:
             def handle_webhook(self, *a, **kw):
                 pass
 
-            def get_client_config(self):
+            def get_client_config(self, payment_result):
                 return {}
 
             def get_receipt_data(self, *a, **kw):

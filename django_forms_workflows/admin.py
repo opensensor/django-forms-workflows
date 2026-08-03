@@ -278,8 +278,6 @@ def _render_conditional_rules(rules) -> str:
         [SHOW]    when  ``first_enrollment`` equals ``Yes``
         [REQUIRE] when  ``first_enrollment`` equals ``Yes``
     """
-    import json
-
     if not rules:
         return ""
     if isinstance(rules, str):
@@ -1279,8 +1277,6 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
                 remote_forms = payload.get("forms", [])
 
                 # Build per-form diffs: remote vs local
-                import json
-
                 from .diff_views import _build_summary
 
                 form_diffs = []

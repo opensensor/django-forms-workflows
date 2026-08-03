@@ -138,7 +138,7 @@ class FileOperationHandler:
                 self.managed_file.file_path = new_path
                 self.managed_file.save(update_fields=["stored_filename", "file_path"])
 
-                logger.info(f"Renamed file from {old_path} to {new_path}")
+                logger.info("Renamed managed file id=%s", self.managed_file.id)
                 return {"success": True, "message": f"Renamed to {new_filename}"}
             return {"success": False, "message": f"File not found: {old_path}"}
 
@@ -174,7 +174,7 @@ class FileOperationHandler:
                 self.managed_file.stored_filename = os.path.basename(new_path)
                 self.managed_file.save(update_fields=["file_path", "stored_filename"])
 
-                logger.info(f"Moved file from {old_path} to {new_path}")
+                logger.info("Moved managed file id=%s", self.managed_file.id)
                 return {"success": True, "message": f"Moved to {new_path}"}
             return {"success": False, "message": f"File not found: {old_path}"}
 
@@ -204,7 +204,7 @@ class FileOperationHandler:
                     content = f.read()
                 self.storage.save(new_path, content)
 
-                logger.info(f"Copied file from {old_path} to {new_path}")
+                logger.info("Copied managed file id=%s", self.managed_file.id)
                 return {"success": True, "message": f"Copied to {new_path}"}
             return {"success": False, "message": f"File not found: {old_path}"}
 
@@ -225,7 +225,7 @@ class FileOperationHandler:
                 self.managed_file.status_changed_at = timezone.now()
                 self.managed_file.save(update_fields=["status", "status_changed_at"])
 
-                logger.info(f"Deleted file: {file_path}")
+                logger.info("Deleted managed file id=%s", self.managed_file.id)
                 return {"success": True, "message": f"Deleted {file_path}"}
             return {"success": False, "message": f"File not found: {file_path}"}
 

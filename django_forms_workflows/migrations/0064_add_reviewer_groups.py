@@ -1,9 +1,7 @@
-import django.db.models.deletion
 from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("django_forms_workflows", "0063_formdefinition_api_enabled_apitoken"),
     ]
@@ -24,4 +22,3 @@ class Migration(migrations.Migration):
             ),
         ),
     ]
-

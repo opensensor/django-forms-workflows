@@ -1074,7 +1074,6 @@ def convert_workflow_to_visual(workflow, form_definition):
         current_x += horizontal_spacing
 
     # ── Sub-workflow node ──────────────────────────────────────────────
-    sub_wf_config = getattr(workflow, "sub_workflow_config", None)
     try:
         sub_wf_config = workflow.sub_workflow_config
     except SubWorkflowDefinition.DoesNotExist:

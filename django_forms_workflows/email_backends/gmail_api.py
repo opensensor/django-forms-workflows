@@ -72,6 +72,7 @@ def _is_retryable_gmail_error(exc) -> bool:
                 if err.get("reason") in _RETRYABLE_GMAIL_REASONS:
                     return True
         except (ValueError, AttributeError, KeyError, TypeError):
+            # A malformed error payload is not enough evidence to retry safely.
             pass
     return False
 

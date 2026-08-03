@@ -298,11 +298,12 @@ def sync_ldap_groups():
     try:
         from django_auth_ldap.backend import LDAPBackend
 
-        _backend = LDAPBackend()  # noqa: F841 - Placeholder for future implementation
-
         # This would need to be implemented based on your LDAP structure
         # and how you want to sync groups
-        logger.info("LDAP group sync completed")
+        logger.info(
+            "LDAP group sync is available via backend %s but is not configured",
+            LDAPBackend.__name__,
+        )
 
     except ImportError:
         logger.warning("django-auth-ldap not installed, skipping group sync")

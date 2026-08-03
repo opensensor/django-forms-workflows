@@ -341,6 +341,8 @@ class DynamicForm(forms.Form):
                 try:
                     self.stashed_files = json.loads(prev)
                 except (json.JSONDecodeError, TypeError):
+                    # Ignore malformed client metadata; uploaded files are rebuilt
+                    # from validated server-side data below.
                     pass
 
         # Build form fields from definition
@@ -1177,8 +1179,6 @@ class DynamicForm(forms.Form):
         Hidden fields are also dropped from ``cleaned_data`` so that their
         values are not persisted in the submission.
         """
-        import json
-
         from .conditions import evaluate_conditions
 
         cleaned_data = super().clean()
@@ -1307,8 +1307,6 @@ class DynamicForm(forms.Form):
         Generate JavaScript configuration for form enhancements.
         Returns a dictionary that can be serialized to JSON.
         """
-        import json
-
         from django.urls import reverse
 
         # Disable auto-save for anonymous users (no drafts without a user)
@@ -1554,8 +1552,6 @@ class ApprovalStepForm(forms.Form):
 
     def _add_field(self, field_def):
         """Add a single field to the form."""
-        is_editable = True
-
         # Get current value from form data.
         # Sub-workflow fields are stored with an index suffix (e.g. payment_dept_code_1);
         # try the indexed key first, then fall back to the bare field name.
@@ -1572,16 +1568,16 @@ class ApprovalStepForm(forms.Form):
             current_value = field_def.default_value
 
         # Auto-fill approver name from current user
-        if is_editable and self._is_approver_name_field(field_def):
+        if self._is_approver_name_field(field_def):
             current_value = self._get_approver_name()
         # Auto-fill date with current date
-        elif is_editable and self._is_date_field(field_def):
+        elif self._is_date_field(field_def):
             current_value = date.today()
 
         # Common field arguments
         field_args = {
             "label": field_def.field_label,
-            "required": field_def.required if is_editable else False,
+            "required": field_def.required,
             "help_text": field_def.help_text,
             "initial": current_value,
         }
@@ -1593,17 +1589,11 @@ class ApprovalStepForm(forms.Form):
         if field_def.css_class:
             widget_attrs["class"] = field_def.css_class
 
-        # Make non-editable fields read-only
-        if not is_editable:
-            widget_attrs["readonly"] = "readonly"
-            widget_attrs["disabled"] = "disabled"
-            field_args["required"] = False
-
         if field_def.field_type in _PM_OPT_OUT_FIELD_TYPES:
             widget_attrs.update(_PM_OPT_OUT_ATTRS)
 
         # Create appropriate field type
-        self._create_field(field_def, field_args, widget_attrs, is_editable)
+        self._create_field(field_def, field_args, widget_attrs)
 
     def _is_approver_name_field(self, field_def):
         """Check if this is an approver name field (to auto-fill)."""
@@ -1629,7 +1619,7 @@ class ApprovalStepForm(forms.Form):
             return self.user.username
         return ""
 
-    def _create_field(self, field_def, field_args, widget_attrs, is_editable):
+    def _create_field(self, field_def, field_args, widget_attrs):
         """Create the appropriate Django form field."""
         if field_def.field_type == "text":
             if widget_attrs:
@@ -2002,8 +1992,6 @@ class ApprovalStepForm(forms.Form):
         validate fields on input/blur instead of waiting for submit, matching
         the behavior of the original submission form.
         """
-        import json
-
         stage_id = self.approval_task.workflow_stage_id
         if stage_id is None:
             stage_fields = []

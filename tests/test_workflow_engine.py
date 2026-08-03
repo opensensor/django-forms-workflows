@@ -2,6 +2,8 @@
 Tests for django_forms_workflows.workflow_engine.
 """
 
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import patch
 
 from django.contrib.auth.models import Group, User
@@ -40,6 +42,11 @@ def _make_submission(form_def, user, **overrides):
     return FormSubmission.objects.create(**defaults)
 
 
+def _execute_on_commit(callback: Callable[[], Any]) -> Any:
+    """Run a transaction callback immediately in dispatch unit tests."""
+    return callback()
+
+
 # ── No-workflow (auto-approve) ────────────────────────────────────────────
 
 
@@ -73,7 +80,7 @@ class TestAutoApprove:
 class TestNotificationDispatch:
     @patch(
         "django_forms_workflows.workflow_engine.transaction.on_commit",
-        side_effect=lambda fn: fn(),
+        side_effect=_execute_on_commit,
     )
     @patch("django_forms_workflows.tasks.send_notification_rules.delay")
     def test_notification_rules_dispatch_on_commit(
@@ -88,7 +95,7 @@ class TestNotificationDispatch:
 class TestWebhookDispatch:
     @patch(
         "django_forms_workflows.workflow_engine.transaction.on_commit",
-        side_effect=lambda fn: fn(),
+        side_effect=_execute_on_commit,
     )
     @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks.delay")
     def test_webhooks_dispatch_on_commit(self, mock_delay, mock_on_commit, submission):
@@ -105,7 +112,7 @@ class TestWebhookDispatch:
 
     @patch(
         "django_forms_workflows.workflow_engine.transaction.on_commit",
-        side_effect=lambda fn: fn(),
+        side_effect=_execute_on_commit,
     )
     @patch("django_forms_workflows.tasks.send_notification_rules.delay")
     @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks.delay")
@@ -148,7 +155,7 @@ class TestWebhookDispatch:
 
     @patch(
         "django_forms_workflows.workflow_engine.transaction.on_commit",
-        side_effect=lambda fn: fn(),
+        side_effect=_execute_on_commit,
     )
     @patch("django_forms_workflows.tasks.send_notification_rules")
     @patch("django_forms_workflows.tasks.dispatch_workflow_webhooks")

@@ -2103,7 +2103,6 @@ class WorkflowBuilder {
     }
 
     buildEndProperties(node) {
-        const data = node.data || {};
         return `
             <div class="alert alert-info">
                 <i class="bi bi-info-circle"></i> This is the terminal node where the workflow ends.
@@ -2874,7 +2873,6 @@ class WorkflowBuilder {
                 return 'Workflow starts here';
             case 'form':
                 const fieldCount = node.data.field_count || 0;
-                const formName = node.data.form_name || 'Form';
                 const isInitial = node.data.is_initial !== false;
                 const isMultiStep = node.data.enable_multi_step && node.data.step_count > 0;
 
@@ -3165,3 +3163,5 @@ class WorkflowBuilder {
     }
 }
 
+// This script is loaded before the inline admin bootstrap code.
+window.WorkflowBuilder = WorkflowBuilder;

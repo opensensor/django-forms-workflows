@@ -1433,6 +1433,7 @@ def send_notification_rules(
         try:
             task = ApprovalTask.objects.select_related("workflow_stage").get(id=task_id)
         except ApprovalTask.DoesNotExist:
+            # A concurrently deleted task simply leaves notification context unscoped.
             pass
 
     # Build a denormalized "public_comments" list for the template context
@@ -1662,6 +1663,7 @@ def send_notification_rules(
             try:
                 base_context["task"] = ApprovalTask.objects.get(id=task_id)
             except ApprovalTask.DoesNotExist:
+                # The notification can still be rendered without optional task context.
                 pass
 
         # Pre-fetch User objects for all recipients so templates that

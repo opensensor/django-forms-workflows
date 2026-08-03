@@ -412,6 +412,7 @@ def form_submit(request, slug):
                     if isinstance(prev, dict):
                         raw_data.update(prev)
                 except (json.JSONDecodeError, TypeError):
+                    # Ignore malformed client metadata; draft data remains usable.
                     pass
 
             draft_obj, created = FormSubmission.objects.update_or_create(
@@ -459,6 +460,7 @@ def form_submit(request, slug):
                     for k, v in prev.items():
                         stashed_files.setdefault(k, v)
             except (json.JSONDecodeError, TypeError):
+                # Ignore malformed client metadata and keep newly stashed uploads.
                 pass
 
         form = DynamicForm(
@@ -789,7 +791,6 @@ def _pipe_answer_tokens(text, form_data):
     Unresolved tokens are replaced with an empty string so the output is
     always safe to display or use as a URL.
     """
-    import re
 
     def _repl(m):
         val = form_data.get(m.group(1), "")
@@ -968,8 +969,6 @@ def my_submissions(request):
         active_category = next(
             (c for c in category_counts if c["slug"] == category_slug), None
         )
-    else:
-        submissions = base_submissions
 
     # --- Form counts within the active category (for the form-level filter bar) ---
     form_slug = request.GET.get("form", "").strip()
@@ -996,7 +995,6 @@ def my_submissions(request):
             if r["form_definition__slug"]
         ]
         if form_slug:
-            submissions = submissions.filter(form_definition__slug=form_slug)
             active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
 
     # Check if any submissions support bulk export (fast EXISTS)
@@ -1442,8 +1440,6 @@ def approval_inbox(request):
         active_category = next(
             (c for c in category_counts if c["slug"] == category_slug), None
         )
-    else:
-        display_tasks = base_tasks
 
     # --- Form counts within the active category (for the form-level filter bar) ---
     form_slug = request.GET.get("form", "").strip()
@@ -1470,9 +1466,6 @@ def approval_inbox(request):
             if r["submission__form_definition__slug"]
         ]
         if form_slug:
-            display_tasks = display_tasks.filter(
-                submission__form_definition__slug=form_slug
-            )
             active_form = next((f for f in form_counts if f["slug"] == form_slug), None)
 
     # --- Form fields for the column picker (only when a specific form is active) ---
@@ -2302,8 +2295,6 @@ def completed_approvals(request):
     # --- Apply optional category filter ---
     category_slug = request.GET.get("category", "").strip()
     active_category = None
-    filtered_submissions = base_submissions
-
     if category_slug:
         filtered_submissions = base_submissions.filter(
             form_definition__category__slug=category_slug

@@ -859,12 +859,16 @@ export class FormBuilder {
             this.formSteps[stepIndex].fields.push(fieldName);
         }
 
-        // Re-render this step
-        this.renderSingleStep(stepIndex);
+        // Reorder this.fields to match step order *before* rendering - every
+        // step's data-field-index is derived from this.fields' current index,
+        // so rendering first and reordering after leaves stale indices behind
+        // on any step whose fields shifted position in the flattened array.
+        this.updateFieldOrderFromSteps();
+        this.renderFieldsInSteps();
         this.updatePreview();
 
         // Automatically open property editor for new field
-        const fieldIndex = this.fields.length - 1;
+        const fieldIndex = this.fields.findIndex(f => f.field_name === fieldName);
         this.editField(fieldIndex, true); // true = isNew
     }
 
@@ -948,11 +952,12 @@ export class FormBuilder {
 
         this.formSteps[stepIndex].fields.splice(insertPosition, 0, field.field_name);
 
-        // Re-render both source and target steps
-        if (sourceStepIndex !== -1 && sourceStepIndex !== stepIndex) {
-            this.renderSingleStep(sourceStepIndex);
-        }
-        this.renderSingleStep(stepIndex);
+        // Reorder this.fields to match step order *before* rendering - every
+        // step's data-field-index is derived from this.fields' current index,
+        // so rendering first and reordering after leaves stale indices behind
+        // on any step whose fields shifted position in the flattened array.
+        this.updateFieldOrderFromSteps();
+        this.renderFieldsInSteps();
 
         // Update preview
         this.updatePreview();
@@ -974,6 +979,13 @@ export class FormBuilder {
         });
 
         this.formSteps[stepIndex].fields = fieldNames;
+
+        // Reorder this.fields to match, then re-render every step so
+        // data-field-index stays in sync everywhere - a reorder in this step
+        // can shift indices for fields in other steps too, since this.fields
+        // is one flattened array, not scoped per step.
+        this.updateFieldOrderFromSteps();
+        this.renderFieldsInSteps();
         this.updatePreview();
     }
 

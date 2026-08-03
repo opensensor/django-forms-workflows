@@ -46,4 +46,27 @@ describe('FormBuilder#handleFieldDroppedToStep', () => {
     expect(instance.undoStack).toHaveLength(0);
     expect(instance.fields).toHaveLength(0);
   });
+
+  it('reorders this.fields to match the step position when dropped before an existing field, not just appended', () => {
+    const instance = createInstance();
+    instance.fields = [{ field_name: 'existing' }];
+    instance.formSteps[0].fields = ['existing'];
+
+    // Drop at position 0 -> new field belongs before 'existing' in the step.
+    instance.handleFieldDroppedToStep('text', 0, 0);
+
+    expect(instance.formSteps[0].fields[0]).not.toBe('existing');
+    expect(instance.fields.map(f => f.field_name)).toEqual(instance.formSteps[0].fields);
+  });
+
+  it('opens the property editor for the newly-added field even after this.fields gets reordered', () => {
+    const instance = createInstance();
+    instance.fields = [{ field_name: 'existing' }];
+    instance.formSteps[0].fields = ['existing'];
+
+    instance.handleFieldDroppedToStep('text', 0, 0);
+
+    const newFieldIndex = instance.fields.findIndex(f => f.field_name !== 'existing');
+    expect(instance.editField).toHaveBeenCalledWith(newFieldIndex, true);
+  });
 });

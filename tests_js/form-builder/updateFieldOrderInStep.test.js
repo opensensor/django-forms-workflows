@@ -39,4 +39,17 @@ describe('FormBuilder#updateFieldOrderInStep', () => {
     expect(instance.formSteps[0].fields).toEqual(['b', 'a']);
     expect(instance.updatePreview).toHaveBeenCalledTimes(1);
   });
+
+  it('reorders this.fields to match the new step order, not just formSteps (regression: preview used to keep the stale array order)', () => {
+    const instance = createInstance({
+      fields: [{ field_name: 'a' }, { field_name: 'b' }],
+      formSteps: [{ title: 'Step 1', fields: ['a', 'b'] }],
+    });
+    instance.updatePreview = vi.fn();
+    setStepCanvasOrder(0, [1, 0]); // dragged 'b' above 'a'
+
+    instance.updateFieldOrderInStep(0);
+
+    expect(instance.fields.map(f => f.field_name)).toEqual(['b', 'a']);
+  });
 });

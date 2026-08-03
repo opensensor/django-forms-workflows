@@ -205,6 +205,16 @@ describe('propertyEditorMethods.buildBasicPropertiesTab', () => {
     expect(html).not.toContain('id="propMaxValue"');
   });
 
+  it('escapes the field type before rendering it into the disabled type input', () => {
+    const ctx = createContext();
+    const field = { ...baseField, field_type: '"><script>alert(1)</script>' };
+
+    const html = ctx.buildBasicPropertiesTab(field, '', '');
+
+    expect(html).not.toContain('"><script>alert(1)</script>');
+    expect(html).toContain(ctx.escapeHtml(field.field_type));
+  });
+
   it('renders a choices textarea for a select field', () => {
     const ctx = createContext();
     const field = { ...baseField, field_type: 'select', choices: 'a\nb' };

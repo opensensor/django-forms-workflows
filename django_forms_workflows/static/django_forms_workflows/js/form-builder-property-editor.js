@@ -122,7 +122,7 @@ export const propertyEditorMethods = {
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Field Type</label>
-                    <input type="text" class="form-control" value="${field.field_type}" disabled>
+                    <input type="text" class="form-control" value="${this.escapeHtml(field.field_type)}" disabled>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Width</label>

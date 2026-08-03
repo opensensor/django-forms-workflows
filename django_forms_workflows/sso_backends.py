@@ -253,6 +253,14 @@ def get_saml_config():
     This helper constructs the SAML settings from Django settings,
     providing sensible defaults for common use cases.
 
+    Compatibility note:
+        The default ``security`` configuration sets
+        ``wantAttributeStatement`` to ``False``. This is intentional to
+        support IdPs (including Google SAML in common configurations) that
+        may authenticate successfully without returning a SAML AttributeStatement.
+        Projects that require attributes can override this through
+        ``FORMS_WORKFLOWS_SAML["security"]``.
+
     Returns:
         dict: SAML configuration for OneLogin's python3-saml
     """

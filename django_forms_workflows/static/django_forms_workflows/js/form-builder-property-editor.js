@@ -409,7 +409,10 @@ export const propertyEditorMethods = {
         // Add event listener for add button
         const btnAdd = document.getElementById('btnAddCondition');
         if (btnAdd) {
-            btnAdd.addEventListener('click', () => this.addConditionRow({}, conditions.length));
+            btnAdd.addEventListener('click', () => {
+                const nextIndex = container.querySelectorAll('.card').length;
+                this.addConditionRow({}, nextIndex);
+            });
         }
     },
 
@@ -472,7 +475,11 @@ export const propertyEditorMethods = {
         // Add event listener for add button
         const btnAdd = document.getElementById('btnAddValidation');
         if (btnAdd) {
-            btnAdd.addEventListener('click', () => this.addValidationRuleRow({}, rules.length));
+            btnAdd.addEventListener('click', () => {
+                const container = document.getElementById('validationRulesList');
+                const nextIndex = container ? container.querySelectorAll('.card').length : rules.length;
+                this.addValidationRuleRow({}, nextIndex);
+            });
         }
     },
 
@@ -528,7 +535,11 @@ export const propertyEditorMethods = {
         // Add event listener for add button
         const btnAdd = document.getElementById('btnAddDependency');
         if (btnAdd) {
-            btnAdd.addEventListener('click', () => this.addDependencyRow({}, dependencies.length));
+            btnAdd.addEventListener('click', () => {
+                const container = document.getElementById('dependenciesList');
+                const nextIndex = container ? container.querySelectorAll('.card').length : dependencies.length;
+                this.addDependencyRow({}, nextIndex);
+            });
         }
     },
 
@@ -630,7 +641,8 @@ export const propertyEditorMethods = {
         const enableConditional = document.getElementById('propEnableConditional');
         if (enableConditional && enableConditional.checked) {
             const conditions = [];
-            document.querySelectorAll('.condition-field').forEach((el, index) => {
+            document.querySelectorAll('.condition-field').forEach((el) => {
+                const index = el.dataset.index;
                 const fieldName = el.value;
                 const operator = document.querySelector(`.condition-operator[data-index="${index}"]`).value;
                 const value = document.querySelector(`.condition-value[data-index="${index}"]`).value;
@@ -665,7 +677,8 @@ export const propertyEditorMethods = {
 
         // Save validation rules
         const validationRules = [];
-        document.querySelectorAll('.validation-type').forEach((el, index) => {
+        document.querySelectorAll('.validation-type').forEach((el) => {
+            const index = el.dataset.index;
             const type = el.value;
             const value = document.querySelector(`.validation-value[data-index="${index}"]`)?.value;
             const message = document.querySelector(`.validation-message[data-index="${index}"]`)?.value;
@@ -691,7 +704,8 @@ export const propertyEditorMethods = {
 
         // Save field dependencies
         const dependencies = [];
-        document.querySelectorAll('.dependency-source').forEach((el, index) => {
+        document.querySelectorAll('.dependency-source').forEach((el) => {
+            const index = el.dataset.index;
             const sourceField = el.value;
             const endpoint = document.querySelector(`.dependency-endpoint[data-index="${index}"]`)?.value;
 

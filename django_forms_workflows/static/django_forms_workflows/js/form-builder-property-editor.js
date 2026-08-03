@@ -1,3 +1,4 @@
+/**
  * Property editor for the Form Builder: the field-properties modal (Basic/
  * Conditional Logic/Validation/Dependencies tabs) and saving those changes
  * back onto the field.

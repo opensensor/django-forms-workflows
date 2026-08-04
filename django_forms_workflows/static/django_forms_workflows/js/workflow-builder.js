@@ -4,7 +4,7 @@
  * Drag-and-drop workflow builder for post-submission actions and approvals.
  */
 
-class WorkflowBuilder {
+export class WorkflowBuilder {
     constructor(config) {
         this.config = config;
         this.nodes = [];
@@ -3162,6 +3162,3 @@ class WorkflowBuilder {
         return `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`;
     }
 }
-
-// This script is loaded before the inline admin bootstrap code.
-window.WorkflowBuilder = WorkflowBuilder;

@@ -317,11 +317,15 @@ export const canvasMethods = {
 
     addFieldAtPosition(fieldType, position) {
         this.pushUndo();
+        // field_name must be read before nextFieldId() advances the counter,
+        // so the id and the name it's derived from carry the same number -
+        // matching handleFieldDroppedToStep's order, which already does this.
+        const fieldName = this.getDefaultName(fieldType);
         const field = {
             id: this.store.nextFieldId('new'),
             order: position + 1,
             field_label: this.getDefaultLabel(fieldType),
-            field_name: this.getDefaultName(fieldType),
+            field_name: fieldName,
             field_type: fieldType,
             required: false,
             help_text: '',

@@ -333,6 +333,16 @@ describe('canvasMethods.addFieldAtPosition', () => {
     expect(ctx.editField).toHaveBeenCalledWith(0, true);
   });
 
+  it('derives the id and the default field_name from the same counter value (regression: id used to be one ahead of field_name)', () => {
+    const ctx = createContext({ fieldIdCounter: 5 });
+    ctx.renderCanvas = vi.fn();
+
+    ctx.addFieldAtPosition('text', 0);
+
+    expect(ctx.fields[0].id).toBe('new_5');
+    expect(ctx.fields[0].field_name).toBe('text_5');
+  });
+
   it('pushes an undo snapshot before inserting', () => {
     const ctx = createContext();
     ctx.renderCanvas = vi.fn();

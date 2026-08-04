@@ -507,8 +507,8 @@ export const canvasMethods = {
             // Regular field
             div.className = 'canvas-field field-item';
             const requiredBadge = field.required ? '<span class="badge bg-danger ms-1" style="font-size: 0.65rem; padding: 0.15rem 0.35rem;">REQ</span>' : '';
-            const fieldInfo = `<span class="text-muted" style="font-size: 0.75rem;">${field.field_name}</span>`;
-            const widthBadge = field.width && field.width !== 'full' ? `<span class="badge bg-secondary ms-1" style="font-size: 0.6rem;">${field.width}</span>` : '';
+            const fieldInfo = `<span class="text-muted" style="font-size: 0.75rem;">${this.escapeHtml(field.field_name)}</span>`;
+            const widthBadge = field.width && field.width !== 'full' ? `<span class="badge bg-secondary ms-1" style="font-size: 0.6rem;">${this.escapeHtml(field.width)}</span>` : '';
 
             div.innerHTML = `
                 <div class="field-header field-drag-handle" style="cursor: move;">
@@ -519,7 +519,7 @@ export const canvasMethods = {
                         <span class="ms-2">${fieldInfo}</span>
                     </div>
                     <div class="field-actions">
-                        <span class="field-type-badge">${field.field_type}</span>
+                        <span class="field-type-badge">${this.escapeHtml(field.field_type)}</span>
                         <button class="btn btn-sm btn-outline-primary btn-field-action" onclick="formBuilder.editField(${index})" title="Edit field">
                             <i class="bi bi-pencil"></i>
                         </button>

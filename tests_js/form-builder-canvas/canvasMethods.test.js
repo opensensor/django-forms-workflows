@@ -470,6 +470,23 @@ describe('canvasMethods.renderCanvas / createFieldElement', () => {
     expect(el.innerHTML).toContain(ctx.escapeHtml('<img src=x onerror=alert(1)>'));
   });
 
+  it('escapes field_name, width, and field_type before rendering them (regression: these rendered raw while field_label was already escaped)', () => {
+    const ctx = createContext();
+    const field = {
+      field_type: '<script>alert("type")</script>',
+      field_name: '<script>alert("name")</script>',
+      field_label: 'F',
+      width: '<script>alert("width")</script>',
+    };
+
+    const el = ctx.createFieldElement(field, 0);
+
+    expect(el.querySelector('script')).toBeNull();
+    expect(el.innerHTML).toContain(ctx.escapeHtml(field.field_name));
+    expect(el.innerHTML).toContain(ctx.escapeHtml(field.width));
+    expect(el.innerHTML).toContain(ctx.escapeHtml(field.field_type));
+  });
+
   it('routes right-click on a rendered field to showFieldContextMenu with its index', () => {
     const ctx = createContext();
     ctx.showFieldContextMenu = vi.fn();

@@ -210,6 +210,19 @@ describe('canvasMethods.setupCanvas', () => {
     expect(ctx.updatePreview).toHaveBeenCalledTimes(1);
   });
 
+  it('Sortable onAdd pushes an undo snapshot before reordering an existing field (regression: single-step canvas move used to skip history)', () => {
+    const instances = stubSortable();
+    const ctx = createContext({ fields: [{ field_name: 'a' }, { field_name: 'b' }] });
+    ctx.setupCanvas();
+    const { config } = instances[0];
+    const item = fieldItemElement(0);
+
+    config.onAdd({ item, oldIndex: 0, newIndex: 1 });
+
+    expect(ctx.undoStack).toHaveLength(1);
+    expect(JSON.parse(ctx.undoStack[0]).fields.map(f => f.field_name)).toEqual(['a', 'b']);
+  });
+
   it('Sortable onUpdate reorders fields within the canvas', () => {
     const instances = stubSortable();
     const ctx = createContext({ fields: [{ field_name: 'a' }, { field_name: 'b' }] });
@@ -220,6 +233,18 @@ describe('canvasMethods.setupCanvas', () => {
 
     expect(ctx.fields.map(f => f.field_name)).toEqual(['b', 'a']);
     expect(ctx.updatePreview).toHaveBeenCalledTimes(1);
+  });
+
+  it('Sortable onUpdate pushes an undo snapshot before reordering (regression: single-step canvas reorder used to skip history)', () => {
+    const instances = stubSortable();
+    const ctx = createContext({ fields: [{ field_name: 'a' }, { field_name: 'b' }] });
+    ctx.setupCanvas();
+    const { config } = instances[0];
+
+    config.onUpdate({ oldIndex: 1, newIndex: 0 });
+
+    expect(ctx.undoStack).toHaveLength(1);
+    expect(JSON.parse(ctx.undoStack[0]).fields.map(f => f.field_name)).toEqual(['a', 'b']);
   });
 
   it('Sortable onStart/onEnd toggle the dragging class on the canvas', () => {

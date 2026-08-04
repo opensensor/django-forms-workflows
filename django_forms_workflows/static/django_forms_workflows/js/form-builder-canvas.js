@@ -200,6 +200,7 @@ export const canvasMethods = {
                     }
                 } else {
                     // Existing field moved - update order
+                    this.pushUndo();
                     const movedField = this.fields.splice(evt.oldIndex, 1)[0];
                     this.fields.splice(evt.newIndex, 0, movedField);
                     this.updateFieldOrders();
@@ -208,6 +209,7 @@ export const canvasMethods = {
             },
             onUpdate: (evt) => {
                 // Field reordered within canvas
+                this.pushUndo();
                 const movedField = this.fields.splice(evt.oldIndex, 1)[0];
                 this.fields.splice(evt.newIndex, 0, movedField);
                 this.updateFieldOrders();

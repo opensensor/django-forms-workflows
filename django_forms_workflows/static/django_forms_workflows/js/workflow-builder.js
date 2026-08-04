@@ -1784,7 +1784,7 @@ export class WorkflowBuilder {
 
             fields.forEach(field => {
                 const prefillBadge = field.prefill_source ?
-                    `<span class="badge bg-info ms-2" title="Auto-filled from ${field.prefill_source}"><i class="bi bi-magic"></i> ${field.prefill_source}</span>` : '';
+                    `<span class="badge bg-info ms-2" title="Auto-filled from ${this.escapeHtml(field.prefill_source)}"><i class="bi bi-magic"></i> ${this.escapeHtml(field.prefill_source)}</span>` : '';
                 const requiredBadge = field.required ?
                     `<span class="badge bg-warning ms-1">Required</span>` : '';
 
@@ -1793,7 +1793,7 @@ export class WorkflowBuilder {
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
                                 <strong>${this.escapeHtml(field.label)}</strong>
-                                <small class="text-muted d-block">${field.name} (${field.type})</small>
+                                <small class="text-muted d-block">${this.escapeHtml(field.name)} (${this.escapeHtml(field.type)})</small>
                             </div>
                             <div>
                                 ${requiredBadge}
@@ -2893,10 +2893,10 @@ export class WorkflowBuilder {
                 return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${node.data.form_builder_url || '#'}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
             case 'workflow_settings':
                 const parts_ws = [];
-                if (node.data.name_label) parts_ws.push(node.data.name_label);
+                if (node.data.name_label) parts_ws.push(this.escapeHtml(node.data.name_label));
                 if (node.data.approval_deadline_days) parts_ws.push(`Deadline: ${node.data.approval_deadline_days}d`);
-                if (node.data.notification_cadence && node.data.notification_cadence !== 'immediate') parts_ws.push(`Cadence: ${node.data.notification_cadence}`);
-                if (node.data.notification_cadence_form_field && node.data.notification_cadence === 'form_field_date') parts_ws.push(`Date field: ${node.data.notification_cadence_form_field}`);
+                if (node.data.notification_cadence && node.data.notification_cadence !== 'immediate') parts_ws.push(`Cadence: ${this.escapeHtml(node.data.notification_cadence)}`);
+                if (node.data.notification_cadence_form_field && node.data.notification_cadence === 'form_field_date') parts_ws.push(`Date field: ${this.escapeHtml(node.data.notification_cadence_form_field)}`);
                 if (node.data.notification_rules && node.data.notification_rules.length > 0) parts_ws.push(`Notifications: ${node.data.notification_rules.length}`);
                 if (node.data.trigger_conditions && node.data.trigger_conditions.conditions && node.data.trigger_conditions.conditions.length > 0) parts_ws.push('Conditional');
                 return parts_ws.length > 0 ?
@@ -2908,14 +2908,14 @@ export class WorkflowBuilder {
                 if (node.data.allow_send_back) stageParts.push('Send Back target');
                 if (node.data.allow_reassign) stageParts.push('Reassign');
                 if (node.data.allow_edit_form_data) stageParts.push('Editable');
-                if (node.data.assignee_form_field) stageParts.push(`Dynamic: ${node.data.assignee_form_field}`);
+                if (node.data.assignee_form_field) stageParts.push(`Dynamic: ${this.escapeHtml(node.data.assignee_form_field)}`);
                 if (node.data.approval_fields && node.data.approval_fields.length > 0) stageParts.push(`Stage fields: ${node.data.approval_fields.length}`);
                 if (node.data.trigger_conditions && node.data.trigger_conditions.conditions && node.data.trigger_conditions.conditions.length > 0) stageParts.push('Conditional');
                 if (node.data.approval_groups && node.data.approval_groups.length > 0) {
                     const gc = node.data.approval_groups.length;
-                    stageParts.push(`${gc} group${gc > 1 ? 's' : ''} (${node.data.approval_logic || 'all'})`);
+                    stageParts.push(`${gc} group${gc > 1 ? 's' : ''} (${this.escapeHtml(node.data.approval_logic || 'all')})`);
                 }
-                const label = node.data.approve_label ? ` • "${node.data.approve_label}"` : '';
+                const label = node.data.approve_label ? ` • "${this.escapeHtml(node.data.approve_label)}"` : '';
                 return stageParts.length > 0 ?
                     `<span class="badge bg-warning">Stage ${node.data.order || '?'}</span><br><small class="text-muted">${stageParts.join(' + ')}${label}</small>` :
                     `<span class="badge bg-secondary">Stage ${node.data.order || '?'}</span><br><small class="text-muted">No approvers configured</small>`;
@@ -2934,22 +2934,22 @@ export class WorkflowBuilder {
                         'not_empty': 'is not empty'
                     };
                     const op = operatorSymbols[node.data.operator] || node.data.operator;
-                    return `If ${node.data.field} ${op} ${node.data.value || ''}`;
+                    return `If ${this.escapeHtml(node.data.field)} ${this.escapeHtml(op)} ${this.escapeHtml(node.data.value || '')}`;
                 }
                 return 'Configure condition';
             case 'action':
-                return node.data.action_type ? `${node.data.action_type.toUpperCase()}: ${node.data.trigger || ''}` : 'Configure action';
+                return node.data.action_type ? `${this.escapeHtml(node.data.action_type.toUpperCase())}: ${this.escapeHtml(node.data.trigger || '')}` : 'Configure action';
             case 'email':
-                if (node.data.email_to && node.data.email_to_field) return `Send to: ${node.data.email_to} + field ${node.data.email_to_field}`;
-                if (node.data.email_to) return `Send to: ${node.data.email_to}`;
-                if (node.data.email_to_field) return `Send to field: ${node.data.email_to_field}`;
+                if (node.data.email_to && node.data.email_to_field) return `Send to: ${this.escapeHtml(node.data.email_to)} + field ${this.escapeHtml(node.data.email_to_field)}`;
+                if (node.data.email_to) return `Send to: ${this.escapeHtml(node.data.email_to)}`;
+                if (node.data.email_to_field) return `Send to field: ${this.escapeHtml(node.data.email_to_field)}`;
                 return 'Configure email';
             case 'join':
                 return '<small class="text-muted">Parallel stages merge here</small>';
             case 'sub_workflow':
                 const swParts = [];
-                if (node.data.sub_workflow_name) swParts.push(node.data.sub_workflow_name);
-                if (node.data.count_field) swParts.push(`Count: ${node.data.count_field}`);
+                if (node.data.sub_workflow_name) swParts.push(this.escapeHtml(node.data.sub_workflow_name));
+                if (node.data.count_field) swParts.push(`Count: ${this.escapeHtml(node.data.count_field)}`);
                 if (node.data.trigger) swParts.push(node.data.trigger === 'on_approval' ? 'After approval' : 'On submission');
                 if (node.data.detached) swParts.push('Detached');
                 if (node.data.reject_parent) swParts.push('Rejects parent');

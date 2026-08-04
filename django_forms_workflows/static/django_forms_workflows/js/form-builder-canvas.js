@@ -316,7 +316,7 @@ export const canvasMethods = {
     addFieldAtPosition(fieldType, position) {
         this.pushUndo();
         const field = {
-            id: `new_${this.fieldIdCounter++}`,
+            id: this.store.nextFieldId('new'),
             order: position + 1,
             field_label: this.getDefaultLabel(fieldType),
             field_name: this.getDefaultName(fieldType),
@@ -364,7 +364,7 @@ export const canvasMethods = {
         this.pushUndo();
         const original = this.fields[index];
         const clone = JSON.parse(JSON.stringify(original));
-        clone.id = `new_${this.fieldIdCounter++}`;
+        clone.id = this.store.nextFieldId('new');
         clone.field_name = original.field_name + '_copy';
         clone.field_label = original.field_label + ' (Copy)';
         clone.order = index + 2;
@@ -705,7 +705,7 @@ export const canvasMethods = {
 
         const fieldName = this.getDefaultName(fieldType);
         const newField = {
-            id: `new_${this.fieldIdCounter++}`,
+            id: this.store.nextFieldId('new'),
             field_type: fieldType,
             field_name: fieldName,
             field_label: this.getDefaultLabel(fieldType),

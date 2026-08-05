@@ -81,6 +81,15 @@ describe('apiMethods.getWorkflowSnapshot', () => {
       JSON.stringify({ nodes: [{ id: 'node_1' }], connections: [{ from: 'node_1', to: 'node_2' }] })
     );
   });
+
+  it('delegates to store.snapshot() rather than re-serializing separately', () => {
+    const ctx = createContext({ nodes: [{ id: 'node_1' }] });
+    const snapshotSpy = vi.spyOn(ctx.store, 'snapshot');
+
+    ctx.getWorkflowSnapshot();
+
+    expect(snapshotSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('apiMethods.syncSavedWorkflowSnapshot / updateDirtyState', () => {
@@ -163,6 +172,16 @@ describe('apiMethods.loadWorkflow', () => {
     await ctx.loadWorkflow();
 
     expect(ctx.nodeIdCounter).toBe(8);
+  });
+
+  it('seeds the counter via store.seedNodeIdCounterFromNodes(), not a re-implemented scan', async () => {
+    stubLoadResponse({ workflow: { nodes: [{ id: 'node_1' }], connections: [] } });
+    const ctx = createContext();
+    const seedSpy = vi.spyOn(ctx.store, 'seedNodeIdCounterFromNodes');
+
+    await ctx.loadWorkflow();
+
+    expect(seedSpy).toHaveBeenCalledWith(ctx.nodes);
   });
 
   it('leaves nodeIdCounter untouched when there are no nodes', async () => {

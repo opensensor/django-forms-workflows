@@ -20,10 +20,7 @@ export const apiMethods = {
     },
 
     getWorkflowSnapshot() {
-        return JSON.stringify({
-            nodes: this.nodes,
-            connections: this.connections,
-        });
+        return this.store.snapshot();
     },
 
     syncSavedWorkflowSnapshot() {
@@ -74,11 +71,7 @@ export const apiMethods = {
 
                 // Update node ID counter
                 if (this.nodes.length > 0) {
-                    const maxId = Math.max(...this.nodes.map(n => {
-                        const match = n.id.match(/node_(\d+)/);
-                        return match ? parseInt(match[1]) : 0;
-                    }));
-                    this.nodeIdCounter = maxId + 1;
+                    this.store.seedNodeIdCounterFromNodes(this.nodes);
                 }
 
                 this.initializeNodeStackOrder();

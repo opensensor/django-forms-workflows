@@ -421,7 +421,7 @@ export class WorkflowBuilder {
 
     createStartNode() {
         const node = {
-            id: `node_${this.nodeIdCounter++}`,
+            id: this.store.nextNodeId(),
             type: 'start',
             x: 100,
             y: 100,
@@ -434,7 +434,7 @@ export class WorkflowBuilder {
 
     createNode(type, x, y) {
         const node = {
-            id: `node_${this.nodeIdCounter++}`,
+            id: this.store.nextNodeId(),
             type: type,
             x: x,
             y: y,

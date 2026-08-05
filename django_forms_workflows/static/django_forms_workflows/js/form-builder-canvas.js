@@ -819,13 +819,6 @@ export const canvasMethods = {
 
         this.pushUndo();
 
-        // Find which step the field was in before
-        let sourceStepIndex = -1;
-        this.formSteps.forEach((step, idx) => {
-            if (step.fields && step.fields.includes(field.field_name)) {
-                sourceStepIndex = idx;
-            }
-        });
 
         // Remove field from all steps
         this.formSteps.forEach(step => {

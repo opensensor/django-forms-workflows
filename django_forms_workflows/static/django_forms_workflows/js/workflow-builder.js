@@ -4,9 +4,12 @@
  * Drag-and-drop workflow builder for post-submission actions and approvals.
  */
 
+import { createWorkflowBuilderStore } from './workflow-builder-store.js';
+
 export class WorkflowBuilder {
     constructor(config) {
         this.config = config;
+        this.store = createWorkflowBuilderStore();
         this.nodes = [];
         this.connections = [];
         this.selectedNode = null;
@@ -44,6 +47,20 @@ export class WorkflowBuilder {
 
         this.init();
     }
+
+    // nodes/connections/nodeIdCounter live on this.store now (single source
+    // of truth for a future history/undo module's snapshots); these proxy
+    // the existing this.nodes/this.connections/this.nodeIdCounter call sites
+    // throughout this file so they don't all need to change in this pass.
+    // Mirrors form-builder.js's identical this.store proxy pattern.
+    get nodes() { return this.store.nodes; }
+    set nodes(value) { this.store.setNodes(value); }
+
+    get connections() { return this.store.connections; }
+    set connections(value) { this.store.setConnections(value); }
+
+    get nodeIdCounter() { return this.store.nodeIdCounter; }
+    set nodeIdCounter(value) { this.store.nodeIdCounter = value; }
 
     async init() {
         console.log('Initializing workflow builder...');

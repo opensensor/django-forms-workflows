@@ -9,11 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`@staff_member_required` dropped from the form builder's views.**
-  All 13 views in `form_builder_views.py` no longer carry the decorator —
-  every one is already wrapped in `self.admin_site.admin_view(...)` via
-  `FormDefinitionAdmin.get_urls()`, which independently enforces `is_staff`,
-  so it was redundant there and only blocked reuse from other URL
-  registrations (e.g. the package's own `form_builder_urls.py`). No behavior
+  All 13 views in `form_builder_views.py` no longer carry the decorator.
+  Admin URLs remain gated because `FormDefinitionAdmin.get_urls()` wraps every view in
+  `self.admin_site.admin_view(...)`, which enforces `is_staff`.
+  Any non-admin URL registrations (e.g. `form_builder_urls.py`) must now apply their own staff gating if needed.
   change for admin routes; a new `test_..._requires_staff` test per view
   confirms `admin_view()` alone still gates non-staff access.
 - **Form builder save logic factored into a standalone helper.**

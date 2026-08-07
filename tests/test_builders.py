@@ -1405,6 +1405,12 @@ class TestFormBuilderViews:
         resp = client.get(url)
         assert resp.status_code == 200
 
+    def test_builder_new_view_requires_staff(self, client, user):
+        client.force_login(user)
+        url = _fb_url("builder/new/")
+        resp = client.get(url)
+        assert resp.status_code in (302, 403)
+
     def test_load_returns_json(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
         url = _fb_url(f"builder/api/load/{form_with_fields.id}/")
@@ -1414,6 +1420,12 @@ class TestFormBuilderViews:
         # form_builder_load returns form data at top level
         assert "fields" in data
         assert len(data["fields"]) == 5
+
+    def test_load_requires_staff(self, client, user, form_with_fields):
+        client.force_login(user)
+        url = _fb_url(f"builder/api/load/{form_with_fields.id}/")
+        resp = client.get(url)
+        assert resp.status_code in (302, 403)
 
     def test_save_creates_fields(self, client, superuser, form_definition):
         client.login(username="admin", password="testpass123")
@@ -1443,6 +1455,16 @@ class TestFormBuilderViews:
         assert resp.json()["success"] is True
         assert form_definition.fields.filter(field_name="new_field").exists()
 
+    def test_save_requires_staff(self, client, user, form_definition):
+        client.force_login(user)
+        url = _fb_url("builder/api/save/")
+        resp = client.post(
+            url,
+            data=json.dumps({"id": form_definition.id, "name": form_definition.name}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+
     def test_clone_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
         url = _fb_url(f"builder/api/clone/{form_with_fields.id}/")
@@ -1455,6 +1477,13 @@ class TestFormBuilderViews:
         assert cloned.id != form_with_fields.id
         assert cloned.fields.count() == form_with_fields.fields.count()
 
+    def test_clone_requires_staff(self, client, user, form_with_fields):
+        client.force_login(user)
+        url = _fb_url(f"builder/api/clone/{form_with_fields.id}/")
+        resp = client.post(url)
+        assert resp.status_code in (302, 403)
+        assert FormDefinition.objects.filter(id=form_with_fields.id).count() == 1
+
     def test_preview_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
         url = _fb_url("builder/api/preview/")
@@ -1464,6 +1493,16 @@ class TestFormBuilderViews:
             content_type="application/json",
         )
         assert resp.status_code == 200
+
+    def test_preview_requires_staff(self, client, user, form_with_fields):
+        client.force_login(user)
+        url = _fb_url("builder/api/preview/")
+        resp = client.post(
+            url,
+            data=json.dumps({"form_id": form_with_fields.id}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
 
 
 # ── Document Template API endpoints ─────────────────────────────────────────
@@ -1501,6 +1540,19 @@ class TestDocumentTemplateAPI:
         data = resp.json()
         assert data["success"] is True
         assert data["id"] is not None
+
+    def test_save_requires_staff(self, client, user, form_definition):
+        from django_forms_workflows.models import DocumentTemplate
+
+        client.force_login(user)
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        resp = client.post(
+            url,
+            data=json.dumps({"name": "Guarded", "html_content": "<p>guarded</p>"}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+        assert not DocumentTemplate.objects.filter(name="Guarded").exists()
 
     def test_save_template_requires_name(self, client, superuser, form_definition):
         client.force_login(superuser)
@@ -1555,6 +1607,22 @@ class TestDocumentTemplateAPI:
         assert resp.status_code == 200
         assert not DocumentTemplate.objects.filter(id=tpl.id).exists()
 
+    def test_delete_requires_staff(self, client, user, form_definition):
+        from django_forms_workflows.models import DocumentTemplate
+
+        tpl = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="Guarded",
+            html_content="<p>guarded</p>",
+        )
+        client.force_login(user)
+        url = _fb_url(
+            f"builder/api/doc-templates/{form_definition.id}/delete/{tpl.id}/"
+        )
+        resp = client.post(url)
+        assert resp.status_code in (302, 403)
+        assert DocumentTemplate.objects.filter(id=tpl.id).exists()
+
     def test_set_default_clears_previous_default(
         self, client, superuser, form_definition
     ):
@@ -1589,3 +1657,153 @@ class TestDocumentTemplateAPI:
         resp = client.get(url)
         # staff_member_required redirects non-staff
         assert resp.status_code == 302
+
+
+# ── Prebuilt form template API endpoints ────────────────────────────────────
+
+
+class TestFormBuilderTemplateAPI:
+    """Tests for the prebuilt form template list/load API endpoints."""
+
+    def test_list_requires_staff(self, client, user):
+        client.force_login(user)
+        url = _fb_url("builder/api/templates/")
+        resp = client.get(url)
+        assert resp.status_code in (302, 403)
+
+    def test_list_returns_active_templates(self, client, superuser):
+        from django_forms_workflows.models import FormTemplate
+
+        FormTemplate.objects.create(
+            name="Contact Form",
+            slug="contact-form",
+            description="A simple contact form",
+            template_data={"fields": []},
+        )
+        client.force_login(superuser)
+        url = _fb_url("builder/api/templates/")
+        resp = client.get(url)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert [t["slug"] for t in data["templates"]] == ["contact-form"]
+
+    def test_load_template_requires_staff(self, client, user):
+        from django_forms_workflows.models import FormTemplate
+
+        template = FormTemplate.objects.create(
+            name="Contact Form",
+            slug="contact-form-guarded",
+            description="A simple contact form",
+            template_data={"fields": []},
+        )
+        client.force_login(user)
+        url = _fb_url(f"builder/api/templates/{template.id}/")
+        resp = client.get(url)
+        assert resp.status_code in (302, 403)
+        template.refresh_from_db()
+        assert template.usage_count == 0
+
+    def test_load_template_returns_data_and_increments_usage(self, client, superuser):
+        from django_forms_workflows.models import FormTemplate
+
+        template = FormTemplate.objects.create(
+            name="Contact Form",
+            slug="contact-form-load",
+            description="A simple contact form",
+            template_data={"fields": [{"field_name": "email"}]},
+        )
+        client.force_login(superuser)
+        url = _fb_url(f"builder/api/templates/{template.id}/")
+        resp = client.get(url)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["template_data"] == {"fields": [{"field_name": "email"}]}
+        template.refresh_from_db()
+        assert template.usage_count == 1
+
+
+# ── Shared option list API endpoints ────────────────────────────────────────
+
+
+class TestSharedOptionListAPI:
+    """Tests for the centrally managed shared option list CRUD API endpoints."""
+
+    def test_list_requires_staff(self, client, user):
+        client.force_login(user)
+        url = _fb_url("builder/api/shared-lists/")
+        resp = client.get(url)
+        assert resp.status_code in (302, 403)
+
+    def test_list_returns_active_lists(self, client, superuser):
+        from django_forms_workflows.models import SharedOptionList
+
+        ol = SharedOptionList.objects.create(
+            name="Departments", slug="departments", items=["HR", "IT"]
+        )
+        client.force_login(superuser)
+        url = _fb_url("builder/api/shared-lists/")
+        resp = client.get(url)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert len(data["lists"]) == 1
+        assert data["lists"][0]["id"] == ol.id
+        assert data["lists"][0]["name"] == "Departments"
+        assert data["lists"][0]["slug"] == "departments"
+        assert data["lists"][0]["item_count"] == 2
+
+    def test_save_requires_staff(self, client, user):
+        from django_forms_workflows.models import SharedOptionList
+
+        client.force_login(user)
+        url = _fb_url("builder/api/shared-lists/save/")
+        resp = client.post(
+            url,
+            data=json.dumps({"name": "Guarded", "items": ["a"]}),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+        assert not SharedOptionList.objects.filter(name="Guarded").exists()
+
+    def test_save_creates_list(self, client, superuser):
+        from django_forms_workflows.models import SharedOptionList
+
+        client.force_login(superuser)
+        url = _fb_url("builder/api/shared-lists/save/")
+        resp = client.post(
+            url,
+            data=json.dumps({"name": "Locations", "items": ["HQ", "Annex"]}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        ol = SharedOptionList.objects.get(id=data["id"])
+        assert ol.slug == "locations"
+        assert ol.items == ["HQ", "Annex"]
+
+    def test_delete_requires_staff(self, client, user):
+        from django_forms_workflows.models import SharedOptionList
+
+        ol = SharedOptionList.objects.create(
+            name="Guarded", slug="guarded", items=["a"]
+        )
+        client.force_login(user)
+        url = _fb_url(f"builder/api/shared-lists/delete/{ol.id}/")
+        resp = client.post(url)
+        assert resp.status_code in (302, 403)
+        assert SharedOptionList.objects.filter(id=ol.id).exists()
+
+    def test_delete_removes_list(self, client, superuser):
+        from django_forms_workflows.models import SharedOptionList
+
+        ol = SharedOptionList.objects.create(
+            name="Temp Locations", slug="temp-locations", items=["a"]
+        )
+        client.force_login(superuser)
+        url = _fb_url(f"builder/api/shared-lists/delete/{ol.id}/")
+        resp = client.post(url)
+        assert resp.status_code == 200
+        assert not SharedOptionList.objects.filter(id=ol.id).exists()

@@ -9,7 +9,6 @@ import json
 import logging
 import uuid
 
-from django.contrib.admin.views.decorators import staff_member_required
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -31,7 +30,6 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-@staff_member_required
 @require_GET
 def form_builder_templates(request):
     """
@@ -64,7 +62,6 @@ def form_builder_templates(request):
     )
 
 
-@staff_member_required
 @require_GET
 def form_builder_load_template(request, template_id):
     """
@@ -85,7 +82,6 @@ def form_builder_load_template(request, template_id):
     )
 
 
-@staff_member_required
 @require_POST
 def form_builder_clone(request, form_id):
     """
@@ -228,7 +224,6 @@ def form_builder_clone(request, form_id):
         )
 
 
-@staff_member_required
 @require_GET
 def form_builder_view(request, form_id=None):
     """
@@ -273,7 +268,6 @@ def form_builder_view(request, form_id=None):
     return render(request, "admin/django_forms_workflows/form_builder.html", context)
 
 
-@staff_member_required
 @require_GET
 def form_builder_load(request, form_id):
     """
@@ -358,7 +352,6 @@ def form_builder_load(request, form_id):
     return JsonResponse(form_data)
 
 
-@staff_member_required
 @require_POST
 def form_builder_save(request):
     """
@@ -610,7 +603,6 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     return form_definition, field_id_mapping
 
 
-@staff_member_required
 @require_POST
 def form_builder_preview(request):
     """
@@ -771,7 +763,6 @@ def form_builder_preview(request):
 # ---------------------------------------------------------------------------
 
 
-@staff_member_required
 @require_GET
 def document_template_list(request, form_id):
     """List document templates for a form."""
@@ -797,7 +788,6 @@ def document_template_list(request, form_id):
     )
 
 
-@staff_member_required
 @require_POST
 def document_template_save(request, form_id):
     """Create or update a document template."""
@@ -856,7 +846,6 @@ def document_template_save(request, form_id):
         )
 
 
-@staff_member_required
 @require_POST
 def document_template_delete(request, form_id, template_id):
     """Delete a document template."""
@@ -872,7 +861,6 @@ def document_template_delete(request, form_id, template_id):
 # ---------------------------------------------------------------------------
 
 
-@staff_member_required
 @require_GET
 def shared_option_list_api(request):
     """List all shared option lists (for form builder dropdowns)."""
@@ -893,7 +881,6 @@ def shared_option_list_api(request):
     )
 
 
-@staff_member_required
 @require_POST
 def shared_option_list_save(request):
     """Create or update a shared option list."""
@@ -936,7 +923,6 @@ def shared_option_list_save(request):
         )
 
 
-@staff_member_required
 @require_POST
 def shared_option_list_delete(request, list_id):
     """Delete a shared option list."""

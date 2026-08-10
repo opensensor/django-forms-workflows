@@ -2915,10 +2915,10 @@ export class WorkflowBuilder {
 
         if (!exists) {
             console.log('Creating new connection');
-            this.connections.push({
+            this.connections = [...this.connections, {
                 from: this.connectionStart.nodeId,
                 to: toNodeId
-            });
+            }];
             this.selectedConnection = this.connections.length - 1;
             this.updateConnectionSelectionUI();
             this.render();

@@ -427,7 +427,7 @@ export class WorkflowBuilder {
             y: 100,
             data: {}
         };
-        this.nodes.push(node);
+        this.nodes = [...this.nodes, node];
         this.bringNodeToFront(node.id);
         this.render();
     }
@@ -440,7 +440,7 @@ export class WorkflowBuilder {
             y: y,
             data: this.getDefaultNodeData(type)
         };
-        this.nodes.push(node);
+        this.nodes = [...this.nodes, node];
         this.bringNodeToFront(node.id);
         this.render();
     }

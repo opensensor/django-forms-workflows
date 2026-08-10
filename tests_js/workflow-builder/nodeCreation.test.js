@@ -44,6 +44,17 @@ describe('WorkflowBuilder#createStartNode', () => {
     expect(instance.bringNodeToFront).toHaveBeenCalledWith('node_1');
     expect(instance.render).toHaveBeenCalledTimes(1);
   });
+
+  it('adds the node through the store setter, so nodes-changed listeners see it', () => {
+    const instance = createInstance();
+    const listener = vi.fn();
+    instance.store.addEventListener('nodes-changed', listener);
+
+    instance.createStartNode();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail.nodes).toEqual(instance.nodes);
+  });
 });
 
 describe('WorkflowBuilder#createNode', () => {
@@ -82,5 +93,18 @@ describe('WorkflowBuilder#createNode', () => {
     instance.createNode('action', 0, 0);
 
     expect(instance.nodes[0].id).toBe('node_6');
+  });
+
+  it('adds the node through the store setter, so nodes-changed listeners see it', () => {
+    const instance = createInstance();
+    instance.bringNodeToFront = vi.fn();
+    instance.getDefaultNodeData = vi.fn().mockReturnValue({});
+    const listener = vi.fn();
+    instance.store.addEventListener('nodes-changed', listener);
+
+    instance.createNode('stage', 10, 20);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail.nodes).toEqual(instance.nodes);
   });
 });

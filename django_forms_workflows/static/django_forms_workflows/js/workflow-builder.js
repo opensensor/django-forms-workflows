@@ -841,7 +841,11 @@ export class WorkflowBuilder {
         // Add event listeners for property changes
         content.querySelectorAll('input, select, textarea').forEach(input => {
             input.addEventListener('change', (e) => {
-                this.updateNodeProperty(node.id, e.target.name, e.target.value);
+                let value = e.target.value;
+                if (e.target.type === 'checkbox') {
+                    value = e.target.checked;
+                }
+                this.updateNodeProperty(node.id, e.target.name, value);
             });
         });
     }

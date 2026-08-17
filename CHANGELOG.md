@@ -7,22 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-08-17
+
+Some entries below are marked *(shipped in 0.76.x)* — they describe changes that
+were released earlier but never moved out of `[Unreleased]`, so they are recorded
+here rather than lost.
+
 ### Changed
 - **`@staff_member_required` dropped from the form builder's views.**
   All 13 views in `form_builder_views.py` no longer carry the decorator.
   Admin URLs remain gated because `FormDefinitionAdmin.get_urls()` wraps every view in
   `self.admin_site.admin_view(...)`, which enforces `is_staff`.
-  Any non-admin URL registrations (e.g. `form_builder_urls.py`) must now apply their own staff gating if needed.
-  change for admin routes; a new `test_..._requires_staff` test per view
-  confirms `admin_view()` alone still gates non-staff access.
+  Any non-admin URL registrations (e.g. `form_builder_urls.py`) must now apply
+  their own staff gating if needed — no change for admin routes. A new
+  `test_..._requires_staff` test per view confirms `admin_view()` alone still
+  gates non-staff access.
+- **Workflow builder state moved behind a store.** `createWorkflowBuilderStore()`
+  is now the single owner of builder state, and `workflow-builder-api.js` was
+  extracted out of `workflow-builder.js`, so node/connection mutations go through
+  the store's setters instead of touching module-level state directly.
+- **Dependency bumps.** The pip group (15 updates) and `postcss`, via Dependabot.
 - **Form builder save logic factored into a standalone helper.**
+  *(shipped in 0.76.1)*
   `form_builder_save`'s create/update logic for `FormDefinition` and its
   `FormField`s now lives in `save_form_definition_from_builder_data()`,
   mirroring the existing `convert_visual_to_workflow` split already used by
   the workflow builder. Makes the logic callable (and unit-testable)
   independently of the `@staff_member_required`-decorated HTTP view — no
   behavior or API change.
-- **Notification rules identify their workflow in the admin.** The standalone
+- **Notification rules identify their workflow in the admin.** *(shipped in
+  0.76.0)* The standalone
   `NotificationRule` list rendered only `workflow.form_definition.name`, so a
   rule on a parent workflow and a rule on its sub-workflow both displayed the
   same form name — and for workflow-level rules the Stage column reads
@@ -35,7 +49,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   label so every FK picker, autocomplete result, and log entry disambiguates.
 
 ### Fixed
-- **Browser value suggestions restored on generic text fields.** The
+- **A failing notification rule no longer silences the rest of its event.**
+  `send_notification_rules` ran every matching rule in one unguarded loop, so a
+  single exception aborted the task and every remaining rule with it — and left
+  nothing behind, because `NotificationLog` rows are only written by the send
+  helpers further down. Each rule's body moved into `_apply_rule()` and the loop
+  now isolates it: a raising rule is logged with a traceback, records a
+  `status="failed"` `NotificationLog` row naming the rule and exception, and the
+  next rule still runs. This is the amplifier that turned the file-upload
+  `TypeError` below into a total blackout rather than one missing email.
+- **`ApprovalTask.reminder_sent_at` now reflects a reminder that was actually
+  dispatched.** `check_approval_deadlines` stamped it immediately after
+  `send_notification_rules.delay(...)`, but enqueuing is not sending — a task
+  lost in the broker or killed mid-flight left the reminder permanently recorded
+  as sent and never retried, with no log row to contradict it. The stamp moved
+  into `send_notification_rules`, applied once the dispatch runs to completion.
+  Completing with zero recipients still stamps, so a workflow with no reminder
+  rule doesn't re-dispatch on every sweep; a crash leaves it unset so the next
+  sweep retries, and duplicate sends are absorbed by the existing `already_sent`
+  idempotency guard. **Behaviour change:** reminders are now retried until a
+  dispatch completes, where previously they were attempted exactly once.
+- **File-upload fields no longer silence every notification for a submission.**
+  Subject answer-piping (added in 0.54.0) stringified each `form_data` value with
+  `", ".join(v) if isinstance(v, list) else str(v)`. A multi-file upload field
+  stores a *list of dicts*, so the join raised
+  `TypeError: sequence item 0: expected str instance, dict found`. That happens
+  while building `_pipe_vars` — before any email is sent and before any
+  `NotificationLog` row is written — so `send_notification_rules` died with no
+  email, no log row, and not even a `status="failed"` record. `@shared_task`
+  carries no autoretry, so the notification was lost permanently, and since
+  `form_data` is identical for every event, *all* events for that submission
+  (`submission_received`, `approval_request`, `approval_reminder`, …) failed the
+  same way — a silent, total blackout. The blackout was invisible from the data,
+  because `check_approval_deadlines` stamped `ApprovalTask.reminder_sent_at` right
+  after a successful `.delay()`, so reminders looked sent while the worker crash
+  happened later (see the `reminder_sent_at` entry above, which closes that gap).
+  Values are now stringified by `_pipe_value()`, which renders file dicts
+  as their filename (matching `_export_xlsx`), recurses into lists, coerces
+  non-string members, and never raises. The piping token itself was never the
+  trigger — any file field present in `form_data` was enough, whether or not the
+  subject referenced it.
+- **Workflow builder store-wiring fixes.** `createNode` / `createStartNode` and
+  `finishConnection` bypassed the store's setter and mutated state directly, and
+  the checkbox change handler stored the raw `"on"` string instead of a boolean.
+  Regression coverage was added alongside the fixes.
+- **Browser value suggestions restored on generic text fields.** *(shipped in
+  0.76.3)* The
   password-manager opt-out added in 0.74.15 set `autocomplete="off"` alongside
   the `data-1p-ignore` / `data-lpignore` / `data-bwignore` / `data-form-type`
   attributes on every field type in `_PM_OPT_OUT_FIELD_TYPES`. Those `data-*`
@@ -46,7 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native suggestions work again while password-manager popovers stay
   suppressed. Fields with their own suggestion UI (LDAP lookup) are unaffected
   — `ldap-lookup.js` sets `autocomplete="off"` on them directly.
-- **Diff and sync summaries no longer ignore sub-workflows.** `_build_summary`
+- **Diff and sync summaries no longer ignore sub-workflows.** *(shipped in
+  0.76.3)* `_build_summary`
   read only the `"workflow"` key, but `serialize_form` stores the first
   workflow there and every other one under `"additional_workflows"`. A
   sub-workflow's stages, settings, and notification rules were therefore
@@ -1897,7 +1957,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - psycopg2-binary >= 2.9 (for PostgreSQL)
 - mysqlclient >= 2.2 (for MySQL)
 
-[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.77.0...HEAD
+[0.77.0]: https://github.com/opensensor/django-forms-workflows/compare/v0.76.6...v0.77.0
 [0.2.2]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/opensensor/django-forms-workflows/compare/v0.1.0...v0.2.0

@@ -877,8 +877,12 @@ def check_approval_deadlines() -> str:
                         task.id,
                         exc_info=True,
                     )
-                task.reminder_sent_at = now
-                task.save(update_fields=["reminder_sent_at"])
+                # ``reminder_sent_at`` is stamped by send_notification_rules
+                # once the dispatch completes, not here. Enqueuing is not
+                # sending: a task lost in the broker or killed mid-flight
+                # used to leave the reminder recorded as sent and never
+                # retried. Until it is stamped, the next sweep re-dispatches;
+                # duplicate emails are absorbed by the already_sent guard.
                 reminder_count += 1
 
     return f"expired={expired_count}, reminders={reminder_count}, auto_approved={auto_approved_count}"
@@ -1362,6 +1366,25 @@ _EVENT_DEFAULT_SUBJECTS: dict[str, str] = {
 }
 
 
+def _pipe_value(val) -> str:
+    """Stringify one ``form_data`` value for ``{field_name}`` subject piping.
+
+    File-upload fields don't store strings — a single-file field stores a
+    dict and a multi-file field stores a list of dicts — so a bare
+    ``", ".join(val)`` raises ``TypeError`` and kills the whole
+    notification before any email is sent or any NotificationLog row is
+    written.  Render file values as their filenames, matching how the
+    export views (``_export_xlsx``) present the same data.
+
+    Always returns a string; never raises.
+    """
+    if isinstance(val, dict):
+        return str(val.get("filename") or val.get("path") or "")
+    if isinstance(val, list | tuple):
+        return ", ".join(_pipe_value(v) for v in val)
+    return "" if val is None else str(val)
+
+
 @shared_task(name="django_forms_workflows.send_notification_rules")
 def send_notification_rules(
     submission_id: int,
@@ -1538,7 +1561,12 @@ def send_notification_rules(
                 if addr:
                     already_cc_or_bcc.add(addr)
 
-    for rule in rules:
+    def _apply_rule(rule) -> None:
+        """Resolve recipients for one rule and send (or queue) its emails.
+
+        Kept as a nested function so the caller can isolate each rule: see
+        the ``for rule in rules`` loop below.
+        """
         # Evaluate optional conditions
         if rule.conditions:
             try:
@@ -1552,14 +1580,14 @@ def send_notification_rules(
                         submission.id,
                         event,
                     )
-                    continue
+                    return
             except Exception:
                 logger.warning(
                     "NotificationRule %s: error evaluating conditions; skipping.",
                     rule.id,
                     exc_info=True,
                 )
-                continue
+                return
 
         # Resolve recipients
         recipients = _collect_notification_recipients(
@@ -1598,7 +1626,7 @@ def send_notification_rules(
                 rule.id,
                 submission.id,
             )
-            continue
+            return
 
         # Drop recipients who have muted this rule via per-user preference.
         # Matches by email, case-insensitively — same key the resolver uses.
@@ -1625,7 +1653,7 @@ def send_notification_rules(
                 submission.id,
             )
             if not recipients:
-                continue
+                return
 
         # Build subject with answer piping — {field_name} tokens are
         # resolved from form_data alongside the built-in {form_name} and
@@ -1633,10 +1661,7 @@ def send_notification_rules(
         _pipe_vars = {
             "form_name": form_name,
             "submission_id": submission.id,
-            **{
-                k: (", ".join(v) if isinstance(v, list) else str(v))
-                for k, v in form_data.items()
-            },
+            **{k: _pipe_value(v) for k, v in form_data.items()},
         }
         subject_tpl = rule.subject_template or default_subject_tpl
         try:
@@ -1739,3 +1764,42 @@ def send_notification_rules(
                         submission_id=submission_id,
                         cc=email_cc,
                     )
+
+    for rule in rules:
+        try:
+            _apply_rule(rule)
+        except Exception as exc:
+            # One bad rule must not silence the rest of this event, and the
+            # failure must leave a trace. Previously any exception in here
+            # (e.g. a TypeError building the subject from form_data) killed
+            # the whole task: no email, no NotificationLog row, not even a
+            # "failed" record — a silent, total notification blackout for
+            # the submission, since every event fails the same way on the
+            # same data.
+            logger.exception(
+                "NotificationRule %s failed for submission %s (event %s)",
+                rule.id,
+                submission_id,
+                event,
+            )
+            _write_notification_log(
+                notification_type=event,
+                submission_id=submission_id,
+                recipient_email="(rule failed)",
+                subject=f"NotificationRule {rule.id} ({event})",
+                status="failed",
+                error_message=f"{type(exc).__name__}: {exc}",
+            )
+
+    # ``approval_reminder`` is the one event whose "did this happen?" state
+    # lives outside NotificationLog: check_approval_deadlines reads
+    # ApprovalTask.reminder_sent_at to decide whether to remind again. Stamp
+    # it here, once the dispatch has actually run to completion, rather than
+    # at enqueue time — a task that is lost in the broker or dies mid-flight
+    # then gets retried by the next sweep instead of being recorded as sent.
+    # Completing with zero recipients still counts (a workflow with no
+    # reminder rule must not re-dispatch every sweep forever); duplicate
+    # sends from an overlapping sweep are absorbed by the already_sent guard.
+    if event == "approval_reminder" and task is not None and not task.reminder_sent_at:
+        task.reminder_sent_at = timezone.now()
+        task.save(update_fields=["reminder_sent_at"])

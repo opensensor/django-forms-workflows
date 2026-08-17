@@ -1,9 +1,12 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
+from django_forms_workflows import tasks as tasks_module
 from django_forms_workflows.models import (
     ApprovalTask,
     FormSubmission,
@@ -13,7 +16,10 @@ from django_forms_workflows.models import (
     WorkflowDefinition,
     WorkflowStage,
 )
-from django_forms_workflows.tasks import send_notification_rules
+from django_forms_workflows.tasks import (
+    check_approval_deadlines,
+    send_notification_rules,
+)
 
 
 @pytest.mark.parametrize(
@@ -166,6 +172,284 @@ def test_notification_subject_list_field_comma_joined(form_definition, user):
 
     subject = mock_send.call_args[0][0]
     assert "Math, Science, History" in subject
+
+
+def test_notification_subject_multi_file_field_uses_filenames(form_definition, user):
+    """A multi-file upload field (list of dicts) must not blow up the send.
+
+    Regression: ``", ".join(v)`` raised TypeError on the list-of-dicts a
+    multi-file field stores, killing the task before any email was sent or
+    any NotificationLog row written — a silent, total notification blackout
+    for that submission.
+    """
+    _make_workflow_with_rule(
+        form_definition,
+        subject_template="Docs: {supporting_documents}",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={
+            "supporting_documents": [
+                {"path": "uploads/1/a_20260805.pdf", "filename": "a.pdf"},
+                {"path": "uploads/1/b_20260805.pdf", "filename": "b.pdf"},
+            ]
+        },
+        status="approved",
+    )
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert mock_send.called
+    subject = mock_send.call_args[0][0]
+    assert "a.pdf, b.pdf" in subject
+
+
+def test_notification_subject_single_file_field_uses_filename(form_definition, user):
+    """A single-file upload field (a bare dict) renders as its filename."""
+    _make_workflow_with_rule(
+        form_definition,
+        subject_template="Doc: {resume}",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"resume": {"path": "uploads/1/r_20260805.pdf", "filename": "r.pdf"}},
+        status="approved",
+    )
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert mock_send.called
+    assert "Doc: r.pdf" in mock_send.call_args[0][0]
+
+
+def test_notification_sends_when_unpiped_file_field_present(form_definition, user):
+    """A file field nobody pipes into the subject still can't break the send.
+
+    Every form_data key is stringified up front, so a value shape the
+    subject never references was enough to kill the whole notification.
+    """
+    _make_workflow_with_rule(
+        form_definition,
+        subject_template="Application from {full_name} received",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={
+            "full_name": "Alice Smith",
+            "supporting_documents": [{"path": "uploads/1/a.pdf", "filename": "a.pdf"}],
+            "scores": [1, 2, 3],
+            "note": None,
+        },
+        status="approved",
+    )
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert mock_send.called
+    assert "Alice Smith" in mock_send.call_args[0][0]
+
+
+def test_notification_subject_non_string_list_joined(form_definition, user):
+    """Numeric list values are coerced rather than raising TypeError."""
+    _make_workflow_with_rule(
+        form_definition,
+        subject_template="Scores: {scores}",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"scores": [1, 2, 3]},
+        status="approved",
+    )
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert "1, 2, 3" in mock_send.call_args[0][0]
+
+
+# ── Per-rule failure isolation ─────────────────────────────────────────────
+
+
+def test_failing_rule_does_not_silence_the_other_rules(form_definition, user):
+    """One rule blowing up must not stop the remaining rules for the event.
+
+    Regression: the whole dispatch ran in a single unguarded loop, so any
+    exception killed every rule for the event at once.
+    """
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition,
+        requires_approval=False,
+    )
+    bad = NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        notify_submitter=True,
+        subject_template="Bad rule",
+    )
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        notify_submitter=True,
+        static_emails="ops@example.com",
+        subject_template="Good rule",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    real_collect = tasks_module._collect_notification_recipients
+
+    def _explode(rule, *args, **kwargs):
+        if rule.id == bad.id:
+            raise RuntimeError("boom")
+        return real_collect(rule, *args, **kwargs)
+
+    with (
+        patch.object(tasks_module, "_collect_notification_recipients", _explode),
+        patch("django_forms_workflows.tasks._send_html_email") as mock_send,
+    ):
+        send_notification_rules(submission.id, "workflow_approved")
+
+    subjects = [call[0][0] for call in mock_send.call_args_list]
+    assert "Good rule" in subjects
+
+
+def test_failing_rule_records_a_failed_notification_log(form_definition, user):
+    """A rule that raises leaves a 'failed' row rather than vanishing silently."""
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition,
+        requires_approval=False,
+    )
+    rule = NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        notify_submitter=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    with patch.object(tasks_module, "_collect_notification_recipients", _explode):
+        send_notification_rules(submission.id, "workflow_approved")
+
+    log = NotificationLog.objects.get(submission=submission, status="failed")
+    assert log.notification_type == "workflow_approved"
+    assert "RuntimeError" in log.error_message
+    assert str(rule.id) in log.subject
+
+
+# ── approval_reminder bookkeeping ──────────────────────────────────────────
+
+
+def _reminder_setup(form_definition, user, approver_user):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition,
+        requires_approval=True,
+        send_reminder_after_days=1,
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=workflow, name="Review", order=1, approval_logic="all"
+    )
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_reminder",
+        notify_stage_assignees=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Review",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+    return submission, task
+
+
+def test_reminder_dispatch_stamps_reminder_sent_at(
+    form_definition, user, approver_user
+):
+    """The dispatch itself records the reminder, so the flag reflects reality."""
+    submission, task = _reminder_setup(form_definition, user, approver_user)
+    assert task.reminder_sent_at is None
+
+    with patch("django_forms_workflows.tasks._send_html_email"):
+        send_notification_rules(submission.id, "approval_reminder", task_id=task.id)
+
+    task.refresh_from_db()
+    assert task.reminder_sent_at is not None
+
+
+def test_reminder_not_stamped_when_dispatch_dies(form_definition, user, approver_user):
+    """A crashed reminder stays unstamped so the next sweep retries it.
+
+    Regression: check_approval_deadlines stamped reminder_sent_at right after
+    .delay(), so a task that never ran was recorded as reminded forever.
+    """
+    submission, task = _reminder_setup(form_definition, user, approver_user)
+
+    with (
+        patch.object(
+            tasks_module,
+            "_build_form_field_notification_context",
+            side_effect=RuntimeError("worker died"),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        send_notification_rules(submission.id, "approval_reminder", task_id=task.id)
+
+    task.refresh_from_db()
+    assert task.reminder_sent_at is None
+
+
+def test_reminder_stamped_even_when_no_rule_matches(
+    form_definition, user, approver_user
+):
+    """Completing with nothing to send still counts, or every sweep re-dispatches."""
+    submission, task = _reminder_setup(form_definition, user, approver_user)
+    NotificationRule.objects.filter(event="approval_reminder").delete()
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_reminder", task_id=task.id)
+
+    assert not mock_send.called
+    task.refresh_from_db()
+    assert task.reminder_sent_at is not None
+
+
+def test_check_approval_deadlines_defers_the_stamp_to_the_worker(
+    form_definition, user, approver_user
+):
+    """The sweep enqueues but does not itself mark the reminder as sent."""
+    submission, task = _reminder_setup(form_definition, user, approver_user)
+    ApprovalTask.objects.filter(id=task.id).update(
+        created_at=timezone.now() - timedelta(days=5)
+    )
+
+    with patch.object(tasks_module.send_notification_rules, "delay") as mock_delay:
+        check_approval_deadlines()
+
+    assert mock_delay.called
+    task.refresh_from_db()
+    assert task.reminder_sent_at is None
 
 
 def test_notification_context_includes_form_data(form_definition, user):

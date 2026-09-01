@@ -27,6 +27,36 @@ def _export_two(form_a, form_b):
     return [payload_a["forms"][0], payload_b["forms"][0]]
 
 
+class TestLDAPLookupEnabledFormDiff:
+    def test_enabled_change_surfaces(self):
+        base = {
+            "form": {"name": "Form"},
+            "ldap_lookup_config": {"enabled": False, "notes": ""},
+        }
+        other = {
+            "form": {"name": "Form"},
+            "ldap_lookup_config": {"enabled": True, "notes": "Approved"},
+        }
+
+        diffs = _build_summary([base, other])[0]["diffs"]
+
+        assert "LDAP lookup enabled: False → True" in diffs
+
+    def test_notes_change_surfaces(self):
+        base = {
+            "form": {"name": "Form"},
+            "ldap_lookup_config": {"enabled": True, "notes": "Old"},
+        }
+        other = {
+            "form": {"name": "Form"},
+            "ldap_lookup_config": {"enabled": True, "notes": "New"},
+        }
+
+        diffs = _build_summary([base, other])[0]["diffs"]
+
+        assert "LDAP lookup notes: 'Old' → 'New'" in diffs
+
+
 @pytest.fixture
 def two_similar_forms(db):
     a = FormDefinition.objects.create(name="Diff A", slug="diff-a", is_active=True)

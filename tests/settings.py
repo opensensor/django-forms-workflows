@@ -16,7 +16,10 @@ INSTALLED_APPS = [
     "crispy_forms",
     "crispy_bootstrap5",
     "django_forms_workflows.apps.DjangoFormsWorkflowsConfig",
+    "tests.ldap_lookup_test_app.apps.LDAPLookupTestAppConfig",
 ]
+
+MIGRATION_MODULES = {"workflows": None}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

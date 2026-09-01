@@ -21,6 +21,61 @@ from django_forms_workflows.sync_api import (
     build_export_payload,
     import_payload,
 )
+from tests.ldap_lookup_test_app.models import LDAPLookupEnabledForm
+
+
+class TestLDAPLookupEnabledFormSync:
+    def test_enabled_form_round_trips(self, db):
+        assert LDAPLookupEnabledForm._meta.db_table == "workflows_ldaplookupenabledform"
+        fd = FormDefinition.objects.create(name="LDAP Form", slug="ldap-form")
+        LDAPLookupEnabledForm.objects.create(form=fd, notes="Approved by IT")
+
+        payload = build_export_payload(FormDefinition.objects.filter(pk=fd.pk))
+        assert payload["forms"][0]["ldap_lookup_config"] == {
+            "enabled": True,
+            "notes": "Approved by IT",
+        }
+
+        fd.delete()
+        imported, action = import_payload(payload)[0]
+
+        assert action == "created"
+        config = LDAPLookupEnabledForm.objects.get(form=imported)
+        assert config.notes == "Approved by IT"
+        assert config.enabled_by is None
+
+    def test_disabled_form_is_exported_explicitly(self, db):
+        fd = FormDefinition.objects.create(name="LDAP Form", slug="ldap-form")
+
+        payload = build_export_payload(FormDefinition.objects.filter(pk=fd.pk))
+
+        assert payload["forms"][0]["ldap_lookup_config"] == {
+            "enabled": False,
+            "notes": "",
+        }
+
+    def test_disabled_source_removes_target_opt_in(self, db):
+        fd = FormDefinition.objects.create(name="LDAP Form", slug="ldap-form")
+        LDAPLookupEnabledForm.objects.create(form=fd, notes="Old opt-in")
+        payload = build_export_payload(FormDefinition.objects.filter(pk=fd.pk))
+        payload["forms"][0]["ldap_lookup_config"] = {
+            "enabled": False,
+            "notes": "",
+        }
+
+        import_payload(payload)
+
+        assert not LDAPLookupEnabledForm.objects.filter(form=fd).exists()
+
+    def test_legacy_payload_leaves_target_opt_in_unchanged(self, db):
+        fd = FormDefinition.objects.create(name="LDAP Form", slug="ldap-form")
+        LDAPLookupEnabledForm.objects.create(form=fd, notes="Keep me")
+        payload = build_export_payload(FormDefinition.objects.filter(pk=fd.pk))
+        payload["forms"][0].pop("ldap_lookup_config")
+
+        import_payload(payload)
+
+        assert LDAPLookupEnabledForm.objects.get(form=fd).notes == "Keep me"
 
 
 @pytest.fixture

@@ -326,6 +326,25 @@ def _build_summary(forms_data):
                     parts.append(f"-{', '.join(sorted(removed_g))}")
                 diffs.append(f"{g}: {'; '.join(parts)}")
 
+        # Optional host-project LDAP lookup opt-in. Missing keys come from an
+        # older package version and are treated like disabled configuration.
+        if "ldap_lookup_config" in base or "ldap_lookup_config" in other:
+            b_ldap = base.get("ldap_lookup_config") or {}
+            o_ldap = other.get("ldap_lookup_config") or {}
+            b_enabled = bool(b_ldap.get("enabled", False))
+            o_enabled = bool(o_ldap.get("enabled", False))
+            if b_enabled != o_enabled:
+                diffs.append(f"LDAP lookup enabled: {b_enabled} → {o_enabled}")
+            if (
+                b_enabled
+                and o_enabled
+                and b_ldap.get("notes", "") != o_ldap.get("notes", "")
+            ):
+                diffs.append(
+                    "LDAP lookup notes: "
+                    f"{b_ldap.get('notes', '')!r} → {o_ldap.get('notes', '')!r}"
+                )
+
         # Post actions
         b_actions = base.get("post_actions", [])
         o_actions = other.get("post_actions", [])

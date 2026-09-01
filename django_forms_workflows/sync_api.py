@@ -26,6 +26,7 @@ import json
 import logging
 from decimal import Decimal
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.db import transaction
@@ -423,6 +424,42 @@ def _serialize_post_action(action):
     }
 
 
+def _get_ldap_lookup_enabled_form_model():
+    """Return the optional site-level LDAP lookup opt-in model.
+
+    ``LDAPLookupEnabledForm`` belongs to the host project rather than this
+    reusable package. Looking it up through Django's app registry lets sync
+    include the configuration when the host app is installed without making
+    it a package dependency.
+    """
+    try:
+        return apps.get_model("workflows", "LDAPLookupEnabledForm")
+    except LookupError:
+        return None
+
+
+def _serialize_ldap_lookup_config(form_definition):
+    """Serialize the portable part of the optional LDAP lookup opt-in row.
+
+    Row presence is the actual enabled flag. ``enabled_at`` and ``enabled_by``
+    are deliberately excluded because they are environment-local audit data;
+    in particular, user primary keys are not portable between instances.
+    """
+    model = _get_ldap_lookup_enabled_form_model()
+    if model is None:
+        return None
+
+    try:
+        config = form_definition.ldap_lookup_config
+    except model.DoesNotExist:
+        config = None
+
+    return {
+        "enabled": config is not None,
+        "notes": config.notes if config is not None else "",
+    }
+
+
 def serialize_form(form_definition):
     """Serialize a FormDefinition (with all related objects) to a plain dict."""
     all_workflows = list(form_definition.workflows.all().order_by("id"))
@@ -490,6 +527,10 @@ def serialize_form(form_definition):
             _serialize_workflow(wf) for wf in extra_workflows
         ]
 
+    ldap_lookup_config = _serialize_ldap_lookup_config(form_definition)
+    if ldap_lookup_config is not None:
+        result["ldap_lookup_config"] = ldap_lookup_config
+
     return result
 
 
@@ -530,7 +571,7 @@ def build_export_payload(queryset):
       changes propagate independently of whether any form in that category
       was modified.
     """
-    qs = queryset.prefetch_related(
+    prefetches = [
         "fields",
         "fields__prefill_source_config",
         "fields__shared_option_list",
@@ -553,7 +594,10 @@ def build_export_payload(queryset):
         "reviewer_groups",
         "category",
         "category__allowed_groups",
-    )
+    ]
+    if _get_ldap_lookup_enabled_form_model() is not None:
+        prefetches.append("ldap_lookup_config")
+    qs = queryset.prefetch_related(*prefetches)
 
     # Export all categories (topologically sorted) so category-only changes
     # propagate even when no form in that category was touched.
@@ -634,6 +678,42 @@ def _get_or_create_category(data, category_cache=None):
     if category_cache is not None:
         category_cache[data["slug"]] = cat
     return cat
+
+
+def _sync_ldap_lookup_config(form_obj, form_data):
+    """Apply optional LDAP lookup opt-in state from a serialized form.
+
+    Missing data means the payload came from an older package and leaves the
+    target unchanged. An explicit disabled value removes the opt-in row.
+    """
+    if "ldap_lookup_config" not in form_data:
+        return
+
+    model = _get_ldap_lookup_enabled_form_model()
+    if model is None:
+        logger.warning(
+            "Sync import: LDAP lookup configuration supplied for form %s, "
+            "but workflows.LDAPLookupEnabledForm is not installed; skipped.",
+            form_obj.slug,
+        )
+        return
+
+    config_data = form_data["ldap_lookup_config"]
+    if isinstance(config_data, dict):
+        enabled = config_data.get("enabled", True)
+        notes = config_data.get("notes", "")
+    else:
+        # Tolerate a compact boolean representation from custom clients.
+        enabled = bool(config_data)
+        notes = ""
+
+    if enabled:
+        model.objects.update_or_create(
+            form=form_obj,
+            defaults={"notes": notes},
+        )
+    else:
+        model.objects.filter(form=form_obj).delete()
 
 
 def _resolve_sub_workflow(sub_wf_form, sub_wf_data, parent_workflow):
@@ -992,6 +1072,9 @@ def import_form(form_data, conflict="update", category_cache=None):
         [_get_or_create_group(n) for n in fd.get("reviewer_groups", [])]
     )
 
+    # Sync host-project form extensions before the package-owned child rows.
+    _sync_ldap_lookup_config(form_obj, form_data)
+
     # ── Workflows (created BEFORE fields so stage FKs can be resolved) ─────────
     wf_data = form_data.get("workflow")
     additional_wf_data = form_data.get("additional_workflows", [])
@@ -1211,6 +1294,9 @@ def _reset_sequences():
         WorkflowDefinition,
         WorkflowStage,
     ]
+    ldap_lookup_model = _get_ldap_lookup_enabled_form_model()
+    if ldap_lookup_model is not None:
+        models_to_reset.append(ldap_lookup_model)
     with connection.cursor() as cursor:
         for model in models_to_reset:
             table = model._meta.db_table

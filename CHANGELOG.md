@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **`social-auth-core` 4.8.3 → 5.1.1 in `poetry.lock`.** Closes five Dependabot
+  advisories against the locked version: GHSA-vqg6-3fw6-j9jg (session fixation),
+  GHSA-3c93-f73f-qc9h (VK App backend accepted unsigned callback data),
+  GHSA-x7qq-23vw-7pfg (login CSRF in the LoginRadius backend),
+  GHSA-fp7w-m676-w7gc (account takeover via identity binding in the Vend backend)
+  and GHSA-vq6g-g6c7-5f2j (improper authentication). `social-auth-app-django`
+  moves 5.7.0 → 6.0.1 (5.x pins `social-auth-core ~=4.8`) and `requests`
+  2.33.0 → 2.34.2 (required by `social-auth-core` 5.x).
+- **`sso` / `all` extras now require `social-auth-app-django >= 6.0` and
+  `social-auth-core >= 5.1.1`**, so `pip install django-forms-workflows[sso]`
+  can no longer resolve to a vulnerable release. `social-auth-app-django` 6.x
+  requires Django 5.2+, which matches the documented minimum; the core package
+  itself still allows Django 5.1.
+
+### Fixed
+- **CI test job on `main` has failed since 59ae737.** `tests/settings.py` lists
+  `tests.ldap_lookup_test_app` in `INSTALLED_APPS`, but the app package was
+  never committed, so every CI run died with
+  `ModuleNotFoundError: No module named 'tests.ldap_lookup_test_app'`. The
+  package is now in the repo.
+
 ## [0.77.0] - 2026-08-17
 
 Some entries below are marked *(shipped in 0.76.x)* — they describe changes that

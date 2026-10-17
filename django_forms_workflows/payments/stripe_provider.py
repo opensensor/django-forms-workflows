@@ -9,19 +9,27 @@ Configuration via standard Django settings::
 
     STRIPE_SECRET_KEY = "sk_test_..."
     STRIPE_PUBLISHABLE_KEY = "pk_test_..."
-    STRIPE_WEBHOOK_SECRET = "whsec_..."   # optional, for webhook verification
+    STRIPE_WEBHOOK_SECRET = "whsec_..."   # REQUIRED to accept webhooks
+
+Webhooks fail closed: when ``STRIPE_WEBHOOK_SECRET`` is absent or the
+signature does not verify, the event is rejected and no state is applied.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from decimal import Decimal
 from typing import Any
 
 from django.conf import settings
 
-from .base import PaymentFlow, PaymentProvider, PaymentResult, PaymentStatus
+from .base import (
+    PaymentFlow,
+    PaymentProvider,
+    PaymentResult,
+    PaymentStatus,
+    WebhookVerificationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +67,19 @@ class StripePaymentProvider(PaymentProvider):
         submission_id: int,
         description: str = "",
         metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> PaymentResult:
         stripe = _get_stripe()
         stripe.api_key = settings.STRIPE_SECRET_KEY
 
         amount_cents = int(amount * 100)
+
+        # Forward the stable per-attempt idempotency key so a retried
+        # initiation of the same PaymentRecord cannot create duplicate
+        # PaymentIntents on Stripe's side.
+        request_options: dict[str, Any] = {}
+        if idempotency_key:
+            request_options["idempotency_key"] = idempotency_key
 
         try:
             intent = stripe.PaymentIntent.create(
@@ -72,6 +88,7 @@ class StripePaymentProvider(PaymentProvider):
                 description=description or f"Form submission #{submission_id}",
                 metadata=metadata or {},
                 automatic_payment_methods={"enabled": True},
+                **request_options,
             )
             return PaymentResult(
                 success=True,
@@ -131,19 +148,27 @@ class StripePaymentProvider(PaymentProvider):
         stripe = _get_stripe()
         webhook_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", "")
 
+        if not webhook_secret:
+            # Fail closed: without the webhook secret we cannot prove the
+            # event came from Stripe, so no state change may be applied.
+            logger.error(
+                "Stripe webhook received but STRIPE_WEBHOOK_SECRET is not "
+                "configured; refusing to process the event."
+            )
+            raise WebhookVerificationError(
+                "STRIPE_WEBHOOK_SECRET is not configured; cannot verify event."
+            )
+
         payload = request.body
         sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
 
-        if webhook_secret:
-            try:
-                event = stripe.Webhook.construct_event(
-                    payload, sig_header, webhook_secret
-                )
-            except (ValueError, stripe.error.SignatureVerificationError) as e:
-                logger.warning("Stripe webhook verification failed: %s", e)
-                return None
-        else:
-            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+        try:
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        except (ValueError, stripe.error.SignatureVerificationError) as e:
+            logger.warning("Stripe webhook signature verification failed: %s", e)
+            raise WebhookVerificationError(
+                "Stripe webhook signature verification failed."
+            ) from e
 
         if event.type == "payment_intent.succeeded":
             intent = event.data.object

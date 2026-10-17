@@ -12,7 +12,13 @@ apps can add ECSI, PayPal, Authorize.Net, or any other provider
 without modifying the library itself.
 """
 
-from .base import PaymentFlow, PaymentProvider, PaymentResult, PaymentStatus
+from .base import (
+    PaymentFlow,
+    PaymentProvider,
+    PaymentResult,
+    PaymentStatus,
+    WebhookVerificationError,
+)
 from .registry import (
     clear,
     get_available_providers,
@@ -27,6 +33,7 @@ __all__ = [
     "PaymentProvider",
     "PaymentResult",
     "PaymentStatus",
+    "WebhookVerificationError",
     "clear",
     "get_available_providers",
     "get_provider",

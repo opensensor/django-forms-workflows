@@ -35,8 +35,14 @@
                     </button>
 
                     <div class="text-center mt-3">
-                        <a href="{% url 'forms_workflows:payment_cancel' submission.id %}"
-                           class="text-muted small">Cancel payment</a>
+                        <form method="post"
+                              action="{% url 'forms_workflows:payment_cancel' submission.id %}"
+                              class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-link text-muted small p-0">
+                                Cancel payment
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>

@@ -1,0 +1,7 @@
+# Issue agent pilot
+
+A maintainer can apply `agent-candidate` to a scoped public issue to start one DigitalOcean Harness Runtime session. The session uses Kimi K3 with automatic tool approval, edits a clone of this repository, and pushes `agent/issue-<issue>-<workflow run>` to the dedicated `matteius/django-forms-workflows` fork. GitHub Actions is disabled on that fork. A signed push webhook asks the shared PR broker to open a regular pull request against `opensensor/django-forms-workflows` main. The repository's existing PR CI then runs; a maintainer reviews and merges manually. The agent cannot push to the base repository.
+
+The launcher exits after submitting the prompt; it does not keep a runner occupied while the agent works. Applying the label again launches another session. Remove the label to prevent a delayed fork push from opening a PR. Use the `Agent-ready change` issue template to give the agent clear acceptance criteria and validation steps.
+
+The launcher requires `HARNESS_AUTOMATION_ENABLED=true` as a repository Actions variable and these encrypted Actions secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `HARNESS_INFERENCE_API_KEY`, and `HARNESS_DEPLOY_KEY_B64`. The deploy key has write access only to the dedicated fork. The PR broker receives a signed push webhook from that fork and keeps its GitHub token outside the agent session. Storefront's daily housekeeping workflow removes idle `django-forms-public-issue-<issue>-<run>` sessions and saved configs after 24 hours.

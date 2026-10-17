@@ -505,6 +505,11 @@ def form_submit(request, slug):
             if form_def.payment_enabled and form_def.payment_provider:
                 submission.status = "pending_payment"
                 submission.save()
+                # Bind a short-lived checkout credential to this session so
+                # only this browser can complete the payment for it.
+                from .payments.checkout import grant_checkout_access
+
+                grant_checkout_access(request, submission)
                 AuditLog.objects.create(
                     action="submit",
                     object_type="FormSubmission",
@@ -705,6 +710,11 @@ def form_embed(request, slug):
             if form_def.payment_enabled and form_def.payment_provider:
                 submission.status = "pending_payment"
                 submission.save()
+                # Bind a short-lived checkout credential to this session so
+                # only this browser can complete the payment for it.
+                from .payments.checkout import grant_checkout_access
+
+                grant_checkout_access(request, submission)
                 return redirect(
                     reverse(
                         "forms_workflows:payment_initiate",

@@ -89,16 +89,55 @@ A new `pending_payment` status is added to the submission lifecycle:
 
 ```
 draft → pending_payment → submitted → pending_approval → approved
-                       ↘ cancelled (if user cancels payment)
+                        ↘ draft (only via an authorized cancellation)
 ```
+
+## Payment access policy
+
+Payment endpoints (`initiate`, `confirm`, `return`, `cancel`) enforce a
+single access policy before rendering payment details, exposing client
+secrets, calling providers, or changing records:
+
+- **Authenticated submissions** — only the authenticated submitter may act
+  on their own submission.
+- **Anonymous (public-form) submissions** — the submitter's browser
+  receives an unguessable, **session-bound checkout credential** when the
+  form post creates the payment checkout. The credential is valid for
+  `FORMS_WORKFLOWS_PAYMENT_CHECKOUT_TTL` seconds (default **3600**).
+
+A numeric submission or payment-record ID alone grants **no** access;
+callers that fail the policy receive a non-disclosing `404`, identical to
+a nonexistent object. The credential is revoked on cancellation and cannot
+be used once the submission has left `pending_payment`.
+
+## Initiation idempotency and retries
+
+Initiation is **idempotent per payment attempt**:
+
+- The first authorized request creates one `PaymentRecord` with a stable
+  `idempotency_key`; the row is locked while the attempt is created, so
+  concurrent or repeated requests cannot create duplicate attempts.
+- Repeated navigation to the initiate URL **reuses the open attempt**
+  (`pending` / `requires_action` / `processing`) and re-issues the
+  provider call with the **same idempotency key**, so providers that
+  support request idempotency (e.g. Stripe) dedupe instead of creating
+  duplicate provider-side charges.
+- A **legitimate retry** starts a new attempt with a fresh idempotency
+  key: cancel the open attempt (`POST …/payments/<submission_id>/cancel/`)
+  or let a failed attempt be retried — the next initiation creates the
+  new `PaymentRecord` then.
+
+Cancellation is a CSRF-protected `POST` only. It is restricted to
+`pending_payment` submissions and cancels only open attempts — it can
+never revert a completed, submitted, or approved submission to `draft`.
 
 ## Submission flow
 
 1. User fills out the form and submits.
-2. If `payment_enabled`, the submission is saved with `status="pending_payment"` and the user is redirected to the payment initiation endpoint.
-3. The view resolves the payment amount (fixed or from a form field), creates a `PaymentRecord`, and calls the provider's `create_payment()`.
+2. If `payment_enabled`, the submission is saved with `status="pending_payment"`, a checkout credential is bound to the user's session, and the user is redirected to the payment initiation endpoint.
+3. The view resolves the payment amount (fixed or from a form field), creates (or resumes) a `PaymentRecord`, and calls the provider's `create_payment()` with the attempt's stable idempotency key.
 4. **INLINE flow**: renders `payment_collect.html` with the provider's JS SDK (e.g. Stripe Elements). The user completes payment without leaving the site.
-5. **REDIRECT flow**: redirects the user to the provider's hosted payment page.
+5. **REDIRECT flow**: redirects the user to the provider's hosted payment page. The return URL is bound to the originating (single open) attempt and the provider's result is verified server-side.
 6. On successful payment confirmation, the submission transitions to `submitted` and enters the normal workflow engine (`_finalize_submission()`).
 
 ## Built-in Stripe provider
@@ -126,6 +165,12 @@ The Stripe provider uses **PaymentIntents** with `automatic_payment_methods` ena
 
 ### Webhook configuration
 
+Webhooks **require signing**. Add the webhook signing secret to Django settings:
+
+```python
+STRIPE_WEBHOOK_SECRET = "whsec_..."   # REQUIRED — events are rejected without it
+```
+
 Set up a Stripe webhook in your Stripe Dashboard pointing to:
 
 ```
@@ -133,6 +178,26 @@ https://your-domain.com/forms/payments/webhook/stripe/
 ```
 
 Subscribe to `payment_intent.succeeded` and `payment_intent.payment_failed` events.
+
+The provider verifies the `Stripe-Signature` header against
+`STRIPE_WEBHOOK_SECRET` before any event is applied. Verification **fails
+closed**: if the secret is missing or the signature is invalid, the
+endpoint answers HTTP 400 and no payment or submission state changes.
+
+Replayed and out-of-order events are safe: a completed payment is never
+rolled backward by a late or duplicate event, `_finalize_submission()` is
+idempotent (no duplicate workflow tasks), and the only permitted
+transition out of `completed` is `completed → refunded`.
+
+### Provider webhook requirement (all providers)
+
+Every provider's `handle_webhook(request)` MUST authenticate the event
+(signature, shared secret, or provider-verified fetch) before returning a
+`PaymentResult`, and raise
+`django_forms_workflows.payments.base.WebhookVerificationError` when
+verification fails or its verification secret is not configured. The
+generic webhook endpoint turns that exception into HTTP 400 without
+applying any state change.
 
 ## Writing a custom provider
 
@@ -145,6 +210,7 @@ from django_forms_workflows.payments.base import (
     PaymentProvider,
     PaymentResult,
     PaymentStatus,
+    WebhookVerificationError,
 )
 
 class MyProvider(PaymentProvider):
@@ -158,8 +224,12 @@ class MyProvider(PaymentProvider):
         return bool(getattr(settings, "MY_GATEWAY_KEY", ""))
 
     def create_payment(self, amount, currency, description, metadata, idempotency_key):
-        # Call your gateway API to create a checkout session
-        session = my_gateway.create_session(amount=amount, currency=currency)
+        # Call your gateway API to create a checkout session. Forward the
+        # idempotency key if your gateway supports it, so a retried
+        # initiation of the same attempt cannot double-charge.
+        session = my_gateway.create_session(
+            amount=amount, currency=currency, idempotency_key=idempotency_key
+        )
         return PaymentResult(
             success=True,
             status=PaymentStatus.PENDING,
@@ -176,7 +246,10 @@ class MyProvider(PaymentProvider):
         )
 
     def handle_webhook(self, request):
-        # Verify and process webhook
+        # Authenticate the event first — raise to reject unverified payloads.
+        if not my_gateway.verify_signature(request):
+            raise WebhookVerificationError("invalid webhook signature")
+        event = my_gateway.parse_event(request)
         return PaymentResult(...)
 
     def refund_payment(self, transaction_id, amount=None, reason=None):

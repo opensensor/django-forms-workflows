@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **Payment endpoints hardened against unauthorized access and unsafe state
+  transitions (issue #27, supersedes #4).** All checkout endpoints
+  (`initiate`, `confirm`, `return`, `cancel`) now enforce one access policy
+  before touching records or providers: an authenticated submitter may act
+  only on their own submission, and an anonymous public-form submitter needs
+  a short-lived (`FORMS_WORKFLOWS_PAYMENT_CHECKOUT_TTL`, default 1 hour),
+  unguessable session-bound checkout credential issued when the form post
+  enters `pending_payment`. Guessing a numeric submission or payment-record
+  ID now yields a non-disclosing 404. Payment initiation is idempotent per
+  attempt — repeated GETs reuse the single open `PaymentRecord` and its
+  stable idempotency key (now forwarded to Stripe's `PaymentIntent.create`)
+  instead of creating uncontrolled attempts; a legitimate retry after
+  cancel/failure starts a fresh key. Cancellation is a CSRF-protected
+  `POST`-only action restricted to `pending_payment` submissions and can no
+  longer revert a completed/submitted/approved submission to `draft`.
+  Stripe webhooks now **fail closed**: events are rejected (HTTP 400) when
+  `STRIPE_WEBHOOK_SECRET` is unset or the signature is invalid, and the
+  provider interface requires the same authenticated-event guarantee from
+  all providers via `WebhookVerificationError`. Replayed or out-of-order
+  events no longer roll payment state backward (`completed`/`refunded` are
+  terminal; only `completed → refunded` is allowed) and duplicate deliveries
+  create no duplicate workflow tasks. `payment_collect.html` and
+  `payment_error.html` cancel actions are now POST forms.
+
 - **`social-auth-core` 4.8.3 → 5.1.1 in `poetry.lock`.** Closes five Dependabot
   advisories against the locked version: GHSA-vqg6-3fw6-j9jg (session fixation),
   GHSA-3c93-f73f-qc9h (VK App backend accepted unsigned callback data),

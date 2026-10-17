@@ -17,9 +17,12 @@
                     <a href="{% url 'forms_workflows:payment_initiate' submission.id %}" class="btn btn-primary">
                         <i class="bi bi-arrow-clockwise"></i> Try Again
                     </a>
-                    <a href="{% url 'forms_workflows:payment_cancel' submission.id %}" class="btn btn-outline-secondary">
-                        Cancel Payment
-                    </a>
+                    <form method="post" action="{% url 'forms_workflows:payment_cancel' submission.id %}" class="d-grid">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-secondary">
+                            Cancel Payment
+                        </button>
+                    </form>
                     {% else %}
                     <a href="{% url 'forms_workflows:form_list' %}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left"></i> Back to Forms

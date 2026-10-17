@@ -47,6 +47,17 @@ class PaymentStatus(Enum):
     REFUNDED = "refunded"
 
 
+class WebhookVerificationError(Exception):
+    """
+    Raised by a provider's ``handle_webhook()`` when the event payload
+    cannot be authenticated (e.g. a missing/invalid signature, or a
+    required verification secret that is not configured).
+
+    Providers must raise this instead of processing unverified payloads:
+    the webhook endpoint fails closed and discards the event.
+    """
+
+
 @dataclass
 class PaymentResult:
     """Returned by create_payment() and confirm_payment()."""
@@ -93,12 +104,19 @@ class PaymentProvider(ABC):
         submission_id: int,
         description: str = "",
         metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> PaymentResult:
         """
         Initiate a payment.
 
         For INLINE providers: creates a payment intent, returns client_secret.
         For REDIRECT providers: creates a session, returns redirect_url.
+
+        ``idempotency_key`` is stable for a single payment attempt (one
+        ``PaymentRecord``).  Providers that support request idempotency
+        should forward it so a retried initiation cannot create duplicate
+        provider-side charges.  A new attempt (after a cancellation or
+        failure) is issued a fresh key.
         """
 
     @abstractmethod
@@ -121,6 +139,12 @@ class PaymentProvider(ABC):
 
         Override if the provider sends server-to-server callbacks.
         Returns None if the event is not relevant.
+
+        Implementations MUST authenticate the event before returning a
+        result (e.g. verify a signature or shared secret) and raise
+        :class:`WebhookVerificationError` when verification fails or the
+        required verification secret is not configured.  Unverified
+        payloads must never produce a state-changing result.
         """
         return None
 

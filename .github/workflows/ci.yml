@@ -13,11 +13,19 @@ jobs:
     name: Test on Python ${{ matrix.python-version }} / Django ${{ matrix.django-version }}
     runs-on: ubuntu-latest
     
+    env:
+      DJANGO_DEBUG: '1'
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
-        django-version: ['5.1']
+        include:
+          - {python-version: '3.11', django-version: '5.2'}
+          - {python-version: '3.12', django-version: '5.2'}
+          - {python-version: '3.13', django-version: '5.2'}
+          - {python-version: '3.14', django-version: '5.2'}
+          - {python-version: '3.12', django-version: '6.0'}
+          - {python-version: '3.13', django-version: '6.1'}
+          - {python-version: '3.14', django-version: '6.1'}
     
     steps:
     - name: Checkout code
@@ -31,8 +39,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install Django==${{ matrix.django-version }}.*
-        pip install -e .[dev,qr]
+        pip install -e '.[dev,qr,markdown,pdf,excel]' 'Django==${{ matrix.django-version }}.*'
+    - name: Install PDF system libraries
+      run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0
     
     - name: Run migrations check
       run: |
@@ -111,3 +120,27 @@ jobs:
         name: dist-packages
         path: dist/
 
+
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --audit-level=moderate
+
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install pip-audit poetry
+      - run: poetry check --lock
+      - name: Audit all locked Python dependencies, including extras and tooling
+        run: python scripts/audit_lock.py

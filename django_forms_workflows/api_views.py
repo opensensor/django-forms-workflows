@@ -106,7 +106,7 @@ def require_api_token(view_func):
         raw = auth.removeprefix("Bearer ").strip()
         try:
             token_obj = APIToken.objects.select_related("user").get(
-                token=raw, is_active=True
+                token=raw, is_active=True, user__is_active=True
             )
         except (APIToken.DoesNotExist, ValueError, Exception):  # noqa: BLE001
             return JsonResponse({"error": "Invalid or inactive token."}, status=401)

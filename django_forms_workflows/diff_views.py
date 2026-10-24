@@ -8,6 +8,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import render
 
 from .models import FormDefinition
+from .security import builder_permission_required
 from .sync_api import build_export_payload
 
 
@@ -429,6 +430,7 @@ def _build_summary(forms_data):
     return summaries
 
 
+@builder_permission_required("view_formdefinition")
 def diff_forms_view(request):
     """Render a side-by-side JSON diff of selected FormDefinitions."""
     pks = request.GET.get("pks", "")

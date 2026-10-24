@@ -2,6 +2,8 @@
 Test settings for django-forms-workflows test suite.
 """
 
+import django
+
 SECRET_KEY = "test-secret-key-not-for-production"
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
@@ -69,3 +71,8 @@ FORMS_WORKFLOWS = {
         "enabled": False,
     },
 }
+
+# Exercise the modern mail configuration while retaining the Django 5.2 test matrix.
+
+if django.VERSION >= (6, 1):
+    MAILERS = {"default": {"BACKEND": "django.core.mail.backends.locmem.EmailBackend"}}

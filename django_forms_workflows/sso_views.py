@@ -112,18 +112,8 @@ class SAMLACSView(View):
         Returns a dict with the request data in the format expected by OneLogin_Saml2_Auth.
         Handles reverse proxy scenarios where X-Forwarded-* headers indicate the real protocol.
         """
-        # Check if request is secure (handles reverse proxy via X-Forwarded-Proto)
         is_secure = request.is_secure()
-        if not is_secure:
-            # Check X-Forwarded-Proto header for reverse proxy
-            forwarded_proto = request.META.get("HTTP_X_FORWARDED_PROTO", "")
-            is_secure = forwarded_proto.lower() == "https"
-
-        # Get the host without port (proxy may forward with port)
-        http_host = request.META.get("HTTP_HOST", "")
-        # Strip port if present to avoid mismatches
-        if ":" in http_host:
-            http_host = http_host.split(":")[0]
+        http_host = request.get_host()
 
         return {
             "https": "on" if is_secure else "off",
@@ -141,7 +131,6 @@ class SAMLACSView(View):
             )
 
         try:
-            from django.contrib.auth import get_user_model
             from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
             saml_config = get_saml_config()
@@ -155,9 +144,7 @@ class SAMLACSView(View):
                 last_error_reason = auth.get_last_error_reason()
                 logger.error(f"SAML authentication errors: {errors}")
                 logger.error(f"SAML last error reason: {last_error_reason}")
-                return HttpResponseBadRequest(
-                    f"SAML authentication failed: {errors}. Reason: {last_error_reason}"
-                )
+                return HttpResponseBadRequest("SAML authentication failed.")
 
             if not auth.is_authenticated():
                 return HttpResponseBadRequest("SAML authentication failed")
@@ -179,67 +166,13 @@ class SAMLACSView(View):
             if not email:
                 return HttpResponseBadRequest("SAML response missing email/NameID")
 
-            # Get first/last name from attributes if available
-            first_name = ""
-            for attr_name in ["firstName", "FirstName", "first_name", "givenName"]:
-                if attr_name in attributes and attributes[attr_name]:
-                    first_name = attributes[attr_name][0]
-                    break
+            # Bind the validated issuer + NameID to an explicitly selected account.
+            from .sso_backends import bound_sso_user
 
-            last_name = ""
-            for attr_name in ["lastName", "LastName", "last_name", "sn", "surname"]:
-                if attr_name in attributes and attributes[attr_name]:
-                    last_name = attributes[attr_name][0]
-                    break
-
-            # Find or create user - try to link to existing user first
-            user_model = get_user_model()
-            user = None
-            created = False
-
-            # Extract username from email
-            username = email.split("@")[0].lower()
-
-            # Try to find existing user by username (case-insensitive)
-            # This links SSO users to their existing LDAP accounts
-            try:
-                user = user_model.objects.get(username__iexact=username)
-                logger.info(
-                    f"SAML login linked to existing user '{user.username}' "
-                    f"(email: {email})"
-                )
-            except user_model.DoesNotExist:
-                # Try by email
-                try:
-                    user = user_model.objects.get(email__iexact=email)
-                    logger.info(
-                        f"SAML login linked to existing user '{user.username}' "
-                        f"by email (email: {email})"
-                    )
-                except user_model.DoesNotExist:
-                    # Create new user
-                    user = user_model.objects.create(
-                        username=username,
-                        email=email,
-                        first_name=first_name,
-                        last_name=last_name,
-                    )
-                    user.set_unusable_password()
-                    user.save()
-                    created = True
-                    logger.info(f"Created new user from SAML: {user.username}")
-
-            # Update user attributes if they logged in with existing account
-            if not created and (first_name or last_name):
-                updated = False
-                if first_name and not user.first_name:
-                    user.first_name = first_name
-                    updated = True
-                if last_name and not user.last_name:
-                    user.last_name = last_name
-                    updated = True
-                if updated:
-                    user.save()
+            issuer = saml_config["idp"]["entityId"]
+            user = bound_sso_user(f"saml:{issuer}", name_id)
+            if user is None:
+                return HttpResponseBadRequest("SAML identity has no account binding.")
 
             # Sync LDAP groups for this user
             try:

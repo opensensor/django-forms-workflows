@@ -1867,8 +1867,8 @@ class TestSubmissionSuccessView:
         resp = auth_client.get(url)
         assert resp.status_code == 404
 
-    def test_anonymous_access_allowed(self, client, form_with_fields, user):
-        """Success page has no login_required; anonymous users can view it."""
+    def test_anonymous_access_denied(self, client, form_with_fields, user):
+        """A submission ID alone must not grant receipt access."""
         form_with_fields.success_message = "Done!"
         form_with_fields.save()
         sub = FormSubmission.objects.create(
@@ -1879,7 +1879,7 @@ class TestSubmissionSuccessView:
         )
         url = reverse("forms_workflows:submission_success", args=[sub.id])
         resp = client.get(url)
-        assert resp.status_code == 200
+        assert resp.status_code == 404
 
 
 # ── success routing in form_submit ─────────────────────────────────────────

@@ -4,18 +4,44 @@ Django settings for example project.
 This is a minimal example showing how to configure Django Form Workflows.
 """
 
+import os
 from pathlib import Path
+
+import django
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-example-key-change-in-production"
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+# Explicitly opt into local development. Production fails closed without a secret.
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "Set DJANGO_SECRET_KEY, or DJANGO_DEBUG=1 for local development."
+        )
+    SECRET_KEY = "django-insecure-example-development-only"
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+    os.environ.get("DJANGO_HSTS_INCLUDE_SUBDOMAINS", "0") == "1"
+)
+SECURE_HSTS_PRELOAD = os.environ.get("DJANGO_HSTS_PRELOAD", "0") == "1"
+if not DEBUG:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": os.environ.get("DJANGO_CACHE_URL", "redis://127.0.0.1:6379/1"),
+        }
+    }
 
 # Application definition
 
@@ -148,9 +174,40 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 # EMAIL_HOST_USER = 'your-email@example.com'
 # EMAIL_HOST_PASSWORD = 'your-password'
 # DEFAULT_FROM_EMAIL = 'noreply@example.com'
-# Development-friendly email backend and base URL for absolute links in emails
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-FORMS_WORKFLOWS_BASE_URL = "http://localhost:8000"
+# Console delivery is development-only; production uses explicit SMTP options.
+_email_backend = (
+    "django.core.mail.backends.console.EmailBackend"
+    if DEBUG
+    else "django.core.mail.backends.smtp.EmailBackend"
+)
+_smtp_options = {
+    "host": os.environ.get("DJANGO_EMAIL_HOST", "localhost"),
+    "port": int(os.environ.get("DJANGO_EMAIL_PORT", "587")),
+    "username": os.environ.get("DJANGO_EMAIL_USER", ""),
+    "password": os.environ.get("DJANGO_EMAIL_PASSWORD", ""),
+    "use_tls": os.environ.get("DJANGO_EMAIL_USE_TLS", "1") == "1",
+    "timeout": 10,
+}
+if django.VERSION >= (6, 1):
+    MAILERS = {
+        "default": {
+            "BACKEND": _email_backend,
+            "OPTIONS": {} if DEBUG else _smtp_options,
+        }
+    }
+else:
+    EMAIL_BACKEND = _email_backend
+    EMAIL_HOST = _smtp_options["host"]
+    EMAIL_PORT = _smtp_options["port"]
+    EMAIL_HOST_USER = _smtp_options["username"]
+    EMAIL_HOST_PASSWORD = _smtp_options["password"]
+    EMAIL_USE_TLS = _smtp_options["use_tls"]
+    EMAIL_TIMEOUT = _smtp_options["timeout"]
+DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL", "webmaster@localhost")
+FORMS_WORKFLOWS_BASE_URL = os.environ.get(
+    "FORMS_WORKFLOWS_BASE_URL",
+    "http://localhost:8000" if DEBUG else "https://localhost",
+)
 
 
 # Login/Logout URLs

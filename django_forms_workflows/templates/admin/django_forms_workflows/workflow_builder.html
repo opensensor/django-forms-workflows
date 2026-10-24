@@ -1124,11 +1124,11 @@
 
     const WORKFLOW_CONFIG = {
         formId: {{ form_id }},
-        currentWorkflowId: {{ workflow_id }},
+        currentWorkflowId: {{ workflow_id|default:"null" }},
         workflowBuilderUrl: '{% url "admin:workflow_builder" form_id %}',
         csrfToken: '{{ csrf_token }}',
         apiUrls: {
-            load: '{% url "admin:workflow_builder_load" form_id %}?workflow_id={{ workflow_id }}',
+            load: '{% url "admin:workflow_builder_load" form_id %}{% if workflow_id %}?workflow_id={{ workflow_id }}{% endif %}',
             save: '{% url "admin:workflow_builder_save" %}',
         }
     };

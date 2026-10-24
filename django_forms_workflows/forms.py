@@ -333,18 +333,6 @@ class DynamicForm(forms.Form):
         # files).  Also used to carry forward draft / resubmit file data.
         self.stashed_files = stashed_files or {}
 
-        # Recover stashed-file metadata carried forward via hidden input from
-        # a prior validation-failure render (browsers cannot re-send files).
-        if not self.stashed_files and self.data:
-            prev = self.data.get("_stashed_files")
-            if prev:
-                try:
-                    self.stashed_files = json.loads(prev)
-                except (json.JSONDecodeError, TypeError):
-                    # Ignore malformed client metadata; uploaded files are rebuilt
-                    # from validated server-side data below.
-                    pass
-
         # Build form fields from definition
         # Exclude fields scoped to a workflow stage - those are for approvers only
         for field in (
@@ -353,15 +341,6 @@ class DynamicForm(forms.Form):
             .order_by("order")
         ):
             self.add_field(field, initial_data)
-
-        # Embed stashed-file metadata as a hidden field so it survives
-        # validation-failure round-trips (browsers cannot re-send files).
-        if self.stashed_files:
-            self.fields["_stashed_files"] = forms.CharField(
-                widget=forms.HiddenInput(),
-                required=False,
-                initial=json.dumps(self.stashed_files),
-            )
 
         # Setup form layout with Crispy Forms
         self.helper = FormHelper()
@@ -763,7 +742,7 @@ class DynamicForm(forms.Form):
             # failure, saved with a draft, or carried from a resubmission).
             existing_file = self._get_existing_file_info(field_def.field_name)
             if existing_file:
-                fname = existing_file.get("filename", "file")
+                fname = html_escape(existing_file.get("filename", "file"))
                 extra_help = f"Previously uploaded: <strong>{fname}</strong>. Leave blank to keep it."
                 base_help = field_args.get("help_text", "") or ""
                 field_args["help_text"] = (
@@ -789,10 +768,11 @@ class DynamicForm(forms.Form):
                     if isinstance(existing_file, list)
                     else existing_file.get("filename", "file")
                 )
-                extra = f"Previously uploaded: <strong>{names}</strong>. Leave blank to keep."
+                extra = f"Previously uploaded: <strong>{html_escape(names)}</strong>. Leave blank to keep."
                 help_text = f"{help_text} {extra}" if help_text else extra
                 required = False
             self.fields[field_def.field_name] = MultipleFileField(
+                validators=_build_file_validators(field_def),
                 required=required,
                 label=field_def.field_label,
                 help_text=help_text,
@@ -931,12 +911,13 @@ class DynamicForm(forms.Form):
             )
 
         elif field_def.field_type == "display_text":
-            display_html = _render_display_text(initial or field_def.default_value)
+            display_html = _render_display_text(field_def.default_value)
             self.fields[field_def.field_name] = forms.CharField(
                 required=False,
                 label=field_def.field_label,
                 help_text=field_def.help_text,
-                initial=initial or field_def.default_value,
+                initial=field_def.default_value,
+                disabled=True,
                 widget=DisplayTextWidget(
                     display_html=display_html,
                     attrs={"data-display-text": "true"},

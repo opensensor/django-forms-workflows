@@ -25,6 +25,13 @@ from django.views.decorators.http import require_http_methods
 
 from .forms import DynamicForm
 from .models import ApprovalTask, AuditLog, FormDefinition, FormField, FormSubmission
+from .pdf import pdf_url_fetcher
+from .security import (
+    grant_submission_receipt,
+    render_success_message,
+    require_submission_receipt,
+)
+from .uploads import clear_uploads, draft_data, prepare_uploads, reject_invalid_uploads
 from .utils import (
     check_rate_limit,
     user_can_approve,
@@ -324,6 +331,7 @@ def form_qr_code(request, slug):
     return response
 
 
+@reject_invalid_uploads
 def form_submit(request, slug):
     """Submit a form — supports both authenticated and anonymous (public) access."""
     form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
@@ -404,16 +412,10 @@ def form_submit(request, slug):
                 values = request.POST.getlist(k)
                 raw_data[k] = values[0] if len(values) == 1 else values
 
-            # Recover previously-stashed file metadata so it persists in draft.
-            prev_stashed = request.POST.get("_stashed_files")
-            if prev_stashed:
-                try:
-                    prev = json.loads(prev_stashed)
-                    if isinstance(prev, dict):
-                        raw_data.update(prev)
-                except (json.JSONDecodeError, TypeError):
-                    # Ignore malformed client metadata; draft data remains usable.
-                    pass
+            raw_data = draft_data(
+                form_def, raw_data, draft.form_data if draft else None
+            )
+            raw_data.update(prepare_uploads(request, form_def))
 
             draft_obj, created = FormSubmission.objects.update_or_create(
                 form_definition=form_def,
@@ -426,9 +428,7 @@ def form_submit(request, slug):
                 },
             )
 
-            # Persist uploaded files with the draft
-            if request.FILES:
-                _save_draft_files(request.FILES, draft_obj, form_def)
+            clear_uploads(request, form_def)
 
             AuditLog.objects.create(
                 action="update" if not created else "create",
@@ -445,27 +445,12 @@ def form_submit(request, slug):
         # Full submission: validate then save.                                #
         # ------------------------------------------------------------------ #
 
-        # Eagerly persist uploaded files so they survive a validation failure.
-        stashed_files = (
-            _stash_uploaded_files(request.FILES, form_def) if request.FILES else {}
-        )
-
-        # Recover previously-stashed file metadata from the hidden input
-        # (carried forward from a prior validation-failure render).
-        prev_stashed = request.POST.get("_stashed_files")
-        if prev_stashed:
-            try:
-                prev = json.loads(prev_stashed)
-                if isinstance(prev, dict):
-                    for k, v in prev.items():
-                        stashed_files.setdefault(k, v)
-            except (json.JSONDecodeError, TypeError):
-                # Ignore malformed client metadata and keep newly stashed uploads.
-                pass
+        stashed_files = prepare_uploads(request, form_def)
 
         form = DynamicForm(
             form_definition=form_def,
             user=user_or_none,
+            initial_data=draft.form_data if draft else None,
             data=request.POST,
             files=request.FILES,
             stashed_files=stashed_files or None,
@@ -505,6 +490,7 @@ def form_submit(request, slug):
             if form_def.payment_enabled and form_def.payment_provider:
                 submission.status = "pending_payment"
                 submission.save()
+                clear_uploads(request, form_def)
                 # Bind a short-lived checkout credential to this session so
                 # only this browser can complete the payment for it.
                 from .payments.checkout import grant_checkout_access
@@ -526,6 +512,7 @@ def form_submit(request, slug):
             submission.status = "submitted"
             submission.submitted_at = timezone.now()
             submission.save()
+            clear_uploads(request, form_def)
 
             AuditLog.objects.create(
                 action="submit",
@@ -562,6 +549,7 @@ def form_submit(request, slug):
 
             # 3. Custom success message (rendered on a dedicated page)
             if form_def.success_message:
+                grant_submission_receipt(request, submission)
                 return redirect(
                     reverse(
                         "forms_workflows:submission_success",
@@ -609,6 +597,7 @@ def form_submit(request, slug):
 
 
 @xframe_options_exempt
+@reject_invalid_uploads
 def form_embed(request, slug):
     """Render a form in a minimal layout for iframe embedding."""
     form_def = get_object_or_404(FormDefinition, slug=slug, is_active=True)
@@ -618,7 +607,9 @@ def form_embed(request, slug):
 
     is_anonymous = not request.user.is_authenticated
 
-    # Authentication gate (same as form_submit but no redirect — just 403)
+    # Embedding must not weaken the form authentication policy.
+    if is_anonymous and form_def.requires_login:
+        return HttpResponseForbidden("Login required.")
     if not is_anonymous:
         if not user_can_view_form(request.user, form_def) or not user_can_submit_form(
             request.user, form_def
@@ -653,6 +644,17 @@ def form_embed(request, slug):
                 },
             )
 
+    if (
+        form_def.one_per_user
+        and not is_anonymous
+        and FormSubmission.objects.filter(
+            form_definition=form_def, submitter=request.user
+        )
+        .exclude(status__in=["draft", "withdrawn"])
+        .exists()
+    ):
+        return HttpResponseForbidden("You have already submitted this form.")
+
     user_or_none = request.user if not is_anonymous else None
     theme = request.GET.get("theme", "")
     # Sanitise accent_color to a valid hex colour to prevent CSS injection
@@ -675,9 +677,7 @@ def form_embed(request, slug):
                 },
             )
 
-        stashed_files = (
-            _stash_uploaded_files(request.FILES, form_def) if request.FILES else {}
-        )
+        stashed_files = prepare_uploads(request, form_def)
 
         form = DynamicForm(
             form_definition=form_def,
@@ -710,6 +710,7 @@ def form_embed(request, slug):
             if form_def.payment_enabled and form_def.payment_provider:
                 submission.status = "pending_payment"
                 submission.save()
+                clear_uploads(request, form_def)
                 # Bind a short-lived checkout credential to this session so
                 # only this browser can complete the payment for it.
                 from .payments.checkout import grant_checkout_access
@@ -725,6 +726,7 @@ def form_embed(request, slug):
             submission.status = "submitted"
             submission.submitted_at = timezone.now()
             submission.save()
+            clear_uploads(request, form_def)
 
             AuditLog.objects.create(
                 action="submit",
@@ -739,7 +741,7 @@ def form_embed(request, slug):
             # Render inline success (no redirect)
             success_message = ""
             if form_def.success_message:
-                success_message = _pipe_answer_tokens(
+                success_message = render_success_message(
                     form_def.success_message, submission.form_data or {}
                 )
 
@@ -814,10 +816,11 @@ def _pipe_answer_tokens(text, form_data):
 def submission_success(request, submission_id):
     """Custom success page with answer-piped content."""
     submission = get_object_or_404(FormSubmission, id=submission_id)
+    require_submission_receipt(request, submission)
     form_def = submission.form_definition
     form_data = submission.form_data or {}
 
-    rendered_message = _pipe_answer_tokens(form_def.success_message, form_data)
+    rendered_message = render_success_message(form_def.success_message, form_data)
 
     return render(
         request,
@@ -875,7 +878,7 @@ def form_auto_save(request, slug):
                 status="draft",
             )
 
-        draft.form_data = data
+        draft.form_data = draft_data(form_def, data, draft.form_data)
         draft.submission_ip = get_client_ip(request)
         draft.user_agent = request.META.get("HTTP_USER_AGENT", "")
 
@@ -2708,7 +2711,9 @@ def submission_pdf(request, submission_id):
         from weasyprint import HTML
 
         base_url = request.build_absolute_uri("/")
-        pdf_bytes = HTML(string=html_string, base_url=base_url).write_pdf()
+        pdf_bytes = HTML(
+            string=html_string, base_url=base_url, url_fetcher=pdf_url_fetcher()
+        ).write_pdf()
     except ImportError:
         return HttpResponse(
             "PDF generation requires the weasyprint package. "
@@ -2845,65 +2850,6 @@ def _parse_spreadsheet(file_obj):
         return {"headers": [], "rows": [], "error": "openpyxl not installed"}
 
 
-def _save_draft_files(files, draft_obj, form_def):
-    """Persist uploaded files from *request.FILES* into the draft's form_data.
-
-    Called during the draft-save path so that file uploads are not lost when a
-    user clicks "Save Draft" instead of "Submit".
-    """
-    file_field_names = set(
-        form_def.fields.filter(
-            field_type__in=("file", "multifile", "spreadsheet")
-        ).values_list("field_name", flat=True)
-    )
-    for field_name in files:
-        if field_name not in file_field_names:
-            continue
-        file_list = files.getlist(field_name)
-        if len(file_list) > 1:
-            # multifile
-            draft_obj.form_data[field_name] = [
-                _serialize_single_file(f, f"{field_name}_{i}", draft_obj.pk)
-                for i, f in enumerate(file_list)
-            ]
-        else:
-            draft_obj.form_data[field_name] = _serialize_single_file(
-                file_list[0], field_name, draft_obj.pk
-            )
-    draft_obj.save()
-
-
-def _stash_uploaded_files(files, form_def):
-    """Save uploaded files to storage eagerly (before validation).
-
-    Returns a dict of ``{field_name: file_info_dict}`` for every file field
-    found in *files*.  The caller should merge this into the form's
-    ``initial_data`` on a validation-failure re-render so that the template
-    can display the already-uploaded filename and the file field can be made
-    optional.
-    """
-    file_field_names = set(
-        form_def.fields.filter(
-            field_type__in=("file", "multifile", "spreadsheet")
-        ).values_list("field_name", flat=True)
-    )
-    stashed = {}
-    for field_name in files:
-        if field_name not in file_field_names:
-            continue
-        file_list = files.getlist(field_name)
-        if len(file_list) > 1:
-            stashed[field_name] = [
-                _serialize_single_file(f, f"{field_name}_{i}", "pending")
-                for i, f in enumerate(file_list)
-            ]
-        else:
-            stashed[field_name] = _serialize_single_file(
-                file_list[0], field_name, "pending"
-            )
-    return stashed
-
-
 def serialize_form_data(data, submission_id=None, existing_file_data=None):
     """
     Convert form data to JSON-serializable format.
@@ -2934,7 +2880,7 @@ def serialize_form_data(data, submission_id=None, existing_file_data=None):
             serialized[key] = str(value)
         elif isinstance(value, list) and value and hasattr(value[0], "read"):
             # Multi-file upload: list of file objects
-            serialized[key] = [
+            serialized[key] = existing_file_data.get(key) or [
                 _serialize_single_file(f, f"{key}_{i}", submission_id)
                 for i, f in enumerate(value)
             ]
@@ -2943,7 +2889,9 @@ def serialize_form_data(data, submission_id=None, existing_file_data=None):
             if name.lower().endswith((".csv", ".xlsx", ".xls")):
                 serialized[key] = _parse_spreadsheet(value)
             else:
-                serialized[key] = _serialize_single_file(value, key, submission_id)
+                serialized[key] = existing_file_data.get(key) or _serialize_single_file(
+                    value, key, submission_id
+                )
         elif not value and key in existing_file_data:
             # No new file uploaded — carry forward the previously-stored file.
             serialized[key] = existing_file_data[key]
@@ -2977,7 +2925,9 @@ def save_uploaded_file(file_obj, field_name, submission_id=None):
     """
     try:
         # Generate a unique path for the file
-        timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+        import uuid
+
+        timestamp = uuid.uuid4().hex
         sub_id = submission_id or "temp"
 
         # Sanitize filename
@@ -3743,13 +3693,9 @@ def _resolve_attachments(attachments):
 
 
 def get_client_ip(request):
-    """Get client IP address from request"""
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(",")[0]
-    else:
-        ip = request.META.get("REMOTE_ADDR")
-    return ip
+    from .utils import _get_client_ip
+
+    return _get_client_ip(request)
 
 
 @login_required
@@ -4048,7 +3994,9 @@ def bulk_export_submissions_pdf(request):
 
     try:
         base_url = request.build_absolute_uri("/")
-        pdf_bytes = WeasyPrintHTML(string=html_string, base_url=base_url).write_pdf()
+        pdf_bytes = WeasyPrintHTML(
+            string=html_string, base_url=base_url, url_fetcher=pdf_url_fetcher()
+        ).write_pdf()
     except Exception as exc:
         logger.error("WeasyPrint bulk PDF error: %s", exc)
         return HttpResponse("An error occurred while generating the PDF.", status=500)

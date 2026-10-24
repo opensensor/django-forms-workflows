@@ -26,11 +26,13 @@ from .models import (
     WorkflowDefinition,
     WorkflowStage,
 )
+from .security import builder_permission_required
 
 logger = logging.getLogger(__name__)
 
 
 @require_GET
+@builder_permission_required("view_formtemplate")
 def form_builder_templates(request):
     """
     API endpoint to list available form templates.
@@ -63,6 +65,7 @@ def form_builder_templates(request):
 
 
 @require_GET
+@builder_permission_required("view_formtemplate")
 def form_builder_load_template(request, template_id):
     """
     API endpoint to load a form template.
@@ -83,6 +86,7 @@ def form_builder_load_template(request, template_id):
 
 
 @require_POST
+@builder_permission_required("view_formdefinition", "add_formdefinition")
 def form_builder_clone(request, form_id):
     """
     API endpoint to clone an existing form.
@@ -225,6 +229,7 @@ def form_builder_clone(request, form_id):
 
 
 @require_GET
+@builder_permission_required("view_formdefinition")
 def form_builder_view(request, form_id=None):
     """
     Main form builder page.
@@ -269,6 +274,7 @@ def form_builder_view(request, form_id=None):
 
 
 @require_GET
+@builder_permission_required("view_formdefinition")
 def form_builder_load(request, form_id):
     """
     API endpoint to load form data as JSON.
@@ -353,6 +359,7 @@ def form_builder_load(request, form_id):
 
 
 @require_POST
+@builder_permission_required("save_formdefinition")
 def form_builder_save(request):
     """
     API endpoint to save form data.
@@ -604,6 +611,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
 
 @require_POST
+@builder_permission_required("view_formdefinition")
 def form_builder_preview(request):
     """
     API endpoint to generate a preview of the form.
@@ -764,6 +772,7 @@ def form_builder_preview(request):
 
 
 @require_GET
+@builder_permission_required("view_formdefinition", "view_documenttemplate")
 def document_template_list(request, form_id):
     """List document templates for a form."""
     templates = DocumentTemplate.objects.filter(form_definition_id=form_id).order_by(
@@ -789,6 +798,7 @@ def document_template_list(request, form_id):
 
 
 @require_POST
+@builder_permission_required("change_formdefinition", "save_documenttemplate")
 def document_template_save(request, form_id):
     """Create or update a document template."""
     try:
@@ -847,6 +857,7 @@ def document_template_save(request, form_id):
 
 
 @require_POST
+@builder_permission_required("change_formdefinition", "delete_documenttemplate")
 def document_template_delete(request, form_id, template_id):
     """Delete a document template."""
     tpl = get_object_or_404(
@@ -862,6 +873,7 @@ def document_template_delete(request, form_id, template_id):
 
 
 @require_GET
+@builder_permission_required("view_sharedoptionlist")
 def shared_option_list_api(request):
     """List all shared option lists (for form builder dropdowns)."""
     lists = SharedOptionList.objects.filter(is_active=True).order_by("name")
@@ -882,6 +894,7 @@ def shared_option_list_api(request):
 
 
 @require_POST
+@builder_permission_required("save_sharedoptionlist")
 def shared_option_list_save(request):
     """Create or update a shared option list."""
     try:
@@ -924,6 +937,7 @@ def shared_option_list_save(request):
 
 
 @require_POST
+@builder_permission_required("delete_sharedoptionlist")
 def shared_option_list_delete(request, list_id):
     """Delete a shared option list."""
     ol = get_object_or_404(SharedOptionList, id=list_id)

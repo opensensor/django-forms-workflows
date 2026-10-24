@@ -17,6 +17,17 @@ Instead of starting from a blank admin, it can seed a realistic showcase with:
 
 ## Quick start
 
+Opt into local development before running the commands below:
+
+```bash
+export DJANGO_DEBUG=1
+```
+
+Without that opt-in, settings require `DJANGO_SECRET_KEY`, enforce HTTPS and secure
+cookies, and use Redis (`DJANGO_CACHE_URL`). See [security upgrade notes](../docs/SECURITY_UPGRADE.md)
+for production configuration. Seeded demo accounts must never be deployed publicly.
+
+
 1. **Install dependencies**
 
    ```bash

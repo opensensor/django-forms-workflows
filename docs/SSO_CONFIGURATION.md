@@ -88,6 +88,29 @@ FORMS_WORKFLOWS_SSO = {
 }
 ```
 
+## Explicit account bindings
+
+Existing accounts are never matched by email prefix, email address, or an incoming
+username. Existing python-social-auth provider/subject associations continue to work.
+To link an external identity to an existing Django/LDAP account, configure its exact
+provider identifier and stable subject returned by the provider:
+
+```python
+FORMS_WORKFLOWS_SSO['account_bindings'] = {
+    'google-oauth2': {'provider-subject-123': 'jdoe'},
+    'saml:https://idp.example.com/entity': {'exact-signed-NameID': 'jdoe'},
+}
+```
+
+For OAuth, keep `django_forms_workflows.sso_backends.link_to_existing_user` after
+`social_core.pipeline.social_auth.social_user` and before `create_user` in the
+pipeline. Never add `associate_by_email` to work around the binding requirement.
+The provider name must identify a fixed trusted issuer/tenant in your backend
+configuration; do not reuse it across untrusted tenants. SAML always requires an
+explicit issuer/NameID binding and no longer creates accounts automatically.
+Disabled accounts are rejected. Legacy `link_to_existing_user` and
+`username_from_email` flags do not enable automatic matching.
+
 ## Google OAuth2 Configuration
 
 ### 1. Create OAuth2 Credentials

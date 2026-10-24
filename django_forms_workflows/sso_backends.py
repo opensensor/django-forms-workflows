@@ -56,9 +56,8 @@ def get_sso_settings():
         create_users: Whether to create new users on SSO login (default: True)
         update_user_on_login: Whether to update user attributes on login (default: True)
         sync_groups: Whether to sync SSO groups (default: False)
-        link_to_existing_user: Whether to link SSO user to existing user by username (default: True)
+        account_bindings: Administrator-configured provider -> subject -> username mappings
         sync_ldap_groups_on_sso: Whether to sync LDAP groups when user logs in via SSO (default: True)
-        username_from_email: Whether to extract username from email (default: True)
     """
     defaults = {
         "providers": {},
@@ -70,9 +69,8 @@ def get_sso_settings():
         "create_users": True,
         "update_user_on_login": True,
         "sync_groups": False,
-        "link_to_existing_user": True,  # Link SSO users to existing LDAP users
+        "account_bindings": {},
         "sync_ldap_groups_on_sso": True,  # Sync LDAP groups on SSO login
-        "username_from_email": True,  # Extract username from email prefix
     }
     user_settings = getattr(settings, "FORMS_WORKFLOWS_SSO", {})
     return {**defaults, **user_settings}
@@ -342,74 +340,39 @@ def get_saml_config():
     }
 
 
-def link_to_existing_user(backend, details, user=None, *args, **kwargs):
-    """
-    Pipeline function to link SSO login to an existing user by username.
+def bound_sso_user(provider, subject):
+    """Resolve an administrator-configured provider/subject binding only."""
+    from django.contrib.auth import get_user_model
+    from django.core.exceptions import PermissionDenied
 
-    This is critical for organizations that use both LDAP and SSO authentication,
-    where the same user may authenticate via either method. This ensures:
-    1. SSO users are linked to their existing LDAP accounts
-    2. Group memberships from LDAP are preserved
-    3. Users don't end up with duplicate accounts
-
-    Add to SOCIAL_AUTH_PIPELINE before 'social_core.pipeline.user.create_user':
-        'django_forms_workflows.sso_backends.link_to_existing_user',
-
-    Configuration via FORMS_WORKFLOWS_SSO:
-        link_to_existing_user: True (default) - Enable username matching
-        username_from_email: True (default) - Extract username from email prefix
-
-    Returns:
-        dict with 'user' key if existing user found, empty dict otherwise
-    """
-    if user:
-        # Already have a user, nothing to do
-        return {"user": user}
-
-    sso_settings = get_sso_settings()
-
-    if not sso_settings.get("link_to_existing_user", True):
-        return {}
-
-    # Get email from SSO details
-    email = details.get("email", "")
-    if not email:
-        return {}
-
-    # Determine username to look for
-    if sso_settings.get("username_from_email", True):
-        # Extract username from email prefix (e.g., "jdoe@example.com" -> "jdoe")
-        username = email.split("@")[0].lower()
-    else:
-        username = details.get("username", "").lower()
-
+    bindings = get_sso_settings().get("account_bindings", {})
+    username = bindings.get(provider, {}).get(str(subject)) if subject else None
     if not username:
-        return {}
-
-    # Try to find existing user by username (case-insensitive)
+        return None
+    model = get_user_model()
     try:
-        existing_user = User.objects.get(username__iexact=username)
-        logger.info(
-            f"SSO login linked to existing user '{existing_user.username}' "
-            f"(email: {email}, backend: {backend.name})"
-        )
-        return {"user": existing_user, "is_new": False}
-    except User.DoesNotExist:
-        # Also try by email (case-insensitive)
-        try:
-            existing_user = User.objects.get(email__iexact=email)
-            logger.info(
-                f"SSO login linked to existing user '{existing_user.username}' "
-                f"by email (email: {email}, backend: {backend.name})"
-            )
-            return {"user": existing_user, "is_new": False}
-        except User.DoesNotExist:
-            logger.debug(
-                "No existing user found with email '%s' to link SSO login", email
-            )
+        user = model.objects.get(**{model.USERNAME_FIELD: username})
+    except model.DoesNotExist as exc:
+        raise PermissionDenied("SSO account binding is not available") from exc
+    if not user.is_active:
+        raise PermissionDenied("SSO account is disabled")
+    return user
 
-    logger.debug(f"No existing user found for username '{username}' or email '{email}'")
-    return {}
+
+def link_to_existing_user(backend, details, user=None, uid=None, *args, **kwargs):
+    """Keep established social-auth associations; never link by email or username.
+
+    For first-time linking, configure account_bindings[backend.name][uid].
+    Social-auth stores the resulting provider/subject association for later logins.
+    """
+    from django.core.exceptions import PermissionDenied
+
+    if user is not None:
+        if not user.is_active:
+            raise PermissionDenied("SSO account is disabled")
+        return {"user": user}
+    existing = bound_sso_user(backend.name, uid)
+    return {"user": existing, "is_new": False} if existing is not None else {}
 
 
 def sync_ldap_groups_on_sso(backend, user, response, *args, **kwargs):
@@ -837,7 +800,7 @@ def sync_user_ldap_attributes(user):
 # )
 
 SOCIAL_AUTH_PIPELINE_EXTENSION = (
-    # Link SSO users to existing LDAP users by username
+    # Link existing accounts only through explicit provider/subject bindings
     "django_forms_workflows.sso_backends.link_to_existing_user",
     # Sync SSO attributes to UserProfile
     "django_forms_workflows.sso_backends.sync_user_profile",

@@ -6,8 +6,8 @@ Get Django Forms Workflows up and running in 10 minutes!
 
 ## Prerequisites
 
-- Python 3.10 or higher
-- Django 5.2 or higher
+- Python 3.11 or higher
+- Django 5.2.18+, 6.0.9+, or 6.1.2+
 - PostgreSQL 14+ (recommended) or MySQL 8.0+
 
 ## Installation

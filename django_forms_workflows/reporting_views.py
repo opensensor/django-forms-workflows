@@ -18,17 +18,31 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
-from .models import ApprovalTask, FormDefinition, FormSubmission
+from .models import ApprovalTask, FormDefinition
+from .security import visible_submissions
+
+
+def _range_days(request):
+    try:
+        return max(1, min(int(request.GET.get("days", 90)), 3660))
+    except (TypeError, ValueError):
+        return 90
+
+
+def _csv_cell(value):
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
 
 
 @login_required
 def analytics_export_csv(request):
     """Export analytics summary data as CSV."""
-    range_days = int(request.GET.get("days", 90))
+    range_days = _range_days(request)
     cutoff = timezone.now() - timedelta(days=range_days)
     form_slug = request.GET.get("form", "")
 
-    submissions_qs = FormSubmission.objects.exclude(status="draft")
+    submissions_qs = visible_submissions(request.user).exclude(status="draft")
     if form_slug:
         submissions_qs = submissions_qs.filter(form_definition__slug=form_slug)
 
@@ -46,15 +60,18 @@ def analytics_export_csv(request):
     ).order_by("-created_at"):
         writer.writerow(
             [
-                sub.created_at.strftime("%Y-%m-%d %H:%M"),
-                sub.form_definition.name if sub.form_definition else "",
-                sub.status,
-                (
-                    sub.submitter.get_full_name() or sub.submitter.username
-                    if sub.submitter
-                    else "Anonymous"
-                ),
-                sub.id,
+                _csv_cell(value)
+                for value in [
+                    sub.created_at.strftime("%Y-%m-%d %H:%M"),
+                    sub.form_definition.name if sub.form_definition else "",
+                    sub.status,
+                    (
+                        sub.submitter.get_full_name() or sub.submitter.username
+                        if sub.submitter
+                        else "Anonymous"
+                    ),
+                    sub.id,
+                ]
             ]
         )
 
@@ -66,14 +83,14 @@ def analytics_dashboard(request):
     """Render the analytics dashboard with submission & approval metrics."""
 
     # ── Time range filter ───────────────────────────────────────────────
-    range_days = int(request.GET.get("days", 90))
+    range_days = _range_days(request)
     cutoff = timezone.now() - timedelta(days=range_days)
     prev_cutoff = cutoff - timedelta(days=range_days)  # Previous period
     form_slug = request.GET.get("form", "")
 
     # Base querysets
-    submissions_qs = FormSubmission.objects.exclude(status="draft")
-    tasks_qs = ApprovalTask.objects.all()
+    submissions_qs = visible_submissions(request.user).exclude(status="draft")
+    tasks_qs = ApprovalTask.objects.filter(submission__in=submissions_qs)
 
     if form_slug:
         submissions_qs = submissions_qs.filter(form_definition__slug=form_slug)
@@ -195,7 +212,7 @@ def analytics_dashboard(request):
     # ── 7. Bottleneck stages ────────────────────────────────────────────
     # Stages with the most pending tasks right now
     bottleneck_stages = list(
-        ApprovalTask.objects.filter(status="pending", workflow_stage__isnull=False)
+        tasks_qs.filter(status="pending", workflow_stage__isnull=False)
         .values(
             "workflow_stage__name", "workflow_stage__workflow__form_definition__name"
         )
@@ -232,13 +249,16 @@ def analytics_dashboard(request):
 
     # ── Available forms for filter dropdown ─────────────────────────────
     available_forms = list(
-        FormDefinition.objects.filter(is_active=True)
+        FormDefinition.objects.filter(
+            is_active=True, submissions__in=visible_submissions(request.user)
+        )
+        .distinct()
         .values_list("slug", "name")
         .order_by("name")
     )
 
     # ── 10. Overdue tasks ───────────────────────────────────────────────
-    overdue_count = ApprovalTask.objects.filter(
+    overdue_count = tasks_qs.filter(
         status="pending",
         due_date__isnull=False,
         due_date__lt=timezone.now(),
@@ -256,7 +276,12 @@ def analytics_dashboard(request):
                 else:
                     clean[k] = v
             serializable.append(clean)
-        return mark_safe(json.dumps(serializable))
+        return mark_safe(
+            json.dumps(serializable)
+            .replace("<", "\\u003C")
+            .replace(">", "\\u003E")
+            .replace("&", "\\u0026")
+        )
 
     context = {
         "range_days": range_days,

@@ -1154,6 +1154,15 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
 
     def sync_import_admin_view(self, request):
         """Admin page for importing form definitions from a JSON file or raw JSON."""
+        from django.core.exceptions import PermissionDenied
+
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        if not (
+            self.has_add_permission(request) and self.has_change_permission(request)
+        ):
+            raise PermissionDenied
+
         from .sync_api import import_payload
 
         context = dict(self.admin_site.each_context(request))
@@ -1219,6 +1228,15 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
         Step 1 (POST) – fetch available forms from the remote, show checkbox list
         Step 2 (POST) – import selected forms, show results
         """
+        from django.core.exceptions import PermissionDenied
+
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+        if not (
+            self.has_add_permission(request) and self.has_change_permission(request)
+        ):
+            raise PermissionDenied
+
         from .sync_api import (
             build_export_payload,
             fetch_remote_payload,
@@ -1372,6 +1390,11 @@ class FormDefinitionAdmin(nested_admin.NestedModelAdmin):
         Step 1 (POST) – show all local forms with checkboxes + diff status
         Step 2 (POST) – execute push for selected forms, show results
         """
+        from django.core.exceptions import PermissionDenied
+
+        if not self.has_view_permission(request):
+            raise PermissionDenied
+
         from .sync_api import (
             build_export_payload,
             fetch_remote_payload,

@@ -25,6 +25,7 @@ from .models import (
     WorkflowDefinition,
     WorkflowStage,
 )
+from .security import builder_permission_required
 
 logger = logging.getLogger(__name__)
 
@@ -451,6 +452,7 @@ def _serialize_notification_rule(rule, stage_node_id=None):
 
 @staff_member_required
 @require_GET
+@builder_permission_required("view_formdefinition", "view_workflowdefinition")
 def workflow_builder_view(request, form_id):
     """
     Main workflow builder page.
@@ -458,7 +460,7 @@ def workflow_builder_view(request, form_id):
     form_definition = get_object_or_404(FormDefinition, id=form_id)
     workflow_id = request.GET.get("workflow_id")
     workflow, workflows = _resolve_builder_workflow(
-        form_definition, workflow_id=workflow_id, create_if_missing=True
+        form_definition, workflow_id=workflow_id
     )
     workflow_tracks = [
         {
@@ -468,18 +470,25 @@ def workflow_builder_view(request, form_id):
         for idx, wf in enumerate(workflows, start=1)
     ]
     selected_index = next(
-        (idx for idx, wf in enumerate(workflows, start=1) if wf.id == workflow.id), None
+        (
+            idx
+            for idx, wf in enumerate(workflows, start=1)
+            if workflow and wf.id == workflow.id
+        ),
+        None,
     )
 
     context = {
         "form_definition": form_definition,
         "form_id": form_id,
-        "workflow_id": workflow.id,
+        "workflow_id": workflow.id if workflow else None,
         "workflow_count": len(workflows),
         "workflow_tracks": workflow_tracks,
         "selected_workflow_label": _workflow_display_name(
             workflow, index=selected_index
-        ),
+        )
+        if workflow
+        else "New workflow",
     }
 
     return render(
@@ -489,6 +498,7 @@ def workflow_builder_view(request, form_id):
 
 @staff_member_required
 @require_GET
+@builder_permission_required("view_formdefinition", "view_workflowdefinition")
 def workflow_builder_load(request, form_id):
     """
     API endpoint to load workflow data as JSON.
@@ -496,7 +506,7 @@ def workflow_builder_load(request, form_id):
     form_definition = get_object_or_404(FormDefinition, id=form_id)
     workflow_id = request.GET.get("workflow_id")
     workflow, workflows = _resolve_builder_workflow(
-        form_definition, workflow_id=workflow_id, create_if_missing=True
+        form_definition, workflow_id=workflow_id
     )
 
     # Get form fields for condition/action configuration
@@ -587,6 +597,7 @@ def workflow_builder_load(request, form_id):
 
 @staff_member_required
 @require_POST
+@builder_permission_required("change_formdefinition", "save_workflowdefinition")
 def workflow_builder_save(request):
     """
     API endpoint to save workflow data.
@@ -624,7 +635,7 @@ def workflow_builder_save(request):
             {
                 "success": True,
                 "message": "Workflow saved successfully",
-                "workflow_id": workflow.id,
+                "workflow_id": workflow.id if workflow else None,
             }
         )
 

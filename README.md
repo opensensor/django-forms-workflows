@@ -3,7 +3,7 @@
 **Enterprise-grade, database-driven form builder with multi-stage approval workflows, external data integration, and cross-instance sync**
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![Django Version](https://img.shields.io/badge/django-5.2%2B-green)](https://www.djangoproject.com/)
 [![Version](https://img.shields.io/badge/version-0.49.0-orange)](https://github.com/opensensor/django-forms-workflows)
 
@@ -189,6 +189,8 @@ Move form definitions between environments from the Django Admin:
 
 ## Quick Start
 
+See [security upgrade notes](docs/SECURITY_UPGRADE.md) before upgrading an existing deployment.
+
 ### Installation
 
 ```bash
@@ -344,8 +346,8 @@ graph TB
 
 ## Requirements
 
-- Python 3.10+
-- Django 5.2+
+- Python 3.11+
+- Django 5.2.18+, 6.0.9+, or 6.1.2+ (security patch minimums)
 - PostgreSQL, MySQL, or SQLite (PostgreSQL recommended for production)
 - Optional: Celery 5.0+ with Redis/Valkey for background task processing
 - Optional: `openpyxl` for Excel spreadsheet field support (`pip install django-forms-workflows[excel]`)

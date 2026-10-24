@@ -881,6 +881,8 @@ class DocumentTemplate(models.Model):
         """Render this template with submission data, returning HTML string."""
         import re
 
+        from django.utils.html import escape
+
         form_data = submission.form_data or {}
 
         # Build merge context with system variables + form data
@@ -906,6 +908,7 @@ class DocumentTemplate(models.Model):
             else:
                 context[key] = str(val) if val is not None else ""
 
+        context = {key: str(escape(value)) for key, value in context.items()}
         html = self.html_content
 
         # Process conditional blocks: {% if field_name %}...{% endif %}

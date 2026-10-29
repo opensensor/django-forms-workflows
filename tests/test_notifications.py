@@ -9,6 +9,7 @@ from django.utils import timezone
 from django_forms_workflows import tasks as tasks_module
 from django_forms_workflows.models import (
     ApprovalTask,
+    FormDefinition,
     FormSubmission,
     NotificationLog,
     NotificationRule,
@@ -2254,3 +2255,47 @@ class TestNotificationLogCcBccConsolidation:
         log = NotificationLog.objects.get(recipient_email="primary@example.com")
         assert log.cc_emails == "cc@example.com"
         assert log.bcc_emails == "secret@example.com"
+
+
+@pytest.mark.parametrize("task_count", [1, 8])
+def test_deadline_scan_has_constant_query_count(
+    task_count, user, approver_user, django_assert_num_queries
+):
+    # Distinct forms prevent a relation cache from hiding per-task lookups.
+    for index in range(task_count):
+        form = FormDefinition.objects.create(name=f"Form {index}", slug=f"form-{index}")
+        WorkflowDefinition.objects.create(form_definition=form)
+        # Preserve the first-workflow compatibility policy for sibling workflows.
+        WorkflowDefinition.objects.create(
+            form_definition=form, approval_deadline_days=1
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form,
+            submitter=user,
+            form_data={},
+            status="pending_approval",
+        )
+        ApprovalTask.objects.create(
+            submission=submission,
+            step_name="Review",
+            assigned_to=approver_user,
+            status="pending",
+        )
+    # A form without a workflow must still be skipped, not drop or crash the scan.
+    orphan_form = FormDefinition.objects.create(name="No workflow", slug="no-workflow")
+    orphan = FormSubmission.objects.create(
+        form_definition=orphan_form,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    ApprovalTask.objects.create(
+        submission=orphan,
+        step_name="Review",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    with django_assert_num_queries(2):
+        result = check_approval_deadlines()
+    assert result == "expired=0, reminders=0, auto_approved=0"
+    assert ApprovalTask.objects.filter(status="pending").count() == task_count + 1

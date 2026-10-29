@@ -24,6 +24,7 @@ from email.utils import make_msgid
 import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.db.models import Prefetch
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -37,6 +38,7 @@ from .models import (
     PendingNotification,
     WebhookDeliveryLog,
     WebhookEndpoint,
+    WorkflowDefinition,
     WorkflowStage,
 )
 
@@ -803,8 +805,17 @@ def check_approval_deadlines() -> str:
     (no user context available).
     """
     now = timezone.now()
-    pending = ApprovalTask.objects.select_related("submission__form_definition").filter(
-        status="pending"
+    pending = (
+        ApprovalTask.objects.select_related("submission__form_definition")
+        .prefetch_related(
+            Prefetch(
+                "submission__form_definition__workflows",
+                # The compatibility accessor uses .first(), which orders by PK.
+                # Prefetch in that order so it can reuse the relation cache.
+                queryset=WorkflowDefinition.objects.order_by("pk"),
+            )
+        )
+        .filter(status="pending")
     )
 
     expired_count = 0

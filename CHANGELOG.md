@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.78.1] - 2026-10-30
+
+### Fixed
+- Batch workflow lookups during approval deadline checks, avoiding one query per
+  pending task while preserving the first-workflow selection policy.
+
+### Security
+- Require `social-auth-core >= 6.2.0` for SSO extras and update the lock to resolve
+  the dependency audit failure for CVE-2026-115910.
+
+## Changes shipped through 0.78.0
+
 ### Security
 - **Payment endpoints hardened against unauthorized access and unsafe state
   transitions (issue #27, supersedes #4).** All checkout endpoints

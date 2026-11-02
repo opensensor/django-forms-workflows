@@ -153,6 +153,7 @@ def form_builder_clone(request, form_id):
             # Copy group permissions
             cloned_form.submit_groups.set(original_form.submit_groups.all())
             cloned_form.view_groups.set(original_form.view_groups.all())
+            cloned_form.reviewer_groups.set(original_form.reviewer_groups.all())
             cloned_form.admin_groups.set(original_form.admin_groups.all())
 
             # Clone workflows, stages, and stage approval groups

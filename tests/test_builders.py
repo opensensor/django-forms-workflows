@@ -13,10 +13,12 @@ from django_forms_workflows.form_builder_views import (
 )
 from django_forms_workflows.models import (
     FormDefinition,
+    FormField,
     NotificationRule,
     PostSubmissionAction,
     StageApprovalGroup,
     WorkflowDefinition,
+    WorkflowStage,
 )
 from django_forms_workflows.workflow_builder_views import (
     convert_visual_to_workflow,
@@ -1388,6 +1390,146 @@ class TestSaveFormDefinitionFromBuilderData:
 # ── Form builder view tests ─────────────────────────────────────────────────
 
 
+class TestFormBuilderSavePayloadValidation:
+    """form_builder_save must keep fields and stages scoped to the form being
+    saved, and reject bad references without persisting any of the save."""
+
+    @staticmethod
+    def _save(client, form, fields):
+        return client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "id": form.id,
+                    "name": form.name,
+                    "slug": form.slug,
+                    "fields": fields,
+                }
+            ),
+            content_type="application/json",
+        )
+
+    @staticmethod
+    def _field_payload(field, **overrides):
+        return {
+            "id": field.id,
+            "field_name": field.field_name,
+            "field_label": "Changed Label",
+            "field_type": field.field_type,
+            "order": field.order,
+            **overrides,
+        }
+
+    @pytest.fixture
+    def other_form(self, db):
+        return FormDefinition.objects.create(
+            name="Other Form", slug="other-form", description="", instructions=""
+        )
+
+    @pytest.fixture
+    def field(self, form_with_fields):
+        return form_with_fields.fields.get(field_name="full_name")
+
+    def test_assigns_stage_from_same_form(
+        self, client, superuser, form_with_fields, field
+    ):
+        wf = WorkflowDefinition.objects.create(form_definition=form_with_fields)
+        stage = WorkflowStage.objects.create(workflow=wf, name="Review", order=1)
+        client.force_login(superuser)
+
+        resp = self._save(
+            client,
+            form_with_fields,
+            [self._field_payload(field, workflow_stage_id=str(stage.id))],
+        )
+
+        assert resp.status_code == 200
+        field.refresh_from_db()
+        assert field.workflow_stage_id == stage.id
+
+    def test_clears_stage_when_blank(self, client, superuser, form_with_fields, field):
+        wf = WorkflowDefinition.objects.create(form_definition=form_with_fields)
+        field.workflow_stage = WorkflowStage.objects.create(
+            workflow=wf, name="Review", order=1
+        )
+        field.save()
+        client.force_login(superuser)
+
+        resp = self._save(
+            client, form_with_fields, [self._field_payload(field, workflow_stage_id="")]
+        )
+
+        assert resp.status_code == 200
+        field.refresh_from_db()
+        assert field.workflow_stage_id is None
+
+    def test_rejects_stage_from_another_form_and_rolls_back(
+        self, client, superuser, form_with_fields, field, other_form
+    ):
+        wf = WorkflowDefinition.objects.create(form_definition=other_form)
+        foreign_stage = WorkflowStage.objects.create(
+            workflow=wf, name="Foreign", order=1
+        )
+        original_version = form_with_fields.version
+        original_label = field.field_label
+        client.force_login(superuser)
+
+        resp = self._save(
+            client,
+            form_with_fields,
+            [self._field_payload(field, workflow_stage_id=foreign_stage.id)],
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+        assert "not valid for this form" in resp.json()["error"]
+        form_with_fields.refresh_from_db()
+        field.refresh_from_db()
+        assert form_with_fields.version == original_version
+        assert field.field_label == original_label
+        assert field.workflow_stage_id is None
+
+    def test_rejects_malformed_stage_id(
+        self, client, superuser, form_with_fields, field
+    ):
+        client.force_login(superuser)
+
+        resp = self._save(
+            client,
+            form_with_fields,
+            [self._field_payload(field, workflow_stage_id="not-a-number")],
+        )
+
+        assert resp.status_code == 400
+        assert "Invalid workflow_stage_id" in resp.json()["error"]
+
+    def test_rejects_field_from_another_form_and_rolls_back(
+        self, client, superuser, form_with_fields, field, other_form
+    ):
+        foreign_field = FormField.objects.create(
+            form_definition=other_form,
+            field_name="foreign",
+            field_label="Foreign Label",
+            field_type="text",
+            order=1,
+        )
+        original_field_count = form_with_fields.fields.count()
+        client.force_login(superuser)
+
+        resp = self._save(
+            client, form_with_fields, [self._field_payload(foreign_field)]
+        )
+
+        assert resp.status_code == 400
+        assert "Invalid field id" in resp.json()["error"]
+        foreign_field.refresh_from_db()
+        assert foreign_field.form_definition_id == other_form.id
+        assert foreign_field.field_label == "Foreign Label"
+        # The removal of this form's own fields must be rolled back as well.
+        assert form_with_fields.fields.count() == original_field_count
+
+
+@pytest.mark.django_db
 class TestFormBuilderViews:
     """Integration tests for the form builder HTTP endpoints."""
 
@@ -1476,6 +1618,27 @@ class TestFormBuilderViews:
         assert cloned.name.startswith(form_with_fields.name)
         assert cloned.id != form_with_fields.id
         assert cloned.fields.count() == form_with_fields.fields.count()
+
+    def test_clone_copies_all_permission_groups(
+        self, client, superuser, form_with_fields, approval_group
+    ):
+        for groups in (
+            form_with_fields.submit_groups,
+            form_with_fields.view_groups,
+            form_with_fields.reviewer_groups,
+            form_with_fields.admin_groups,
+        ):
+            groups.set([approval_group])
+        client.force_login(superuser)
+
+        resp = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
+
+        assert resp.status_code == 200
+        cloned = FormDefinition.objects.get(id=resp.json()["form_id"])
+        assert list(cloned.submit_groups.all()) == [approval_group]
+        assert list(cloned.view_groups.all()) == [approval_group]
+        assert list(cloned.reviewer_groups.all()) == [approval_group]
+        assert list(cloned.admin_groups.all()) == [approval_group]
 
     def test_clone_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

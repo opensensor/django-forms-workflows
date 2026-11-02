@@ -404,6 +404,9 @@ def form_builder_save(request):
             }
         )
 
+    except FormBuilderPayloadError as exc:
+        # Raised inside the atomic block above, so the partial save is rolled back.
+        return JsonResponse({"success": False, "error": str(exc)}, status=400)
     except json.JSONDecodeError:
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
@@ -413,6 +416,10 @@ def form_builder_save(request):
         return JsonResponse(
             {"success": False, "error": "An internal error occurred."}, status=500
         )
+
+
+class FormBuilderPayloadError(ValueError):
+    """The builder payload is invalid; the message is safe to return to the client."""
 
 
 def save_form_definition_from_builder_data(data, user, form_definition=None):
@@ -528,14 +535,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     updated_field_ids = set()
     field_id_mapping = {}  # Map old IDs to new IDs for frontend update
 
-    # Create or update fields
-    # Pre-compute valid workflow stages for this form_definition
+    # Stages a field on this form may be attached to
     allowed_workflow_stage_ids = set(
         WorkflowStage.objects.filter(
-            workflow_definition__form_definition=form_definition
+            workflow__form_definition=form_definition
         ).values_list("id", flat=True)
     )
 
+    # Create or update fields
     for field_data in fields_data:
         field_id = field_data.get("id")
         old_id = field_id  # Store original ID for mapping
@@ -593,24 +600,19 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
         # Add workflow stage FK (for staged approval workflows)
         wf_stage_id = field_data.get("workflow_stage_id")
-        if wf_stage_id is not None:
-            if wf_stage_id:
-                try:
-                    wf_stage_id_int = int(wf_stage_id)
-                except (TypeError, ValueError):
-                    return JsonResponse(
-                        {"error": f"Invalid workflow_stage_id for field '{field_data.get('field_name', '')}'"},
-                        status=400,
-                    )
-
-                if wf_stage_id_int not in allowed_workflow_stage_ids:
-                    return JsonResponse(
-                        {"error": f"workflow_stage_id {wf_stage_id_int} is not valid for this form"},
-                        status=400,
-                    )
-                field_props["workflow_stage_id"] = wf_stage_id_int
-            else:
-                field_props["workflow_stage_id"] = None
+        if wf_stage_id:
+            try:
+                wf_stage_id = int(wf_stage_id)
+            except (TypeError, ValueError) as exc:
+                raise FormBuilderPayloadError(
+                    "Invalid workflow_stage_id for field "
+                    f"'{field_data.get('field_name', '')}'"
+                ) from exc
+            if wf_stage_id not in allowed_workflow_stage_ids:
+                raise FormBuilderPayloadError(
+                    f"workflow_stage_id {wf_stage_id} is not valid for this form"
+                )
+            field_props["workflow_stage_id"] = wf_stage_id
         else:
             field_props["workflow_stage_id"] = None
 
@@ -621,9 +623,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 id=field_id, form_definition=form_definition
             ).update(**field_props)
             if updated_count == 0:
-                return JsonResponse(
-                    {"error": f"Invalid field id {field_id} for this form"},
-                    status=400,
+                raise FormBuilderPayloadError(
+                    f"Invalid field id {field_id} for this form"
                 )
             updated_field_ids.add(field_id)
             field_id_mapping[str(old_id)] = field_id

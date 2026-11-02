@@ -2299,3 +2299,110 @@ def test_deadline_scan_has_constant_query_count(
         result = check_approval_deadlines()
     assert result == "expired=0, reminders=0, auto_approved=0"
     assert ApprovalTask.objects.filter(status="pending").count() == task_count + 1
+
+
+# ── notify_stage_groups: only groups holding a task on the stage ───────────
+
+
+@pytest.mark.django_db
+class TestNotifyStageGroupsOnlyTaskHolders:
+    @pytest.fixture
+    def setup(self, form_definition, user, approval_group, second_approval_group):
+        from django.contrib.auth.models import User
+
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=True
+        )
+        stage = WorkflowStage.objects.create(
+            workflow=wf, name="Sequence", order=1, approval_logic="sequence"
+        )
+        StageApprovalGroup.objects.create(
+            stage=stage, group=approval_group, position=0, role="approval"
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="approval_request",
+            use_triggering_stage=True,
+            notify_stage_groups=True,
+        )
+        User.objects.create_user("first", email="first@example.com").groups.add(
+            approval_group
+        )
+        User.objects.create_user("second", email="second@example.com").groups.add(
+            second_approval_group
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="pending_approval",
+        )
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            step_name="Sequence",
+            status="pending",
+            workflow_stage=stage,
+            stage_number=1,
+            assigned_group=approval_group,
+        )
+        return stage, submission, task, second_approval_group
+
+    @staticmethod
+    def _recipients(submission, task):
+        with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+            send_notification_rules(submission.id, "approval_request", task_id=task.id)
+        return [call.args[1][0] for call in mock_send.call_args_list]
+
+    def test_sequence_stage_skips_groups_not_yet_reached(self, setup):
+        stage, submission, task, later_group = setup
+        StageApprovalGroup.objects.create(
+            stage=stage, group=later_group, position=1, role="approval"
+        )
+
+        recipients = self._recipients(submission, task)
+
+        assert "first@example.com" in recipients
+        assert "second@example.com" not in recipients
+
+    def test_non_approval_role_task_does_not_notify_its_group(self, setup):
+        stage, submission, task, validation_group = setup
+        StageApprovalGroup.objects.create(
+            stage=stage, group=validation_group, role="validation"
+        )
+        # A leftover task from before the 0.74.6 engine fix.
+        ApprovalTask.objects.create(
+            submission=submission,
+            step_name="Sequence",
+            status="pending",
+            workflow_stage=stage,
+            stage_number=1,
+            assigned_group=validation_group,
+        )
+
+        recipients = self._recipients(submission, task)
+
+        assert "first@example.com" in recipients
+        assert "second@example.com" not in recipients
+
+
+@pytest.mark.django_db
+def test_send_notification_rules_tolerates_deleted_task(form_definition, user):
+    """A task deleted before the Celery job runs must not abort the dispatch."""
+    wf = WorkflowDefinition.objects.create(form_definition=form_definition)
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        notify_submitter=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "approval_request", task_id=999999)
+
+    assert mock_send.called
+    assert "task" not in mock_send.call_args.args[3]

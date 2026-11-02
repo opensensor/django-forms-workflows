@@ -1237,6 +1237,7 @@ def _collect_notification_recipients(
     # resolution for OTHER stages on the workflow.
     if getattr(notif, "notify_stage_groups", False) and submission is not None:
         from django.contrib.auth import get_user_model
+        from django.db.models import Exists, OuterRef
 
         from .models import StageApprovalGroup
 
@@ -1254,36 +1255,36 @@ def _collect_notification_recipients(
                 .distinct()
             )
 
-        # Step 2 — narrow to stages whose task took the group-fallback
-        # path on this submission.
-        effective_stage_ids = list(
+        # Step 2 — notify only the groups that actually hold a group-fallback
+        # task on those stages. A "sequence" stage must not page groups whose
+        # turn hasn't come yet. Only role="approval" rows count:
+        # validation/reassignment-role groups must not spawn tasks (engine fix
+        # in 0.74.6) and must not receive notifications, even if a task created
+        # before that fix is still around.
+        group_ids = list(
             submission.approval_tasks.filter(
+                Exists(
+                    StageApprovalGroup.objects.filter(
+                        stage_id=OuterRef("workflow_stage_id"),
+                        group_id=OuterRef("assigned_group_id"),
+                        role="approval",
+                    )
+                ),
                 workflow_stage_id__in=candidate_stage_ids,
                 assigned_group_id__isnull=False,
                 assigned_to_id__isnull=True,
             )
-            .values_list("workflow_stage_id", flat=True)
+            .values_list("assigned_group_id", flat=True)
             .distinct()
         )
-
-        if effective_stage_ids:
-            # Step 3 — only role="approval" rows on those stages count.
-            # Validation/reassignment-role groups must not spawn tasks
-            # (engine fix in 0.74.6) and must not receive notifications
-            # (parity with that fix).
-            group_ids = list(
-                StageApprovalGroup.objects.filter(
-                    stage_id__in=effective_stage_ids, role="approval"
-                ).values_list("group_id", flat=True)
-            )
-            if group_ids:
-                for email in (
-                    user_model.objects.filter(groups__id__in=group_ids)
-                    .exclude(email="")
-                    .values_list("email", flat=True)
-                    .distinct()
-                ):
-                    _add(email)
+        if group_ids:
+            for email in (
+                user_model.objects.filter(groups__id__in=group_ids)
+                .exclude(email="")
+                .values_list("email", flat=True)
+                .distinct()
+            ):
+                _add(email)
 
     # 6. Explicit notify_groups M2M (NotificationRule only)
     if hasattr(notif, "notify_groups"):
@@ -1453,14 +1454,6 @@ def send_notification_rules(
             if _rejecting:
                 task_id = _rejecting.id
 
-    submission_url, approval_url = _build_form_field_notification_context(
-        submission,
-        ApprovalTask.objects.get(id=task_id) if task_id else None,
-    )
-
-    workflow = getattr(submission.form_definition, "workflow", None)
-    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
-
     # Resolve the task (if any) to scope rules to its workflow
     task = None
     if task_id:
@@ -1469,6 +1462,14 @@ def send_notification_rules(
         except ApprovalTask.DoesNotExist:
             # A concurrently deleted task simply leaves notification context unscoped.
             pass
+
+    submission_url, approval_url = _build_form_field_notification_context(
+        submission,
+        task,
+    )
+
+    workflow = getattr(submission.form_definition, "workflow", None)
+    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
 
     # Build a denormalized "public_comments" list for the template context
     # (file templates and per-rule body_template overrides alike). Each
@@ -1695,12 +1696,8 @@ def send_notification_rules(
             # {{ c.comment }}{% endfor %}`` without iterating the model.
             "public_comments": public_comments,
         }
-        if task_id:
-            try:
-                base_context["task"] = ApprovalTask.objects.get(id=task_id)
-            except ApprovalTask.DoesNotExist:
-                # The notification can still be rendered without optional task context.
-                pass
+        if task:
+            base_context["task"] = task
 
         # Pre-fetch User objects for all recipients so templates that
         # reference ``{{ approver }}`` (e.g. approval_request.html) work

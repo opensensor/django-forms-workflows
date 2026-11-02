@@ -406,7 +406,7 @@ def form_builder_save(request):
 
     except FormBuilderPayloadError as exc:
         # Raised inside the atomic block above, so the partial save is rolled back.
-        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+        return JsonResponse({"success": False, "error": exc.client_message}, status=400)
     except json.JSONDecodeError:
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
@@ -419,7 +419,15 @@ def form_builder_save(request):
 
 
 class FormBuilderPayloadError(ValueError):
-    """The builder payload is invalid; the message is safe to return to the client."""
+    """The builder payload is invalid.
+
+    ``client_message`` is the only text returned to the client, so exception
+    details can never reach the response by accident.
+    """
+
+    def __init__(self, client_message):
+        super().__init__(client_message)
+        self.client_message = client_message
 
 
 def save_form_definition_from_builder_data(data, user, form_definition=None):

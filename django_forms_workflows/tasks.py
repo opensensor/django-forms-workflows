@@ -1453,15 +1453,7 @@ def send_notification_rules(
             if _rejecting:
                 task_id = _rejecting.id
 
-    submission_url, approval_url = _build_form_field_notification_context(
-        submission,
-        ApprovalTask.objects.get(id=task_id) if task_id else None,
-    )
-
-    workflow = getattr(submission.form_definition, "workflow", None)
-    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
-
-    # Resolve the task (if any) to scope rules to its workflow
+    # Resolve the task once (if any), guarding against concurrent deletion.
     task = None
     if task_id:
         try:
@@ -1469,6 +1461,16 @@ def send_notification_rules(
         except ApprovalTask.DoesNotExist:
             # A concurrently deleted task simply leaves notification context unscoped.
             pass
+
+    submission_url, approval_url = _build_form_field_notification_context(
+        submission,
+        task,
+    )
+
+    workflow = getattr(submission.form_definition, "workflow", None)
+    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
+
+    # `task` (if any) is already resolved above and reused below.
 
     # Build a denormalized "public_comments" list for the template context
     # (file templates and per-rule body_template overrides alike). Each

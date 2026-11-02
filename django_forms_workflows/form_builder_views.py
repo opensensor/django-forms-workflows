@@ -528,6 +528,13 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     field_id_mapping = {}  # Map old IDs to new IDs for frontend update
 
     # Create or update fields
+    # Pre-compute valid workflow stages for this form_definition
+    allowed_workflow_stage_ids = set(
+        WorkflowStage.objects.filter(
+            workflow_definition__form_definition=form_definition
+        ).values_list("id", flat=True)
+    )
+
     for field_data in fields_data:
         field_id = field_data.get("id")
         old_id = field_id  # Store original ID for mapping
@@ -586,14 +593,37 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         # Add workflow stage FK (for staged approval workflows)
         wf_stage_id = field_data.get("workflow_stage_id")
         if wf_stage_id is not None:
-            field_props["workflow_stage_id"] = int(wf_stage_id) if wf_stage_id else None
+            if wf_stage_id:
+                try:
+                    wf_stage_id_int = int(wf_stage_id)
+                except (TypeError, ValueError):
+                    return JsonResponse(
+                        {"error": f"Invalid workflow_stage_id for field '{field_data.get('field_name', '')}'"},
+                        status=400,
+                    )
+
+                if wf_stage_id_int not in allowed_workflow_stage_ids:
+                    return JsonResponse(
+                        {"error": f"workflow_stage_id {wf_stage_id_int} is not valid for this form"},
+                        status=400,
+                    )
+                field_props["workflow_stage_id"] = wf_stage_id_int
+            else:
+                field_props["workflow_stage_id"] = None
         else:
             field_props["workflow_stage_id"] = None
 
         # Create or update field
         if field_id and isinstance(field_id, int):
-            # Update existing field
-            FormField.objects.filter(id=field_id).update(**field_props)
+            # Update existing field, scoped to current form_definition
+            updated_count = FormField.objects.filter(
+                id=field_id, form_definition=form_definition
+            ).update(**field_props)
+            if updated_count == 0:
+                return JsonResponse(
+                    {"error": f"Invalid field id {field_id} for this form"},
+                    status=400,
+                )
             updated_field_ids.add(field_id)
             field_id_mapping[str(old_id)] = field_id
         else:

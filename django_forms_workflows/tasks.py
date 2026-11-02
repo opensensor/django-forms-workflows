@@ -1267,14 +1267,16 @@ def _collect_notification_recipients(
         )
 
         if effective_stage_ids:
-            # Step 3 — only role="approval" rows on those stages count.
-            # Validation/reassignment-role groups must not spawn tasks
-            # (engine fix in 0.74.6) and must not receive notifications
-            # (parity with that fix).
+            # Step 3 — notify only groups that were actually assigned
+            # fallback tasks on this submission.
             group_ids = list(
-                StageApprovalGroup.objects.filter(
-                    stage_id__in=effective_stage_ids, role="approval"
-                ).values_list("group_id", flat=True)
+                submission.approval_tasks.filter(
+                    workflow_stage_id__in=effective_stage_ids,
+                    assigned_group_id__isnull=False,
+                    assigned_to_id__isnull=True,
+                )
+                .values_list("assigned_group_id", flat=True)
+                .distinct()
             )
             if group_ids:
                 for email in (

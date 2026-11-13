@@ -1809,9 +1809,6 @@ def send_notification_rules(
         successful earlier recipient logs after emails were already delivered.
         """
         nonlocal had_dispatch_failure
-        # Keep the lock through delivery and log writes so a concurrent
-        # dispatch rechecks the completed recipient set before sending.
-        NotificationRule.objects.select_for_update().get(pk=rule.pk)
         workflow = rule.workflow
         if explicit_task:
             rule_task = (
@@ -1847,6 +1844,17 @@ def send_notification_rules(
             if rule_task is None or rule.stage_id != rule_task.workflow_stage_id:
                 return
         rule_task_id = rule_task.pk if rule_task is not None else None
+
+        # Lock only rows for this dispatch identity so unrelated submissions
+        # using the same rule can run concurrently.
+        list(
+            NotificationLog.objects.select_for_update().filter(
+                submission_id=submission_id,
+                notification_type=event,
+                approval_task_id=rule_task_id,
+                notification_rule_id=rule.id,
+            )
+        )
         if workflow.pk not in _public_comments_by_workflow:
             _public_comments_by_workflow[workflow.pk] = (
                 _build_public_comments_for_workflow(workflow.pk)

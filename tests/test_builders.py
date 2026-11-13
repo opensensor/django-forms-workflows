@@ -920,6 +920,25 @@ class TestWorkflowBuilderViews:
         assert "workflow" in data
         assert "nodes" in data["workflow"]
 
+    def test_load_and_save_require_staff(self, client, user, form_definition):
+        load_url = _wf_url(f"workflow/api/load/{form_definition.id}/")
+        save_url = _wf_url("workflow/api/save/")
+        payload = {"form_id": form_definition.id, "workflow": {"nodes": []}}
+
+        assert client.get(load_url).status_code in (302, 403)
+        assert client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        ).status_code in (302, 403)
+
+        client.force_login(user)
+        assert client.get(load_url).status_code in (302, 403)
+        assert client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        ).status_code in (302, 403)
+        assert not WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).exists()
+
     def test_load_returns_requested_workflow_track(
         self, client, superuser, form_definition
     ):
@@ -1144,6 +1163,15 @@ class TestWorkflowBuilderViews:
     def test_save_rejects_invalid_notification_cadence_configuration(
         self, client, superuser, form_definition
     ):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            name_label="Existing track",
+            notification_cadence="daily",
+        )
+        stage = workflow.stages.create(name="Existing stage", order=1)
+        rule = NotificationRule.objects.create(
+            workflow=workflow, event="approval_request", subject_template="Original"
+        )
         initial_workflow_count = WorkflowDefinition.objects.count()
         initial_stage_count = WorkflowStage.objects.count()
 
@@ -1151,6 +1179,7 @@ class TestWorkflowBuilderViews:
         url = _wf_url("workflow/api/save/")
         payload = {
             "form_id": form_definition.id,
+            "workflow_id": workflow.id,
             "workflow": {
                 "nodes": [
                     {"type": "start", "data": {}},
@@ -1180,6 +1209,13 @@ class TestWorkflowBuilderViews:
         assert "validation failed" in data["error"].lower()
         assert WorkflowDefinition.objects.count() == initial_workflow_count
         assert WorkflowStage.objects.count() == initial_stage_count
+        workflow.refresh_from_db()
+        stage.refresh_from_db()
+        rule.refresh_from_db()
+        assert workflow.name_label == "Existing track"
+        assert workflow.notification_cadence == "daily"
+        assert stage.name == "Existing stage"
+        assert rule.subject_template == "Original"
 
     def test_save_updates_selected_workflow_track_only(
         self, client, superuser, form_definition, approval_group
@@ -1273,6 +1309,39 @@ class TestWorkflowBuilderViews:
             "operator": "OR",
             "conditions": [{"field": "amount", "operator": "gt", "value": "500"}],
         }
+
+    def test_foreign_workflow_id_is_rejected(self, client, superuser, form_definition):
+        other_form = FormDefinition.objects.create(name="Other form", slug="other-form")
+        local = WorkflowDefinition.objects.create(
+            form_definition=form_definition, name_label="Local"
+        )
+        foreign = WorkflowDefinition.objects.create(
+            form_definition=other_form, name_label="Foreign"
+        )
+        client.force_login(superuser)
+
+        load = client.get(
+            _wf_url(f"workflow/api/load/{form_definition.id}/"),
+            {"workflow_id": foreign.id},
+        )
+        save = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow_id": foreign.id,
+                    "workflow": {"nodes": []},
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert load.status_code == 404
+        assert save.status_code == 404
+        local.refresh_from_db()
+        foreign.refresh_from_db()
+        assert local.name_label == "Local"
+        assert foreign.name_label == "Foreign"
 
 
 # ── save_form_definition_from_builder_data ──────────────────────────────────

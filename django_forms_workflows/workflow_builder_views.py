@@ -11,7 +11,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_time
 from django.views.decorators.http import require_GET, require_POST
@@ -653,6 +653,8 @@ def workflow_builder_save(request):
             },
             status=400,
         )
+    except Http404:
+        raise
     except Exception:
         logger.exception("Error saving workflow in builder")
         return JsonResponse(

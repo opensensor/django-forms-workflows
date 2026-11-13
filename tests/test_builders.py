@@ -491,6 +491,16 @@ class TestConvertVisualToWorkflow:
         remaining = list(wf.stages.order_by("order"))
         assert len(remaining) == 1
         assert remaining[0].id == stage1_id
+        assert remaining[0].name == "Renamed"
+        assert remaining[0].approval_logic == "any"
+        assert remaining[0].requires_manager_approval is False
+        assert remaining[0].approve_label == ""
+        stage_groups = list(
+            StageApprovalGroup.objects.filter(stage=remaining[0]).order_by("position")
+        )
+        assert len(stage_groups) == 1
+        assert stage_groups[0].group_id == approval_group.id
+        assert stage_groups[0].position == 0
 
     def test_deletes_removed_stages(
         self, staged_workflow, form_definition, approval_group
@@ -1749,20 +1759,39 @@ class TestFormBuilderViews:
 
     def test_clone_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)
+        before_count = FormDefinition.objects.count()
         url = _fb_url(f"builder/api/clone/{form_with_fields.id}/")
         resp = client.post(url)
         assert resp.status_code in (302, 403)
-        assert FormDefinition.objects.filter(id=form_with_fields.id).count() == 1
+        assert FormDefinition.objects.count() == before_count
 
     def test_preview_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
         url = _fb_url("builder/api/preview/")
+        form_count_before = FormDefinition.objects.count()
+        field_count_before = FormField.objects.count()
+        field_label = "Preview Test Field"
         resp = client.post(
             url,
-            data=json.dumps({"form_id": form_with_fields.id}),
+            data=json.dumps(
+                {
+                    "name": "Preview Form",
+                    "fields": [
+                        {
+                            "field_name": "preview_test_field",
+                            "field_type": "text",
+                            "field_label": field_label,
+                            "required": False,
+                        }
+                    ],
+                }
+            ),
             content_type="application/json",
         )
         assert resp.status_code == 200
+        assert field_label in resp.content.decode("utf-8")
+        assert FormDefinition.objects.count() == form_count_before
+        assert FormField.objects.count() == field_count_before
 
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

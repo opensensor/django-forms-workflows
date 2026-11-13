@@ -1576,7 +1576,11 @@ def send_notification_rules(
 
     # Scope rules to the specific workflow that owns the triggering task,
     # rather than firing rules from every workflow on the form.
-    if task and getattr(task, "workflow_stage_id", None):
+    # Important: only narrow by workflow when task_id was explicitly supplied
+    # by the caller. For task-less dispatches, an inferred task must not
+    # collapse notification scope to a single workflow.
+    explicit_task = task_id is not None
+    if explicit_task and task and getattr(task, "workflow_stage_id", None):
         rules_qs = rules_qs.filter(workflow_id=task.workflow_stage.workflow_id)
     else:
         rules_qs = rules_qs.filter(workflow__form_definition=submission.form_definition)

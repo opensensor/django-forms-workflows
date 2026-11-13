@@ -9,6 +9,7 @@ import pytest
 from django.core.exceptions import ValidationError
 
 from django_forms_workflows.form_builder_views import (
+    FormBuilderPayloadError,
     save_form_definition_from_builder_data,
 )
 from django_forms_workflows.models import (
@@ -1446,6 +1447,45 @@ class TestSaveFormDefinitionFromBuilderData:
         )
         field.refresh_from_db()
         assert field.field_label == "Renamed Label"
+
+    def test_direct_save_rolls_back_form_and_fields_on_invalid_id(
+        self, user, form_with_fields
+    ):
+        first = form_with_fields.fields.get(field_name="full_name")
+        second = form_with_fields.fields.get(field_name="email")
+        original_label = first.field_label
+        original_version = form_with_fields.version
+        data = {
+            "name": "Changed form",
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": first.id,
+                    "field_name": first.field_name,
+                    "field_label": "Changed label",
+                    "field_type": first.field_type,
+                    "order": first.order,
+                },
+                {
+                    "id": True,
+                    "field_name": second.field_name,
+                    "field_label": second.field_label,
+                    "field_type": second.field_type,
+                    "order": second.order,
+                },
+            ],
+        }
+
+        with pytest.raises(FormBuilderPayloadError):
+            save_form_definition_from_builder_data(
+                data, user, form_definition=form_with_fields
+            )
+
+        form_with_fields.refresh_from_db()
+        first.refresh_from_db()
+        assert form_with_fields.name != "Changed form"
+        assert form_with_fields.version == original_version
+        assert first.field_label == original_label
 
     def test_deletes_fields_absent_from_the_payload(self, user, form_with_fields):
         assert form_with_fields.fields.count() == 5

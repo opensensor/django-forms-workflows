@@ -560,6 +560,7 @@ class FormBuilderPayloadError(ValueError):
         self.client_message = client_message
 
 
+@transaction.atomic
 def save_form_definition_from_builder_data(data, user, form_definition=None):
     """
     Create or update a FormDefinition and its FormFields from form builder
@@ -798,6 +799,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             field_props["workflow_stage_id"] = parsed_wf_stage_id
 
         # Create or update field
+        if isinstance(field_id, bool):
+            raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
         if field_id and isinstance(field_id, int):
             # Update existing field, scoped to current form_definition
             updated_count = FormField.objects.filter(
@@ -1186,9 +1189,21 @@ def shared_option_list_save(request):
     """Create or update a shared option list."""
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {"success": False, "error": "Request body must be a JSON object"},
+                status=400,
+            )
         list_id = data.get("id")
-        name = data.get("name", "").strip()
-        slug = data.get("slug", "").strip()
+        name_raw = data.get("name", "")
+        slug_raw = data.get("slug", "")
+        if not isinstance(name_raw, str) or not isinstance(slug_raw, str):
+            return JsonResponse(
+                {"success": False, "error": "Name and slug must be strings"},
+                status=400,
+            )
+        name = name_raw.strip()
+        slug = slug_raw.strip()
         items = data.get("items", [])
         is_active = data.get("is_active", True)
 

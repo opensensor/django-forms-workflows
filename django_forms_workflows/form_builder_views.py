@@ -465,6 +465,30 @@ def form_builder_save(request):
     try:
         data = json.loads(request.body)
 
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: top-level JSON value must be an object",
+                },
+                status=400,
+            )
+
+        fields = data.get("fields", [])
+        if not isinstance(fields, list):
+            return JsonResponse(
+                {"success": False, "error": "Invalid payload: 'fields' must be a list"},
+                status=400,
+            )
+        if any(not isinstance(field, dict) for field in fields):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: each item in 'fields' must be an object",
+                },
+                status=400,
+            )
+
         form_id = data.get("id")
         form_name = data.get("name", "").strip()
         form_slug = data.get("slug", "").strip()

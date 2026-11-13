@@ -1639,7 +1639,7 @@ class TestSendNotificationRulesIdempotency:
         submission = FormSubmission.objects.create(
             form_definition=form_definition,
             submitter=user,
-            form_data={},
+        rule = NotificationRule.objects.create(
             status="approved",
         )
 
@@ -1655,6 +1655,7 @@ class TestSendNotificationRulesIdempotency:
 
         # Second invocation simulates a Celery requeue. Should be a no-op:
         # no new emails, no new log rows.
+            notification_rule=rule,
         send_notification_rules(submission.id, "submission_received")
         assert len(mailoutbox) == first_run_emails
         assert (
@@ -1667,6 +1668,38 @@ class TestSendNotificationRulesIdempotency:
     def test_partially_sent_recipients_only_retries_missing(
         self, form_definition, user, mailoutbox
     ):
+    def test_partially_sent_recipients_only_retries_missing_with_legacy_log(
+        self, form_definition, user, mailoutbox
+    ):
+        """Legacy sent logs without notification_rule should still allow correct retry behavior."""
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            static_emails="other@example.com",
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=submission.id,
+            recipient_email="other@example.com",
+            subject="prior",
+            status="sent",
+        )
+
+        send_notification_rules(submission.id, "submission_received")
+
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == [user.email]
+
         """If a previous run sent to one of two TOs, only the missing one is sent."""
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition, requires_approval=False

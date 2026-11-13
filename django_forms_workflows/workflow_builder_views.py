@@ -1181,7 +1181,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     Stage nodes are persisted as WorkflowStage records.
     """
 
-    _validate_visual_workflow(workflow_data, form_definition, workflow=workflow)
+    resolved_workflow = workflow
+    if resolved_workflow is None:
+        form_workflows = WorkflowDefinition.objects.filter(form_definition=form_definition)
+        if form_workflows.count() == 1:
+            resolved_workflow = form_workflows.first()
+
+    _validate_visual_workflow(
+        workflow_data, form_definition, workflow=resolved_workflow
+    )
 
     nodes = workflow_data.get("nodes", [])
 

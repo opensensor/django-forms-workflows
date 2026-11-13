@@ -668,7 +668,13 @@ def test_triggering_stage_scopes_assignees(form_definition, user, approver_user)
         send_notification_rules(submission.id, "approval_request", task_id=task1.id)
 
     # Only approver (stage1's assignee) should be notified, not manager
-    recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    recipients = []
+    for call in mock_send.call_args_list:
+        to_addresses = call.args[1]
+        if isinstance(to_addresses, list | tuple | set):
+            recipients.extend(to_addresses)
+        else:
+            recipients.append(to_addresses)
     assert approver_user.email in recipients
     assert manager.email not in recipients
 
@@ -2146,22 +2152,11 @@ class TestCustomBodyTemplateContext:
             form_data={},
             status="rejected",
         )
-        from django.utils import timezone
+        stage2_completed_at = timezone.now() - timedelta(hours=8)
+        stage1_completed_at = timezone.now() - timedelta(hours=1)
 
-        # Stage 1 approved with a comment
-        ApprovalTask.objects.create(
-            submission=submission,
-            assigned_group=approval_group,
-            workflow_stage=s1,
-            stage_number=1,
-            step_name="Instructor Approval",
-            status="approved",
-            decision="approve",
-            comments="Looks reasonable to me",
-            completed_by=approver_user,
-            completed_at=timezone.now(),
-        )
-        # Stage 2 rejected with a comment (the rejecting task)
+        # Create stage 2 first, with an earlier completion time, to ensure
+        # tests do not pass due to creation/completion order matching stage order.
         ApprovalTask.objects.create(
             submission=submission,
             assigned_group=approval_group,
@@ -2172,7 +2167,20 @@ class TestCustomBodyTemplateContext:
             decision="reject",
             comments="Need a stricter date range",
             completed_by=approver_user,
-            completed_at=timezone.now(),
+            completed_at=stage2_completed_at,
+        )
+        # Create stage 1 second, with a later completion time.
+        ApprovalTask.objects.create(
+            submission=submission,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Instructor Approval",
+            status="approved",
+            decision="approve",
+            comments="Looks reasonable to me",
+            completed_by=approver_user,
+            completed_at=stage1_completed_at,
         )
         return submission
 

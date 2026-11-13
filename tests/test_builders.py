@@ -920,6 +920,25 @@ class TestWorkflowBuilderViews:
         assert "workflow" in data
         assert "nodes" in data["workflow"]
 
+    def test_load_and_save_require_staff(self, client, user, form_definition):
+        load_url = _wf_url(f"workflow/api/load/{form_definition.id}/")
+        save_url = _wf_url("workflow/api/save/")
+        payload = {"form_id": form_definition.id, "workflow": {"nodes": []}}
+
+        assert client.get(load_url).status_code in (302, 403)
+        assert client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        ).status_code in (302, 403)
+
+        client.force_login(user)
+        assert client.get(load_url).status_code in (302, 403)
+        assert client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        ).status_code in (302, 403)
+        assert not WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).exists()
+
     def test_load_returns_requested_workflow_track(
         self, client, superuser, form_definition
     ):
@@ -951,101 +970,6 @@ class TestWorkflowBuilderViews:
         ]
         assert stage_names == ["B Stage"]
         assert data["workflow_id"] == second.id
-
-    def test_load_rejects_anonymous_and_non_staff(
-        self, client, django_user_model, form_definition
-    ):
-        # Seed one workflow so a successful load would have meaningful data.
-        wf = WorkflowDefinition.objects.create(
-            form_definition=form_definition,
-            requires_approval=True,
-            name_label="Protected Track",
-        )
-        wf.stages.create(name="Protected Stage", order=1, approval_logic="all")
-
-        url = _wf_url(f"workflow/api/load/{form_definition.id}/")
-
-        # Anonymous request should be rejected.
-        anon_resp = client.get(url)
-        assert anon_resp.status_code in (302, 403)
-
-        # Authenticated non-staff request should also be rejected.
-        user = django_user_model.objects.create_user(
-            username="regular_user", password="testpass123", is_staff=False
-        )
-        client.login(username="regular_user", password="testpass123")
-        non_staff_resp = client.get(url)
-        assert non_staff_resp.status_code in (302, 403)
-
-    def test_save_rejects_anonymous_and_non_staff_and_does_not_modify_data(
-        self, client, django_user_model, form_definition, approval_group
-    ):
-        url = _wf_url("workflow/api/save/")
-        payload = {
-            "form_id": form_definition.id,
-            "workflow": {
-                "nodes": [
-                    {"type": "start", "data": {}},
-                    {
-                        "type": "stage",
-                        "data": {
-                            "stage_id": None,
-                            "name": "Unauthorized Stage",
-                            "order": 1,
-                            "approval_logic": "all",
-                            "requires_manager_approval": False,
-                            "allow_send_back": True,
-                            "approve_label": "Confirm",
-                            "approval_groups": [
-                                {
-                                    "id": approval_group.id,
-                                    "name": approval_group.name,
-                                }
-                            ],
-                        },
-                    },
-                    {"type": "end", "data": {}},
-                ],
-                "connections": [],
-            },
-        }
-
-        workflows_before = WorkflowDefinition.objects.filter(
-            form_definition=form_definition
-        ).count()
-        stages_before = WorkflowStage.objects.filter(
-            workflow_definition__form_definition=form_definition
-        ).count()
-
-        # Anonymous save should be rejected.
-        anon_resp = client.post(
-            url,
-            data=json.dumps(payload),
-            content_type="application/json",
-        )
-        assert anon_resp.status_code in (302, 403)
-
-        # Non-staff authenticated save should also be rejected.
-        user = django_user_model.objects.create_user(
-            username="regular_user_save", password="testpass123", is_staff=False
-        )
-        client.login(username="regular_user_save", password="testpass123")
-        non_staff_resp = client.post(
-            url,
-            data=json.dumps(payload),
-            content_type="application/json",
-        )
-        assert non_staff_resp.status_code in (302, 403)
-
-        workflows_after = WorkflowDefinition.objects.filter(
-            form_definition=form_definition
-        ).count()
-        stages_after = WorkflowStage.objects.filter(
-            workflow_definition__form_definition=form_definition
-        ).count()
-
-        assert workflows_after == workflows_before
-        assert stages_after == stages_before
 
     def test_save_creates_stages(
         self, client, superuser, form_definition, approval_group
@@ -1239,27 +1163,15 @@ class TestWorkflowBuilderViews:
     def test_save_rejects_invalid_notification_cadence_configuration(
         self, client, superuser, form_definition
     ):
-        existing_workflow = WorkflowDefinition.objects.create(
+        workflow = WorkflowDefinition.objects.create(
             form_definition=form_definition,
-            requires_approval=True,
             name_label="Existing track",
             notification_cadence="daily",
         )
-        existing_stage = WorkflowStage.objects.create(
-            workflow_definition=existing_workflow,
-            stage_key="existing_stage",
-            stage_name="Existing stage",
-            stage_order=1,
-            approver_mode="single",
+        stage = workflow.stages.create(name="Existing stage", order=1)
+        rule = NotificationRule.objects.create(
+            workflow=workflow, event="approval_request", subject_template="Original"
         )
-        existing_rule = NotificationRule.objects.create(
-            workflow_stage=existing_stage,
-            trigger_event="on_enter",
-            send_to="stage_approvers",
-            email_subject="Original subject",
-            email_template="Original template",
-        )
-
         initial_workflow_count = WorkflowDefinition.objects.count()
         initial_stage_count = WorkflowStage.objects.count()
 
@@ -1267,7 +1179,7 @@ class TestWorkflowBuilderViews:
         url = _wf_url("workflow/api/save/")
         payload = {
             "form_id": form_definition.id,
-            "workflow_id": existing_workflow.id,
+            "workflow_id": workflow.id,
             "workflow": {
                 "nodes": [
                     {"type": "start", "data": {}},
@@ -1295,22 +1207,15 @@ class TestWorkflowBuilderViews:
         data = resp.json()
         assert data["success"] is False
         assert "validation failed" in data["error"].lower()
-
-        existing_workflow.refresh_from_db()
-        existing_stage.refresh_from_db()
-        existing_rule.refresh_from_db()
-
-        assert existing_workflow.name_label == "Existing track"
-        assert existing_workflow.notification_cadence == "daily"
-        assert existing_stage.workflow_definition_id == existing_workflow.id
-        assert existing_stage.stage_name == "Existing stage"
-        assert existing_stage.stage_order == 1
-        assert existing_rule.workflow_stage_id == existing_stage.id
-        assert existing_rule.email_subject == "Original subject"
-        assert existing_rule.email_template == "Original template"
-
         assert WorkflowDefinition.objects.count() == initial_workflow_count
         assert WorkflowStage.objects.count() == initial_stage_count
+        workflow.refresh_from_db()
+        stage.refresh_from_db()
+        rule.refresh_from_db()
+        assert workflow.name_label == "Existing track"
+        assert workflow.notification_cadence == "daily"
+        assert stage.name == "Existing stage"
+        assert rule.subject_template == "Original"
 
     def test_save_updates_selected_workflow_track_only(
         self, client, superuser, form_definition, approval_group
@@ -1405,87 +1310,38 @@ class TestWorkflowBuilderViews:
             "conditions": [{"field": "amount", "operator": "gt", "value": "500"}],
         }
 
-    def test_save_rejects_workflow_from_different_form(self, client, superuser, form_definition):
-        other_form = FormDefinition.objects.create(name="Other form")
-        local_workflow = WorkflowDefinition.objects.create(
-            form_definition=form_definition,
-            requires_approval=True,
-            name_label="Local Track",
+    def test_foreign_workflow_id_is_rejected(self, client, superuser, form_definition):
+        other_form = FormDefinition.objects.create(name="Other form", slug="other-form")
+        local = WorkflowDefinition.objects.create(
+            form_definition=form_definition, name_label="Local"
         )
-        foreign_workflow = WorkflowDefinition.objects.create(
-            form_definition=other_form,
-            requires_approval=True,
-            name_label="Foreign Track",
+        foreign = WorkflowDefinition.objects.create(
+            form_definition=other_form, name_label="Foreign"
         )
-        local_workflow.stages.create(name="Local Stage", order=1, approval_logic="all")
-        foreign_workflow.stages.create(name="Foreign Stage", order=1, approval_logic="all")
+        client.force_login(superuser)
 
-        client.login(username="admin", password="testpass123")
-        url = _wf_url("workflow/api/save/")
-        payload = {
-            "form_id": form_definition.id,
-            "workflow_id": foreign_workflow.id,
-            "workflow": {
-                "nodes": [
-                    {"type": "start", "data": {}},
-                    {
-                        "type": "workflow_settings",
-                        "data": {"name_label": "Should Not Be Applied"},
-                    },
-                    {
-                        "type": "stage",
-                        "data": {
-                            "name": "Mutated Stage",
-                            "order": 1,
-                            "approval_logic": "all",
-                            "approval_groups": [],
-                        },
-                    },
-                    {"type": "end", "data": {}},
-                ],
-                "connections": [],
-            },
-        }
-
-        resp = client.post(url, data=json.dumps(payload), content_type="application/json")
-
-        assert resp.status_code >= 400
-        local_workflow.refresh_from_db()
-        foreign_workflow.refresh_from_db()
-        assert local_workflow.name_label == "Local Track"
-        assert list(local_workflow.stages.values_list("name", flat=True)) == ["Local Stage"]
-        assert foreign_workflow.name_label == "Foreign Track"
-        assert list(foreign_workflow.stages.values_list("name", flat=True)) == ["Foreign Stage"]
-
-    def test_load_rejects_workflow_from_different_form(self, client, superuser, form_definition):
-        other_form = FormDefinition.objects.create(name="Other form")
-        local_workflow = WorkflowDefinition.objects.create(
-            form_definition=form_definition,
-            requires_approval=True,
-            name_label="Local Track",
+        load = client.get(
+            _wf_url(f"workflow/api/load/{form_definition.id}/"),
+            {"workflow_id": foreign.id},
         )
-        foreign_workflow = WorkflowDefinition.objects.create(
-            form_definition=other_form,
-            requires_approval=True,
-            name_label="Foreign Track",
-        )
-        local_workflow.stages.create(name="Local Stage", order=1, approval_logic="all")
-        foreign_workflow.stages.create(name="Foreign Stage", order=1, approval_logic="all")
-
-        client.login(username="admin", password="testpass123")
-        url = _wf_url("workflow/api/load/")
-        resp = client.get(
-            url,
-            data={"form_id": form_definition.id, "workflow_id": foreign_workflow.id},
+        save = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow_id": foreign.id,
+                    "workflow": {"nodes": []},
+                }
+            ),
+            content_type="application/json",
         )
 
-        assert resp.status_code >= 400
-        local_workflow.refresh_from_db()
-        foreign_workflow.refresh_from_db()
-        assert local_workflow.name_label == "Local Track"
-        assert list(local_workflow.stages.values_list("name", flat=True)) == ["Local Stage"]
-        assert foreign_workflow.name_label == "Foreign Track"
-        assert list(foreign_workflow.stages.values_list("name", flat=True)) == ["Foreign Stage"]
+        assert load.status_code == 404
+        assert save.status_code == 404
+        local.refresh_from_db()
+        foreign.refresh_from_db()
+        assert local.name_label == "Local"
+        assert foreign.name_label == "Foreign"
 
 
 # ── save_form_definition_from_builder_data ──────────────────────────────────

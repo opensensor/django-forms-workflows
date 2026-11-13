@@ -1458,18 +1458,18 @@ def send_notification_rules(
     task = None
     if task_id:
         try:
-            task = ApprovalTask.objects.select_related("workflow_stage").get(id=task_id)
+            task = ApprovalTask.objects.select_related("workflow_stage").get(
+                id=task_id,
+                submission_id=submission_id,
+            )
         except ApprovalTask.DoesNotExist:
-            # A concurrently deleted task simply leaves notification context unscoped.
+            # A concurrently deleted or mismatched task simply leaves notification context unscoped.
             pass
 
     submission_url, approval_url = _build_form_field_notification_context(
         submission,
         task,
     )
-
-    workflow = getattr(submission.form_definition, "workflow", None)
-    hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
 
     # Build a denormalized "public_comments" list for the template context
     # (file templates and per-rule body_template overrides alike). Each
@@ -1579,6 +1579,7 @@ def send_notification_rules(
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
         """
+        workflow = rule.workflow
         # Evaluate optional conditions
         if rule.conditions:
             try:
@@ -1688,7 +1689,7 @@ def send_notification_rules(
             "form_data": form_data,
             "submission_url": submission_url,
             "approval_url": approval_url,
-            "hide_approval_history": hide_approval_history,
+            "hide_approval_history": workflow.hide_approval_history,
             # Denormalized list of {stage_name, status, actor, comment}
             # entries for every approved/rejected task with a non-empty
             # public comment. Lets per-rule body_template overrides do

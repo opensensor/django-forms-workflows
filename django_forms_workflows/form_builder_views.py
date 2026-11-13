@@ -229,6 +229,20 @@ def form_builder_clone(request, form_id):
                         "SubWorkflowDefinition not found during clone; skipping component"
                     )
 
+            # Clone workflow notification rules (including stage-scoped rules) and
+            # form post-submission actions so cloned forms preserve automation.
+            # NOTE: stage-scoped notification rules must be remapped through
+            # `cloned_stages_by_original_id`.
+            _clone_workflow_notifications(
+                original_form=original_form,
+                cloned_form=cloned_form,
+                cloned_stages_by_original_id=cloned_stages_by_original_id,
+            )
+            _clone_post_submission_actions(
+                original_form=original_form,
+                cloned_form=cloned_form,
+            )
+
             # Reconnect approval-only fields to stages on the cloned form.
             for cloned_field, original_stage_id in field_stage_links:
                 cloned_stage = cloned_stages_by_original_id.get(original_stage_id)

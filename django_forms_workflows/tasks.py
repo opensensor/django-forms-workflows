@@ -516,19 +516,50 @@ def dispatch_workflow_webhooks(
     ).get(id=submission_id)
     approval_task = None
     if task_id is not None:
-        approval_task = ApprovalTask.objects.select_related(
-            "assigned_to",
-            "assigned_group",
-            "completed_by",
-            "workflow_stage__workflow",
-        ).get(id=task_id)
+        approval_task = (
+            ApprovalTask.objects.select_related(
+                "assigned_to",
+                "assigned_group",
+                "completed_by",
+                "workflow_stage__workflow",
+            )
+            .filter(id=task_id, submission_id=submission_id)
+            .first()
+        )
+        if approval_task is None:
+            logger.warning(
+                "Ignoring mismatched or missing task_id=%s for submission_id=%s in webhook dispatch",
+                task_id,
+                submission_id,
+            )
+            return
     target_stage = None
     if target_stage_id is not None:
-        target_stage = WorkflowStage.objects.select_related("workflow").get(
-            id=target_stage_id
+        target_stage = (
+            WorkflowStage.objects.select_related("workflow")
+            .filter(
+                id=target_stage_id,
+                workflow__form_definition_id=submission.form_definition_id,
+            )
+            .first()
         )
+        if target_stage is None:
+            logger.warning(
+                "Ignoring foreign or missing target_stage_id=%s", target_stage_id
+            )
+            return
 
     if workflow_id is not None:
+        if not submission.form_definition.workflows.filter(id=workflow_id).exists():
+            logger.warning("Ignoring foreign or missing workflow_id=%s", workflow_id)
+            return
+        if (
+            approval_task is not None
+            and approval_task.workflow_stage_id
+            and approval_task.workflow_stage.workflow_id != workflow_id
+        ):
+            logger.warning("Ignoring task and workflow IDs from different workflows")
+            return
         workflow_ids = [workflow_id]
     elif approval_task is not None and approval_task.workflow_stage_id:
         workflow_ids = [approval_task.workflow_stage.workflow_id]
@@ -896,9 +927,16 @@ def check_approval_deadlines() -> str:
         if workflow.approval_deadline_days and task.created_at:
             deadline = task.created_at + timedelta(days=workflow.approval_deadline_days)
             if now > deadline:
-                task.status = "expired"
-                task.save(update_fields=["status"])  # mark expired
-                expired_count += 1
+                updated = ApprovalTask.objects.filter(
+                    id=task.id,
+                    status="pending",
+                ).update(status="expired")
+                if updated:
+                    expired_count += 1
+                    task.status = "expired"
+                else:
+                    # Another worker changed the task before this sweep.
+                    continue
 
                 # Escalation groups have been removed.
                 # Escalation should now be modelled as conditional stages.
@@ -2072,36 +2110,41 @@ def send_notification_rules(
             # were no TO recipients), attempt a CC-only send so retries do not
             # lose CC delivery.
             if cc_pending:
-                try:
-                    if rule_body.strip():
-                        cc_send_result = _send_html_email_from_string(
-                            subject,
-                            cc_pending,
-                            rule_body,
-                            {**base_context},
-                            notification_type=event,
-                            submission_id=submission_id,
-                            approval_task_id=rule_task_id,
-                            notification_rule_id=rule.id,
+                for recipient in cc_pending:
+                    ctx = {**base_context}
+                    recipient_user = _users_by_email.get(recipient)
+                    if recipient_user:
+                        ctx["approver"] = recipient_user
+                    try:
+                        if rule_body.strip():
+                            cc_send_result = _send_html_email_from_string(
+                                subject,
+                                [recipient],
+                                rule_body,
+                                ctx,
+                                notification_type=event,
+                                submission_id=submission_id,
+                                approval_task_id=rule_task_id,
+                                notification_rule_id=rule.id,
+                            )
+                        else:
+                            cc_send_result = _send_html_email(
+                                subject,
+                                [recipient],
+                                default_template,
+                                ctx,
+                                notification_type=event,
+                                submission_id=submission_id,
+                                approval_task_id=rule_task_id,
+                                notification_rule_id=rule.id,
+                            )
+                    except Exception as exc:
+                        had_dispatch_failure = True
+                        logger.exception(
+                            "NotificationRule %s failed sending CC recipient %s",
+                            rule.id,
+                            recipient,
                         )
-                    else:
-                        cc_send_result = _send_html_email(
-                            subject,
-                            cc_pending,
-                            default_template,
-                            {**base_context},
-                            notification_type=event,
-                            submission_id=submission_id,
-                            approval_task_id=rule_task_id,
-                            notification_rule_id=rule.id,
-                        )
-                except Exception as exc:
-                    had_dispatch_failure = True
-                    logger.exception(
-                        "NotificationRule %s failed sending CC recipients",
-                        rule.id,
-                    )
-                    for recipient in cc_pending:
                         _write_notification_log(
                             notification_type=event,
                             submission_id=submission_id,
@@ -2112,9 +2155,9 @@ def send_notification_rules(
                             notification_rule_id=rule.id,
                             approval_task_id=rule_task_id,
                         )
-                    return
-                if cc_send_result is False:
-                    had_dispatch_failure = True
+                        continue
+                    if cc_send_result is False:
+                        had_dispatch_failure = True
 
     had_dispatch_failure = False
     for rule in rules:

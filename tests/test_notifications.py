@@ -2720,6 +2720,38 @@ def test_auto_approve_uses_latest_task_once(form_definition, user, approver_user
 
 
 @pytest.mark.django_db
+def test_expired_task_is_not_reminded(form_definition, user, approver_user):
+    WorkflowDefinition.objects.create(
+        form_definition=form_definition,
+        approval_deadline_days=1,
+        send_reminder_after_days=1,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Review",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=task.pk).update(
+        created_at=timezone.now() - timedelta(days=2)
+    )
+
+    with patch.object(tasks_module.send_notification_rules, "delay") as notify:
+        result = check_approval_deadlines()
+
+    task.refresh_from_db()
+    assert task.status == "expired"
+    assert result == "expired=1, reminders=0, auto_approved=0"
+    notify.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_unsupported_batch_type_remains_pending(form_definition):
     workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
     pending = PendingNotification.objects.create(

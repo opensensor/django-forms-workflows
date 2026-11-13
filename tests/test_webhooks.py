@@ -135,6 +135,32 @@ def test_dispatch_workflow_webhooks_loads_task_context_for_task_created(
 
 
 @pytest.mark.django_db
+def test_dispatch_ignores_task_from_another_submission(workflow, user, approval_group):
+    submission = _make_submission(workflow, user)
+    other_submission = _make_submission(workflow, user)
+    WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="Task Hook",
+        url="https://example.com/hooks/task",
+        events=["task.created"],
+    )
+    task = ApprovalTask.objects.create(
+        submission=other_submission,
+        assigned_group=approval_group,
+        workflow_stage=workflow.stages.first(),
+        step_name="Approval",
+        status="pending",
+    )
+
+    with patch(
+        "django_forms_workflows.tasks.deliver_workflow_webhook.delay"
+    ) as mock_delay:
+        dispatch_workflow_webhooks(submission.id, "task.created", task_id=task.id)
+
+    mock_delay.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user):
     submission = _make_submission(workflow, user)
     endpoint = WebhookEndpoint.objects.create(

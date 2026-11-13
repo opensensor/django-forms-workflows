@@ -1349,6 +1349,7 @@ def _collect_notification_recipients(
                     )
                 ),
                 workflow_stage_id__in=candidate_stage_ids,
+                status=ApprovalTask.STATUS_PENDING,
                 assigned_group_id__isnull=False,
                 assigned_to_id__isnull=True,
             )

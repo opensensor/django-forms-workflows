@@ -1010,12 +1010,20 @@ def check_approval_deadlines() -> str:
                 )
             )
         )
-        for submission in submissions:
-            latest_task = (
-                submission.approval_tasks.select_related("workflow_stage__workflow")
-                .order_by("-created_at", "-pk")
-                .first()
+        submission_ids = list(submissions.values_list("id", flat=True))
+        latest_task_by_submission_id = {}
+        if submission_ids:
+            latest_tasks = (
+                ApprovalTask.objects.filter(submission_id__in=submission_ids)
+                .select_related("workflow_stage__workflow")
+                .order_by("submission_id", "-created_at", "-pk")
             )
+            for task in latest_tasks:
+                if task.submission_id not in latest_task_by_submission_id:
+                    latest_task_by_submission_id[task.submission_id] = task
+
+        for submission in submissions:
+            latest_task = latest_task_by_submission_id.get(submission.id)
             if not latest_task:
                 continue
             workflow = (

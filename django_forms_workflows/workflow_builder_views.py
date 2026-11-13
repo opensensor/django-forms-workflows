@@ -448,9 +448,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 normalized_config = None
 
         if normalized_config is not None and not isinstance(normalized_config, dict):
-            add_error(
-                f"Action {action_index} configuration must be a JSON object."
-            )
+            add_error(f"Action {action_index} configuration must be a JSON object.")
 
     for sub_index, node in enumerate(sub_workflow_nodes, start=1):
         sub_data = node.get("data", {})
@@ -647,7 +645,9 @@ def workflow_builder_save(request):
     try:
         data = json.loads(request.body)
         if not isinstance(data, dict):
-            raise ValidationError("Malformed payload: top-level JSON must be an object.")
+            raise ValidationError(
+                "Malformed payload: top-level JSON must be an object."
+            )
 
         form_id = data.get("form_id")
         workflow_id = data.get("workflow_id")
@@ -656,17 +656,16 @@ def workflow_builder_save(request):
         if not isinstance(workflow_data, dict):
             raise ValidationError("Malformed payload: 'workflow' must be an object.")
 
-        nodes = workflow_data.get("nodes")
-        if nodes is not None:
-            if not isinstance(nodes, list):
-                raise ValidationError("Malformed payload: 'workflow.nodes' must be a list.")
+        nodes = workflow_data.get("nodes", [])
+        if not isinstance(nodes, list):
+            raise ValidationError("Malformed payload: 'workflow.nodes' must be a list.")
+        if nodes:
             for idx, node in enumerate(nodes):
                 if not isinstance(node, dict):
                     raise ValidationError(
                         f"Malformed payload: node at index {idx} must be an object."
                     )
-                node_data = node.get("data")
-                if node_data is not None and not isinstance(node_data, dict):
+                if "data" in node and not isinstance(node["data"], dict):
                     raise ValidationError(
                         f"Malformed payload: node.data at index {idx} must be an object."
                     )
@@ -1217,7 +1216,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
     resolved_workflow = workflow
     if resolved_workflow is None:
-        form_workflows = WorkflowDefinition.objects.filter(form_definition=form_definition)
+        form_workflows = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        )
         if form_workflows.count() == 1:
             resolved_workflow = form_workflows.first()
 
@@ -1363,7 +1364,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             sdata.get("approval_fields", []),
         )
 
-    workflow.visual_workflow_data = visual_data
+    workflow.visual_workflow_data = workflow_data
     workflow.save(update_fields=["visual_workflow_data"])
 
     # Delete stages that were removed in the builder

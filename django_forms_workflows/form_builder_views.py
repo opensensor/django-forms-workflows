@@ -821,6 +821,8 @@ def form_builder_preview(request):
                     "width": field_data.get("width", "full"),
                     "css_class": field_data.get("css_class", ""),
                     "choices": field_data.get("choices", ""),
+                    "allowed_extensions": field_data.get("allowed_extensions", ""),
+                    "max_file_size_mb": field_data.get("max_file_size_mb"),
                     "default_value": field_data.get("default_value", ""),
                     "regex_validation": validation.get("regex_validation", ""),
                     "regex_error_message": validation.get("regex_error_message", ""),

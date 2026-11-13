@@ -10,7 +10,7 @@ import logging
 import uuid
 
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
@@ -389,6 +389,8 @@ def form_builder_load(request, form_id):
             "css_class": field.css_class or "",
             "choices": field.choices or "",
             "default_value": field.default_value or "",
+            "allowed_extensions": field.allowed_extensions or "",
+            "max_file_size_mb": field.max_file_size_mb,
             "prefill_source_id": field.prefill_source_config_id,
             "shared_option_list_id": field.shared_option_list_id,
             "validation": {
@@ -501,6 +503,8 @@ def form_builder_save(request):
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
         )
+    except Http404:
+        raise
     except Exception:
         logger.exception("Error saving form in builder")
         return JsonResponse(
@@ -662,6 +666,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             "css_class": field_data.get("css_class", ""),
             "choices": field_data.get("choices", ""),
             "default_value": field_data.get("default_value", ""),
+            "allowed_extensions": field_data.get("allowed_extensions", ""),
+            "max_file_size_mb": field_data.get("max_file_size_mb"),
             "prefill_source_config_id": field_data.get("prefill_source_id"),
             "shared_option_list_id": field_data.get("shared_option_list_id") or None,
         }
@@ -725,12 +731,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                     f"Invalid field id {field_id} for this form"
                 )
             updated_field_ids.add(field_id)
-            field_id_mapping[str(old_id)] = field_id
+            if old_id is not None:
+                field_id_mapping[str(old_id)] = field_id
         else:
             # Create new field
             new_field = FormField.objects.create(**field_props)
             updated_field_ids.add(new_field.id)
-            field_id_mapping[str(old_id)] = new_field.id
+            if old_id is not None:
+                field_id_mapping[str(old_id)] = new_field.id
 
     # Delete fields that were removed
     fields_to_delete = existing_field_ids - updated_field_ids
@@ -822,6 +830,11 @@ def form_builder_preview(request):
                 if field_data.get("prefill_source_id"):
                     field_kwargs["prefill_source_config_id"] = field_data.get(
                         "prefill_source_id"
+                    )
+
+                if field_data.get("shared_option_list_id"):
+                    field_kwargs["shared_option_list_id"] = field_data.get(
+                        "shared_option_list_id"
                     )
 
                 if validation.get("min_value") is not None:

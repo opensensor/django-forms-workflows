@@ -1574,6 +1574,52 @@ class TestFormBuilderViews:
         assert "fields" in data
         assert len(data["fields"]) == 5
 
+    def test_file_settings_survive_builder_load_and_save(
+        self, client, superuser, form_definition
+    ):
+        field = FormField.objects.create(
+            form_definition=form_definition,
+            field_name="attachment",
+            field_label="Attachment",
+            field_type="file",
+            allowed_extensions="pdf,docx",
+            max_file_size_mb=12,
+        )
+        client.force_login(superuser)
+        loaded = client.get(_fb_url(f"builder/api/load/{form_definition.pk}/"))
+        assert loaded.status_code == 200
+        field_data = loaded.json()["fields"][0]
+        assert field_data["allowed_extensions"] == "pdf,docx"
+        assert field_data["max_file_size_mb"] == 12
+
+        saved = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "id": form_definition.pk,
+                    "name": form_definition.name,
+                    "slug": form_definition.slug,
+                    "fields": [field_data],
+                }
+            ),
+            content_type="application/json",
+        )
+        assert saved.status_code == 200
+        field.refresh_from_db()
+        assert field.allowed_extensions == "pdf,docx"
+        assert field.max_file_size_mb == 12
+
+    def test_save_missing_form_returns_404(self, client, superuser):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {"id": 999999, "name": "Missing", "slug": "missing", "fields": []}
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 404
+
     def test_load_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)
         url = _fb_url(f"builder/api/load/{form_with_fields.id}/")

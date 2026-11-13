@@ -123,8 +123,7 @@ def form_builder_clone(request, form_id):
             )
 
             # Clone all fields
-            cloned_fields_by_original_id = {}
-            original_field_stage_ids = {}
+            field_stage_links = []
             for field in original_form.fields.all().order_by("order"):
                 cloned_field = FormField.objects.create(
                     form_definition=cloned_form,
@@ -155,19 +154,8 @@ def form_builder_clone(request, form_id):
                     allowed_extensions=field.allowed_extensions,
                     max_file_size_mb=field.max_file_size_mb,
                 )
-                cloned_fields_by_original_id[field.id] = cloned_field
-                original_field_stage_ids[field.id] = field.workflow_stage_id
-
-            # Reconnect field -> stage associations after stage cloning has populated stage mapping
-            if "cloned_stages_by_original_id" in locals():
-                for original_field_id, original_stage_id in original_field_stage_ids.items():
-                    if not original_stage_id:
-                        continue
-                    cloned_field = cloned_fields_by_original_id.get(original_field_id)
-                    cloned_stage = cloned_stages_by_original_id.get(original_stage_id)
-                    if cloned_field and cloned_stage:
-                        cloned_field.workflow_stage = cloned_stage
-                        cloned_field.save(update_fields=["workflow_stage"])
+                if field.workflow_stage_id:
+                    field_stage_links.append((cloned_field, field.workflow_stage_id))
 
             # Copy group permissions
             cloned_form.submit_groups.set(original_form.submit_groups.all())
@@ -176,6 +164,7 @@ def form_builder_clone(request, form_id):
             cloned_form.admin_groups.set(original_form.admin_groups.all())
 
             # Clone workflows, stages, and stage approval groups
+            cloned_stages_by_original_id = {}
             for wf in original_form.workflows.all():
                 original_stages = list(
                     wf.stages.prefetch_related("approval_groups").order_by("order")
@@ -213,6 +202,7 @@ def form_builder_clone(request, form_id):
                         assignee_lookup_type=stage.assignee_lookup_type,
                         validate_assignee_group=stage.validate_assignee_group,
                     )
+                    cloned_stages_by_original_id[stage.id] = cloned_stage
                     for sag in StageApprovalGroup.objects.filter(stage=stage).order_by(
                         "role", "position"
                     ):
@@ -238,6 +228,13 @@ def form_builder_clone(request, form_id):
                     logger.debug(
                         "SubWorkflowDefinition not found during clone; skipping component"
                     )
+
+            # Reconnect approval-only fields to stages on the cloned form.
+            for cloned_field, original_stage_id in field_stage_links:
+                cloned_stage = cloned_stages_by_original_id.get(original_stage_id)
+                if cloned_stage is not None:
+                    cloned_field.workflow_stage = cloned_stage
+                    cloned_field.save(update_fields=["workflow_stage"])
 
             return JsonResponse(
                 {

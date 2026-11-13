@@ -1641,6 +1641,13 @@ class TestFormBuilderViews:
         )
         workflow = WorkflowDefinition.objects.create(form_definition=form_with_fields)
         stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+        stage.allow_send_back = True
+        stage.allow_reassign = True
+        stage.assignee_form_field = "reviewer_email"
+        stage.assignee_lookup_type = "email"
+        stage.save()
+        field.workflow_stage = stage
+        field.save(update_fields=["workflow_stage"])
         workflow.visual_workflow_data = {
             "nodes": [
                 {"id": "stage_1", "type": "stage", "data": {"stage_id": stage.id}}
@@ -1661,7 +1668,23 @@ class TestFormBuilderViews:
         assert cloned_field.step_number == field.step_number
         cloned_workflow = cloned.workflows.get()
         assert cloned_workflow.visual_workflow_data is None
-        assert cloned_workflow.stages.get().id != stage.id
+        cloned_stage = cloned_workflow.stages.get()
+        assert cloned_stage.id != stage.id
+        assert cloned_field.workflow_stage == cloned_stage
+        assert cloned_stage.allow_send_back is True
+        assert cloned_stage.allow_reassign is True
+        assert cloned_stage.assignee_form_field == "reviewer_email"
+        assert cloned_stage.assignee_lookup_type == "email"
+
+        loaded = client.get(_fb_url(f"builder/api/load/{cloned.id}/"))
+        assert loaded.status_code == 200
+        loaded_field = next(
+            item for item in loaded.json()["fields"] if item["id"] == cloned_field.id
+        )
+        assert loaded_field["workflow_stage_id"] == cloned_stage.id
+        assert loaded_field["validation_rules"] == field.validation_rules
+        assert loaded_field["field_dependencies"] == field.field_dependencies
+        assert loaded_field["step_number"] == field.step_number
 
     def test_clone_copies_all_permission_groups(
         self, client, superuser, form_with_fields, approval_group

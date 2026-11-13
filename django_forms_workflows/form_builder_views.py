@@ -662,6 +662,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             "css_class": field_data.get("css_class", ""),
             "choices": field_data.get("choices", ""),
             "default_value": field_data.get("default_value", ""),
+            "allowed_extensions": field_data.get("allowed_extensions", ""),
+            "max_file_size_mb": field_data.get("max_file_size_mb"),
             "prefill_source_config_id": field_data.get("prefill_source_id"),
             "shared_option_list_id": field_data.get("shared_option_list_id") or None,
         }

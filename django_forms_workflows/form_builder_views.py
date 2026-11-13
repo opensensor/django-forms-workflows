@@ -810,7 +810,13 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         # Create or update field
         if isinstance(field_id, bool):
             raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
-        if field_id and isinstance(field_id, int):
+        if field_id is None:
+            # Create new field
+            new_field = FormField.objects.create(**field_props)
+            updated_field_ids.add(new_field.id)
+            if old_id is not None:
+                field_id_mapping[str(old_id)] = new_field.id
+        elif isinstance(field_id, int):
             # Update existing field, scoped to current form_definition
             updated_count = FormField.objects.filter(
                 id=field_id, form_definition=form_definition
@@ -823,11 +829,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id
         else:
-            # Create new field
-            new_field = FormField.objects.create(**field_props)
-            updated_field_ids.add(new_field.id)
-            if old_id is not None:
-                field_id_mapping[str(old_id)] = new_field.id
+            raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
 
     # Delete fields that were removed
     fields_to_delete = existing_field_ids - updated_field_ids

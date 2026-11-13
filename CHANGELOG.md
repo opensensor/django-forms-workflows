@@ -245,7 +245,7 @@ here rather than lost.
 
   Migration: `0097_notificationlog_delivery_reconciliation`.
 
-## [0.74.18] - 2026-05-04
+## 0.74.18 - 2026-05-04
 
 ### Fixed
 - **`show_help_text_in_detail` now applies to PDF output too.** The

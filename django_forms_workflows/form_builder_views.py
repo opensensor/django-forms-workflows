@@ -489,7 +489,58 @@ def form_builder_save(request):
                 status=400,
             )
 
-        form_id = data.get("id")
+        raw_form_id = data.get("id")
+        if raw_form_id in (None, ""):
+            form_id = None
+        elif isinstance(raw_form_id, bool):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: 'id' must be a positive integer",
+                },
+                status=400,
+            )
+        elif isinstance(raw_form_id, int):
+            if raw_form_id <= 0:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Invalid payload: 'id' must be a positive integer",
+                    },
+                    status=400,
+                )
+            form_id = raw_form_id
+        elif isinstance(raw_form_id, str):
+            raw_form_id = raw_form_id.strip()
+            if not raw_form_id:
+                form_id = None
+            elif not raw_form_id.isdigit():
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Invalid payload: 'id' must be a positive integer",
+                    },
+                    status=400,
+                )
+            else:
+                form_id = int(raw_form_id)
+                if form_id <= 0:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "Invalid payload: 'id' must be a positive integer",
+                        },
+                        status=400,
+                    )
+        else:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: 'id' must be a positive integer",
+                },
+                status=400,
+            )
+
         raw_name = data.get("name", "")
         raw_slug = data.get("slug", "")
         if not isinstance(raw_name, str) or not isinstance(raw_slug, str):

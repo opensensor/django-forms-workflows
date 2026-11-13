@@ -841,12 +841,16 @@ def check_approval_deadlines() -> str:
     expired_count = 0
     reminder_count = 0
     auto_approved_count = 0
+    submission_ids_for_auto_approve = set()
 
     for task in pending:
         submission = task.submission
         workflow = getattr(submission.form_definition, "workflow", None)
         if not workflow:
             continue
+
+        if workflow.auto_approve_after_days and submission.status == "pending_approval":
+            submission_ids_for_auto_approve.add(submission.id)
 
         # Expire tasks after deadline
         if workflow.approval_deadline_days and task.created_at:
@@ -858,34 +862,6 @@ def check_approval_deadlines() -> str:
 
                 # Escalation groups have been removed.
                 # Escalation should now be modelled as conditional stages.
-
-                # Optional auto-approve after grace period
-                if (
-                    workflow.auto_approve_after_days
-                    and submission.status == "pending_approval"
-                ):
-                    auto_deadline = task.created_at + timedelta(
-                        days=workflow.auto_approve_after_days
-                    )
-                    if now > auto_deadline:
-                        submission.status = "approved"
-                        submission.completed_at = now
-                        submission.save(update_fields=["status", "completed_at"])
-                        # cancel remaining tasks
-                        submission.approval_tasks.filter(status="pending").update(
-                            status="skipped"
-                        )
-                        try:
-                            send_notification_rules.delay(
-                                submission.id, "workflow_approved"
-                            )
-                        except Exception:
-                            logger.debug(
-                                "Could not enqueue approval notification for submission %s",
-                                submission.id,
-                                exc_info=True,
-                            )
-                        auto_approved_count += 1
 
         # Send reminder if configured and not yet sent
         if (
@@ -915,6 +891,50 @@ def check_approval_deadlines() -> str:
                 # retried. Until it is stamped, the next sweep re-dispatches;
                 # duplicate emails are absorbed by the already_sent guard.
                 reminder_count += 1
+
+    if submission_ids_for_auto_approve:
+        submissions = (
+            FormSubmission.objects.filter(
+                id__in=submission_ids_for_auto_approve,
+                status="pending_approval",
+            )
+            .select_related("form_definition")
+            .prefetch_related(
+                Prefetch(
+                    "form_definition__workflows",
+                    queryset=WorkflowDefinition.objects.order_by("pk"),
+                )
+            )
+        )
+        for submission in submissions:
+            workflow = getattr(submission.form_definition, "workflow", None)
+            if not workflow or not workflow.auto_approve_after_days:
+                continue
+
+            latest_task = submission.approval_tasks.order_by("-created_at").first()
+            if not latest_task or not latest_task.created_at:
+                continue
+
+            auto_deadline = latest_task.created_at + timedelta(
+                days=workflow.auto_approve_after_days
+            )
+            if now > auto_deadline:
+                submission.status = "approved"
+                submission.completed_at = now
+                submission.save(update_fields=["status", "completed_at"])
+                # cancel remaining tasks
+                submission.approval_tasks.filter(status="pending").update(
+                    status="skipped"
+                )
+                try:
+                    send_notification_rules.delay(submission.id, "workflow_approved")
+                except Exception:
+                    logger.debug(
+                        "Could not enqueue approval notification for submission %s",
+                        submission.id,
+                        exc_info=True,
+                    )
+                auto_approved_count += 1
 
     return f"expired={expired_count}, reminders={reminder_count}, auto_approved={auto_approved_count}"
 
@@ -994,10 +1014,29 @@ def send_batched_notifications() -> str:
                 "approval_notification",
                 "rejection_notification",
                 "withdrawal_notification",
+                "workflow_approved",
+                "workflow_denied",
+                "form_withdrawn",
             ):
+                conclusion_type = {
+                    "workflow_approved": "approval_notification",
+                    "workflow_denied": "rejection_notification",
+                    "form_withdrawn": "withdrawal_notification",
+                }.get(notification_type, notification_type)
                 _dispatch_conclusion_digest(
-                    recipient_email, notifications, notification_type
+                    recipient_email, notifications, conclusion_type
                 )
+            elif notification_type in (
+                "stage_decision",
+                "approval_reminder",
+                "escalation",
+            ):
+                logger.info(
+                    "send_batched_notifications: bypassing unsupported batched type %r for %s.",
+                    notification_type,
+                    recipient_email,
+                )
+                continue
             else:
                 logger.warning(
                     "send_batched_notifications: unknown type %r for %s; skipping.",
@@ -1272,10 +1311,17 @@ def _collect_notification_recipients(
         if eff_stage:
             candidate_stage_ids = [eff_stage]
         else:
+            candidate_stage_qs = submission.approval_tasks.filter(
+                workflow_stage_id__isnull=False
+            )
+            if getattr(notif, "workflow_id", None):
+                candidate_stage_qs = candidate_stage_qs.filter(
+                    workflow_stage__workflow_id=notif.workflow_id
+                )
             candidate_stage_ids = list(
-                submission.approval_tasks.filter(workflow_stage_id__isnull=False)
-                .values_list("workflow_stage_id", flat=True)
-                .distinct()
+                candidate_stage_qs.values_list(
+                    "workflow_stage_id", flat=True
+                ).distinct()
             )
 
         # Step 2 — notify only the groups that actually hold a group-fallback
@@ -1664,6 +1710,7 @@ def send_notification_rules(
         cc_recipients = _collect_notification_cc(rule, form_data)
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
+
         already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(rule)
 
         # Drop recipients already successfully delivered (acks_late retry guard).

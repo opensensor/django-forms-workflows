@@ -162,7 +162,17 @@ def _send_html_email(
     cc_str = ", ".join(cc_list)
     bcc_str = ", ".join(bcc_list)
     try:
-        msg.send(fail_silently=False)
+        sent_count = msg.send(fail_silently=False)
+        if sent_count <= 0:
+            logger.warning(
+                "Email backend reported zero deliveries for '%s' to %s%s%s",
+                subject,
+                to_list,
+                f" cc={cc_list}" if cc_list else "",
+                f" bcc={bcc_list}" if bcc_list else "",
+            )
+            return False
+
         logger.info(
             "Sent email '%s' to %s%s%s",
             subject,

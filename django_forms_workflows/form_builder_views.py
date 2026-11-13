@@ -593,7 +593,12 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     payment_enabled = data.get("payment_enabled", False)
     payment_provider = data.get("payment_provider", "")
     payment_amount_type = data.get("payment_amount_type", "fixed")
-    payment_fixed_amount = data.get("payment_fixed_amount") or None
+    payment_fixed_amount_raw = data.get("payment_fixed_amount")
+    payment_fixed_amount = (
+        None
+        if payment_fixed_amount_raw is None or payment_fixed_amount_raw == ""
+        else payment_fixed_amount_raw
+    )
     payment_amount_field = data.get("payment_amount_field", "")
     payment_currency = data.get("payment_currency", "usd")
     payment_description_template = data.get("payment_description_template", "")
@@ -754,21 +759,43 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
         # Add workflow stage FK (for staged approval workflows)
         wf_stage_id = field_data.get("workflow_stage_id")
-        if wf_stage_id:
-            try:
-                wf_stage_id = int(wf_stage_id)
-            except (TypeError, ValueError) as exc:
+        if wf_stage_id is None or wf_stage_id == "":
+            field_props["workflow_stage_id"] = None
+        else:
+            # Reject malformed JSON references (e.g., booleans/fractional numbers)
+            if isinstance(wf_stage_id, bool):
                 raise FormBuilderPayloadError(
                     "Invalid workflow_stage_id for field "
                     f"'{field_data.get('field_name', '')}'"
-                ) from exc
-            if wf_stage_id not in allowed_workflow_stage_ids:
-                raise FormBuilderPayloadError(
-                    f"workflow_stage_id {wf_stage_id} is not valid for this form"
                 )
-            field_props["workflow_stage_id"] = wf_stage_id
-        else:
-            field_props["workflow_stage_id"] = None
+            if isinstance(wf_stage_id, int):
+                parsed_wf_stage_id = wf_stage_id
+            elif isinstance(wf_stage_id, str):
+                wf_stage_id_str = wf_stage_id.strip()
+                if not wf_stage_id_str.isascii() or not wf_stage_id_str.isdigit():
+                    raise FormBuilderPayloadError(
+                        "Invalid workflow_stage_id for field "
+                        f"'{field_data.get('field_name', '')}'"
+                    )
+                try:
+                    parsed_wf_stage_id = int(wf_stage_id_str)
+                except ValueError as exc:
+                    raise FormBuilderPayloadError(
+                        "Invalid workflow_stage_id for field "
+                        f"'{field_data.get('field_name', '')}'"
+                    ) from exc
+            else:
+                # Includes floats (fractional JSON numbers) and other invalid types
+                raise FormBuilderPayloadError(
+                    "Invalid workflow_stage_id for field "
+                    f"'{field_data.get('field_name', '')}'"
+                )
+
+            if parsed_wf_stage_id not in allowed_workflow_stage_ids:
+                raise FormBuilderPayloadError(
+                    f"workflow_stage_id {parsed_wf_stage_id} is not valid for this form"
+                )
+            field_props["workflow_stage_id"] = parsed_wf_stage_id
 
         # Create or update field
         if field_id and isinstance(field_id, int):
@@ -834,6 +861,11 @@ def form_builder_preview(request):
                     },
                     status=400,
                 )
+        if "form_steps" in data and not isinstance(data["form_steps"], list):
+            return JsonResponse(
+                {"success": False, "error": "Preview form_steps must be a list"},
+                status=400,
+            )
 
         # If no fields, return a simple message
         if not fields:
@@ -873,6 +905,8 @@ def form_builder_preview(request):
             form_definition.requires_login = data.get("requires_login", True)
             form_definition.allow_save_draft = data.get("allow_save_draft", True)
             form_definition.allow_withdrawal = data.get("allow_withdrawal", True)
+            form_definition.enable_multi_step = data.get("enable_multi_step", False)
+            form_definition.form_steps = data.get("form_steps", [])
             form_definition.save()
 
             # Create temporary fields
@@ -1041,9 +1075,20 @@ def document_template_save(request, form_id):
     """Create or update a document template."""
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {"success": False, "error": "JSON payload must be an object"},
+                status=400,
+            )
 
         template_id = data.get("id")
-        name = data.get("name", "").strip()
+        raw_name = data.get("name", "")
+        if not isinstance(raw_name, str):
+            return JsonResponse(
+                {"success": False, "error": "Template name must be a string"},
+                status=400,
+            )
+        name = raw_name.strip()
         html_content = data.get("html_content", "")
         page_size = data.get("page_size", "letter")
         is_default = data.get("is_default", False)

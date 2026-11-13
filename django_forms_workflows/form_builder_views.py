@@ -510,12 +510,15 @@ def form_builder_save(request):
                 {"success": False, "error": "Form slug is required"}, status=400
             )
 
-        form_definition = (
-            get_object_or_404(FormDefinition, id=form_id) if form_id else None
-        )
-
         # Use transaction to ensure atomicity
         with transaction.atomic():
+            form_definition = (
+                get_object_or_404(
+                    FormDefinition.objects.select_for_update(), id=form_id
+                )
+                if form_id
+                else None
+            )
             form_definition, field_id_mapping = save_form_definition_from_builder_data(
                 data, request.user, form_definition=form_definition
             )

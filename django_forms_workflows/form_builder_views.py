@@ -172,7 +172,7 @@ def form_builder_clone(request, form_id):
                     notification_cadence_day=wf.notification_cadence_day,
                     notification_cadence_time=wf.notification_cadence_time,
                     notification_cadence_form_field=wf.notification_cadence_form_field,
-                    visual_workflow_data=wf.visual_workflow_data,
+                    visual_workflow_data=None,
                     trigger_conditions=wf.trigger_conditions,
                     hide_approval_history=wf.hide_approval_history,
                     allow_bulk_export=wf.allow_bulk_export,

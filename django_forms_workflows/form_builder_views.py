@@ -524,7 +524,16 @@ def form_builder_save(request):
                     status=400,
                 )
             else:
-                form_id = int(raw_form_id)
+                try:
+                    form_id = int(raw_form_id)
+                except ValueError:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "Invalid payload: 'id' must be a positive integer",
+                        },
+                        status=400,
+                    )
                 if form_id <= 0:
                     return JsonResponse(
                         {

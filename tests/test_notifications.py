@@ -2687,3 +2687,108 @@ def test_send_notification_rules_tolerates_deleted_task(form_definition, user):
 
     assert mock_send.called
     assert "task" not in mock_send.call_args.args[3]
+
+
+@pytest.mark.django_db
+def test_failed_digest_remains_pending(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    pending = PendingNotification.objects.create(
+        workflow=workflow,
+        notification_type="submission_received",
+        submission=submission,
+        recipient_email=user.email,
+        scheduled_for=timezone.now() - timedelta(minutes=1),
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email", return_value=False):
+        assert tasks_module.send_batched_notifications() == "sent=0"
+    pending.refresh_from_db()
+    assert pending.sent is False
+
+    with patch("django_forms_workflows.tasks._send_html_email", return_value=True):
+        assert tasks_module.send_batched_notifications() == "sent=1"
+    pending.refresh_from_db()
+    assert pending.sent is True
+
+
+@pytest.mark.django_db
+def test_digest_retries_reuse_pending_row_but_can_requeue_after_send(
+    form_definition, user
+):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, notification_cadence="daily"
+    )
+    NotificationRule.objects.create(
+        workflow=workflow, event="workflow_approved", notify_submitter=True
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    send_notification_rules(submission.pk, "workflow_approved")
+    send_notification_rules(submission.pk, "workflow_approved")
+    rows = PendingNotification.objects.filter(submission=submission)
+    assert rows.count() == 1
+
+    rows.update(sent=True)
+    send_notification_rules(submission.pk, "workflow_approved")
+    assert rows.count() == 2
+    assert rows.filter(sent=False).count() == 1
+
+
+@pytest.mark.django_db
+def test_taskless_final_notifications_keep_workflow_context_separate(
+    form_definition, user, approver_user, mailoutbox
+):
+    workflows = [
+        WorkflowDefinition.objects.create(form_definition=form_definition)
+        for _ in range(2)
+    ]
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    for index, workflow in enumerate(workflows):
+        stage = WorkflowStage.objects.create(
+            workflow=workflow, name=f"Workflow {index + 1}", order=1
+        )
+        ApprovalTask.objects.create(
+            submission=submission,
+            workflow_stage=stage,
+            step_name=stage.name,
+            status="approved",
+            comments=f"Private to workflow {index + 1}",
+            completed_by=approver_user,
+            completed_at=timezone.now() + timedelta(minutes=index),
+        )
+        NotificationRule.objects.create(
+            workflow=workflow,
+            event="workflow_approved",
+            static_emails=f"recipient{index + 1}@example.com",
+            body_template=(
+                "{% for c in public_comments %}{{ c.comment }}{% endfor %}"
+                "|{{ task.comments }}"
+            ),
+        )
+
+    send_notification_rules(submission.pk, "workflow_approved")
+
+    assert len(mailoutbox) == 2
+    by_recipient = {message.to[0]: message.alternatives[0][0] for message in mailoutbox}
+    first = by_recipient["recipient1@example.com"]
+    second = by_recipient["recipient2@example.com"]
+    assert "Private to workflow 1" in first
+    assert "Private to workflow 2" not in first
+    assert "Private to workflow 2" in second
+    assert "Private to workflow 1" not in second

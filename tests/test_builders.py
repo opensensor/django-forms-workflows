@@ -1063,6 +1063,10 @@ class TestWorkflowBuilderViews:
         self, client, superuser, form_with_fields, approval_group
     ):
         notes_field = form_with_fields.fields.get(field_name="notes")
+        notes_field.refresh_from_db()
+        initial_notes_workflow_stage_id = notes_field.workflow_stage_id
+        initial_workflow_count = WorkflowDefinition.objects.count()
+        initial_stage_count = WorkflowStage.objects.count()
 
         client.login(username="admin", password="testpass123")
         url = _wf_url("workflow/api/save/")
@@ -1131,10 +1135,17 @@ class TestWorkflowBuilderViews:
         data = resp.json()
         assert data["success"] is False
         assert "validation failed" in data["error"].lower()
+        assert WorkflowDefinition.objects.count() == initial_workflow_count
+        assert WorkflowStage.objects.count() == initial_stage_count
+        notes_field.refresh_from_db()
+        assert notes_field.workflow_stage_id == initial_notes_workflow_stage_id
 
     def test_save_rejects_invalid_notification_cadence_configuration(
         self, client, superuser, form_definition
     ):
+        initial_workflow_count = WorkflowDefinition.objects.count()
+        initial_stage_count = WorkflowStage.objects.count()
+
         client.login(username="admin", password="testpass123")
         url = _wf_url("workflow/api/save/")
         payload = {
@@ -1166,6 +1177,8 @@ class TestWorkflowBuilderViews:
         data = resp.json()
         assert data["success"] is False
         assert "validation failed" in data["error"].lower()
+        assert WorkflowDefinition.objects.count() == initial_workflow_count
+        assert WorkflowStage.objects.count() == initial_stage_count
 
     def test_save_updates_selected_workflow_track_only(
         self, client, superuser, form_definition, approval_group

@@ -761,6 +761,12 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     for field_data in fields_data:
         candidate_field_id = field_data.get("id")
         if candidate_field_id is not None:
+            if isinstance(candidate_field_id, bool) or not isinstance(
+                candidate_field_id, int | str
+            ):
+                raise FormBuilderPayloadError(
+                    f"Invalid field id {candidate_field_id} for this form"
+                )
             if candidate_field_id in seen_non_null_field_ids:
                 raise FormBuilderPayloadError(
                     f"Duplicate field id {candidate_field_id} in payload"

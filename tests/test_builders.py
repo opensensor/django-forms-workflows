@@ -2178,3 +2178,22 @@ class TestSharedOptionListAPI:
         resp = client.post(url)
         assert resp.status_code == 200
         assert not SharedOptionList.objects.filter(id=ol.id).exists()
+
+
+@pytest.mark.parametrize(
+    "path,payload",
+    [
+        ("builder/api/clone/999999/", {}),
+        ("builder/api/doc-templates/999999/save/", {"name": "Missing"}),
+        (
+            "builder/api/shared-lists/save/",
+            {"id": 999999, "name": "Missing", "slug": "missing"},
+        ),
+    ],
+)
+def test_missing_builder_objects_return_404(client, superuser, path, payload):
+    client.force_login(superuser)
+    response = client.post(
+        _fb_url(path), data=json.dumps(payload), content_type="application/json"
+    )
+    assert response.status_code == 404

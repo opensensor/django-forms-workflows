@@ -279,7 +279,7 @@ here rather than lost.
 - Admin: ``NotificationLogAdmin`` shows ``cc_emails`` in the list view
   and makes both new fields searchable and read-only.
 
-## [0.74.16] - 2026-05-04
+## 0.74.16 - 2026-05-04
 
 ### Fixed
 - **Approval step form now validates fields on input/blur, matching

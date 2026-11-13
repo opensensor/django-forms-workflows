@@ -1993,10 +1993,11 @@ def send_notification_rules(
                     "recipient_email": recipient,
                     "sent": False,
                 }
-                if not PendingNotification.objects.filter(**pending_identity).exists():
-                    PendingNotification.objects.create(
-                        **pending_identity, scheduled_for=scheduled_for
-                    )
+                _, created = PendingNotification.objects.get_or_create(
+                    **pending_identity,
+                    defaults={"scheduled_for": scheduled_for},
+                )
+                if created:
                     created_count += 1
             logger.info(
                 "Queued %d/%d %s notification(s) for submission %s (due %s)",

@@ -1953,12 +1953,88 @@ class TestFormBuilderViews:
     def test_save_requires_staff(self, client, user, form_definition):
         client.force_login(user)
         url = _fb_url("builder/api/save/")
+        payload = {
+            "id": form_definition.id,
+            "name": form_definition.name,
+            "slug": form_definition.slug,
+            "description": form_definition.description,
+            "instructions": form_definition.instructions,
+            "fields": [
+                {
+                    "field_name": "denied_field",
+                    "field_label": "Denied Field",
+                    "field_type": "text",
+                    "order": 1,
+                    "required": True,
+                }
+            ],
+        }
+        before_count = form_definition.fields.count()
         resp = client.post(
             url,
-            data=json.dumps({"id": form_definition.id, "name": form_definition.name}),
+            data=json.dumps(payload),
             content_type="application/json",
         )
         assert resp.status_code in (302, 403)
+        form_definition.refresh_from_db()
+        assert form_definition.fields.count() == before_count
+        assert not form_definition.fields.filter(field_name="denied_field").exists()
+
+    def test_save_staff_requires_model_permission(
+        self, client, django_user_model, form_definition
+    ):
+        staff_user = django_user_model.objects.create_user(
+            username="builder_staff",
+            password="testpass123",
+            is_staff=True,
+            is_superuser=False,
+        )
+        client.force_login(staff_user)
+        url = _fb_url("builder/api/save/")
+        payload = {
+            "id": form_definition.id,
+            "name": form_definition.name,
+            "slug": form_definition.slug,
+            "description": form_definition.description,
+            "instructions": form_definition.instructions,
+            "fields": [
+                {
+                    "field_name": "staff_perm_field",
+                    "field_label": "Staff Perm Field",
+                    "field_type": "text",
+                    "order": 1,
+                    "required": True,
+                }
+            ],
+        }
+
+        before_count = form_definition.fields.count()
+        denied = client.post(
+            url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        assert denied.status_code in (302, 403)
+        form_definition.refresh_from_db()
+        assert form_definition.fields.count() == before_count
+        assert not form_definition.fields.filter(field_name="staff_perm_field").exists()
+
+        from django.contrib.auth.models import Permission
+
+        change_perm = Permission.objects.get(
+            content_type__app_label=FormDefinition._meta.app_label,
+            codename=f"change_{FormDefinition._meta.model_name}",
+        )
+        staff_user.user_permissions.add(change_perm)
+
+        allowed = client.post(
+            url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        assert allowed.status_code == 200
+        assert allowed.json()["success"] is True
+        assert form_definition.fields.filter(field_name="staff_perm_field").exists()
 
     def test_clone_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")

@@ -436,7 +436,7 @@ def form_builder_load(request, form_id):
         "payment_provider": form_definition.payment_provider,
         "payment_amount_type": form_definition.payment_amount_type,
         "payment_fixed_amount": str(form_definition.payment_fixed_amount)
-        if form_definition.payment_fixed_amount
+        if form_definition.payment_fixed_amount is not None
         else None,
         "payment_amount_field": form_definition.payment_amount_field,
         "payment_currency": form_definition.payment_currency,
@@ -510,12 +510,15 @@ def form_builder_save(request):
                 {"success": False, "error": "Form slug is required"}, status=400
             )
 
-        form_definition = (
-            get_object_or_404(FormDefinition, id=form_id) if form_id else None
-        )
-
         # Use transaction to ensure atomicity
         with transaction.atomic():
+            form_definition = (
+                get_object_or_404(
+                    FormDefinition.objects.select_for_update(), id=form_id
+                )
+                if form_id
+                else None
+            )
             form_definition, field_id_mapping = save_form_definition_from_builder_data(
                 data, request.user, form_definition=form_definition
             )
@@ -1151,16 +1154,70 @@ def shared_option_list_save(request):
         if not slug:
             slug = name.lower().replace(" ", "-")
 
+        if not isinstance(items, list):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Items must be a list of options",
+                },
+                status=400,
+            )
+
+        validated_items = []
+        for item in items:
+            if isinstance(item, str):
+                value = item.strip()
+                if not value:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "Option values must be non-empty strings",
+                        },
+                        status=400,
+                    )
+                validated_items.append(value)
+            elif isinstance(item, dict):
+                value = item.get("value")
+                label = item.get("label")
+                if not isinstance(value, str) or not value.strip():
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "Each option object must include a non-empty string 'value'",
+                        },
+                        status=400,
+                    )
+                if label is not None and not isinstance(label, str):
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "Option 'label' must be a string when provided",
+                        },
+                        status=400,
+                    )
+                normalized_item = {"value": value.strip()}
+                if label is not None:
+                    normalized_item["label"] = label
+                validated_items.append(normalized_item)
+            else:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Each item must be either a string or an object with a 'value'",
+                    },
+                    status=400,
+                )
+
         if list_id:
             ol = get_object_or_404(SharedOptionList, id=list_id)
             ol.name = name
             ol.slug = slug
-            ol.items = items
+            ol.items = validated_items
             ol.is_active = is_active
             ol.save()
         else:
             ol = SharedOptionList.objects.create(
-                name=name, slug=slug, items=items, is_active=is_active
+                name=name, slug=slug, items=validated_items, is_active=is_active
             )
 
         return JsonResponse(

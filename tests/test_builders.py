@@ -1622,6 +1622,18 @@ class TestFormBuilderViews:
         assert "fields" in data
         assert len(data["fields"]) == 5
 
+    def test_load_preserves_zero_payment_amount(
+        self, client, superuser, form_definition
+    ):
+        form_definition.payment_fixed_amount = 0
+        form_definition.save(update_fields=["payment_fixed_amount"])
+        client.force_login(superuser)
+
+        response = client.get(_fb_url(f"builder/api/load/{form_definition.id}/"))
+
+        assert response.status_code == 200
+        assert response.json()["payment_fixed_amount"] == "0.00"
+
     def test_file_settings_survive_builder_load_and_save(
         self, client, superuser, form_definition
     ):
@@ -2223,6 +2235,23 @@ class TestSharedOptionListAPI:
         ol = SharedOptionList.objects.get(id=data["id"])
         assert ol.slug == "locations"
         assert ol.items == ["HQ", "Annex"]
+
+    @pytest.mark.parametrize(
+        "items",
+        [{"value": "a"}, [1], [""], [{"label": "Missing value"}]],
+    )
+    def test_save_rejects_invalid_items(self, client, superuser, items):
+        from django_forms_workflows.models import SharedOptionList
+
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/shared-lists/save/"),
+            data=json.dumps({"name": "Invalid", "items": items}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not SharedOptionList.objects.filter(name="Invalid").exists()
 
     def test_delete_requires_staff(self, client, user):
         from django_forms_workflows.models import SharedOptionList

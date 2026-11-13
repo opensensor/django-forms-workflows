@@ -132,9 +132,7 @@ def test_notification_subject_unknown_field_becomes_empty(form_definition, user)
         send_notification_rules(submission.id, "workflow_approved")
 
     subject = mock_send.call_args[0][0]
-    # {ghost_field} → "" so the subject should not contain a literal brace token
-    assert "{ghost_field}" not in subject
-    assert "Hi " in subject
+    assert subject == "Hi , your form is done"
 
 
 def test_notification_subject_builtin_placeholders_still_work(form_definition, user):
@@ -2340,6 +2338,7 @@ class TestNotificationLogCcBccConsolidation:
             workflow=wf,
             event="submission_received",
             notify_submitter=True,
+            static_emails="other@example.com",
             cc_static_emails="cc@example.com",
         )
         sub = FormSubmission.objects.create(
@@ -2348,7 +2347,7 @@ class TestNotificationLogCcBccConsolidation:
             form_data={},
             status="approved",
         )
-        # Simulate a prior successful send that delivered the To AND CC'd cc@example.com.
+        # Simulate a prior successful send that delivered user.email and CC'd cc@example.com.
         NotificationLog.objects.create(
             notification_type="submission_received",
             submission_id=sub.id,
@@ -2359,9 +2358,11 @@ class TestNotificationLogCcBccConsolidation:
         )
 
         send_notification_rules(sub.id, "submission_received")
-        # Nothing left to send: the To was already delivered and the CC was
-        # already delivered as part of that send.
-        assert len(mailoutbox) == 0
+        # The remaining unsent To recipient should be delivered, but previously
+        # delivered CC should not be re-applied.
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == ["other@example.com"]
+        assert "cc@example.com" not in (mailoutbox[0].cc or [])
 
     def test_retry_delivers_cc_when_to_was_sent_alone(
         self, form_definition, user, mailoutbox

@@ -1823,6 +1823,7 @@ def send_notification_rules(
                     )
                     return
             except Exception:
+                had_dispatch_failure = True
                 logger.warning(
                     "NotificationRule %s: error evaluating conditions; skipping.",
                     rule.id,

@@ -1006,10 +1006,11 @@ def send_batched_notifications() -> str:
         _workflow_id,
     ), notifications in groups.items():
         try:
+            delivered = False
             if notification_type == "submission_received":
-                _dispatch_submission_digest(recipient_email, notifications)
+                delivered = _dispatch_submission_digest(recipient_email, notifications)
             elif notification_type == "approval_request":
-                _dispatch_approval_digest(recipient_email, notifications)
+                delivered = _dispatch_approval_digest(recipient_email, notifications)
             elif notification_type in (
                 "approval_notification",
                 "rejection_notification",
@@ -1023,7 +1024,7 @@ def send_batched_notifications() -> str:
                     "workflow_denied": "rejection_notification",
                     "form_withdrawn": "withdrawal_notification",
                 }.get(notification_type, notification_type)
-                _dispatch_conclusion_digest(
+                delivered = _dispatch_conclusion_digest(
                     recipient_email, notifications, conclusion_type
                 )
             elif notification_type in (
@@ -1044,9 +1045,16 @@ def send_batched_notifications() -> str:
                     recipient_email,
                 )
                 continue
-            ids = [n.id for n in notifications]
-            PendingNotification.objects.filter(id__in=ids).update(sent=True)
-            sent_count += len(ids)
+            if delivered:
+                ids = [n.id for n in notifications]
+                PendingNotification.objects.filter(id__in=ids).update(sent=True)
+                sent_count += len(ids)
+            else:
+                logger.warning(
+                    "send_batched_notifications: delivery failed for %s to %s; leaving notifications pending.",
+                    notification_type,
+                    recipient_email,
+                )
         except Exception as exc:
             logger.exception(
                 "Failed dispatching batched %s digest to %s: %s",

@@ -1875,6 +1875,7 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
@@ -1884,8 +1885,8 @@ def send_notification_rules(
         IMPORTANT: per-recipient send/render/log work must catch exceptions
         inside this function so a later recipient failure does not roll back
         successful earlier recipient logs after emails were already delivered.
-        Keep transactions scoped per recipient/log write so successful
-        deliveries are durably recorded before processing subsequent recipients.
+        The submission row lock serializes concurrent delivery attempts for
+        the same submission until their logs are written.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows
@@ -2262,7 +2263,9 @@ def send_notification_rules(
                 notification_type=event,
                 submission_id=submission_id,
                 notification_rule_id=rule.id,
-                approval_task_id=task.id if task is not None else None,
+                approval_task_id=task.id
+                if explicit_task and task is not None
+                else None,
                 recipient_email="(rule failed)",
                 subject=f"NotificationRule {rule.id} ({event})",
                 status="failed",

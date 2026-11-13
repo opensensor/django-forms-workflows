@@ -1679,7 +1679,7 @@ class TestSendNotificationRulesIdempotency:
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition, requires_approval=False
         )
-        NotificationRule.objects.create(
+        rule = NotificationRule.objects.create(
             workflow=wf,
             event="submission_received",
             notify_submitter=True,
@@ -1696,6 +1696,7 @@ class TestSendNotificationRulesIdempotency:
         NotificationLog.objects.create(
             notification_type="submission_received",
             submission_id=submission.id,
+            notification_rule=rule,
             recipient_email="other@example.com",
             subject="prior",
             status="sent",

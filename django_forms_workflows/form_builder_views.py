@@ -259,7 +259,7 @@ def form_builder_clone(request, form_id):
                     ):
                         StageApprovalGroup.objects.create(
                             stage=cloned_stage,
-                            group=sag.group,
+                            group_id=sag.group_id,
                             position=sag.position,
                             role=sag.role,
                         )
@@ -465,9 +465,40 @@ def form_builder_save(request):
     try:
         data = json.loads(request.body)
 
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: top-level JSON value must be an object",
+                },
+                status=400,
+            )
+
+        fields = data.get("fields", [])
+        if not isinstance(fields, list):
+            return JsonResponse(
+                {"success": False, "error": "Invalid payload: 'fields' must be a list"},
+                status=400,
+            )
+        if any(not isinstance(field, dict) for field in fields):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: each item in 'fields' must be an object",
+                },
+                status=400,
+            )
+
         form_id = data.get("id")
-        form_name = data.get("name", "").strip()
-        form_slug = data.get("slug", "").strip()
+        raw_name = data.get("name", "")
+        raw_slug = data.get("slug", "")
+        if not isinstance(raw_name, str) or not isinstance(raw_slug, str):
+            return JsonResponse(
+                {"success": False, "error": "Form name and slug must be strings"},
+                status=400,
+            )
+        form_name = raw_name.strip()
+        form_slug = raw_slug.strip()
 
         # Validate required fields
         if not form_name:

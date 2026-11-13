@@ -782,6 +782,76 @@ def test_no_task_id_fires_all_workflow_rules(form_definition, user):
     assert "wf2@example.com" in all_recipients
 
 
+def test_notification_context_uses_each_rules_workflow(form_definition, user):
+    """Each rule supplies its own privacy setting when there is no task."""
+    private = WorkflowDefinition.objects.create(
+        form_definition=form_definition, hide_approval_history=True
+    )
+    public = WorkflowDefinition.objects.create(
+        form_definition=form_definition, hide_approval_history=False
+    )
+    NotificationRule.objects.create(
+        workflow=private,
+        event="submission_received",
+        static_emails="private@example.com",
+    )
+    NotificationRule.objects.create(
+        workflow=public, event="submission_received", static_emails="public@example.com"
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="submitted",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "submission_received")
+
+    contexts = {
+        call.args[1][0]: call.args[3]["hide_approval_history"]
+        for call in mock_send.call_args_list
+    }
+    assert contexts["private@example.com"] is True
+    assert contexts["public@example.com"] is False
+
+
+def test_notification_ignores_task_from_another_submission(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_request",
+        static_emails="recipient@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    other_submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    other_task = ApprovalTask.objects.create(
+        submission=other_submission,
+        workflow_stage=stage,
+        step_name="Review",
+        status="pending",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(
+            submission.id, "approval_request", task_id=other_task.id
+        )
+
+    assert mock_send.call_count == 1
+    assert "task" not in mock_send.call_args.args[3]
+
+
 # ── approver context in template rendering ─────────────────────────────
 
 

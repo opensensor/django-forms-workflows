@@ -474,10 +474,9 @@ here rather than lost.
   jitter, retrying up to 5 times on HTTP 429 and HTTP 403 with reason
   `rateLimitExceeded` / `userRateLimitExceeded` / `backendError`.
   `dailyLimitExceeded` (the 2,000-msg/day-per-user Workspace cap) and
-  permission errors are intentionally not retried — quota recovery
-  follows a rolling 24-hour window and can require a prolonged wait,
-  so immediate retries would only burn Celery worker time. Tests are
-  `googleapiclient` isn't installed (it's an optional dep).
+  permission errors are intentionally not retried because immediate retries
+  cannot resolve them. Tests are skipped
+  automatically when `googleapiclient` isn't installed (it's an optional dep).
 
 ### Added
 - **NotificationLog admin: bulk "Retry failed" action.** Select one or

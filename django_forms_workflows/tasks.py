@@ -2252,6 +2252,8 @@ def send_notification_rules(
             _write_notification_log(
                 notification_type=event,
                 submission_id=submission_id,
+                notification_rule_id=rule.id,
+                approval_task_id=task.id if task is not None else None,
                 recipient_email="(rule failed)",
                 subject=f"NotificationRule {rule.id} ({event})",
                 status="failed",

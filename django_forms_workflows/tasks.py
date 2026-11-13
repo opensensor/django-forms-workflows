@@ -1810,11 +1810,12 @@ def send_notification_rules(
         # Build subject with answer piping — {field_name} tokens are
         # resolved from form_data alongside the built-in {form_name} and
         # {submission_id} placeholders.
-        _pipe_vars = {
-            "form_name": form_name,
-            "submission_id": submission.id,
-            **{k: _pipe_value(v) for k, v in form_data.items()},
-        }
+        # Populate submitted fields first, then force reserved placeholders
+        # to avoid collisions when a form field is named "form_name" or
+        # "submission_id".
+        _pipe_vars = {k: _pipe_value(v) for k, v in form_data.items()}
+        _pipe_vars["form_name"] = form_name
+        _pipe_vars["submission_id"] = submission.id
         subject_tpl = rule.subject_template or default_subject_tpl
         try:
             subject = subject_tpl.format_map(defaultdict(str, _pipe_vars))

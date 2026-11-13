@@ -1509,13 +1509,14 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         sw_node = sub_workflow_nodes[0]
         sw_data = sw_node.get("data", {})
         target_workflow_id = sw_data.get("sub_workflow_id")
+        target_id_type = sw_data.get("sub_workflow_id_type", "workflow")
 
         if target_workflow_id:
-            target_workflow = WorkflowDefinition.objects.filter(
-                id=target_workflow_id
-            ).first()
-
-            if target_workflow is None:
+            if target_id_type == "workflow":
+                target_workflow = WorkflowDefinition.objects.filter(
+                    id=target_workflow_id
+                ).first()
+            elif target_id_type == "form":
                 target_workflow = (
                     WorkflowDefinition.objects.filter(
                         form_definition_id=target_workflow_id
@@ -1523,29 +1524,49 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     .order_by("id")
                     .first()
                 )
-
-            if target_workflow:
-                sw_fields = {
-                    "sub_workflow": target_workflow,
-                    "section_label": sw_data.get("section_label", ""),
-                    "count_field": sw_data.get("count_field", ""),
-                    "label_template": sw_data.get(
-                        "label_template", "Sub-workflow {index}"
-                    ),
-                    "trigger": sw_data.get("trigger", "on_approval"),
-                    "data_prefix": sw_data.get("data_prefix", ""),
-                    "detached": sw_data.get("detached", False),
-                    "reject_parent": sw_data.get("reject_parent", False),
-                }
-                SubWorkflowDefinition.objects.update_or_create(
-                    parent_workflow=workflow,
-                    defaults=sw_fields,
-                )
             else:
-                logger.warning(
-                    "Sub-workflow target %s has no workflow definition",
-                    target_workflow_id,
+                raise ValidationError(
+                    {
+                        "sub_workflow_id_type": (
+                            "Invalid sub_workflow_id_type. "
+                            "Expected 'workflow' or 'form'."
+                        )
+                    }
                 )
+
+            if not target_workflow:
+                if target_id_type == "workflow":
+                    raise ValidationError(
+                        {
+                            "sub_workflow_id": (
+                                f"WorkflowDefinition with id '{target_workflow_id}' does not exist."
+                            )
+                        }
+                    )
+                raise ValidationError(
+                    {
+                        "sub_workflow_id": (
+                            f"No workflow definition found for form_definition_id '{target_workflow_id}'."
+                        )
+                    }
+                )
+
+            sw_fields = {
+                "sub_workflow": target_workflow,
+                "section_label": sw_data.get("section_label", ""),
+                "count_field": sw_data.get("count_field", ""),
+                "label_template": sw_data.get(
+                    "label_template", "Sub-workflow {index}"
+                ),
+                "trigger": sw_data.get("trigger", "on_approval"),
+                "data_prefix": sw_data.get("data_prefix", ""),
+                "detached": sw_data.get("detached", False),
+                "reject_parent": sw_data.get("reject_parent", False),
+            }
+            SubWorkflowDefinition.objects.update_or_create(
+                parent_workflow=workflow,
+                defaults=sw_fields,
+            )
     else:
         # No sub-workflow node — remove any existing config
         SubWorkflowDefinition.objects.filter(parent_workflow=workflow).delete()

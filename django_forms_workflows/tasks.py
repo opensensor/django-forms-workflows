@@ -1713,17 +1713,16 @@ def send_notification_rules(
 
         already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(rule)
 
-        # Drop recipients already successfully delivered (acks_late retry guard).
-        # New rows store CCs in `cc_emails` on the To row; legacy rows from
-        # before that change used a `cc:{recipient}` prefix on `recipient_email`,
-        # so check both formats during the transition.
+        # Skip recipients successfully delivered on an earlier attempt.
         if already_sent or already_cc_or_bcc:
             before_to, before_cc = len(recipients), len(cc_recipients)
             recipients = [r for r in recipients if r not in already_sent]
             cc_recipients = [
                 c
                 for c in cc_recipients
-                if c not in already_cc_or_bcc and f"cc:{c}" not in already_sent
+                if c not in already_sent
+                and c not in already_cc_or_bcc
+                and f"cc:{c}" not in already_sent
             ]
             skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
             if skipped:
@@ -1735,7 +1734,7 @@ def send_notification_rules(
                     submission.id,
                 )
 
-        if not recipients:
+        if not recipients and not cc_recipients:
             logger.info(
                 "NotificationRule %s: no recipients to send to for submission %s; "
                 "skipping (resolved zero, or all already delivered).",
@@ -1768,7 +1767,7 @@ def send_notification_rules(
                 before - len(recipients),
                 submission.id,
             )
-            if not recipients:
+            if not recipients and not cc_recipients:
                 return
 
         # Build subject with answer piping — {field_name} tokens are
@@ -1820,7 +1819,18 @@ def send_notification_rules(
             if workflow
             else "immediate"
         )
-        if cadence != "immediate" and workflow is not None:
+        digest_supported_events = {
+            "submission_received",
+            "approval_request",
+            "workflow_approved",
+            "workflow_denied",
+            "form_withdrawn",
+        }
+        if (
+            cadence != "immediate"
+            and workflow is not None
+            and event in digest_supported_events
+        ):
             scheduled_for = _compute_scheduled_for(workflow, submission)
             # In batched/digest mode we don't carry the TO/CC distinction —
             # each recipient just gets the summary email. Queue CCs alongside
@@ -1855,7 +1865,6 @@ def send_notification_rules(
                 if recipient_user:
                     ctx["approver"] = recipient_user
                 email_cc = cc_pending
-                cc_pending = []
                 if rule_body.strip():
                     send_result = _send_html_email_from_string(
                         subject,
@@ -1881,6 +1890,38 @@ def send_notification_rules(
                         notification_rule_id=rule.id,
                     )
                 if send_result is False:
+                    had_dispatch_failure = True
+                else:
+                    # Consume CCs only after a successful send.
+                    cc_pending = []
+
+            # If CCs were never delivered with a successful TO send (or there
+            # were no TO recipients), attempt a CC-only send so retries do not
+            # lose CC delivery.
+            if cc_pending:
+                if rule_body.strip():
+                    cc_send_result = _send_html_email_from_string(
+                        subject,
+                        cc_pending,
+                        rule_body,
+                        {**base_context},
+                        notification_type=event,
+                        submission_id=submission_id,
+                        approval_task_id=triggering_task_id,
+                        notification_rule_id=rule.id,
+                    )
+                else:
+                    cc_send_result = _send_html_email(
+                        subject,
+                        cc_pending,
+                        default_template,
+                        {**base_context},
+                        notification_type=event,
+                        submission_id=submission_id,
+                        approval_task_id=triggering_task_id,
+                        notification_rule_id=rule.id,
+                    )
+                if cc_send_result is False:
                     had_dispatch_failure = True
 
     had_dispatch_failure = False

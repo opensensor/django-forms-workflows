@@ -2355,6 +2355,41 @@ class TestNotificationLogCcBccConsolidation:
         # already delivered as part of that send.
         assert len(mailoutbox) == 0
 
+    def test_retry_delivers_cc_when_to_was_sent_alone(
+        self, form_definition, user, mailoutbox
+    ):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        rule = NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            cc_static_emails="cc@example.com",
+        )
+        sub = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission=sub,
+            notification_rule=rule,
+            recipient_email=user.email,
+            subject="prior",
+            status="sent",
+        )
+
+        send_notification_rules(sub.id, "submission_received")
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == ["cc@example.com"]
+
+        mailoutbox.clear()
+        send_notification_rules(sub.id, "submission_received")
+        assert mailoutbox == []
+
     def test_cc_prefix_legacy_rows_still_dedup(self, form_definition, user, mailoutbox):
         """Pre-upgrade `cc:`-prefixed rows from the old format must still
         suppress retry CCs so an in-flight upgrade doesn't double-deliver."""
@@ -2508,6 +2543,35 @@ def test_unsupported_batch_type_remains_pending(form_definition):
     assert tasks_module.send_batched_notifications() == "sent=0"
     pending.refresh_from_db()
     assert pending.sent is False
+
+
+@pytest.mark.django_db
+def test_daily_workflow_approved_queues_supported_digest(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, notification_cadence="daily"
+    )
+    NotificationRule.objects.create(
+        workflow=workflow, event="workflow_approved", notify_submitter=True
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as send:
+        send_notification_rules(submission.pk, "workflow_approved")
+
+    send.assert_not_called()
+    assert (
+        PendingNotification.objects.filter(
+            submission=submission,
+            notification_type="workflow_approved",
+            recipient_email=user.email,
+        ).count()
+        == 1
+    )
 
 
 # ── notify_stage_groups: only groups holding a task on the stage ───────────

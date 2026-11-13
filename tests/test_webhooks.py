@@ -73,6 +73,18 @@ def test_dispatch_workflow_webhooks_enqueues_matching_endpoints(workflow, user):
         events=["submission.created"],
         is_active=False,
     )
+    other_workflow = workflow.__class__.objects.create(
+        form_definition=workflow.form_definition,
+        name=f"{workflow.name} Other",
+        slug=f"{workflow.slug}-other",
+    )
+    WebhookEndpoint.objects.create(
+        workflow=other_workflow,
+        name="Other Workflow Created Hook",
+        url="https://example.com/hooks/other-created",
+        events=["submission.created"],
+        is_active=True,
+    )
 
     with patch(
         "django_forms_workflows.tasks.deliver_workflow_webhook.delay"

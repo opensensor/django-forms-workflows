@@ -1320,7 +1320,10 @@ def _collect_notification_recipients(
         notif_workflow_id = getattr(notif, "workflow_id", None)
         qs = (
             submission.approval_tasks.select_related("assigned_to", "workflow_stage")
-            .filter(assigned_to__isnull=False)
+            .filter(
+                assigned_to__isnull=False,
+                status=ApprovalTask.Status.PENDING,
+            )
             .exclude(workflow_stage__assignee_form_field__isnull=True)
             .exclude(workflow_stage__assignee_form_field="")
         )

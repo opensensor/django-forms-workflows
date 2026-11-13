@@ -1083,6 +1083,8 @@ def shared_option_list_save(request):
         )
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    except Http404:
+        raise
     except Exception:
         logger.exception("Error saving shared option list")
         return JsonResponse(

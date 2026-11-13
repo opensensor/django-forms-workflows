@@ -213,6 +213,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     )
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
+    field_name_to_id = {
+        field["field_name"].strip().lower(): field["id"] for field in field_records
+    }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
         set(workflow.stages.values_list("id", flat=True))
@@ -220,6 +223,11 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         else set()
     )
     stage_node_ids = {node.get("id") for node in stage_nodes if node.get("id")}
+    stage_ids_in_payload = {
+        node.get("data", {}).get("stage_id")
+        for node in stage_nodes
+        if node.get("data", {}).get("stage_id")
+    }
     errors = []
     field_assignments = {}
 
@@ -263,6 +271,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     for index, stage_node in enumerate(stage_nodes, start=1):
         stage_data = stage_node.get("data", {})
         stage_label = stage_data.get("name") or f"Stage {index}"
+        stage_identity = stage_node.get("id") or f"stage-index-{index}"
         group_entries = [
             g for g in stage_data.get("approval_groups", []) if g.get("id")
         ]
@@ -309,14 +318,29 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 f"{stage_label} references unknown approval-only fields: {', '.join(str(ref) for ref in invalid_field_refs)}."
             )
         for key_type, key_value, label in normalized_field_refs:
-            field_key = (key_type, key_value)
-            previous_stage = field_assignments.get(field_key)
-            if previous_stage and previous_stage != stage_label:
+            if key_type == "id":
+                canonical_field_id = key_value
+            else:
+                canonical_field_id = field_name_to_id.get(
+                    str(key_value).strip().lower()
+                )
+
+            if not canonical_field_id:
+                continue
+
+            previous_assignment = field_assignments.get(canonical_field_id)
+            if (
+                previous_assignment
+                and previous_assignment["stage_identity"] != stage_identity
+            ):
                 add_error(
-                    f"Approval-only field '{label}' is assigned to multiple stages: {previous_stage} and {stage_label}."
+                    f"Approval-only field '{label}' is assigned to multiple stages: {previous_assignment['stage_label']} and {stage_label}."
                 )
             else:
-                field_assignments[field_key] = stage_label
+                field_assignments[canonical_field_id] = {
+                    "stage_identity": stage_identity,
+                    "stage_label": stage_label,
+                }
 
     settings_data = settings_nodes[0].get("data", {}) if settings_nodes else {}
     cadence = settings_data.get("notification_cadence") or "immediate"
@@ -348,10 +372,15 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             add_error(
                 f"Notification rule {rule_index} references a stage that is not present in the builder graph."
             )
-        if stage_id and stage_id not in existing_stage_ids and not stage_node_id:
-            add_error(
-                f"Notification rule {rule_index} references an unknown workflow stage ID: {stage_id}."
-            )
+        if stage_id:
+            if stage_id not in existing_stage_ids:
+                add_error(
+                    f"Notification rule {rule_index} references an unknown workflow stage ID: {stage_id}."
+                )
+            elif stage_id not in stage_ids_in_payload and not stage_node_id:
+                add_error(
+                    f"Notification rule {rule_index} references workflow stage ID {stage_id}, but that stage is not present in the submitted builder graph."
+                )
 
         has_recipients = bool(
             rule_data.get("notify_submitter")
@@ -709,8 +738,8 @@ def convert_workflow_to_visual(workflow, form_definition):
         for action in form_definition.post_actions.filter(action_type="email")
     }
     sub_workflow_defaults = None
-    if hasattr(workflow, "sub_workflow_definition"):
-        sub_wf_config = workflow.sub_workflow_definition
+    if hasattr(workflow, "sub_workflow_config"):
+        sub_wf_config = workflow.sub_workflow_config
         target_workflow = sub_wf_config.sub_workflow
         sub_workflow_defaults = {
             "sub_workflow_def_id": sub_wf_config.id,
@@ -767,6 +796,8 @@ def convert_workflow_to_visual(workflow, form_definition):
                             )
                 elif node_type == "workflow_settings":
                     for key, value in settings_defaults.items():
+                        if key == "notification_rules":
+                            continue
                         node_data.setdefault(key, value)
                     node_data.setdefault(
                         "notification_rules", notification_rule_defaults
@@ -1206,10 +1237,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     )
 
     if workflow is None:
-        workflow, _created = WorkflowDefinition.objects.update_or_create(
-            form_definition=form_definition,
-            defaults=wf_defaults,
+        candidate_workflows = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
         )
+        workflow_count = candidate_workflows.count()
+
+        if workflow_count == 0:
+            workflow = WorkflowDefinition.objects.create(
+                form_definition=form_definition,
+                **wf_defaults,
+            )
+        elif workflow_count == 1:
+            workflow = candidate_workflows.first()
+            for key, value in wf_defaults.items():
+                setattr(workflow, key, value)
+            workflow.form_definition = form_definition
+            workflow.save()
+        else:
+            raise ValidationError(
+                "Multiple workflow tracks exist for this form. Please select a workflow ID."
+            )
     else:
         for key, value in wf_defaults.items():
             setattr(workflow, key, value)

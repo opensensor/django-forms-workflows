@@ -1848,7 +1848,8 @@ class TestFormBuilderViews:
 
     def test_preview_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
-        url = _fb_url("builder/api/preview/")
+        html = resp.json()["html"]
+        assert field_label in html
         form_count_before = FormDefinition.objects.count()
         field_count_before = FormField.objects.count()
         field_label = "Preview Test Field"

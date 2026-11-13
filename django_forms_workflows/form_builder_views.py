@@ -577,6 +577,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     resulting integer pk, as a str-keyed dict, so the frontend can
     reconcile IDs for newly-created fields.
     """
+
     def _optional_text(field_name):
         if field_name not in data:
             return ""

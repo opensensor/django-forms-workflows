@@ -196,6 +196,7 @@ class TestConvertWorkflowToVisual:
         assert result["nodes"][0]["data"]["allow_reassign"] is True
         assert result["nodes"][0]["data"]["allow_edit_form_data"] is True
         assert result["nodes"][0]["data"]["assignee_form_field"] == "manager_email"
+        assert result["nodes"][0]["data"]["assignee_lookup_type"] == "email"
         assert result["nodes"][0]["data"]["validate_assignee_group"] is False
 
     def test_workflow_with_no_stages_has_no_stage_nodes(self, form_definition, db):

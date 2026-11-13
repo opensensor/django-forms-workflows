@@ -2834,6 +2834,24 @@ def test_failed_digest_remains_pending(form_definition, user):
 
 
 @pytest.mark.django_db
+def test_zero_delivery_is_failed_and_logged():
+    with patch(
+        "django_forms_workflows.tasks.EmailMultiAlternatives.send", return_value=0
+    ):
+        delivered = tasks_module._send_html_email_from_string(
+            subject="Undelivered",
+            to=["recipient@example.com"],
+            body_template_string="<p>Hello</p>",
+            context={},
+        )
+
+    assert delivered is False
+    log = NotificationLog.objects.get(recipient_email="recipient@example.com")
+    assert log.status == "failed"
+    assert "zero deliveries" in log.error_message
+
+
+@pytest.mark.django_db
 def test_digest_retries_reuse_pending_row_but_can_requeue_after_send(
     form_definition, user
 ):

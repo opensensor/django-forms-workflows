@@ -24,6 +24,7 @@ from email.utils import make_msgid
 import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
 from django.db.models import Prefetch
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -163,7 +164,7 @@ def _send_html_email(
     bcc_str = ", ".join(bcc_list)
     try:
         sent_count = msg.send(fail_silently=False)
-        if sent_count <= 0:
+        if sent_count == 0:
             logger.warning(
                 "Email backend reported zero deliveries for '%s' to %s%s%s",
                 subject,
@@ -171,6 +172,19 @@ def _send_html_email(
                 f" cc={cc_list}" if cc_list else "",
                 f" bcc={bcc_list}" if bcc_list else "",
             )
+            for recipient in to_list:
+                _write_notification_log(
+                    notification_type=notification_type,
+                    submission_id=submission_id,
+                    recipient_email=recipient,
+                    subject=subject,
+                    status="failed",
+                    error_message="Email backend reported zero deliveries",
+                    cc_emails=cc_str,
+                    bcc_emails=bcc_str,
+                    approval_task_id=approval_task_id,
+                    notification_rule_id=notification_rule_id,
+                )
             return False
 
         logger.info(
@@ -273,7 +287,22 @@ def _send_html_email_from_string(
     cc_str = ", ".join(cc_list)
     bcc_str = ", ".join(bcc_list)
     try:
-        msg.send(fail_silently=False)
+        sent_count = msg.send(fail_silently=False)
+        if sent_count == 0:
+            for recipient in to_list:
+                _write_notification_log(
+                    notification_type=notification_type,
+                    submission_id=submission_id,
+                    recipient_email=recipient,
+                    subject=subject,
+                    status="failed",
+                    error_message="Email backend reported zero deliveries",
+                    cc_emails=cc_str,
+                    bcc_emails=bcc_str,
+                    approval_task_id=approval_task_id,
+                    notification_rule_id=notification_rule_id,
+                )
+            return False
         logger.info(
             "Sent email '%s' to %s%s%s",
             subject,
@@ -1017,69 +1046,72 @@ def send_batched_notifications() -> str:
         _workflow_id,
     ), notifications in groups.items():
         ids = [n.id for n in notifications]
-        claimed = 0
         try:
-            delivered = False
-            claimed = PendingNotification.objects.filter(id__in=ids, sent=False).update(sent=True)
-            if claimed == 0:
-                logger.info(
-                    "send_batched_notifications: notifications already claimed for %s/%s; skipping.",
-                    notification_type,
-                    recipient_email,
+            # Hold the row locks through delivery and marking the batch sent.
+            # A worker crash rolls back the transaction, leaving the rows retryable.
+            with transaction.atomic():
+                current = list(
+                    PendingNotification.objects.select_for_update()
+                    .filter(id__in=ids, sent=False)
+                    .select_related(
+                        "workflow__form_definition",
+                        "submission__form_definition",
+                        "submission__submitter",
+                        "approval_task",
+                    )
                 )
-                continue
-            if notification_type == "submission_received":
-                delivered = _dispatch_submission_digest(recipient_email, notifications)
-            elif notification_type == "approval_request":
-                delivered = _dispatch_approval_digest(recipient_email, notifications)
-            elif notification_type in (
-                "approval_notification",
-                "rejection_notification",
-                "withdrawal_notification",
-                "workflow_approved",
-                "workflow_denied",
-                "form_withdrawn",
-            ):
-                conclusion_type = {
-                    "workflow_approved": "approval_notification",
-                    "workflow_denied": "rejection_notification",
-                    "form_withdrawn": "withdrawal_notification",
-                }.get(notification_type, notification_type)
-                delivered = _dispatch_conclusion_digest(
-                    recipient_email, notifications, conclusion_type
-                )
-            elif notification_type in (
-                "stage_decision",
-                "approval_reminder",
-                "escalation",
-            ):
-                logger.info(
-                    "send_batched_notifications: bypassing unsupported batched type %r for %s.",
-                    notification_type,
-                    recipient_email,
-                )
-                PendingNotification.objects.filter(id__in=ids).update(sent=False)
-                continue
-            else:
-                logger.warning(
-                    "send_batched_notifications: unknown type %r for %s; skipping.",
-                    notification_type,
-                    recipient_email,
-                )
-                PendingNotification.objects.filter(id__in=ids).update(sent=False)
-                continue
-            if delivered:
-                sent_count += claimed
-            else:
-                PendingNotification.objects.filter(id__in=ids).update(sent=False)
-                logger.warning(
-                    "send_batched_notifications: delivery failed for %s to %s; leaving notifications pending.",
-                    notification_type,
-                    recipient_email,
-                )
+                if not current:
+                    continue
+                delivered = False
+                if notification_type == "submission_received":
+                    delivered = _dispatch_submission_digest(recipient_email, current)
+                elif notification_type == "approval_request":
+                    delivered = _dispatch_approval_digest(recipient_email, current)
+                elif notification_type in (
+                    "approval_notification",
+                    "rejection_notification",
+                    "withdrawal_notification",
+                    "workflow_approved",
+                    "workflow_denied",
+                    "form_withdrawn",
+                ):
+                    conclusion_type = {
+                        "workflow_approved": "approval_notification",
+                        "workflow_denied": "rejection_notification",
+                        "form_withdrawn": "withdrawal_notification",
+                    }.get(notification_type, notification_type)
+                    delivered = _dispatch_conclusion_digest(
+                        recipient_email, current, conclusion_type
+                    )
+                elif notification_type in (
+                    "stage_decision",
+                    "approval_reminder",
+                    "escalation",
+                ):
+                    logger.info(
+                        "send_batched_notifications: bypassing unsupported batched type %r for %s.",
+                        notification_type,
+                        recipient_email,
+                    )
+                    continue
+                else:
+                    logger.warning(
+                        "send_batched_notifications: unknown type %r for %s; skipping.",
+                        notification_type,
+                        recipient_email,
+                    )
+                    continue
+                if delivered:
+                    sent_count += PendingNotification.objects.filter(
+                        id__in=[n.id for n in current], sent=False
+                    ).update(sent=True)
+                else:
+                    logger.warning(
+                        "send_batched_notifications: delivery failed for %s to %s; leaving notifications pending.",
+                        notification_type,
+                        recipient_email,
+                    )
         except Exception as exc:
-            if claimed:
-                PendingNotification.objects.filter(id__in=ids).update(sent=False)
             logger.exception(
                 "Failed dispatching batched %s digest to %s: %s",
                 notification_type,
@@ -1362,22 +1394,22 @@ def _collect_notification_recipients(
         # validation/reassignment-role groups must not spawn tasks (engine fix
         # in 0.74.6) and must not receive notifications, even if a task created
         # before that fix is still around.
+        group_tasks = submission.approval_tasks.filter(
+            Exists(
+                StageApprovalGroup.objects.filter(
+                    stage_id=OuterRef("workflow_stage_id"),
+                    group_id=OuterRef("assigned_group_id"),
+                    role="approval",
+                )
+            ),
+            workflow_stage_id__in=candidate_stage_ids,
+            assigned_group_id__isnull=False,
+            assigned_to_id__isnull=True,
+        )
+        if getattr(notif, "event", None) == "approval_request":
+            group_tasks = group_tasks.filter(status="pending")
         group_ids = list(
-            submission.approval_tasks.filter(
-                Exists(
-                    StageApprovalGroup.objects.filter(
-                        stage_id=OuterRef("workflow_stage_id"),
-                        group_id=OuterRef("assigned_group_id"),
-                        role="approval",
-                    )
-                ),
-                workflow_stage_id__in=candidate_stage_ids,
-                status=ApprovalTask.STATUS_PENDING,
-                assigned_group_id__isnull=False,
-                assigned_to_id__isnull=True,
-            )
-            .values_list("assigned_group_id", flat=True)
-            .distinct()
+            group_tasks.values_list("assigned_group_id", flat=True).distinct()
         )
         if group_ids:
             for email in (
@@ -1943,11 +1975,10 @@ def send_notification_rules(
                     "recipient_email": recipient,
                     "sent": False,
                 }
-                _, created = PendingNotification.objects.get_or_create(
-                    **pending_identity,
-                    defaults={"scheduled_for": scheduled_for},
-                )
-                if created:
+                if not PendingNotification.objects.filter(**pending_identity).exists():
+                    PendingNotification.objects.create(
+                        **pending_identity, scheduled_for=scheduled_for
+                    )
                     created_count += 1
             logger.info(
                 "Queued %d/%d %s notification(s) for submission %s (due %s)",

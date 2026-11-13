@@ -1749,10 +1749,11 @@ class TestFormBuilderViews:
 
     def test_clone_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)
+        before_count = FormDefinition.objects.count()
         url = _fb_url(f"builder/api/clone/{form_with_fields.id}/")
         resp = client.post(url)
         assert resp.status_code in (302, 403)
-        assert FormDefinition.objects.filter(id=form_with_fields.id).count() == 1
+        assert FormDefinition.objects.count() == before_count
 
     def test_preview_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")

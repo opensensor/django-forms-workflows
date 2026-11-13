@@ -25,7 +25,7 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import Max, Prefetch
+from django.db.models import Prefetch
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -1009,17 +1009,24 @@ def check_approval_deadlines() -> str:
                     queryset=WorkflowDefinition.objects.order_by("pk"),
                 )
             )
-            .annotate(latest_task_created_at=Max("approval_tasks__created_at"))
         )
         for submission in submissions:
-            workflow = getattr(submission.form_definition, "workflow", None)
+            latest_task = (
+                submission.approval_tasks.select_related("workflow_stage__workflow")
+                .order_by("-created_at", "-pk")
+                .first()
+            )
+            if not latest_task:
+                continue
+            workflow = (
+                latest_task.workflow_stage.workflow
+                if latest_task.workflow_stage_id
+                else getattr(submission.form_definition, "workflow", None)
+            )
             if not workflow or not workflow.auto_approve_after_days:
                 continue
 
-            if not submission.latest_task_created_at:
-                continue
-
-            auto_deadline = submission.latest_task_created_at + timedelta(
+            auto_deadline = latest_task.created_at + timedelta(
                 days=workflow.auto_approve_after_days
             )
             if now > auto_deadline:
@@ -1033,8 +1040,21 @@ def check_approval_deadlines() -> str:
                     if not locked_submission:
                         continue
 
-                    locked_workflow = getattr(
-                        locked_submission.form_definition, "workflow", None
+                    latest_locked_task = (
+                        locked_submission.approval_tasks.select_related(
+                            "workflow_stage__workflow"
+                        )
+                        .order_by("-created_at", "-pk")
+                        .first()
+                    )
+                    if not latest_locked_task:
+                        continue
+                    locked_workflow = (
+                        latest_locked_task.workflow_stage.workflow
+                        if latest_locked_task.workflow_stage_id
+                        else getattr(
+                            locked_submission.form_definition, "workflow", None
+                        )
                     )
                     if (
                         not locked_workflow
@@ -1042,13 +1062,7 @@ def check_approval_deadlines() -> str:
                     ):
                         continue
 
-                    latest_task_created_at = ApprovalTask.objects.filter(
-                        submission_id=locked_submission.id
-                    ).aggregate(latest=Max("created_at"))["latest"]
-                    if not latest_task_created_at:
-                        continue
-
-                    locked_auto_deadline = latest_task_created_at + timedelta(
+                    locked_auto_deadline = latest_locked_task.created_at + timedelta(
                         days=locked_workflow.auto_approve_after_days
                     )
                     if now <= locked_auto_deadline:
@@ -2086,10 +2100,11 @@ def send_notification_rules(
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
                 if not PendingNotification.objects.filter(**pending_identity).exists():
                     PendingNotification.objects.create(
-                        **pending_identity, sent=False, scheduled_for=scheduled_for
+                        **pending_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

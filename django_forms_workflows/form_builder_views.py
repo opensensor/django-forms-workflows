@@ -593,7 +593,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     payment_enabled = data.get("payment_enabled", False)
     payment_provider = data.get("payment_provider", "")
     payment_amount_type = data.get("payment_amount_type", "fixed")
-    payment_fixed_amount = data.get("payment_fixed_amount") or None
+    payment_fixed_amount_raw = data.get("payment_fixed_amount")
+    payment_fixed_amount = None if payment_fixed_amount_raw is None or payment_fixed_amount_raw == "" else payment_fixed_amount_raw
     payment_amount_field = data.get("payment_amount_field", "")
     payment_currency = data.get("payment_currency", "usd")
     payment_description_template = data.get("payment_description_template", "")

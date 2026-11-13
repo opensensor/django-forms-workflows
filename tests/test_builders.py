@@ -1405,6 +1405,28 @@ class TestFormBuilderSavePayloadValidation:
     """form_builder_save must keep fields and stages scoped to the form being
     saved, and reject bad references without persisting any of the save."""
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            [],
+            {"name": "Form", "slug": "form", "fields": {}},
+            {"name": "Form", "slug": "form", "fields": [1]},
+            {"name": 123, "slug": "form", "fields": []},
+            {"name": "Form", "slug": None, "fields": []},
+        ],
+    )
+    def test_rejects_invalid_payload_types(self, client, superuser, payload):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["success"] is False
+        assert not FormDefinition.objects.filter(slug="form").exists()
+
     @staticmethod
     def _save(client, form, fields):
         return client.post(

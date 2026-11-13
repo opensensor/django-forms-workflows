@@ -490,8 +490,15 @@ def form_builder_save(request):
             )
 
         form_id = data.get("id")
-        form_name = data.get("name", "").strip()
-        form_slug = data.get("slug", "").strip()
+        raw_name = data.get("name", "")
+        raw_slug = data.get("slug", "")
+        if not isinstance(raw_name, str) or not isinstance(raw_slug, str):
+            return JsonResponse(
+                {"success": False, "error": "Form name and slug must be strings"},
+                status=400,
+            )
+        form_name = raw_name.strip()
+        form_slug = raw_slug.strip()
 
         # Validate required fields
         if not form_name:

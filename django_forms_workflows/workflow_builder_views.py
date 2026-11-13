@@ -1446,7 +1446,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         action_name = data.get("name", "Unnamed Action")
         action_type = data.get("action_type", "database")
 
-        config = data.get("config", {})
+        config = data.get("config") or {}
         if isinstance(config, str):
             try:
                 config = json.loads(config)
@@ -1532,6 +1532,14 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         target_id_type = sw_data.get("sub_workflow_id_type", "workflow")
 
         if target_workflow_id:
+            if (
+                isinstance(target_workflow_id, bool)
+                or not str(target_workflow_id).isascii()
+                or not str(target_workflow_id).isdigit()
+            ):
+                raise ValidationError(
+                    {"sub_workflow_id": "Target ID must be a positive integer."}
+                )
             if target_id_type == "workflow":
                 target_workflow = WorkflowDefinition.objects.filter(
                     id=target_workflow_id
@@ -1575,9 +1583,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 "sub_workflow": target_workflow,
                 "section_label": sw_data.get("section_label", ""),
                 "count_field": sw_data.get("count_field", ""),
-                "label_template": sw_data.get(
-                    "label_template", "Sub-workflow {index}"
-                ),
+                "label_template": sw_data.get("label_template", "Sub-workflow {index}"),
                 "trigger": sw_data.get("trigger", "on_approval"),
                 "data_prefix": sw_data.get("data_prefix", ""),
                 "detached": sw_data.get("detached", False),

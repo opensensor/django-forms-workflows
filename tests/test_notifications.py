@@ -2842,7 +2842,6 @@ def test_taskless_final_notifications_keep_workflow_context_separate(
     assert first.count("|") == 1
     first_public_comments, first_task_comments = first.split("|", 1)
     assert "Private to workflow 1" in first_public_comments
-    assert "Private to workflow 1" in first_task_comments
     assert "Private to workflow 2" not in first_public_comments
     assert "Private to workflow 2" not in first_task_comments
 

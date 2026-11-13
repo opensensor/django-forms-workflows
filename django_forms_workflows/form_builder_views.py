@@ -259,7 +259,7 @@ def form_builder_clone(request, form_id):
                     ):
                         StageApprovalGroup.objects.create(
                             stage=cloned_stage,
-                            group=sag.group,
+                            group_id=sag.group_id,
                             position=sag.position,
                             role=sag.role,
                         )

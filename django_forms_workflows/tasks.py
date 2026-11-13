@@ -1540,33 +1540,39 @@ def send_notification_rules(
         task,
     )
 
-    # Build a denormalized "public_comments" list for the template context
-    # (file templates and per-rule body_template overrides alike). Each
-    # entry has stage_name / status / actor / comment so a custom body can
-    # do ``{% for c in public_comments %}{{ c.stage_name }}: {{ c.comment }}{% endfor %}``
-    # without knowing the model. Ordered by workflow flow (stage → step →
-    # completion time) so the audit reads top-to-bottom in the email.
-    _comments_qs = (
-        submission.approval_tasks.select_related("workflow_stage", "completed_by")
-        .filter(status__in=["approved", "rejected"])
-        .exclude(comments="")
-        .order_by("stage_number", "step_number", "completed_at")
-    )
-    public_comments: list[dict] = []
-    for _t in _comments_qs:
-        _actor = ""
-        if _t.completed_by:
-            _actor = _t.completed_by.get_full_name() or _t.completed_by.username
-        public_comments.append(
-            {
-                "stage_name": (
-                    _t.workflow_stage.name if _t.workflow_stage_id else _t.step_name
-                ),
-                "status": _t.status,
-                "actor": _actor,
-                "comment": _t.comments,
-            }
+    # Build a denormalized "public_comments" list for template context on a
+    # per-workflow basis so rule recipients only see comments from their
+    # workflow. Ordered by workflow flow (stage → step → completion time).
+    def _build_public_comments_for_workflow(workflow_id: int | None) -> list[dict]:
+        if not workflow_id:
+            return []
+        _comments_qs = (
+            submission.approval_tasks.select_related("workflow_stage", "completed_by")
+            .filter(
+                workflow_stage__workflow_id=workflow_id,
+                status__in=["approved", "rejected"],
+            )
+            .exclude(comments="")
+            .order_by("stage_number", "step_number", "completed_at")
         )
+        _public_comments: list[dict] = []
+        for _t in _comments_qs:
+            _actor = ""
+            if _t.completed_by:
+                _actor = _t.completed_by.get_full_name() or _t.completed_by.username
+            _public_comments.append(
+                {
+                    "stage_name": (
+                        _t.workflow_stage.name if _t.workflow_stage_id else _t.step_name
+                    ),
+                    "status": _t.status,
+                    "actor": _actor,
+                    "comment": _t.comments,
+                }
+            )
+        return _public_comments
+
+    _public_comments_by_workflow: dict[int, list[dict]] = {}
 
     rules_qs = (
         NotificationRule.objects.filter(event=event)

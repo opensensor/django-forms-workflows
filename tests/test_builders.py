@@ -196,6 +196,7 @@ class TestConvertWorkflowToVisual:
         assert result["nodes"][0]["data"]["allow_reassign"] is True
         assert result["nodes"][0]["data"]["allow_edit_form_data"] is True
         assert result["nodes"][0]["data"]["assignee_form_field"] == "manager_email"
+        assert result["nodes"][0]["data"]["assignee_lookup_type"] == "email"
         assert result["nodes"][0]["data"]["validate_assignee_group"] is False
 
     def test_workflow_with_no_stages_has_no_stage_nodes(self, form_definition, db):
@@ -2132,6 +2133,12 @@ class TestFormBuilderTemplateAPI:
             description="A simple contact form",
             template_data={"fields": []},
         )
+        FormTemplate.objects.create(
+            name="Inactive Contact Form",
+            slug="inactive-contact-form",
+            template_data={"fields": []},
+            is_active=False,
+        )
         client.force_login(superuser)
         url = _fb_url("builder/api/templates/")
         resp = client.get(url)
@@ -2193,6 +2200,12 @@ class TestSharedOptionListAPI:
 
         ol = SharedOptionList.objects.create(
             name="Departments", slug="departments", items=["HR", "IT"]
+        )
+        SharedOptionList.objects.create(
+            name="Inactive Departments",
+            slug="inactive-departments",
+            items=["Old"],
+            is_active=False,
         )
         client.force_login(superuser)
         url = _fb_url("builder/api/shared-lists/")

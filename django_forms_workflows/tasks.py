@@ -532,13 +532,34 @@ def dispatch_workflow_webhooks(
                 task_id,
                 submission_id,
             )
+            return
     target_stage = None
     if target_stage_id is not None:
-        target_stage = WorkflowStage.objects.select_related("workflow").get(
-            id=target_stage_id
+        target_stage = (
+            WorkflowStage.objects.select_related("workflow")
+            .filter(
+                id=target_stage_id,
+                workflow__form_definition_id=submission.form_definition_id,
+            )
+            .first()
         )
+        if target_stage is None:
+            logger.warning(
+                "Ignoring foreign or missing target_stage_id=%s", target_stage_id
+            )
+            return
 
     if workflow_id is not None:
+        if not submission.form_definition.workflows.filter(id=workflow_id).exists():
+            logger.warning("Ignoring foreign or missing workflow_id=%s", workflow_id)
+            return
+        if (
+            approval_task is not None
+            and approval_task.workflow_stage_id
+            and approval_task.workflow_stage.workflow_id != workflow_id
+        ):
+            logger.warning("Ignoring task and workflow IDs from different workflows")
+            return
         workflow_ids = [workflow_id]
     elif approval_task is not None and approval_task.workflow_stage_id:
         workflow_ids = [approval_task.workflow_stage.workflow_id]
@@ -912,6 +933,10 @@ def check_approval_deadlines() -> str:
                 ).update(status="expired")
                 if updated:
                     expired_count += 1
+                    task.status = "expired"
+                else:
+                    # Another worker changed the task before this sweep.
+                    continue
 
                 # Escalation groups have been removed.
                 # Escalation should now be modelled as conditional stages.
@@ -1772,6 +1797,7 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
@@ -2005,11 +2031,10 @@ def send_notification_rules(
                     "recipient_email": recipient,
                     "sent": False,
                 }
-                _, created = PendingNotification.objects.get_or_create(
-                    **pending_identity,
-                    defaults={"scheduled_for": scheduled_for},
-                )
-                if created:
+                if not PendingNotification.objects.filter(**pending_identity).exists():
+                    PendingNotification.objects.create(
+                        **pending_identity, scheduled_for=scheduled_for
+                    )
                     created_count += 1
             logger.info(
                 "Queued %d/%d %s notification(s) for submission %s (due %s)",

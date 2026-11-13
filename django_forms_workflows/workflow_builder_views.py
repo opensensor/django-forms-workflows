@@ -244,18 +244,21 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         invalid_refs = []
         for entry in raw_entries or []:
             if isinstance(entry, dict):
-                if entry.get("id") in field_ids:
+                entry_id = entry.get("id")
+                entry_field_name = entry.get("field_name")
+                if entry_id:
+                    if entry_id in field_ids:
+                        resolved_keys.append(
+                            ("id", entry_id, entry_field_name or str(entry_id))
+                        )
+                    else:
+                        invalid_refs.append(entry_id)
+                elif entry_field_name in field_names:
                     resolved_keys.append(
-                        ("id", entry["id"], entry.get("field_name") or str(entry["id"]))
-                    )
-                elif entry.get("field_name") in field_names:
-                    resolved_keys.append(
-                        ("field_name", entry["field_name"], entry["field_name"])
+                        ("field_name", entry_field_name, entry_field_name)
                     )
                 else:
-                    invalid_refs.append(
-                        entry.get("field_name") or entry.get("id") or entry
-                    )
+                    invalid_refs.append(entry_field_name or entry)
             elif isinstance(entry, int):
                 if entry in field_ids:
                     resolved_keys.append(("id", entry, str(entry)))
@@ -433,11 +436,19 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     for action_index, node in enumerate(action_nodes, start=1):
         action_data = node.get("data", {})
         config = action_data.get("config")
-        if isinstance(config, str) and config.strip():
-            try:
-                json.loads(config)
-            except json.JSONDecodeError:
-                add_error(f"Action {action_index} has invalid JSON configuration.")
+        normalized_config = config
+        if isinstance(config, str):
+            if config.strip():
+                try:
+                    normalized_config = json.loads(config)
+                except json.JSONDecodeError:
+                    add_error(f"Action {action_index} has invalid JSON configuration.")
+                    continue
+            else:
+                normalized_config = None
+
+        if normalized_config is not None and not isinstance(normalized_config, dict):
+            add_error(f"Action {action_index} configuration must be a JSON object.")
 
     for sub_index, node in enumerate(sub_workflow_nodes, start=1):
         sub_data = node.get("data", {})
@@ -633,9 +644,31 @@ def workflow_builder_save(request):
     """
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            raise ValidationError(
+                "Malformed payload: top-level JSON must be an object."
+            )
+
         form_id = data.get("form_id")
         workflow_id = data.get("workflow_id")
         workflow_data = data.get("workflow", {})
+
+        if not isinstance(workflow_data, dict):
+            raise ValidationError("Malformed payload: 'workflow' must be an object.")
+
+        nodes = workflow_data.get("nodes", [])
+        if not isinstance(nodes, list):
+            raise ValidationError("Malformed payload: 'workflow.nodes' must be a list.")
+        if nodes:
+            for idx, node in enumerate(nodes):
+                if not isinstance(node, dict):
+                    raise ValidationError(
+                        f"Malformed payload: node at index {idx} must be an object."
+                    )
+                if "data" in node and not isinstance(node["data"], dict):
+                    raise ValidationError(
+                        f"Malformed payload: node.data at index {idx} must be an object."
+                    )
 
         logger.info(f"Saving workflow for form {form_id}")
         logger.info(f"Workflow data: {workflow_data}")
@@ -1181,7 +1214,17 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     Stage nodes are persisted as WorkflowStage records.
     """
 
-    _validate_visual_workflow(workflow_data, form_definition, workflow=workflow)
+    resolved_workflow = workflow
+    if resolved_workflow is None:
+        form_workflows = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        )
+        if form_workflows.count() == 1:
+            resolved_workflow = form_workflows.first()
+
+    _validate_visual_workflow(
+        workflow_data, form_definition, workflow=resolved_workflow
+    )
 
     nodes = workflow_data.get("nodes", [])
 
@@ -1299,6 +1342,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             stage = WorkflowStage.objects.create(workflow=workflow, **stage_fields)
             kept_stage_ids.add(stage.id)
 
+        sdata["stage_id"] = stage.id
+        snode["data"] = sdata
+
         StageApprovalGroup.objects.filter(stage=stage).delete()
         sorted_group_entries = sorted(
             [g for g in group_entries if g.get("id")],
@@ -1317,6 +1363,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             form_definition,
             sdata.get("approval_fields", []),
         )
+
+    workflow.visual_workflow_data = workflow_data
+    workflow.save(update_fields=["visual_workflow_data"])
 
     # Delete stages that were removed in the builder
     workflow.stages.exclude(id__in=kept_stage_ids).delete()

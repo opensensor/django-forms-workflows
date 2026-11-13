@@ -1018,6 +1018,31 @@ class TestWorkflowBuilderViews:
         assert len(stages) == 1
         assert stages[0].name == "Sign Off"
         assert stages[0].allow_send_back is True
+        assert wf.visual_workflow_data["nodes"][1]["data"]["stage_id"] == stages[0].id
+
+    @pytest.mark.parametrize(
+        "workflow_data",
+        [
+            None,
+            {"nodes": None},
+            {"nodes": [None]},
+            {"nodes": [{"type": "start", "data": None}]},
+        ],
+    )
+    def test_save_rejects_malformed_workflow_graph(
+        self, client, superuser, form_definition, workflow_data
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps({"form_id": form_definition.id, "workflow": workflow_data}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).exists()
 
     def test_save_assigns_stage_approval_fields(
         self, client, superuser, form_with_fields, approval_group

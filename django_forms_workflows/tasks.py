@@ -1006,8 +1006,18 @@ def send_batched_notifications() -> str:
         notification_type,
         _workflow_id,
     ), notifications in groups.items():
+        ids = [n.id for n in notifications]
+        claimed = 0
         try:
             delivered = False
+            claimed = PendingNotification.objects.filter(id__in=ids, sent=False).update(sent=True)
+            if claimed == 0:
+                logger.info(
+                    "send_batched_notifications: notifications already claimed for %s/%s; skipping.",
+                    notification_type,
+                    recipient_email,
+                )
+                continue
             if notification_type == "submission_received":
                 delivered = _dispatch_submission_digest(recipient_email, notifications)
             elif notification_type == "approval_request":
@@ -1038,6 +1048,7 @@ def send_batched_notifications() -> str:
                     notification_type,
                     recipient_email,
                 )
+                PendingNotification.objects.filter(id__in=ids).update(sent=False)
                 continue
             else:
                 logger.warning(
@@ -1045,18 +1056,20 @@ def send_batched_notifications() -> str:
                     notification_type,
                     recipient_email,
                 )
+                PendingNotification.objects.filter(id__in=ids).update(sent=False)
                 continue
             if delivered:
-                ids = [n.id for n in notifications]
-                PendingNotification.objects.filter(id__in=ids).update(sent=True)
-                sent_count += len(ids)
+                sent_count += claimed
             else:
+                PendingNotification.objects.filter(id__in=ids).update(sent=False)
                 logger.warning(
                     "send_batched_notifications: delivery failed for %s to %s; leaving notifications pending.",
                     notification_type,
                     recipient_email,
                 )
         except Exception as exc:
+            if claimed:
+                PendingNotification.objects.filter(id__in=ids).update(sent=False)
             logger.exception(
                 "Failed dispatching batched %s digest to %s: %s",
                 notification_type,

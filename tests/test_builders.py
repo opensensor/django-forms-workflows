@@ -1861,8 +1861,7 @@ class TestFormBuilderViews:
 
     def test_preview_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
-        html = resp.json()["html"]
-        assert field_label in html
+        url = _fb_url("builder/api/preview/")
         form_count_before = FormDefinition.objects.count()
         field_count_before = FormField.objects.count()
         field_label = "Preview Test Field"
@@ -1884,7 +1883,7 @@ class TestFormBuilderViews:
             content_type="application/json",
         )
         assert resp.status_code == 200
-        assert field_label in resp.content.decode("utf-8")
+        assert field_label in resp.json()["html"]
         assert FormDefinition.objects.count() == form_count_before
         assert FormField.objects.count() == field_count_before
 

@@ -959,21 +959,26 @@ def check_approval_deadlines() -> str:
                 days=workflow.auto_approve_after_days
             )
             if now > auto_deadline:
-                submission.status = "approved"
-                submission.completed_at = now
-                submission.save(update_fields=["status", "completed_at"])
-                # cancel remaining tasks
-                submission.approval_tasks.filter(status="pending").update(
-                    status="skipped"
-                )
-                try:
-                    send_notification_rules.delay(submission.id, "workflow_approved")
-                except Exception:
-                    logger.debug(
-                        "Could not enqueue approval notification for submission %s",
-                        submission.id,
-                        exc_info=True,
+                with transaction.atomic():
+                    updated = FormSubmission.objects.filter(
+                        id=submission.id,
+                        status="pending_approval",
+                    ).update(status="approved", completed_at=now)
+                    if not updated:
+                        continue
+
+                    # cancel remaining tasks
+                    submission.approval_tasks.filter(status="pending").update(
+                        status="skipped"
                     )
+                    try:
+                        send_notification_rules.delay(submission.id, "workflow_approved")
+                    except Exception:
+                        logger.debug(
+                            "Could not enqueue approval notification for submission %s",
+                            submission.id,
+                            exc_info=True,
+                        )
                 auto_approved_count += 1
 
     return f"expired={expired_count}, reminders={reminder_count}, auto_approved={auto_approved_count}"

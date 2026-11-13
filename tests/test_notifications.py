@@ -932,8 +932,8 @@ def test_approval_request_includes_approver_in_context(
 # ── body_template rendering ───────────────────────────────────────────
 
 
-def test_body_template_renders_inline_html(form_definition, user, approver_user):
-    """When body_template is set, it renders as a Django template string."""
+def test_body_template_uses_string_renderer(form_definition, user, approver_user):
+    """When body_template is set, the string-based email renderer is selected."""
     wf = WorkflowDefinition.objects.create(
         form_definition=form_definition, requires_approval=True
     )
@@ -981,6 +981,55 @@ def test_body_template_renders_inline_html(form_definition, user, approver_user)
     # Verify the body_template was passed
     body_arg = mock_send_str.call_args_list[0].args[2]
     assert "Hello {{ approver.username }}" in body_arg
+
+
+def test_body_template_renders_inline_html(
+    form_definition, user, approver_user, mailoutbox
+):
+    """When body_template is set, rendered HTML includes concrete approver data."""
+    wf = WorkflowDefinition.objects.create(
+        form_definition=form_definition, requires_approval=True
+    )
+    stage = WorkflowStage.objects.create(
+        workflow=wf,
+        name="Stage 1",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="advisor_email",
+        assignee_lookup_type="email",
+    )
+    NotificationRule.objects.create(
+        workflow=wf,
+        event="approval_request",
+        use_triggering_stage=True,
+        notify_stage_assignees=True,
+        body_template="<p>Hello {{ approver.username }}, please review.</p>",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"advisor_email": approver_user.email},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 1",
+        status="pending",
+        assigned_to=approver_user,
+        workflow_stage=stage,
+        stage_number=1,
+    )
+
+    send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    assert len(mailoutbox) >= 1
+    rendered_bodies = [
+        (email.alternatives[0][0] if email.alternatives else email.body)
+        for email in mailoutbox
+    ]
+    combined = "\n".join(rendered_bodies)
+    assert approver_user.username in combined
+    assert "{{ approver.username }}" not in combined
 
 
 def test_empty_body_template_uses_file_template(form_definition, user, approver_user):

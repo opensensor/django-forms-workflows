@@ -109,18 +109,38 @@ def form_builder_clone(request, form_id):
                 counter += 1
 
             # Clone the form definition
-            cloned_form = FormDefinition.objects.create(
-                name=f"{original_form.name} (Copy)",
-                slug=slug,
-                description=original_form.description,
-                instructions=original_form.instructions,
-                is_active=False,  # Start as inactive
-                version=1,
-                requires_login=original_form.requires_login,
-                allow_save_draft=original_form.allow_save_draft,
-                allow_withdrawal=original_form.allow_withdrawal,
-                created_by=request.user,
+            # Copy all persisted form settings by default so cloning does not
+            # silently drop behavior-related configuration.
+            excluded_fields = {
+                "id",
+                "pk",
+                "slug",
+                "name",
+                "is_active",
+                "version",
+                "created_by",
+                "created_at",
+                "updated_at",
+            }
+            cloned_form_data = {}
+            for model_field in FormDefinition._meta.fields:
+                field_name = model_field.name
+                if field_name in excluded_fields:
+                    continue
+                cloned_form_data[field_name] = getattr(original_form, field_name)
+
+            # Intentional overrides for cloned forms
+            cloned_form_data.update(
+                {
+                    "name": f"{original_form.name} (Copy)",
+                    "slug": slug,
+                    "is_active": False,  # Start as inactive
+                    "version": 1,
+                    "created_by": request.user,
+                }
             )
+
+            cloned_form = FormDefinition.objects.create(**cloned_form_data)
 
             # Clone all fields
             field_stage_links = []

@@ -824,6 +824,11 @@ def form_builder_preview(request):
                         "prefill_source_id"
                     )
 
+                if field_data.get("shared_option_list_id"):
+                    field_kwargs["shared_option_list_id"] = field_data.get(
+                        "shared_option_list_id"
+                    )
+
                 if validation.get("min_value") is not None:
                     field_kwargs["min_value"] = validation.get("min_value")
                 if validation.get("max_value") is not None:

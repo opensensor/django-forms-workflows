@@ -858,7 +858,7 @@ class TestWorkflowBuilderViews:
     """Integration tests for the workflow builder HTTP endpoints."""
 
     def test_builder_view_requires_staff(self, client, form_definition, user):
-        client.login(username="testuser", password="testpass123")
+        client.force_login(user)
         url = _wf_url(f"{form_definition.id}/workflow/")
         resp = client.get(url)
         assert resp.status_code in (302, 403)
@@ -1063,6 +1063,10 @@ class TestWorkflowBuilderViews:
         self, client, superuser, form_with_fields, approval_group
     ):
         notes_field = form_with_fields.fields.get(field_name="notes")
+        notes_field.refresh_from_db()
+        initial_notes_workflow_stage_id = notes_field.workflow_stage_id
+        initial_workflow_count = WorkflowDefinition.objects.count()
+        initial_stage_count = WorkflowStage.objects.count()
 
         client.login(username="admin", password="testpass123")
         url = _wf_url("workflow/api/save/")
@@ -1131,10 +1135,17 @@ class TestWorkflowBuilderViews:
         data = resp.json()
         assert data["success"] is False
         assert "validation failed" in data["error"].lower()
+        assert WorkflowDefinition.objects.count() == initial_workflow_count
+        assert WorkflowStage.objects.count() == initial_stage_count
+        notes_field.refresh_from_db()
+        assert notes_field.workflow_stage_id == initial_notes_workflow_stage_id
 
     def test_save_rejects_invalid_notification_cadence_configuration(
         self, client, superuser, form_definition
     ):
+        initial_workflow_count = WorkflowDefinition.objects.count()
+        initial_stage_count = WorkflowStage.objects.count()
+
         client.login(username="admin", password="testpass123")
         url = _wf_url("workflow/api/save/")
         payload = {
@@ -1166,6 +1177,8 @@ class TestWorkflowBuilderViews:
         data = resp.json()
         assert data["success"] is False
         assert "validation failed" in data["error"].lower()
+        assert WorkflowDefinition.objects.count() == initial_workflow_count
+        assert WorkflowStage.objects.count() == initial_stage_count
 
     def test_save_updates_selected_workflow_track_only(
         self, client, superuser, form_definition, approval_group
@@ -1870,7 +1883,7 @@ class TestFormBuilderViews:
             content_type="application/json",
         )
         assert resp.status_code == 200
-        assert field_label in resp.content.decode("utf-8")
+        assert field_label in resp.json()["html"]
         assert FormDefinition.objects.count() == form_count_before
         assert FormField.objects.count() == field_count_before
 

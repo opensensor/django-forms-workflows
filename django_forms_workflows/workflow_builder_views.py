@@ -433,11 +433,21 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     for action_index, node in enumerate(action_nodes, start=1):
         action_data = node.get("data", {})
         config = action_data.get("config")
-        if isinstance(config, str) and config.strip():
-            try:
-                json.loads(config)
-            except json.JSONDecodeError:
-                add_error(f"Action {action_index} has invalid JSON configuration.")
+        normalized_config = config
+        if isinstance(config, str):
+            if config.strip():
+                try:
+                    normalized_config = json.loads(config)
+                except json.JSONDecodeError:
+                    add_error(f"Action {action_index} has invalid JSON configuration.")
+                    continue
+            else:
+                normalized_config = None
+
+        if normalized_config is not None and not isinstance(normalized_config, dict):
+            add_error(
+                f"Action {action_index} configuration must be a JSON object."
+            )
 
     for sub_index, node in enumerate(sub_workflow_nodes, start=1):
         sub_data = node.get("data", {})

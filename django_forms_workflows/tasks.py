@@ -1820,7 +1820,18 @@ def send_notification_rules(
             if workflow
             else "immediate"
         )
-        if cadence != "immediate" and workflow is not None:
+        digest_supported_events = {
+            "submission_created",
+            "approval_request",
+            "submission_status_changed",
+            "workflow_completed",
+            "workflow_rejected",
+        }
+        if (
+            cadence != "immediate"
+            and workflow is not None
+            and event in digest_supported_events
+        ):
             scheduled_for = _compute_scheduled_for(workflow, submission)
             # In batched/digest mode we don't carry the TO/CC distinction —
             # each recipient just gets the summary email. Queue CCs alongside

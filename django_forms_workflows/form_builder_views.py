@@ -806,9 +806,34 @@ def form_builder_preview(request):
     """
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {"success": False, "error": "Preview payload must be an object"},
+                status=400,
+            )
+        fields = data.get("fields", [])
+        if not isinstance(fields, list) or any(
+            not isinstance(field, dict) for field in fields
+        ):
+            return JsonResponse(
+                {"success": False, "error": "Preview fields must be a list of objects"},
+                status=400,
+            )
+        for field in fields:
+            if any(
+                field.get(key) is not None and not isinstance(field[key], dict)
+                for key in ("validation", "conditional")
+            ):
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Preview validation and conditional values must be objects",
+                    },
+                    status=400,
+                )
 
         # If no fields, return a simple message
-        if not data.get("fields"):
+        if not fields:
             return JsonResponse(
                 {
                     "success": True,
@@ -848,9 +873,9 @@ def form_builder_preview(request):
             form_definition.save()
 
             # Create temporary fields
-            for field_data in data.get("fields", []):
-                validation = field_data.get("validation", {})
-                conditional = field_data.get("conditional", {})
+            for field_data in fields:
+                validation = field_data.get("validation") or {}
+                conditional = field_data.get("conditional") or {}
 
                 # Build field kwargs
                 field_kwargs = {
@@ -908,12 +933,6 @@ def form_builder_preview(request):
                     field_kwargs["conditional_rules"] = cond_rules
 
                 FormField.objects.create(**field_kwargs)
-
-            # Apply submitted multi-step settings so preview matches unsaved configuration
-            if "is_multi_step" in data:
-                form_definition.is_multi_step = data.get("is_multi_step")
-            if "steps_config" in data:
-                form_definition.steps_config = data.get("steps_config")
 
             # Generate the form using DynamicForm
             dynamic_form = DynamicForm(form_definition)

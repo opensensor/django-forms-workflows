@@ -458,7 +458,7 @@ here rather than lost.
   — so a `stage_decision` rule attached to "Program Director Approval"
   also fired when "Instructor Approval" completed (and vice versa),
   producing duplicate emails to the same recipients. `send_notification_rules`
-  now filters candidates by `Q(stage__isnull=True) | Q(stage_id=triggering)
+  now filters candidates by `Q(stage__isnull=True) | Q(stage_id=triggering_stage_id)
   | Q(use_triggering_stage=True)` so workflow-level and dynamic-stage
   rules behave unchanged while explicitly stage-scoped rules respect
   their FK. When no `task_id` is passed (workflow-level events like

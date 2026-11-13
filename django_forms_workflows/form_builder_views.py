@@ -319,6 +319,9 @@ def form_builder_load(request, form_id):
             "conditional": {
                 "conditional_rules": field.conditional_rules or [],
             },
+            "validation_rules": field.validation_rules or [],
+            "field_dependencies": field.field_dependencies or [],
+            "step_number": field.step_number,
             "workflow_stage_id": field.workflow_stage_id,
         }
         fields_data.append(field_data)

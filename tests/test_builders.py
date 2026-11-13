@@ -491,6 +491,16 @@ class TestConvertVisualToWorkflow:
         remaining = list(wf.stages.order_by("order"))
         assert len(remaining) == 1
         assert remaining[0].id == stage1_id
+        assert remaining[0].name == "Renamed"
+        assert remaining[0].approval_logic == "any"
+        assert remaining[0].requires_manager_approval is False
+        assert remaining[0].approve_label == ""
+        stage_groups = list(
+            StageApprovalGroup.objects.filter(stage=remaining[0]).order_by("position")
+        )
+        assert len(stage_groups) == 1
+        assert stage_groups[0].approval_group_id == approval_group.id
+        assert stage_groups[0].position == 0
 
     def test_deletes_removed_stages(
         self, staged_workflow, form_definition, approval_group

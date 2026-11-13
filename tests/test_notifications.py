@@ -668,7 +668,13 @@ def test_triggering_stage_scopes_assignees(form_definition, user, approver_user)
         send_notification_rules(submission.id, "approval_request", task_id=task1.id)
 
     # Only approver (stage1's assignee) should be notified, not manager
-    recipients = [call.args[1][0] for call in mock_send.call_args_list]
+    recipients = []
+    for call in mock_send.call_args_list:
+        to_addresses = call.args[1]
+        if isinstance(to_addresses, (list, tuple, set)):
+            recipients.extend(to_addresses)
+        else:
+            recipients.append(to_addresses)
     assert approver_user.email in recipients
     assert manager.email not in recipients
 

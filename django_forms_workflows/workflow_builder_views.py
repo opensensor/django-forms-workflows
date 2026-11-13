@@ -633,9 +633,30 @@ def workflow_builder_save(request):
     """
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            raise ValidationError("Malformed payload: top-level JSON must be an object.")
+
         form_id = data.get("form_id")
         workflow_id = data.get("workflow_id")
         workflow_data = data.get("workflow", {})
+
+        if not isinstance(workflow_data, dict):
+            raise ValidationError("Malformed payload: 'workflow' must be an object.")
+
+        nodes = workflow_data.get("nodes")
+        if nodes is not None:
+            if not isinstance(nodes, list):
+                raise ValidationError("Malformed payload: 'workflow.nodes' must be a list.")
+            for idx, node in enumerate(nodes):
+                if not isinstance(node, dict):
+                    raise ValidationError(
+                        f"Malformed payload: node at index {idx} must be an object."
+                    )
+                node_data = node.get("data")
+                if node_data is not None and not isinstance(node_data, dict):
+                    raise ValidationError(
+                        f"Malformed payload: node.data at index {idx} must be an object."
+                    )
 
         logger.info(f"Saving workflow for form {form_id}")
         logger.info(f"Workflow data: {workflow_data}")

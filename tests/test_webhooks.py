@@ -217,9 +217,12 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
             body_bytes = body
     else:
         body_bytes = json.dumps(request_kwargs["json"]).encode("utf-8")
-    expected_signature = "sha256=" + hmac.new(
-        endpoint.secret.encode("utf-8"), body_bytes, hashlib.sha256
-    ).hexdigest()
+    expected_signature = (
+        "sha256="
+        + hmac.new(
+            endpoint.secret.encode("utf-8"), body_bytes, hashlib.sha256
+        ).hexdigest()
+    )
     assert headers["X-Forms-Workflows-Signature"] == expected_signature
 
     log = WebhookDeliveryLog.objects.get()

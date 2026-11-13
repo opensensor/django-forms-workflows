@@ -610,70 +610,71 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     auto_save_interval = data.get("auto_save_interval", 30)
     fields_data = data.get("fields", [])
 
-    # Create or update form definition
-    if form_definition is not None:
-        form_definition.name = form_name
-        form_definition.slug = form_slug
-        form_definition.description = form_description
-        form_definition.instructions = form_instructions
-        form_definition.is_active = is_active
-        form_definition.requires_login = requires_login
-        form_definition.allow_save_draft = allow_save_draft
-        form_definition.allow_withdrawal = allow_withdrawal
-        form_definition.success_message = success_message
-        form_definition.success_redirect_url = success_redirect_url
-        form_definition.success_redirect_rules = success_redirect_rules
-        form_definition.close_date = close_date
-        form_definition.max_submissions = max_submissions
-        form_definition.one_per_user = one_per_user
-        form_definition.payment_enabled = payment_enabled
-        form_definition.payment_provider = payment_provider
-        form_definition.payment_amount_type = payment_amount_type
-        form_definition.payment_fixed_amount = payment_fixed_amount
-        form_definition.payment_amount_field = payment_amount_field
-        form_definition.payment_currency = payment_currency
-        form_definition.payment_description_template = payment_description_template
-        form_definition.enable_captcha = enable_captcha
-        form_definition.embed_enabled = embed_enabled
-        form_definition.enable_multi_step = enable_multi_step
-        form_definition.form_steps = form_steps
-        form_definition.enable_auto_save = enable_auto_save
-        form_definition.auto_save_interval = auto_save_interval
-        form_definition.version += 1  # Increment version on edit
-        form_definition.save()
-    else:
-        form_definition = FormDefinition.objects.create(
-            name=form_name,
-            slug=form_slug,
-            description=form_description,
-            instructions=form_instructions,
-            is_active=is_active,
-            requires_login=requires_login,
-            allow_save_draft=allow_save_draft,
-            allow_withdrawal=allow_withdrawal,
-            success_message=success_message,
-            success_redirect_url=success_redirect_url,
-            success_redirect_rules=success_redirect_rules,
-            close_date=close_date,
-            max_submissions=max_submissions,
-            one_per_user=one_per_user,
-            payment_enabled=payment_enabled,
-            payment_provider=payment_provider,
-            payment_amount_type=payment_amount_type,
-            payment_fixed_amount=payment_fixed_amount,
-            payment_amount_field=payment_amount_field,
-            payment_currency=payment_currency,
-            payment_description_template=payment_description_template,
-            enable_captcha=enable_captcha,
-            embed_enabled=embed_enabled,
-            enable_multi_step=enable_multi_step,
-            form_steps=form_steps,
-            enable_auto_save=enable_auto_save,
-            auto_save_interval=auto_save_interval,
-            created_by=user,
-        )
+    with transaction.atomic():
+        # Create or update form definition
+        if form_definition is not None:
+            form_definition.name = form_name
+            form_definition.slug = form_slug
+            form_definition.description = form_description
+            form_definition.instructions = form_instructions
+            form_definition.is_active = is_active
+            form_definition.requires_login = requires_login
+            form_definition.allow_save_draft = allow_save_draft
+            form_definition.allow_withdrawal = allow_withdrawal
+            form_definition.success_message = success_message
+            form_definition.success_redirect_url = success_redirect_url
+            form_definition.success_redirect_rules = success_redirect_rules
+            form_definition.close_date = close_date
+            form_definition.max_submissions = max_submissions
+            form_definition.one_per_user = one_per_user
+            form_definition.payment_enabled = payment_enabled
+            form_definition.payment_provider = payment_provider
+            form_definition.payment_amount_type = payment_amount_type
+            form_definition.payment_fixed_amount = payment_fixed_amount
+            form_definition.payment_amount_field = payment_amount_field
+            form_definition.payment_currency = payment_currency
+            form_definition.payment_description_template = payment_description_template
+            form_definition.enable_captcha = enable_captcha
+            form_definition.embed_enabled = embed_enabled
+            form_definition.enable_multi_step = enable_multi_step
+            form_definition.form_steps = form_steps
+            form_definition.enable_auto_save = enable_auto_save
+            form_definition.auto_save_interval = auto_save_interval
+            form_definition.version += 1  # Increment version on edit
+            form_definition.save()
+        else:
+            form_definition = FormDefinition.objects.create(
+                name=form_name,
+                slug=form_slug,
+                description=form_description,
+                instructions=form_instructions,
+                is_active=is_active,
+                requires_login=requires_login,
+                allow_save_draft=allow_save_draft,
+                allow_withdrawal=allow_withdrawal,
+                success_message=success_message,
+                success_redirect_url=success_redirect_url,
+                success_redirect_rules=success_redirect_rules,
+                close_date=close_date,
+                max_submissions=max_submissions,
+                one_per_user=one_per_user,
+                payment_enabled=payment_enabled,
+                payment_provider=payment_provider,
+                payment_amount_type=payment_amount_type,
+                payment_fixed_amount=payment_fixed_amount,
+                payment_amount_field=payment_amount_field,
+                payment_currency=payment_currency,
+                payment_description_template=payment_description_template,
+                enable_captcha=enable_captcha,
+                embed_enabled=embed_enabled,
+                enable_multi_step=enable_multi_step,
+                form_steps=form_steps,
+                enable_auto_save=enable_auto_save,
+                auto_save_interval=auto_save_interval,
+                created_by=user,
+            )
 
-    # Track existing field IDs to determine which to delete
+        # Track existing field IDs to determine which to delete
     existing_field_ids = set(form_definition.fields.values_list("id", flat=True))
     updated_field_ids = set()
     field_id_mapping = {}  # Map old IDs to new IDs for frontend update

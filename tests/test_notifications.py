@@ -473,7 +473,7 @@ def test_notification_context_includes_form_data(form_definition, user):
 # ── use_triggering_stage tests ─────────────────────────────────────────────
 
 
-class TestNotificationRuleUseTriggieringStageValidation:
+class TestNotificationRuleUseTriggeringStageValidation:
     """Model-level validation for use_triggering_stage."""
 
     def test_use_triggering_stage_and_stage_raises(self, form_definition):

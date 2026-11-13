@@ -322,18 +322,32 @@ def test_failing_rule_does_not_silence_the_other_rules(form_definition, user):
     )
 
     real_collect = tasks_module._collect_notification_recipients
+    real_filter = tasks_module.NotificationRule.objects.filter
+    attempted_rule_ids = []
 
     def _explode(rule, *args, **kwargs):
+        attempted_rule_ids.append(rule.id)
         if rule.id == bad.id:
             raise RuntimeError("boom")
         return real_collect(rule, *args, **kwargs)
 
+    def _ordered_filter(*args, **kwargs):
+        qs = real_filter(*args, **kwargs)
+        if kwargs.get("workflow") == workflow and kwargs.get("event") == "workflow_approved":
+            return [bad, good]
+        return qs
+
+    good = NotificationRule.objects.get(subject_template="Good rule")
+
     with (
         patch.object(tasks_module, "_collect_notification_recipients", _explode),
+        patch.object(tasks_module.NotificationRule.objects, "filter", side_effect=_ordered_filter),
         patch("django_forms_workflows.tasks._send_html_email") as mock_send,
     ):
         send_notification_rules(submission.id, "workflow_approved")
 
+    assert attempted_rule_ids[:2] == [bad.id, good.id]
+    assert bad.id in attempted_rule_ids and good.id in attempted_rule_ids
     subjects = [call[0][0] for call in mock_send.call_args_list]
     assert "Good rule" in subjects
 

@@ -19,6 +19,8 @@ from .models import (
     FormDefinition,
     FormField,
     FormTemplate,
+    NotificationRule,
+    PostSubmissionAction,
     PrefillSource,
     SharedOptionList,
     StageApprovalGroup,
@@ -29,6 +31,37 @@ from .models import (
 from .security import builder_permission_required
 
 logger = logging.getLogger(__name__)
+
+
+def _copy_model_fields(instance, excluded):
+    """Return concrete field values suitable for creating an independent copy."""
+    return {
+        field.attname: getattr(instance, field.attname)
+        for field in instance._meta.concrete_fields
+        if field.name not in excluded
+    }
+
+
+def _clone_workflow_notifications(original_form, cloned_workflows, cloned_stages):
+    for original_workflow in original_form.workflows.all():
+        cloned_workflow = cloned_workflows[original_workflow.pk]
+        for rule in original_workflow.notification_rules.all():
+            data = _copy_model_fields(rule, {"id", "workflow", "stage"})
+            data["workflow_id"] = cloned_workflow.pk
+            data["stage_id"] = (
+                cloned_stages[rule.stage_id].pk if rule.stage_id else None
+            )
+            cloned_rule = NotificationRule.objects.create(**data)
+            cloned_rule.notify_groups.set(rule.notify_groups.all())
+
+
+def _clone_post_submission_actions(original_form, cloned_form):
+    for action in original_form.post_actions.all():
+        data = _copy_model_fields(
+            action, {"id", "form_definition", "created_at", "updated_at"}
+        )
+        data["form_definition_id"] = cloned_form.pk
+        PostSubmissionAction.objects.create(**data)
 
 
 @require_GET
@@ -114,6 +147,7 @@ def form_builder_clone(request, form_id):
             excluded_fields = {
                 "id",
                 "pk",
+                "uuid",
                 "slug",
                 "name",
                 "is_active",
@@ -122,12 +156,7 @@ def form_builder_clone(request, form_id):
                 "created_at",
                 "updated_at",
             }
-            cloned_form_data = {}
-            for model_field in FormDefinition._meta.fields:
-                field_name = model_field.name
-                if field_name in excluded_fields:
-                    continue
-                cloned_form_data[field_name] = getattr(original_form, field_name)
+            cloned_form_data = _copy_model_fields(original_form, excluded_fields)
 
             # Intentional overrides for cloned forms
             cloned_form_data.update(
@@ -185,6 +214,7 @@ def form_builder_clone(request, form_id):
 
             # Clone workflows, stages, and stage approval groups
             cloned_stages_by_original_id = {}
+            cloned_workflows_by_original_id = {}
             for wf in original_form.workflows.all():
                 original_stages = list(
                     wf.stages.prefetch_related("approval_groups").order_by("order")
@@ -206,6 +236,7 @@ def form_builder_clone(request, form_id):
                     allow_bulk_export=wf.allow_bulk_export,
                     allow_bulk_pdf_export=wf.allow_bulk_pdf_export,
                 )
+                cloned_workflows_by_original_id[wf.pk] = cloned_wf
                 for stage in original_stages:
                     cloned_stage = WorkflowStage.objects.create(
                         workflow=cloned_wf,
@@ -255,8 +286,8 @@ def form_builder_clone(request, form_id):
             # `cloned_stages_by_original_id`.
             _clone_workflow_notifications(
                 original_form=original_form,
-                cloned_form=cloned_form,
-                cloned_stages_by_original_id=cloned_stages_by_original_id,
+                cloned_workflows=cloned_workflows_by_original_id,
+                cloned_stages=cloned_stages_by_original_id,
             )
             _clone_post_submission_actions(
                 original_form=original_form,

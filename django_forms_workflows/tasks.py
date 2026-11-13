@@ -1711,29 +1711,26 @@ def send_notification_rules(
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
 
-        already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(rule)
-
-        # Drop recipients already successfully delivered (acks_late retry guard).
-        # New rows store CCs in `cc_emails` on the To row; legacy rows from
-        # before that change used a `cc:{recipient}` prefix on `recipient_email`,
-        # so check both formats during the transition.
-        if already_sent or already_cc_or_bcc:
-            before_to, before_cc = len(recipients), len(cc_recipients)
-            recipients = [r for r in recipients if r not in already_sent]
-            cc_recipients = [
-                c
-                for c in cc_recipients
-                if c not in already_cc_or_bcc and f"cc:{c}" not in already_sent
-            ]
-            skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
-            if skipped:
-                logger.info(
-                    "NotificationRule %s: skipped %d already-sent recipient(s) "
-                    "for submission %s (idempotency)",
-                    rule.id,
-                    skipped,
-                    submission.id,
-                )
+        # Atomically claim recipients for this dispatch to prevent duplicate sends
+        # across concurrent workers. This replaces read-before-send idempotency.
+        before_to, before_cc = len(recipients), len(cc_recipients)
+        recipients, cc_recipients = _claim_recipients_for_dispatch(
+            rule=rule,
+            submission=submission,
+            event=event,
+            task=task,
+            to_recipients=recipients,
+            cc_recipients=cc_recipients,
+        )
+        skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
+        if skipped:
+            logger.info(
+                "NotificationRule %s: skipped %d recipient(s) already claimed/sent "
+                "for submission %s (atomic idempotency)",
+                rule.id,
+                skipped,
+                submission.id,
+            )
 
         if not recipients:
             logger.info(

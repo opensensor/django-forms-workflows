@@ -1543,35 +1543,50 @@ def send_notification_rules(
 
     # Idempotency guard: if this task is being re-executed (e.g. acks_late
     # requeued it after a worker died mid-send), skip recipients we already
-    # successfully delivered to. Only "sent" entries dedup — "failed" entries
-    # should be retried.
+    # successfully delivered to for the *same dispatch identity*.
+    #
+    # Dispatch identity is scoped by:
+    # - submission/event
+    # - triggering task (when present)
+    # - notification rule (when present)
+    #
+    # This prevents over-broad suppression across different tasks/stages/rules
+    # while still deduplicating retries of the same dispatch.
     #
     # Exception: rows a delivery sweep marked ``delivery_state='retried'`` are
     # deliberately excluded here. Such a row has ``status='sent'`` (the send call
     # succeeded) but a delivery check showed it was never actually delivered, so
     # the sweep re-dispatched this task precisely to resend to that recipient.
     # Leaving it in ``already_sent`` would make the retry a silent no-op.
-    _sent_rows = list(
-        NotificationLog.objects.filter(
+    _triggering_task_id = getattr(task, "id", None) if task else None
+
+    def _already_delivered_for_dispatch(rule) -> tuple[set[str], set[str]]:
+        sent_filter = dict(
             submission_id=submission_id,
             notification_type=event,
             status="sent",
         )
-        .exclude(delivery_state="retried")
-        .values_list("recipient_email", "cc_emails", "bcc_emails")
-    )
-    already_sent: set[str] = {row[0] for row in _sent_rows}
-    # CC/BCC addresses are stored as comma-separated lists on each To row;
-    # an address was delivered if it appears alongside any successful To send.
-    already_cc_or_bcc: set[str] = set()
-    for _, _cc, _bcc in _sent_rows:
-        for blob in (_cc, _bcc):
-            if not blob:
-                continue
-            for addr in blob.split(","):
-                addr = addr.strip()
-                if addr:
-                    already_cc_or_bcc.add(addr)
+        if _triggering_task_id is not None:
+            sent_filter["task_id"] = _triggering_task_id
+        if rule is not None and getattr(rule, "id", None) is not None:
+            sent_filter["rule_id"] = rule.id
+
+        _sent_rows = list(
+            NotificationLog.objects.filter(**sent_filter)
+            .exclude(delivery_state="retried")
+            .values_list("recipient_email", "cc_emails", "bcc_emails")
+        )
+        already_sent_local: set[str] = {row[0] for row in _sent_rows}
+        already_cc_or_bcc_local: set[str] = set()
+        for _, _cc, _bcc in _sent_rows:
+            for blob in (_cc, _bcc):
+                if not blob:
+                    continue
+                for addr in blob.split(","):
+                    addr = addr.strip()
+                    if addr:
+                        already_cc_or_bcc_local.add(addr)
+        return already_sent_local, already_cc_or_bcc_local
 
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.

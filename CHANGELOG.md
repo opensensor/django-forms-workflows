@@ -474,10 +474,9 @@ here rather than lost.
   jitter, retrying up to 5 times on HTTP 429 and HTTP 403 with reason
   `rateLimitExceeded` / `userRateLimitExceeded` / `backendError`.
   `dailyLimitExceeded` (the 2,000-msg/day-per-user Workspace cap) and
-  permission errors are intentionally not retried — daily caps don't
-  reset until midnight Pacific and burning Celery worker time on them
-  is pointless. Tests are skipped automatically when
-  `googleapiclient` isn't installed (it's an optional dep).
+  permission errors are intentionally not retried because immediate retries
+  cannot resolve them. Tests are skipped
+  automatically when `googleapiclient` isn't installed (it's an optional dep).
 
 ### Added
 - **NotificationLog admin: bulk "Retry failed" action.** Select one or
@@ -1214,7 +1213,7 @@ here rather than lost.
 ### Fixed
 - **PDF/detail: stage-scoped section headers leaking into main form data** — Section-type fields with `workflow_stage_id` set (e.g. "ADMISSIONS COUNSELOR REVIEW", "HR REVIEW") were rendered in the main form data table because the section check fired before the stage-scope check. The `workflow_stage_id` filter now runs first, so stage section headers AND stage-scoped data fields are both excluded from the main table.
 - **`_build_ordered_form_data` also fixed** — The submission detail view's ordered form data builder now also excludes stage-scoped fields and their indexed variants from the main data, matching the PDF fix.
-- **Null-safe submitter check in `submission_detail`** — Fixed `submission.submitter == request.user` crash for anonymous submissions.
+- **Null-safe submitter handling in `submission_detail`** — Fixed anonymous-submission handling so ownership/visibility checks do not dereference a missing submitter and apply the correct authorization path when no submitter is attached.
 
 ## [0.47.2] - 2026-03-31
 

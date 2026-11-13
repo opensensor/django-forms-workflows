@@ -1396,7 +1396,7 @@ def test_email_field_with_multiple_addresses_sends_to_each(form_definition, user
     assert recipients == [["first@example.com"], ["second@example.com"]]
 
 
-def test_email_field_stored_as_list_is_flattened(form_definition, user):
+def test_cc_email_field_stored_as_list_is_flattened(form_definition, user):
     """A field whose value is a list (not a joined string) works the same."""
     wf = WorkflowDefinition.objects.create(
         form_definition=form_definition, requires_approval=False

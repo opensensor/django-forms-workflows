@@ -309,6 +309,8 @@ def form_builder_clone(request, form_id):
                 }
             )
 
+    except Http404:
+        raise
     except Exception:
         logger.exception("Error cloning form")
         return JsonResponse(

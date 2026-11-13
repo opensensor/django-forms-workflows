@@ -263,3 +263,57 @@ def test_deliver_workflow_webhook_retries_failed_delivery(workflow, user):
     log = WebhookDeliveryLog.objects.get()
     assert log.success is False
     assert log.status_code == 500
+
+
+@pytest.mark.django_db
+def test_deliver_workflow_webhook_does_not_retry_when_retries_exhausted(workflow, user):
+    submission = _make_submission(workflow, user)
+    endpoint = WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="ERP",
+        url="https://example.com/hooks/erp",
+        events=["submission.created"],
+        max_retries=2,
+    )
+    payload = {"event": "submission.created", "submission": {"id": submission.id}}
+
+    with (
+        patch("django_forms_workflows.tasks.requests.request") as mock_request,
+        patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
+    ):
+        mock_request.return_value = Mock(status_code=500, text="server error")
+        deliver_workflow_webhook(
+            endpoint.id, "submission.created", payload, submission.id, attempt=2
+        )
+
+    mock_retry.assert_not_called()
+    log = WebhookDeliveryLog.objects.get()
+    assert log.success is False
+    assert log.status_code == 500
+
+
+@pytest.mark.django_db
+def test_deliver_workflow_webhook_with_zero_max_retries_does_not_retry(workflow, user):
+    submission = _make_submission(workflow, user)
+    endpoint = WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="ERP",
+        url="https://example.com/hooks/erp",
+        events=["submission.created"],
+        max_retries=0,
+    )
+    payload = {"event": "submission.created", "submission": {"id": submission.id}}
+
+    with (
+        patch("django_forms_workflows.tasks.requests.request") as mock_request,
+        patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
+    ):
+        mock_request.return_value = Mock(status_code=500, text="server error")
+        deliver_workflow_webhook(
+            endpoint.id, "submission.created", payload, submission.id
+        )
+
+    mock_retry.assert_not_called()
+    log = WebhookDeliveryLog.objects.get()
+    assert log.success is False
+    assert log.status_code == 500

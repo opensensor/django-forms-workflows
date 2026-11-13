@@ -686,6 +686,7 @@ def deliver_workflow_webhook(
             data=payload_text,
             headers=request_headers,
             timeout=endpoint.timeout_seconds,
+            allow_redirects=False,
         )
         success = 200 <= response.status_code < 300
         WebhookDeliveryLog.objects.create(

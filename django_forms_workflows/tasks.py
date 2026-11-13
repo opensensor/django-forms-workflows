@@ -1728,7 +1728,7 @@ def send_notification_rules(
                     workflow=workflow,
                     notification_type=event,
                     submission=submission,
-                    approval_task_id=task_id,
+                    approval_task_id=(task.id if task is not None else None),
                     recipient_email=recipient,
                     scheduled_for=scheduled_for,
                 )

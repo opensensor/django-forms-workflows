@@ -1584,6 +1584,7 @@ def send_notification_rules(
         return _public_comments
 
     _public_comments_by_workflow: dict[int, list[dict]] = {}
+    inferred_tasks_by_workflow: dict[int, ApprovalTask | None] = {}
 
     rules_qs = (
         NotificationRule.objects.filter(event=event)
@@ -1611,14 +1612,14 @@ def send_notification_rules(
     # candidates here regardless of which task triggered the event.
     from django.db.models import Q
 
-    if task and getattr(task, "workflow_stage_id", None):
+    if explicit_task and task and getattr(task, "workflow_stage_id", None):
         triggering_stage_id = task.workflow_stage_id
         rules_qs = rules_qs.filter(
             Q(stage__isnull=True)  # workflow-level rule
             | Q(stage_id=triggering_stage_id)  # rule scoped to triggering stage
             | Q(use_triggering_stage=True)  # dynamic-stage rule
         )
-    else:
+    elif event not in ("workflow_approved", "workflow_denied") or explicit_task:
         # No task context — only workflow-level (stage IS NULL) rules and
         # dynamic-stage rules can fire safely. Stage-scoped rules need a
         # task to determine relevance.
@@ -1702,23 +1703,39 @@ def send_notification_rules(
         """
         nonlocal had_dispatch_failure
         workflow = rule.workflow
-        if task is not None:
-            # Explicitly supplied task: apply global stage/workflow compatibility filter.
+        if explicit_task:
             rule_task = (
                 task
-                if (not task.workflow_stage_id or task.workflow_stage.workflow_id == workflow.pk)
+                if task is not None
+                and (
+                    not task.workflow_stage_id
+                    or task.workflow_stage.workflow_id == workflow.pk
+                )
                 else None
             )
-        else:
-            # Task-less final notification: infer finalizing task for this workflow only.
-            rule_task = (
-                ApprovalTask.objects.filter(
-                    submission_id=submission_id,
-                    workflow_stage__workflow_id=workflow.pk,
+        elif event in ("workflow_approved", "workflow_denied"):
+            if workflow.pk not in inferred_tasks_by_workflow:
+                final_status = (
+                    "approved" if event == "workflow_approved" else "rejected"
                 )
-                .order_by("-updated_at", "-id")
-                .first()
-            )
+                inferred_tasks_by_workflow[workflow.pk] = (
+                    ApprovalTask.objects.select_related("workflow_stage")
+                    .filter(
+                        submission_id=submission_id,
+                        workflow_stage__workflow_id=workflow.pk,
+                        status=final_status,
+                    )
+                    .order_by("-completed_at", "-id")
+                    .first()
+                )
+            rule_task = inferred_tasks_by_workflow[workflow.pk]
+            if rule_task is None and task is not None and not task.workflow_stage_id:
+                rule_task = task
+        else:
+            rule_task = None
+        if rule.stage_id and not rule.use_triggering_stage:
+            if rule_task is None or rule.stage_id != rule_task.workflow_stage_id:
+                return
         rule_task_id = rule_task.pk if rule_task is not None else None
         if workflow.pk not in _public_comments_by_workflow:
             _public_comments_by_workflow[workflow.pk] = (
@@ -1837,7 +1854,11 @@ def send_notification_rules(
             "submission": submission,
             "form_data": form_data,
             "submission_url": submission_url,
-            "approval_url": approval_url,
+            "approval_url": (
+                approval_url
+                if rule_task is task
+                else _build_form_field_notification_context(submission, rule_task)[1]
+            ),
             "hide_approval_history": workflow.hide_approval_history,
             # Denormalized list of {stage_name, status, actor, comment}
             # entries for every approved/rejected task with a non-empty

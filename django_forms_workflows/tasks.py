@@ -1701,15 +1701,23 @@ def send_notification_rules(
         """
         nonlocal had_dispatch_failure
         workflow = rule.workflow
-        rule_task = (
-            task
-            if task is not None
-            and (
-                not task.workflow_stage_id
-                or task.workflow_stage.workflow_id == workflow.pk
+        if task is not None:
+            # Explicitly supplied task: apply global stage/workflow compatibility filter.
+            rule_task = (
+                task
+                if (not task.workflow_stage_id or task.workflow_stage.workflow_id == workflow.pk)
+                else None
             )
-            else None
-        )
+        else:
+            # Task-less final notification: infer finalizing task for this workflow only.
+            rule_task = (
+                ApprovalTask.objects.filter(
+                    submission_id=submission_id,
+                    workflow_stage__workflow_id=workflow.pk,
+                )
+                .order_by("-updated_at", "-id")
+                .first()
+            )
         rule_task_id = rule_task.pk if rule_task is not None else None
         if workflow.pk not in _public_comments_by_workflow:
             _public_comments_by_workflow[workflow.pk] = (

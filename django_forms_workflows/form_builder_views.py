@@ -436,7 +436,7 @@ def form_builder_load(request, form_id):
         "payment_provider": form_definition.payment_provider,
         "payment_amount_type": form_definition.payment_amount_type,
         "payment_fixed_amount": str(form_definition.payment_fixed_amount)
-        if form_definition.payment_fixed_amount
+        if form_definition.payment_fixed_amount is not None
         else None,
         "payment_amount_field": form_definition.payment_amount_field,
         "payment_currency": form_definition.payment_currency,

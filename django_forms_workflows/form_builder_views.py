@@ -856,15 +856,17 @@ def form_builder_preview(request):
             form_html = template.render(context)
 
             # Wrap in a nice preview container matching the actual form_submit.html layout
-            preview_html = f"""
+            preview_template_string = """
                 <div class="preview-container">
                     <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h5 class="mb-1">{form_definition.name}</h5>
+                        <h5 class="mb-1">{{ form_name }}</h5>
                     </div>
-                    {f'<div class="alert alert-info"><i class="bi bi-info-circle"></i> {form_definition.instructions}</div>' if form_definition.instructions else ""}
+                    {% if instructions %}
+                    <div class="alert alert-info"><i class="bi bi-info-circle"></i> {{ instructions }}</div>
+                    {% endif %}
                     <div class="card">
                         <div class="card-body">
-                            {form_html}
+                            {{ form_html|safe }}
                         </div>
                     </div>
                     <div class="mt-3 pt-2 border-top">
@@ -874,6 +876,15 @@ def form_builder_preview(request):
                     </div>
                 </div>
             """
+            preview_template = Template(preview_template_string)
+            preview_context = Context(
+                {
+                    "form_name": form_definition.name,
+                    "instructions": form_definition.instructions,
+                    "form_html": form_html,
+                }
+            )
+            preview_html = preview_template.render(preview_context)
 
             # Rollback the transaction to avoid saving to DB
             transaction.set_rollback(True)

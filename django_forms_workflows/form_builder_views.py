@@ -123,8 +123,10 @@ def form_builder_clone(request, form_id):
             )
 
             # Clone all fields
+            cloned_fields_by_original_id = {}
+            original_field_stage_ids = {}
             for field in original_form.fields.all().order_by("order"):
-                FormField.objects.create(
+                cloned_field = FormField.objects.create(
                     form_definition=cloned_form,
                     order=field.order,
                     field_name=field.field_name,
@@ -153,6 +155,19 @@ def form_builder_clone(request, form_id):
                     allowed_extensions=field.allowed_extensions,
                     max_file_size_mb=field.max_file_size_mb,
                 )
+                cloned_fields_by_original_id[field.id] = cloned_field
+                original_field_stage_ids[field.id] = field.workflow_stage_id
+
+            # Reconnect field -> stage associations after stage cloning has populated stage mapping
+            if "cloned_stages_by_original_id" in locals():
+                for original_field_id, original_stage_id in original_field_stage_ids.items():
+                    if not original_stage_id:
+                        continue
+                    cloned_field = cloned_fields_by_original_id.get(original_field_id)
+                    cloned_stage = cloned_stages_by_original_id.get(original_stage_id)
+                    if cloned_field and cloned_stage:
+                        cloned_field.workflow_stage = cloned_stage
+                        cloned_field.save(update_fields=["workflow_stage"])
 
             # Copy group permissions
             cloned_form.submit_groups.set(original_form.submit_groups.all())

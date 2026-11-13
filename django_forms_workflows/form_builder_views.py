@@ -859,6 +859,13 @@ def form_builder_preview(request):
                     "default_value": field_data.get("default_value", ""),
                     "regex_validation": validation.get("regex_validation", ""),
                     "regex_error_message": validation.get("regex_error_message", ""),
+                    "validation_rules": validation.get(
+                        "validation_rules", field_data.get("validation_rules")
+                    ),
+                    "field_dependencies": conditional.get(
+                        "field_dependencies", field_data.get("field_dependencies")
+                    ),
+                    "step_number": field_data.get("step_number", 1),
                 }
 
                 # Add optional fields only if they have values
@@ -887,6 +894,12 @@ def form_builder_preview(request):
                     field_kwargs["conditional_rules"] = cond_rules
 
                 FormField.objects.create(**field_kwargs)
+
+            # Apply submitted multi-step settings so preview matches unsaved configuration
+            if "is_multi_step" in data:
+                form_definition.is_multi_step = data.get("is_multi_step")
+            if "steps_config" in data:
+                form_definition.steps_config = data.get("steps_config")
 
             # Generate the form using DynamicForm
             dynamic_form = DynamicForm(form_definition)

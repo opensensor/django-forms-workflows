@@ -1274,6 +1274,88 @@ class TestWorkflowBuilderViews:
             "conditions": [{"field": "amount", "operator": "gt", "value": "500"}],
         }
 
+    def test_save_rejects_workflow_from_different_form(self, client, superuser, form_definition):
+        other_form = FormDefinition.objects.create(name="Other form")
+        local_workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=True,
+            name_label="Local Track",
+        )
+        foreign_workflow = WorkflowDefinition.objects.create(
+            form_definition=other_form,
+            requires_approval=True,
+            name_label="Foreign Track",
+        )
+        local_workflow.stages.create(name="Local Stage", order=1, approval_logic="all")
+        foreign_workflow.stages.create(name="Foreign Stage", order=1, approval_logic="all")
+
+        client.login(username="admin", password="testpass123")
+        url = _wf_url("workflow/api/save/")
+        payload = {
+            "form_id": form_definition.id,
+            "workflow_id": foreign_workflow.id,
+            "workflow": {
+                "nodes": [
+                    {"type": "start", "data": {}},
+                    {
+                        "type": "workflow_settings",
+                        "data": {"name_label": "Should Not Be Applied"},
+                    },
+                    {
+                        "type": "stage",
+                        "data": {
+                            "name": "Mutated Stage",
+                            "order": 1,
+                            "approval_logic": "all",
+                            "approval_groups": [],
+                        },
+                    },
+                    {"type": "end", "data": {}},
+                ],
+                "connections": [],
+            },
+        }
+
+        resp = client.post(url, data=json.dumps(payload), content_type="application/json")
+
+        assert resp.status_code >= 400
+        local_workflow.refresh_from_db()
+        foreign_workflow.refresh_from_db()
+        assert local_workflow.name_label == "Local Track"
+        assert list(local_workflow.stages.values_list("name", flat=True)) == ["Local Stage"]
+        assert foreign_workflow.name_label == "Foreign Track"
+        assert list(foreign_workflow.stages.values_list("name", flat=True)) == ["Foreign Stage"]
+
+    def test_load_rejects_workflow_from_different_form(self, client, superuser, form_definition):
+        other_form = FormDefinition.objects.create(name="Other form")
+        local_workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=True,
+            name_label="Local Track",
+        )
+        foreign_workflow = WorkflowDefinition.objects.create(
+            form_definition=other_form,
+            requires_approval=True,
+            name_label="Foreign Track",
+        )
+        local_workflow.stages.create(name="Local Stage", order=1, approval_logic="all")
+        foreign_workflow.stages.create(name="Foreign Stage", order=1, approval_logic="all")
+
+        client.login(username="admin", password="testpass123")
+        url = _wf_url("workflow/api/load/")
+        resp = client.get(
+            url,
+            data={"form_id": form_definition.id, "workflow_id": foreign_workflow.id},
+        )
+
+        assert resp.status_code >= 400
+        local_workflow.refresh_from_db()
+        foreign_workflow.refresh_from_db()
+        assert local_workflow.name_label == "Local Track"
+        assert list(local_workflow.stages.values_list("name", flat=True)) == ["Local Stage"]
+        assert foreign_workflow.name_label == "Foreign Track"
+        assert list(foreign_workflow.stages.values_list("name", flat=True)) == ["Foreign Stage"]
+
 
 # ── save_form_definition_from_builder_data ──────────────────────────────────
 

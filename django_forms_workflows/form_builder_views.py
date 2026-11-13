@@ -706,7 +706,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         }
 
         # Add validation properties
-        validation = field_data.get("validation", {})
+        validation = field_data.get("validation")
+        if validation is None:
+            validation = {}
+        elif not isinstance(validation, dict):
+            raise FormBuilderPayloadError(
+                "Field 'validation' must be an object/dictionary."
+            )
+
         field_props.update(
             {
                 "min_value": validation.get("min_value"),
@@ -719,7 +726,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         )
 
         # Add conditional properties
-        conditional = field_data.get("conditional", {})
+        conditional = field_data.get("conditional")
+        if conditional is None:
+            conditional = {}
+        elif not isinstance(conditional, dict):
+            raise FormBuilderPayloadError(
+                "Field 'conditional' must be an object/dictionary."
+            )
+
         conditional_rules = conditional.get(
             "conditional_rules",
             field_data.get("conditional_rules"),
@@ -792,9 +806,34 @@ def form_builder_preview(request):
     """
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {"success": False, "error": "Preview payload must be an object"},
+                status=400,
+            )
+        fields = data.get("fields", [])
+        if not isinstance(fields, list) or any(
+            not isinstance(field, dict) for field in fields
+        ):
+            return JsonResponse(
+                {"success": False, "error": "Preview fields must be a list of objects"},
+                status=400,
+            )
+        for field in fields:
+            if any(
+                field.get(key) is not None and not isinstance(field[key], dict)
+                for key in ("validation", "conditional")
+            ):
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Preview validation and conditional values must be objects",
+                    },
+                    status=400,
+                )
 
         # If no fields, return a simple message
-        if not data.get("fields"):
+        if not fields:
             return JsonResponse(
                 {
                     "success": True,
@@ -834,9 +873,9 @@ def form_builder_preview(request):
             form_definition.save()
 
             # Create temporary fields
-            for field_data in data.get("fields", []):
-                validation = field_data.get("validation", {})
-                conditional = field_data.get("conditional", {})
+            for field_data in fields:
+                validation = field_data.get("validation") or {}
+                conditional = field_data.get("conditional") or {}
 
                 # Build field kwargs
                 field_kwargs = {
@@ -859,6 +898,13 @@ def form_builder_preview(request):
                     "default_value": field_data.get("default_value", ""),
                     "regex_validation": validation.get("regex_validation", ""),
                     "regex_error_message": validation.get("regex_error_message", ""),
+                    "validation_rules": validation.get(
+                        "validation_rules", field_data.get("validation_rules")
+                    ),
+                    "field_dependencies": conditional.get(
+                        "field_dependencies", field_data.get("field_dependencies")
+                    ),
+                    "step_number": field_data.get("step_number", 1),
                 }
 
                 # Add optional fields only if they have values
@@ -992,7 +1038,6 @@ def document_template_save(request, form_id):
     """Create or update a document template."""
     try:
         data = json.loads(request.body)
-        form_def = get_object_or_404(FormDefinition, id=form_id)
 
         template_id = data.get("id")
         name = data.get("name", "").strip()
@@ -1007,6 +1052,9 @@ def document_template_save(request, form_id):
             )
 
         with transaction.atomic():
+            form_def = get_object_or_404(
+                FormDefinition.objects.select_for_update(), id=form_id
+            )
             # If marking as default, clear other defaults for this form
             if is_default:
                 DocumentTemplate.objects.filter(

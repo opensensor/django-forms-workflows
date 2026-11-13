@@ -1887,6 +1887,27 @@ class TestFormBuilderViews:
         assert FormDefinition.objects.count() == form_count_before
         assert FormField.objects.count() == field_count_before
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            [],
+            {"fields": {}},
+            {"fields": [1]},
+            {"fields": [{"field_name": "answer", "validation": []}]},
+            {"fields": [{"field_name": "answer", "conditional": "bad"}]},
+        ],
+    )
+    def test_preview_rejects_invalid_payload_types(self, client, superuser, payload):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["success"] is False
+
     def test_preview_escapes_form_name_and_instructions(self, client, superuser):
         client.force_login(superuser)
         response = client.post(

@@ -1828,30 +1828,36 @@ def send_notification_rules(
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
 
-        already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
-            rule, rule_task_id
-        )
+        with transaction.atomic():
+            # Serialize dispatch decisions for this rule so concurrent workers
+            # cannot both observe "not delivered" and both send.
+            NotificationRule.objects.select_for_update().get(pk=rule.pk)
 
-        # Skip recipients successfully delivered on an earlier attempt.
-        if already_sent or already_cc_or_bcc:
-            before_to, before_cc = len(recipients), len(cc_recipients)
-            recipients = [r for r in recipients if r not in already_sent]
-            cc_recipients = [
-                c
-                for c in cc_recipients
-                if c not in already_sent
-                and c not in already_cc_or_bcc
-                and f"cc:{c}" not in already_sent
-            ]
-            skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
-            if skipped:
-                logger.info(
-                    "NotificationRule %s: skipped %d already-sent recipient(s) "
-                    "for submission %s (idempotency)",
-                    rule.id,
-                    skipped,
-                    submission.id,
-                )
+            # Re-check delivery state while holding the lock.
+            already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
+                rule, rule_task_id
+            )
+
+            # Skip recipients successfully delivered on an earlier attempt.
+            if already_sent or already_cc_or_bcc:
+                before_to, before_cc = len(recipients), len(cc_recipients)
+                recipients = [r for r in recipients if r not in already_sent]
+                cc_recipients = [
+                    c
+                    for c in cc_recipients
+                    if c not in already_sent
+                    and c not in already_cc_or_bcc
+                    and f"cc:{c}" not in already_sent
+                ]
+                skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
+                if skipped:
+                    logger.info(
+                        "NotificationRule %s: skipped %d already-sent recipient(s) "
+                        "for submission %s (idempotency)",
+                        rule.id,
+                        skipped,
+                        submission.id,
+                    )
 
         if not recipients and not cc_recipients:
             logger.info(

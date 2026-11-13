@@ -1458,9 +1458,12 @@ def send_notification_rules(
     task = None
     if task_id:
         try:
-            task = ApprovalTask.objects.select_related("workflow_stage").get(id=task_id)
+            task = ApprovalTask.objects.select_related("workflow_stage").get(
+                id=task_id,
+                submission_id=submission_id,
+            )
         except ApprovalTask.DoesNotExist:
-            # A concurrently deleted task simply leaves notification context unscoped.
+            # A concurrently deleted or mismatched task simply leaves notification context unscoped.
             pass
 
     submission_url, approval_url = _build_form_field_notification_context(

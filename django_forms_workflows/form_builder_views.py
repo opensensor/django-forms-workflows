@@ -725,12 +725,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                     f"Invalid field id {field_id} for this form"
                 )
             updated_field_ids.add(field_id)
-            field_id_mapping[str(old_id)] = field_id
+            if old_id is not None:
+                field_id_mapping[str(old_id)] = field_id
         else:
             # Create new field
             new_field = FormField.objects.create(**field_props)
             updated_field_ids.add(new_field.id)
-            field_id_mapping[str(old_id)] = new_field.id
+            if old_id is not None:
+                field_id_mapping[str(old_id)] = new_field.id
 
     # Delete fields that were removed
     fields_to_delete = existing_field_ids - updated_field_ids

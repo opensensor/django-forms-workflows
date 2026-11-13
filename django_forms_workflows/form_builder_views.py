@@ -873,6 +873,9 @@ def form_builder_preview(request):
             form_definition.requires_login = data.get("requires_login", True)
             form_definition.allow_save_draft = data.get("allow_save_draft", True)
             form_definition.allow_withdrawal = data.get("allow_withdrawal", True)
+            form_definition.enable_multi_step = data.get("enable_multi_step", False)
+            form_steps = data.get("form_steps", [])
+            form_definition.form_steps = form_steps if isinstance(form_steps, list) else []
             form_definition.save()
 
             # Create temporary fields

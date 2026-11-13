@@ -708,10 +708,12 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
+        errors = exc.messages if getattr(exc, "messages", None) else [str(exc)]
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
+                "errors": errors,
             },
             status=400,
         )

@@ -2072,36 +2072,41 @@ def send_notification_rules(
             # were no TO recipients), attempt a CC-only send so retries do not
             # lose CC delivery.
             if cc_pending:
-                try:
-                    if rule_body.strip():
-                        cc_send_result = _send_html_email_from_string(
-                            subject,
-                            cc_pending,
-                            rule_body,
-                            {**base_context},
-                            notification_type=event,
-                            submission_id=submission_id,
-                            approval_task_id=rule_task_id,
-                            notification_rule_id=rule.id,
+                for recipient in cc_pending:
+                    ctx = {**base_context}
+                    recipient_user = _users_by_email.get(recipient)
+                    if recipient_user:
+                        ctx["approver"] = recipient_user
+                    try:
+                        if rule_body.strip():
+                            cc_send_result = _send_html_email_from_string(
+                                subject,
+                                [recipient],
+                                rule_body,
+                                ctx,
+                                notification_type=event,
+                                submission_id=submission_id,
+                                approval_task_id=rule_task_id,
+                                notification_rule_id=rule.id,
+                            )
+                        else:
+                            cc_send_result = _send_html_email(
+                                subject,
+                                [recipient],
+                                default_template,
+                                ctx,
+                                notification_type=event,
+                                submission_id=submission_id,
+                                approval_task_id=rule_task_id,
+                                notification_rule_id=rule.id,
+                            )
+                    except Exception as exc:
+                        had_dispatch_failure = True
+                        logger.exception(
+                            "NotificationRule %s failed sending CC recipient %s",
+                            rule.id,
+                            recipient,
                         )
-                    else:
-                        cc_send_result = _send_html_email(
-                            subject,
-                            cc_pending,
-                            default_template,
-                            {**base_context},
-                            notification_type=event,
-                            submission_id=submission_id,
-                            approval_task_id=rule_task_id,
-                            notification_rule_id=rule.id,
-                        )
-                except Exception as exc:
-                    had_dispatch_failure = True
-                    logger.exception(
-                        "NotificationRule %s failed sending CC recipients",
-                        rule.id,
-                    )
-                    for recipient in cc_pending:
                         _write_notification_log(
                             notification_type=event,
                             submission_id=submission_id,
@@ -2112,9 +2117,9 @@ def send_notification_rules(
                             notification_rule_id=rule.id,
                             approval_task_id=rule_task_id,
                         )
-                    return
-                if cc_send_result is False:
-                    had_dispatch_failure = True
+                        continue
+                    if cc_send_result is False:
+                        had_dispatch_failure = True
 
     had_dispatch_failure = False
     for rule in rules:

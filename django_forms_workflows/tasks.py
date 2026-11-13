@@ -841,12 +841,16 @@ def check_approval_deadlines() -> str:
     expired_count = 0
     reminder_count = 0
     auto_approved_count = 0
+    submission_ids_for_auto_approve = set()
 
     for task in pending:
         submission = task.submission
         workflow = getattr(submission.form_definition, "workflow", None)
         if not workflow:
             continue
+
+        if workflow.auto_approve_after_days and submission.status == "pending_approval":
+            submission_ids_for_auto_approve.add(submission.id)
 
         # Expire tasks after deadline
         if workflow.approval_deadline_days and task.created_at:
@@ -858,34 +862,6 @@ def check_approval_deadlines() -> str:
 
                 # Escalation groups have been removed.
                 # Escalation should now be modelled as conditional stages.
-
-                # Optional auto-approve after grace period
-                if (
-                    workflow.auto_approve_after_days
-                    and submission.status == "pending_approval"
-                ):
-                    auto_deadline = task.created_at + timedelta(
-                        days=workflow.auto_approve_after_days
-                    )
-                    if now > auto_deadline:
-                        submission.status = "approved"
-                        submission.completed_at = now
-                        submission.save(update_fields=["status", "completed_at"])
-                        # cancel remaining tasks
-                        submission.approval_tasks.filter(status="pending").update(
-                            status="skipped"
-                        )
-                        try:
-                            send_notification_rules.delay(
-                                submission.id, "workflow_approved"
-                            )
-                        except Exception:
-                            logger.debug(
-                                "Could not enqueue approval notification for submission %s",
-                                submission.id,
-                                exc_info=True,
-                            )
-                        auto_approved_count += 1
 
         # Send reminder if configured and not yet sent
         if (
@@ -915,6 +891,41 @@ def check_approval_deadlines() -> str:
                 # retried. Until it is stamped, the next sweep re-dispatches;
                 # duplicate emails are absorbed by the already_sent guard.
                 reminder_count += 1
+
+    if submission_ids_for_auto_approve:
+        submissions = FormSubmission.objects.filter(
+            id__in=submission_ids_for_auto_approve,
+            status="pending_approval",
+        ).select_related("form_definition__workflow")
+        for submission in submissions:
+            workflow = getattr(submission.form_definition, "workflow", None)
+            if not workflow or not workflow.auto_approve_after_days:
+                continue
+
+            latest_task = submission.approval_tasks.order_by("-created_at").first()
+            if not latest_task or not latest_task.created_at:
+                continue
+
+            auto_deadline = latest_task.created_at + timedelta(
+                days=workflow.auto_approve_after_days
+            )
+            if now > auto_deadline:
+                submission.status = "approved"
+                submission.completed_at = now
+                submission.save(update_fields=["status", "completed_at"])
+                # cancel remaining tasks
+                submission.approval_tasks.filter(status="pending").update(
+                    status="skipped"
+                )
+                try:
+                    send_notification_rules.delay(submission.id, "workflow_approved")
+                except Exception:
+                    logger.debug(
+                        "Could not enqueue approval notification for submission %s",
+                        submission.id,
+                        exc_info=True,
+                    )
+                auto_approved_count += 1
 
     return f"expired={expired_count}, reminders={reminder_count}, auto_approved={auto_approved_count}"
 

@@ -1620,6 +1620,46 @@ class TestFormBuilderViews:
         assert cloned.id != form_with_fields.id
         assert cloned.fields.count() == form_with_fields.fields.count()
 
+    def test_clone_copies_automation_and_settings(
+        self, client, superuser, form_with_fields, approval_group
+    ):
+        form_with_fields.api_enabled = True
+        form_with_fields.allow_resubmit = True
+        form_with_fields.save(update_fields=["api_enabled", "allow_resubmit"])
+        workflow = WorkflowDefinition.objects.create(form_definition=form_with_fields)
+        stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+        rule = NotificationRule.objects.create(
+            workflow=workflow,
+            stage=stage,
+            event="approval_request",
+            static_emails="review@example.com",
+        )
+        rule.notify_groups.add(approval_group)
+        PostSubmissionAction.objects.create(
+            form_definition=form_with_fields,
+            name="Follow up",
+            action_type="email",
+            trigger="on_submit",
+            email_to="owner@example.com",
+        )
+        client.force_login(superuser)
+
+        response = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
+
+        assert response.status_code == 200
+        cloned = FormDefinition.objects.get(pk=response.json()["form_id"])
+        assert cloned.uuid != form_with_fields.uuid
+        assert cloned.api_enabled is True
+        assert cloned.allow_resubmit is True
+        cloned_workflow = cloned.workflows.get()
+        cloned_rule = cloned_workflow.notification_rules.get()
+        assert cloned_rule.stage == cloned_workflow.stages.get()
+        assert cloned_rule.static_emails == rule.static_emails
+        assert list(cloned_rule.notify_groups.all()) == [approval_group]
+        cloned_action = cloned.post_actions.get()
+        assert cloned_action.email_to == "owner@example.com"
+        assert cloned_action.trigger == "on_submit"
+
     def test_clone_preserves_field_settings_without_stale_workflow_layout(
         self, client, superuser, form_with_fields
     ):

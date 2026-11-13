@@ -189,7 +189,7 @@ def form_builder_clone(request, form_id):
                     css_class=field.css_class,
                     choices=field.choices,
                     default_value=field.default_value,
-                    prefill_source_config=field.prefill_source_config,
+                    prefill_source_config_id=field.prefill_source_config_id,
                     shared_option_list_id=field.shared_option_list_id,
                     validation_rules=field.validation_rules,
                     field_dependencies=field.field_dependencies,

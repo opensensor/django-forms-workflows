@@ -669,6 +669,18 @@ def workflow_builder_save(request):
                     raise ValidationError(
                         f"Malformed payload: node.data at index {idx} must be an object."
                     )
+                node_data = node.get("data", {})
+                if "approval_groups" in node_data:
+                    approval_groups = node_data["approval_groups"]
+                    if not isinstance(approval_groups, list):
+                        raise ValidationError(
+                            f"Malformed payload: node.data.approval_groups at index {idx} must be a list."
+                        )
+                    for g_idx, group in enumerate(approval_groups):
+                        if not isinstance(group, dict):
+                            raise ValidationError(
+                                f"Malformed payload: node.data.approval_groups[{g_idx}] at node index {idx} must be an object."
+                            )
 
         logger.info(f"Saving workflow for form {form_id}")
         logger.info(f"Workflow data: {workflow_data}")

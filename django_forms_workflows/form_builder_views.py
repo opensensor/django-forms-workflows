@@ -12,7 +12,6 @@ import uuid
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
-from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import (
@@ -882,7 +881,7 @@ def form_builder_preview(request):
                 {
                     "form_name": form_definition.name,
                     "instructions": form_definition.instructions,
-                    "form_html": mark_safe(form_html),
+                    "form_html": form_html,
                 }
             )
             preview_html = preview_template.render(preview_context)

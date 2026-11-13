@@ -1764,6 +1764,32 @@ class TestFormBuilderViews:
         )
         assert resp.status_code == 200
 
+    def test_preview_escapes_form_name_and_instructions(self, client, superuser):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps(
+                {
+                    "name": "<script>alert(1)</script>",
+                    "instructions": "<img src=x onerror=alert(1)>",
+                    "fields": [
+                        {
+                            "field_name": "answer",
+                            "field_label": "Answer",
+                            "field_type": "text",
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        html = response.json()["html"]
+        assert "<script>" not in html
+        assert "<img src=x" not in html
+        assert "&lt;script&gt;" in html
+        assert "&lt;img src=x" in html
+
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)
         url = _fb_url("builder/api/preview/")

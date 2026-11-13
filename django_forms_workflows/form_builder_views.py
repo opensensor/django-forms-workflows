@@ -191,6 +191,12 @@ def form_builder_clone(request, form_id):
                         requires_manager_approval=stage.requires_manager_approval,
                         approve_label=stage.approve_label,
                         trigger_conditions=stage.trigger_conditions,
+                        allow_send_back=stage.allow_send_back,
+                        allow_reassign=stage.allow_reassign,
+                        allow_edit_form_data=stage.allow_edit_form_data,
+                        assignee_form_field=stage.assignee_form_field,
+                        assignee_lookup_type=stage.assignee_lookup_type,
+                        validate_assignee_group=stage.validate_assignee_group,
                     )
                     for sag in StageApprovalGroup.objects.filter(stage=stage).order_by(
                         "role", "position"

@@ -7,6 +7,7 @@ and editing forms without code.
 
 import json
 import logging
+import re
 import uuid
 
 from django.db import transaction
@@ -489,7 +490,58 @@ def form_builder_save(request):
                 status=400,
             )
 
-        form_id = data.get("id")
+        raw_form_id = data.get("id")
+        if raw_form_id in (None, ""):
+            form_id = None
+        elif isinstance(raw_form_id, bool):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: 'id' must be a positive integer",
+                },
+                status=400,
+            )
+        elif isinstance(raw_form_id, int):
+            if raw_form_id <= 0:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Invalid payload: 'id' must be a positive integer",
+                    },
+                    status=400,
+                )
+            form_id = raw_form_id
+        elif isinstance(raw_form_id, str):
+            raw_form_id = raw_form_id.strip()
+            if not raw_form_id:
+                form_id = None
+            elif not raw_form_id.isascii() or not raw_form_id.isdigit():
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Invalid payload: 'id' must be a positive integer",
+                    },
+                    status=400,
+                )
+            else:
+                form_id = int(raw_form_id)
+                if form_id <= 0:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "Invalid payload: 'id' must be a positive integer",
+                        },
+                        status=400,
+                    )
+        else:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: 'id' must be a positive integer",
+                },
+                status=400,
+            )
+
         raw_name = data.get("name", "")
         raw_slug = data.get("slug", "")
         if not isinstance(raw_name, str) or not isinstance(raw_slug, str):
@@ -810,7 +862,16 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         # Create or update field
         if isinstance(field_id, bool):
             raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
-        if field_id and isinstance(field_id, int):
+        if field_id is None or (
+            isinstance(field_id, str)
+            and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", field_id)
+        ):
+            # Create new field
+            new_field = FormField.objects.create(**field_props)
+            updated_field_ids.add(new_field.id)
+            if old_id is not None:
+                field_id_mapping[str(old_id)] = new_field.id
+        elif isinstance(field_id, int):
             # Update existing field, scoped to current form_definition
             updated_count = FormField.objects.filter(
                 id=field_id, form_definition=form_definition
@@ -823,11 +884,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id
         else:
-            # Create new field
-            new_field = FormField.objects.create(**field_props)
-            updated_field_ids.add(new_field.id)
-            if old_id is not None:
-                field_id_mapping[str(old_id)] = new_field.id
+            raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
 
     # Delete fields that were removed
     fields_to_delete = existing_field_ids - updated_field_ids

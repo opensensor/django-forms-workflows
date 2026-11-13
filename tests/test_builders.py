@@ -1488,6 +1488,26 @@ class TestSaveFormDefinitionFromBuilderData:
         assert new_field.required is True
         assert field_id_mapping == {"temp-1": new_field.id}
 
+    def test_creates_field_with_builder_temporary_id(self, user, form_definition):
+        data = {
+            "name": form_definition.name,
+            "slug": form_definition.slug,
+            "fields": [
+                {
+                    "id": "new_1",
+                    "field_name": "new_field",
+                    "field_label": "New Field",
+                    "field_type": "text",
+                }
+            ],
+        }
+
+        result, mapping = save_form_definition_from_builder_data(
+            data, user, form_definition=form_definition
+        )
+
+        assert mapping == {"new_1": result.fields.get(field_name="new_field").id}
+
     def test_updates_an_existing_field(self, user, form_with_fields):
         field = form_with_fields.fields.get(field_name="full_name")
         data = {
@@ -1598,6 +1618,9 @@ class TestFormBuilderSavePayloadValidation:
             {"name": "Form", "slug": "form", "fields": [1]},
             {"name": 123, "slug": "form", "fields": []},
             {"name": "Form", "slug": None, "fields": []},
+            {"id": True, "name": "Form", "slug": "form", "fields": []},
+            {"id": -1, "name": "Form", "slug": "form", "fields": []},
+            {"id": "²", "name": "Form", "slug": "form", "fields": []},
         ],
     )
     def test_rejects_invalid_payload_types(self, client, superuser, payload):

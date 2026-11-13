@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.78.3] - 2026-11-06
+
+### Changed
+- Update the locked `oauthlib` dependency from 4.0.0 to 4.0.1.
+
+## [0.78.2] - 2026-11-02
+
+### Fixed
+- Repair form builder save validation and restrict error responses to explicit
+  client messages.
+- Preserve notification task context and role scoping during dispatch.
+
+### Security
+- Update `pyasn1` to 0.6.5 to address dependency audit failures.
+
 ## [0.78.1] - 2026-10-30
 
 ### Fixed
@@ -2015,7 +2030,10 @@ here rather than lost.
 - psycopg2-binary >= 2.9 (for PostgreSQL)
 - mysqlclient >= 2.2 (for MySQL)
 
-[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.77.0...HEAD
+[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.3...HEAD
+[0.78.3]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.2...v0.78.3
+[0.78.2]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.1...v0.78.2
+[0.78.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.0...v0.78.1
 [0.77.0]: https://github.com/opensensor/django-forms-workflows/compare/v0.76.6...v0.77.0
 [0.2.2]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.0...v0.2.1

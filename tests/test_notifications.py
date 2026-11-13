@@ -2338,7 +2338,7 @@ class TestNotificationLogCcBccConsolidation:
             workflow=wf,
             event="submission_received",
             notify_submitter=True,
-            rule_static_emails="other@example.com",
+            static_emails="other@example.com",
             cc_static_emails="cc@example.com",
         )
         sub = FormSubmission.objects.create(

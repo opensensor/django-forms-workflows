@@ -896,9 +896,12 @@ def check_approval_deadlines() -> str:
         if workflow.approval_deadline_days and task.created_at:
             deadline = task.created_at + timedelta(days=workflow.approval_deadline_days)
             if now > deadline:
-                task.status = "expired"
-                task.save(update_fields=["status"])  # mark expired
-                expired_count += 1
+                updated = ApprovalTask.objects.filter(
+                    id=task.id,
+                    status="pending",
+                ).update(status="expired")
+                if updated:
+                    expired_count += 1
 
                 # Escalation groups have been removed.
                 # Escalation should now be modelled as conditional stages.

@@ -322,18 +322,33 @@ def test_failing_rule_does_not_silence_the_other_rules(form_definition, user):
     )
 
     real_collect = tasks_module._collect_notification_recipients
+    real_filter = tasks_module.NotificationRule.objects.filter
+    attempted_rule_ids = []
 
     def _explode(rule, *args, **kwargs):
+        attempted_rule_ids.append(rule.id)
         if rule.id == bad.id:
             raise RuntimeError("boom")
         return real_collect(rule, *args, **kwargs)
 
+    def _ordered_filter(*args, **kwargs):
+        qs = real_filter(*args, **kwargs)
+        if kwargs.get("event") == "workflow_approved":
+            return qs.order_by("id")
+        return qs
+
+    good = NotificationRule.objects.get(subject_template="Good rule")
+
     with (
         patch.object(tasks_module, "_collect_notification_recipients", _explode),
+        patch.object(
+            tasks_module.NotificationRule.objects, "filter", side_effect=_ordered_filter
+        ),
         patch("django_forms_workflows.tasks._send_html_email") as mock_send,
     ):
         send_notification_rules(submission.id, "workflow_approved")
 
+    assert attempted_rule_ids[:2] == [bad.id, good.id]
     subjects = [call[0][0] for call in mock_send.call_args_list]
     assert "Good rule" in subjects
 
@@ -1396,7 +1411,7 @@ def test_email_field_with_multiple_addresses_sends_to_each(form_definition, user
     assert recipients == [["first@example.com"], ["second@example.com"]]
 
 
-def test_email_field_stored_as_list_is_flattened(form_definition, user):
+def test_cc_email_field_stored_as_list_is_flattened(form_definition, user):
     """A field whose value is a list (not a joined string) works the same."""
     wf = WorkflowDefinition.objects.create(
         form_definition=form_definition, requires_approval=False
@@ -2230,6 +2245,19 @@ class TestCustomBodyTemplateContext:
             form_data={},
             status="approved",
         )
+        now = timezone.now()
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Final Approval",
+            status="approved",
+            decision="approve",
+            comments="Old approval comment",
+            completed_by=approver_user,
+            completed_at=now - timedelta(hours=1),
+        )
         ApprovalTask.objects.create(
             submission=sub,
             assigned_group=approval_group,
@@ -2240,7 +2268,7 @@ class TestCustomBodyTemplateContext:
             decision="approve",
             comments="Ship it",
             completed_by=approver_user,
-            completed_at=timezone.now(),
+            completed_at=now,
         )
 
         NotificationRule.objects.create(
@@ -2257,6 +2285,7 @@ class TestCustomBodyTemplateContext:
         assert len(mailoutbox) == 1
         html = mailoutbox[0].alternatives[0][0]
         assert "Final Approval approved: Ship it" in html
+        assert "Old approval comment" not in html
 
     def test_public_comments_excludes_pending_and_empty_comments(
         self, form_definition, user, approver_user, approval_group, mailoutbox

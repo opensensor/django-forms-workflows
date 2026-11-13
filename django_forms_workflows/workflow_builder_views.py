@@ -345,6 +345,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     "stage_label": stage_label,
                 }
 
+    if len(settings_nodes) > 1:
+        add_error("Only one workflow settings node is allowed.")
+
     settings_data = settings_nodes[0].get("data", {}) if settings_nodes else {}
     cadence = settings_data.get("notification_cadence") or "immediate"
     cadence_day = settings_data.get("notification_cadence_day")

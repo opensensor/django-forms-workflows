@@ -533,7 +533,9 @@ def test_check_approval_deadlines_defers_the_stamp_to_the_worker(
     with patch.object(tasks_module.send_notification_rules, "delay") as mock_delay:
         check_approval_deadlines()
 
-    assert mock_delay.called
+    mock_delay.assert_called_once_with(
+        submission.id, "approval_reminder", task_id=task.id
+    )
     task.refresh_from_db()
     assert task.reminder_sent_at is None
 
@@ -1630,7 +1632,7 @@ class TestSendNotificationRulesIdempotency:
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition, requires_approval=False
         )
-        NotificationRule.objects.create(
+        rule = NotificationRule.objects.create(
             workflow=wf,
             event="submission_received",
             notify_submitter=True,
@@ -1649,6 +1651,12 @@ class TestSendNotificationRulesIdempotency:
         assert (
             NotificationLog.objects.filter(
                 submission_id=submission.id, status="sent"
+            ).count()
+            == 2
+        )
+        assert (
+            NotificationLog.objects.filter(
+                submission_id=submission.id, notification_rule=rule, status="sent"
             ).count()
             == 2
         )
@@ -1696,6 +1704,37 @@ class TestSendNotificationRulesIdempotency:
         send_notification_rules(submission.id, "submission_received")
 
         # Only the submitter should have been (re-)sent now.
+        assert len(mailoutbox) == 1
+        assert mailoutbox[0].to == [user.email]
+
+    def test_legacy_sent_log_without_rule_only_retries_missing(
+        self, form_definition, user, mailoutbox
+    ):
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition, requires_approval=False
+        )
+        NotificationRule.objects.create(
+            workflow=wf,
+            event="submission_received",
+            notify_submitter=True,
+            static_emails="other@example.com",
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="approved",
+        )
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=submission.id,
+            recipient_email="other@example.com",
+            subject="prior",
+            status="sent",
+        )
+
+        send_notification_rules(submission.id, "submission_received")
+
         assert len(mailoutbox) == 1
         assert mailoutbox[0].to == [user.email]
 
@@ -3031,6 +3070,7 @@ def test_taskless_final_notifications_keep_workflow_context_separate(
     assert first.count("|") == 1
     first_public_comments, first_task_comments = first.split("|", 1)
     assert "Private to workflow 1" in first_public_comments
+    assert "Private to workflow 1" in first_task_comments
     assert "Private to workflow 2" not in first_public_comments
     assert "Private to workflow 2" not in first_task_comments
 

@@ -914,7 +914,10 @@ def check_approval_deadlines() -> str:
     """
     now = timezone.now()
     pending = (
-        ApprovalTask.objects.select_related("submission__form_definition")
+        ApprovalTask.objects.select_related(
+            "submission__form_definition",
+            "workflow_stage__workflow",
+        )
         .prefetch_related(
             Prefetch(
                 "submission__form_definition__workflows",
@@ -933,7 +936,12 @@ def check_approval_deadlines() -> str:
 
     for task in pending:
         submission = task.submission
-        workflow = getattr(submission.form_definition, "workflow", None)
+        # Prefer the workflow that owns this task's stage.
+        # Fallback to compatibility accessor for legacy tasks without a stage.
+        if task.workflow_stage_id:
+            workflow = task.workflow_stage.workflow
+        else:
+            workflow = getattr(submission.form_definition, "workflow", None)
         if not workflow:
             continue
 

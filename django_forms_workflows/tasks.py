@@ -1027,7 +1027,10 @@ def check_approval_deadlines() -> str:
                     locked_workflow = getattr(
                         locked_submission.form_definition, "workflow", None
                     )
-                    if not locked_workflow or not locked_workflow.auto_approve_after_days:
+                    if (
+                        not locked_workflow
+                        or not locked_workflow.auto_approve_after_days
+                    ):
                         continue
 
                     latest_task_created_at = ApprovalTask.objects.filter(
@@ -1853,6 +1856,9 @@ def send_notification_rules(
         successful earlier recipient logs after emails were already delivered.
         """
         nonlocal had_dispatch_failure
+        # Lock an existing row before checking delivery logs. Locking log rows
+        # cannot serialize the first send because there are no rows yet.
+        FormSubmission.objects.select_for_update().get(pk=submission_id)
         workflow = rule.workflow
         if explicit_task:
             rule_task = (
@@ -1889,16 +1895,6 @@ def send_notification_rules(
                 return
         rule_task_id = rule_task.pk if rule_task is not None else None
 
-        # Lock only rows for this dispatch identity so unrelated submissions
-        # using the same rule can run concurrently.
-        list(
-            NotificationLog.objects.select_for_update().filter(
-                submission_id=submission_id,
-                notification_type=event,
-                approval_task_id=rule_task_id,
-                notification_rule_id=rule.id,
-            )
-        )
         if workflow.pk not in _public_comments_by_workflow:
             _public_comments_by_workflow[workflow.pk] = (
                 _build_public_comments_for_workflow(workflow.pk)

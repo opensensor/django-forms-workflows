@@ -2120,6 +2120,13 @@ class TestFormBuilderTemplateAPI:
     def test_list_requires_staff(self, client, user):
         client.force_login(user)
         url = _fb_url("builder/api/templates/")
+        FormTemplate.objects.create(
+            name="Inactive Contact Form",
+            slug="inactive-contact-form",
+            description="An inactive template that should be excluded",
+            template_data={"fields": []},
+            is_active=False,
+        )
         resp = client.get(url)
         assert resp.status_code in (302, 403)
 
@@ -2127,6 +2134,7 @@ class TestFormBuilderTemplateAPI:
         from django_forms_workflows.models import FormTemplate
 
         FormTemplate.objects.create(
+        assert "inactive-contact-form" not in [t["slug"] for t in data["templates"]]
             name="Contact Form",
             slug="contact-form",
             description="A simple contact form",

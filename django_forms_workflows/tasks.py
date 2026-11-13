@@ -644,7 +644,8 @@ def _compute_scheduled_for(workflow, submission=None):
     Return a timezone-aware datetime indicating when the next batch for the
     given workflow should go out, based on its notification_cadence setting.
     """
-    now = timezone.now()
+    tz = timezone.get_current_timezone()
+    now = timezone.localtime(timezone.now(), tz)
     raw_time = getattr(workflow, "notification_cadence_time", None) or dt_time(8, 0)
     cadence = getattr(workflow, "notification_cadence", "immediate")
 
@@ -688,7 +689,7 @@ def _compute_scheduled_for(workflow, submission=None):
         if date_str:
             try:
                 parsed = datetime.fromisoformat(str(date_str)).date()
-                candidate = timezone.make_aware(datetime.combine(parsed, raw_time))
+                candidate = timezone.make_aware(datetime.combine(parsed, raw_time), tz)
                 if candidate > now:
                     return candidate
             except (ValueError, TypeError):

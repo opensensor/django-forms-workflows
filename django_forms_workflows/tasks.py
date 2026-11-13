@@ -1757,6 +1757,10 @@ def send_notification_rules(
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
+
+        IMPORTANT: per-recipient send/render/log work must catch exceptions
+        inside this function so a later recipient failure does not roll back
+        successful earlier recipient logs after emails were already delivered.
         """
         nonlocal had_dispatch_failure
         # Keep the lock through delivery and log writes so a concurrent

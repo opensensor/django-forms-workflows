@@ -1272,10 +1272,15 @@ def _collect_notification_recipients(
         if eff_stage:
             candidate_stage_ids = [eff_stage]
         else:
+            candidate_stage_qs = submission.approval_tasks.filter(
+                workflow_stage_id__isnull=False
+            )
+            if getattr(notif, "workflow_id", None):
+                candidate_stage_qs = candidate_stage_qs.filter(
+                    workflow_id=notif.workflow_id
+                )
             candidate_stage_ids = list(
-                submission.approval_tasks.filter(workflow_stage_id__isnull=False)
-                .values_list("workflow_stage_id", flat=True)
-                .distinct()
+                candidate_stage_qs.values_list("workflow_stage_id", flat=True).distinct()
             )
 
         # Step 2 — notify only the groups that actually hold a group-fallback

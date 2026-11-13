@@ -25,7 +25,7 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Max, Prefetch
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -945,17 +945,17 @@ def check_approval_deadlines() -> str:
                     queryset=WorkflowDefinition.objects.order_by("pk"),
                 )
             )
+            .annotate(latest_task_created_at=Max("approval_tasks__created_at"))
         )
         for submission in submissions:
             workflow = getattr(submission.form_definition, "workflow", None)
             if not workflow or not workflow.auto_approve_after_days:
                 continue
 
-            latest_task = submission.approval_tasks.order_by("-created_at").first()
-            if not latest_task or not latest_task.created_at:
+            if not submission.latest_task_created_at:
                 continue
 
-            auto_deadline = latest_task.created_at + timedelta(
+            auto_deadline = submission.latest_task_created_at + timedelta(
                 days=workflow.auto_approve_after_days
             )
             if now > auto_deadline:
@@ -1051,7 +1051,7 @@ def send_batched_notifications() -> str:
             # A worker crash rolls back the transaction, leaving the rows retryable.
             with transaction.atomic():
                 current = list(
-                    PendingNotification.objects.select_for_update()
+                    PendingNotification.objects.select_for_update(of=("self",))
                     .filter(id__in=ids, sent=False)
                     .select_related(
                         "workflow__form_definition",
@@ -1751,6 +1751,7 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
@@ -1758,6 +1759,9 @@ def send_notification_rules(
         the ``for rule in rules`` loop below.
         """
         nonlocal had_dispatch_failure
+        # Keep the lock through delivery and log writes so a concurrent
+        # dispatch rechecks the completed recipient set before sending.
+        NotificationRule.objects.select_for_update().get(pk=rule.pk)
         workflow = rule.workflow
         if explicit_task:
             rule_task = (
@@ -1828,6 +1832,7 @@ def send_notification_rules(
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
 
+        # Re-check delivery state while holding the lock.
         already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
             rule, rule_task_id
         )

@@ -1051,7 +1051,7 @@ def send_batched_notifications() -> str:
             # A worker crash rolls back the transaction, leaving the rows retryable.
             with transaction.atomic():
                 current = list(
-                    PendingNotification.objects.select_for_update()
+                    PendingNotification.objects.select_for_update(of=("self",))
                     .filter(id__in=ids, sent=False)
                     .select_related(
                         "workflow__form_definition",

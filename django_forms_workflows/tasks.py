@@ -1751,6 +1751,7 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
@@ -1758,6 +1759,9 @@ def send_notification_rules(
         the ``for rule in rules`` loop below.
         """
         nonlocal had_dispatch_failure
+        # Keep the lock through delivery and log writes so a concurrent
+        # dispatch rechecks the completed recipient set before sending.
+        NotificationRule.objects.select_for_update().get(pk=rule.pk)
         workflow = rule.workflow
         if explicit_task:
             rule_task = (
@@ -1828,36 +1832,31 @@ def send_notification_rules(
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
 
-        with transaction.atomic():
-            # Serialize dispatch decisions for this rule so concurrent workers
-            # cannot both observe "not delivered" and both send.
-            NotificationRule.objects.select_for_update().get(pk=rule.pk)
+        # Re-check delivery state while holding the lock.
+        already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
+            rule, rule_task_id
+        )
 
-            # Re-check delivery state while holding the lock.
-            already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
-                rule, rule_task_id
-            )
-
-            # Skip recipients successfully delivered on an earlier attempt.
-            if already_sent or already_cc_or_bcc:
-                before_to, before_cc = len(recipients), len(cc_recipients)
-                recipients = [r for r in recipients if r not in already_sent]
-                cc_recipients = [
-                    c
-                    for c in cc_recipients
-                    if c not in already_sent
-                    and c not in already_cc_or_bcc
-                    and f"cc:{c}" not in already_sent
-                ]
-                skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
-                if skipped:
-                    logger.info(
-                        "NotificationRule %s: skipped %d already-sent recipient(s) "
-                        "for submission %s (idempotency)",
-                        rule.id,
-                        skipped,
-                        submission.id,
-                    )
+        # Skip recipients successfully delivered on an earlier attempt.
+        if already_sent or already_cc_or_bcc:
+            before_to, before_cc = len(recipients), len(cc_recipients)
+            recipients = [r for r in recipients if r not in already_sent]
+            cc_recipients = [
+                c
+                for c in cc_recipients
+                if c not in already_sent
+                and c not in already_cc_or_bcc
+                and f"cc:{c}" not in already_sent
+            ]
+            skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
+            if skipped:
+                logger.info(
+                    "NotificationRule %s: skipped %d already-sent recipient(s) "
+                    "for submission %s (idempotency)",
+                    rule.id,
+                    skipped,
+                    submission.id,
+                )
 
         if not recipients and not cc_recipients:
             logger.info(
@@ -1981,11 +1980,10 @@ def send_notification_rules(
                     "recipient_email": recipient,
                     "sent": False,
                 }
-                _, created = PendingNotification.objects.get_or_create(
-                    **pending_identity,
-                    defaults={"scheduled_for": scheduled_for},
-                )
-                if created:
+                if not PendingNotification.objects.filter(**pending_identity).exists():
+                    PendingNotification.objects.create(
+                        **pending_identity, scheduled_for=scheduled_for
+                    )
                     created_count += 1
             logger.info(
                 "Queued %d/%d %s notification(s) for submission %s (due %s)",

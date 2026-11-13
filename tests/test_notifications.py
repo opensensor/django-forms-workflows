@@ -2909,6 +2909,39 @@ def test_digest_retries_reuse_pending_row_but_can_requeue_after_send(
 
 
 @pytest.mark.django_db
+def test_digest_queue_tolerates_existing_duplicate_pending_rows(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, notification_cadence="daily"
+    )
+    NotificationRule.objects.create(
+        workflow=workflow, event="workflow_approved", notify_submitter=True
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    identity = {
+        "workflow": workflow,
+        "notification_type": "workflow_approved",
+        "submission": submission,
+        "recipient_email": user.email,
+        "sent": False,
+        "scheduled_for": timezone.now() + timedelta(days=1),
+    }
+    PendingNotification.objects.create(**identity)
+    PendingNotification.objects.create(**identity)
+
+    send_notification_rules(submission.pk, "workflow_approved")
+
+    assert (
+        PendingNotification.objects.filter(submission=submission, sent=False).count()
+        == 2
+    )
+
+
+@pytest.mark.django_db
 def test_taskless_final_notifications_keep_workflow_context_separate(
     form_definition, user, approver_user, mailoutbox
 ):

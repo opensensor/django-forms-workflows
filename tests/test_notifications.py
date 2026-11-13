@@ -383,6 +383,38 @@ def test_failing_rule_records_a_failed_notification_log(form_definition, user):
     assert str(rule.id) in log.subject
 
 
+def test_later_render_failure_preserves_earlier_delivery(
+    form_definition, user, mailoutbox
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        notify_submitter=True,
+        static_emails="ops@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    with patch(
+        "django_forms_workflows.tasks.render_to_string",
+        side_effect=["<p>Sent</p>", RuntimeError("render failed")],
+    ):
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert len(mailoutbox) == 1
+    assert NotificationLog.objects.filter(
+        submission=submission, recipient_email=user.email, status="sent"
+    ).exists()
+    assert NotificationLog.objects.filter(
+        submission=submission, recipient_email="ops@example.com", status="failed"
+    ).exists()
+
+
 # ── approval_reminder bookkeeping ──────────────────────────────────────────
 
 

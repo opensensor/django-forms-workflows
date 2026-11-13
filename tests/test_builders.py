@@ -16,6 +16,7 @@ from django_forms_workflows.models import (
     FormField,
     NotificationRule,
     PostSubmissionAction,
+    SharedOptionList,
     StageApprovalGroup,
     WorkflowDefinition,
     WorkflowStage,
@@ -1618,6 +1619,49 @@ class TestFormBuilderViews:
         assert cloned.name.startswith(form_with_fields.name)
         assert cloned.id != form_with_fields.id
         assert cloned.fields.count() == form_with_fields.fields.count()
+
+    def test_clone_preserves_field_settings_without_stale_workflow_layout(
+        self, client, superuser, form_with_fields
+    ):
+        field = form_with_fields.fields.first()
+        options = SharedOptionList.objects.create(
+            name="Departments", slug="departments", items=["Engineering"]
+        )
+        field.shared_option_list = options
+        field.validation_rules = [{"type": "required", "message": "Required"}]
+        field.field_dependencies = [{"sourceField": "source"}]
+        field.step_number = 2
+        field.save(
+            update_fields=[
+                "shared_option_list",
+                "validation_rules",
+                "field_dependencies",
+                "step_number",
+            ]
+        )
+        workflow = WorkflowDefinition.objects.create(form_definition=form_with_fields)
+        stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+        workflow.visual_workflow_data = {
+            "nodes": [
+                {"id": "stage_1", "type": "stage", "data": {"stage_id": stage.id}}
+            ],
+            "connections": [],
+        }
+        workflow.save(update_fields=["visual_workflow_data"])
+        client.force_login(superuser)
+
+        response = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
+
+        assert response.status_code == 200
+        cloned = FormDefinition.objects.get(id=response.json()["form_id"])
+        cloned_field = cloned.fields.get(field_name=field.field_name)
+        assert cloned_field.shared_option_list == options
+        assert cloned_field.validation_rules == field.validation_rules
+        assert cloned_field.field_dependencies == field.field_dependencies
+        assert cloned_field.step_number == field.step_number
+        cloned_workflow = cloned.workflows.get()
+        assert cloned_workflow.visual_workflow_data is None
+        assert cloned_workflow.stages.get().id != stage.id
 
     def test_clone_copies_all_permission_groups(
         self, client, superuser, form_with_fields, approval_group

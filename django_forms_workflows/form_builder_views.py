@@ -706,7 +706,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         }
 
         # Add validation properties
-        validation = field_data.get("validation", {})
+        validation = field_data.get("validation")
+        if validation is None:
+            validation = {}
+        elif not isinstance(validation, dict):
+            raise FormBuilderPayloadError(
+                "Field 'validation' must be an object/dictionary."
+            )
+
         field_props.update(
             {
                 "min_value": validation.get("min_value"),
@@ -719,7 +726,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         )
 
         # Add conditional properties
-        conditional = field_data.get("conditional", {})
+        conditional = field_data.get("conditional")
+        if conditional is None:
+            conditional = {}
+        elif not isinstance(conditional, dict):
+            raise FormBuilderPayloadError(
+                "Field 'conditional' must be an object/dictionary."
+            )
+
         conditional_rules = conditional.get(
             "conditional_rules",
             field_data.get("conditional_rules"),

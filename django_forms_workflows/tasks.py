@@ -549,6 +549,23 @@ def dispatch_workflow_webhooks(
             )
             return
 
+    if (
+        target_stage is not None
+        and workflow_id is not None
+        and target_stage.workflow_id != workflow_id
+    ):
+        logger.warning("Ignoring stage and workflow IDs from different workflows")
+        return
+
+    if (
+        target_stage is not None
+        and approval_task is not None
+        and approval_task.workflow_stage_id
+        and target_stage.workflow_id != approval_task.workflow_stage.workflow_id
+    ):
+        logger.warning("Ignoring stage and task IDs from different workflows")
+        return
+
     if workflow_id is not None:
         if not submission.form_definition.workflows.filter(id=workflow_id).exists():
             logger.warning("Ignoring foreign or missing workflow_id=%s", workflow_id)

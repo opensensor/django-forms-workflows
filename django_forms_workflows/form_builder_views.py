@@ -389,6 +389,8 @@ def form_builder_load(request, form_id):
             "css_class": field.css_class or "",
             "choices": field.choices or "",
             "default_value": field.default_value or "",
+            "allowed_extensions": field.allowed_extensions or "",
+            "max_file_size_mb": field.max_file_size_mb,
             "prefill_source_id": field.prefill_source_config_id,
             "shared_option_list_id": field.shared_option_list_id,
             "validation": {

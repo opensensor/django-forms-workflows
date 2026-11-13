@@ -1194,12 +1194,15 @@ def _collect_notification_recipients(
 
     # 4. Stage assignees (NotificationRule only)
     if getattr(notif, "notify_stage_assignees", False) and submission is not None:
+        notif_workflow_id = getattr(notif, "workflow_id", None)
         qs = (
             submission.approval_tasks.select_related("assigned_to", "workflow_stage")
             .filter(assigned_to__isnull=False)
             .exclude(workflow_stage__assignee_form_field__isnull=True)
             .exclude(workflow_stage__assignee_form_field="")
         )
+        if notif_workflow_id:
+            qs = qs.filter(workflow_stage__workflow_id=notif_workflow_id)
         eff_stage = _effective_stage_id()
         if eff_stage:
             qs = qs.filter(workflow_stage_id=eff_stage)

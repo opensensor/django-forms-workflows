@@ -1186,9 +1186,32 @@ def shared_option_list_save(request):
     """Create or update a shared option list."""
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Request body must be a JSON object",
+                },
+                status=400,
+            )
+
         list_id = data.get("id")
-        name = data.get("name", "").strip()
-        slug = data.get("slug", "").strip()
+        name_raw = data.get("name", "")
+        slug_raw = data.get("slug", "")
+
+        if not isinstance(name_raw, str):
+            return JsonResponse(
+                {"success": False, "error": "Name must be a string"},
+                status=400,
+            )
+        if not isinstance(slug_raw, str):
+            return JsonResponse(
+                {"success": False, "error": "Slug must be a string"},
+                status=400,
+            )
+
+        name = name_raw.strip()
+        slug = slug_raw.strip()
         items = data.get("items", [])
         is_active = data.get("is_active", True)
 

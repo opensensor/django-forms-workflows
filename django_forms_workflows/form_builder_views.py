@@ -754,21 +754,37 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
         # Add workflow stage FK (for staged approval workflows)
         wf_stage_id = field_data.get("workflow_stage_id")
-        if wf_stage_id:
-            try:
-                wf_stage_id = int(wf_stage_id)
-            except (TypeError, ValueError) as exc:
+        if wf_stage_id is None or wf_stage_id == "":
+            field_props["workflow_stage_id"] = None
+        else:
+            # Reject malformed JSON references (e.g., booleans/fractional numbers)
+            if isinstance(wf_stage_id, bool):
                 raise FormBuilderPayloadError(
                     "Invalid workflow_stage_id for field "
                     f"'{field_data.get('field_name', '')}'"
-                ) from exc
-            if wf_stage_id not in allowed_workflow_stage_ids:
-                raise FormBuilderPayloadError(
-                    f"workflow_stage_id {wf_stage_id} is not valid for this form"
                 )
-            field_props["workflow_stage_id"] = wf_stage_id
-        else:
-            field_props["workflow_stage_id"] = None
+            if isinstance(wf_stage_id, int):
+                parsed_wf_stage_id = wf_stage_id
+            elif isinstance(wf_stage_id, str):
+                wf_stage_id_str = wf_stage_id.strip()
+                if not wf_stage_id_str or not wf_stage_id_str.lstrip("+-").isdigit():
+                    raise FormBuilderPayloadError(
+                        "Invalid workflow_stage_id for field "
+                        f"'{field_data.get('field_name', '')}'"
+                    )
+                parsed_wf_stage_id = int(wf_stage_id_str)
+            else:
+                # Includes floats (fractional JSON numbers) and other invalid types
+                raise FormBuilderPayloadError(
+                    "Invalid workflow_stage_id for field "
+                    f"'{field_data.get('field_name', '')}'"
+                )
+
+            if parsed_wf_stage_id not in allowed_workflow_stage_ids:
+                raise FormBuilderPayloadError(
+                    f"workflow_stage_id {parsed_wf_stage_id} is not valid for this form"
+                )
+            field_props["workflow_stage_id"] = parsed_wf_stage_id
 
         # Create or update field
         if field_id and isinstance(field_id, int):

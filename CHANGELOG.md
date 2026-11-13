@@ -2037,6 +2037,7 @@ here rather than lost.
 [0.76.0]: https://github.com/opensensor/django-forms-workflows/releases/tag/v0.76.0
 [0.75.1]: https://github.com/opensensor/django-forms-workflows/releases/tag/v0.75.1
 [0.74.17]: https://github.com/opensensor/django-forms-workflows/releases/tag/v0.74.17
+[0.74.16]: https://github.com/opensensor/django-forms-workflows/releases/tag/v0.74.16
 [0.2.2]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/opensensor/django-forms-workflows/compare/v0.1.0...v0.2.0

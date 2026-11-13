@@ -2720,6 +2720,43 @@ def test_auto_approve_uses_latest_task_once(form_definition, user, approver_user
 
 
 @pytest.mark.django_db
+def test_auto_approve_uses_task_workflow_track(form_definition, user, approver_user):
+    WorkflowDefinition.objects.create(
+        form_definition=form_definition,
+        name_label="Other",
+        auto_approve_after_days=None,
+    )
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, name_label="Active", auto_approve_after_days=2
+    )
+    stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="Review",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=task.pk).update(
+        created_at=timezone.now() - timedelta(days=3)
+    )
+
+    with patch.object(tasks_module.send_notification_rules, "delay") as notify:
+        result = check_approval_deadlines()
+
+    assert "auto_approved=1" in result
+    submission.refresh_from_db()
+    assert submission.status == "approved"
+    notify.assert_called_once_with(submission.pk, "workflow_approved")
+
+
+@pytest.mark.django_db
 def test_expired_task_is_not_reminded(form_definition, user, approver_user):
     WorkflowDefinition.objects.create(
         form_definition=form_definition,

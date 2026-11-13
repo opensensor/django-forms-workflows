@@ -1206,10 +1206,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     )
 
     if workflow is None:
-        workflow, _created = WorkflowDefinition.objects.update_or_create(
-            form_definition=form_definition,
-            defaults=wf_defaults,
+        candidate_workflows = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
         )
+        workflow_count = candidate_workflows.count()
+
+        if workflow_count == 0:
+            workflow = WorkflowDefinition.objects.create(
+                form_definition=form_definition,
+                **wf_defaults,
+            )
+        elif workflow_count == 1:
+            workflow = candidate_workflows.first()
+            for key, value in wf_defaults.items():
+                setattr(workflow, key, value)
+            workflow.form_definition = form_definition
+            workflow.save()
+        else:
+            raise ValidationError(
+                "Multiple workflow tracks exist for this form. Please select a workflow ID."
+            )
     else:
         for key, value in wf_defaults.items():
             setattr(workflow, key, value)

@@ -447,7 +447,10 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             else:
                 normalized_config = None
 
-        if normalized_config is not None and not isinstance(normalized_config, dict):
+        if normalized_config is None:
+            normalized_config = {}
+
+        if not isinstance(normalized_config, dict):
             add_error(f"Action {action_index} configuration must be a JSON object.")
 
     for sub_index, node in enumerate(sub_workflow_nodes, start=1):

@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -205,7 +208,19 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
 
     headers = mock_request.call_args.kwargs["headers"]
     assert headers["Authorization"] == "Bearer abc"
-    assert headers["X-Forms-Workflows-Signature"].startswith("sha256=")
+    request_kwargs = mock_request.call_args.kwargs
+    if "data" in request_kwargs and request_kwargs["data"] is not None:
+        body = request_kwargs["data"]
+        if isinstance(body, str):
+            body_bytes = body.encode("utf-8")
+        else:
+            body_bytes = body
+    else:
+        body_bytes = json.dumps(request_kwargs["json"]).encode("utf-8")
+    expected_signature = "sha256=" + hmac.new(
+        endpoint.secret.encode("utf-8"), body_bytes, hashlib.sha256
+    ).hexdigest()
+    assert headers["X-Forms-Workflows-Signature"] == expected_signature
 
     log = WebhookDeliveryLog.objects.get()
     assert log.success is True

@@ -345,6 +345,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     "stage_label": stage_label,
                 }
 
+    if len(settings_nodes) > 1:
+        add_error("Only one workflow settings node is allowed.")
+
     settings_data = settings_nodes[0].get("data", {}) if settings_nodes else {}
     cadence = settings_data.get("notification_cadence") or "immediate"
     cadence_day = settings_data.get("notification_cadence_day")
@@ -447,7 +450,10 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             else:
                 normalized_config = None
 
-        if normalized_config is not None and not isinstance(normalized_config, dict):
+        if normalized_config is None:
+            normalized_config = {}
+
+        if not isinstance(normalized_config, dict):
             add_error(f"Action {action_index} configuration must be a JSON object.")
 
     for sub_index, node in enumerate(sub_workflow_nodes, start=1):
@@ -669,6 +675,18 @@ def workflow_builder_save(request):
                     raise ValidationError(
                         f"Malformed payload: node.data at index {idx} must be an object."
                     )
+                node_data = node.get("data", {})
+                if "approval_groups" in node_data:
+                    approval_groups = node_data["approval_groups"]
+                    if not isinstance(approval_groups, list):
+                        raise ValidationError(
+                            f"Malformed payload: node.data.approval_groups at index {idx} must be a list."
+                        )
+                    for g_idx, group in enumerate(approval_groups):
+                        if not isinstance(group, dict):
+                            raise ValidationError(
+                                f"Malformed payload: node.data.approval_groups[{g_idx}] at node index {idx} must be an object."
+                            )
 
         logger.info(f"Saving workflow for form {form_id}")
         logger.info(f"Workflow data: {workflow_data}")
@@ -708,10 +726,12 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
+        errors = exc.messages if getattr(exc, "messages", None) else [str(exc)]
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
+                "errors": errors,
             },
             status=400,
         )
@@ -1426,7 +1446,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         action_name = data.get("name", "Unnamed Action")
         action_type = data.get("action_type", "database")
 
-        config = data.get("config", {})
+        config = data.get("config") or {}
         if isinstance(config, str):
             try:
                 config = json.loads(config)
@@ -1509,13 +1529,22 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         sw_node = sub_workflow_nodes[0]
         sw_data = sw_node.get("data", {})
         target_workflow_id = sw_data.get("sub_workflow_id")
+        target_id_type = sw_data.get("sub_workflow_id_type", "workflow")
 
         if target_workflow_id:
-            target_workflow = WorkflowDefinition.objects.filter(
-                id=target_workflow_id
-            ).first()
-
-            if target_workflow is None:
+            if (
+                isinstance(target_workflow_id, bool)
+                or not str(target_workflow_id).isascii()
+                or not str(target_workflow_id).isdigit()
+            ):
+                raise ValidationError(
+                    {"sub_workflow_id": "Target ID must be a positive integer."}
+                )
+            if target_id_type == "workflow":
+                target_workflow = WorkflowDefinition.objects.filter(
+                    id=target_workflow_id
+                ).first()
+            elif target_id_type == "form":
                 target_workflow = (
                     WorkflowDefinition.objects.filter(
                         form_definition_id=target_workflow_id
@@ -1523,29 +1552,47 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     .order_by("id")
                     .first()
                 )
-
-            if target_workflow:
-                sw_fields = {
-                    "sub_workflow": target_workflow,
-                    "section_label": sw_data.get("section_label", ""),
-                    "count_field": sw_data.get("count_field", ""),
-                    "label_template": sw_data.get(
-                        "label_template", "Sub-workflow {index}"
-                    ),
-                    "trigger": sw_data.get("trigger", "on_approval"),
-                    "data_prefix": sw_data.get("data_prefix", ""),
-                    "detached": sw_data.get("detached", False),
-                    "reject_parent": sw_data.get("reject_parent", False),
-                }
-                SubWorkflowDefinition.objects.update_or_create(
-                    parent_workflow=workflow,
-                    defaults=sw_fields,
-                )
             else:
-                logger.warning(
-                    "Sub-workflow target %s has no workflow definition",
-                    target_workflow_id,
+                raise ValidationError(
+                    {
+                        "sub_workflow_id_type": (
+                            "Invalid sub_workflow_id_type. "
+                            "Expected 'workflow' or 'form'."
+                        )
+                    }
                 )
+
+            if not target_workflow:
+                if target_id_type == "workflow":
+                    raise ValidationError(
+                        {
+                            "sub_workflow_id": (
+                                f"WorkflowDefinition with id '{target_workflow_id}' does not exist."
+                            )
+                        }
+                    )
+                raise ValidationError(
+                    {
+                        "sub_workflow_id": (
+                            f"No workflow definition found for form_definition_id '{target_workflow_id}'."
+                        )
+                    }
+                )
+
+            sw_fields = {
+                "sub_workflow": target_workflow,
+                "section_label": sw_data.get("section_label", ""),
+                "count_field": sw_data.get("count_field", ""),
+                "label_template": sw_data.get("label_template", "Sub-workflow {index}"),
+                "trigger": sw_data.get("trigger", "on_approval"),
+                "data_prefix": sw_data.get("data_prefix", ""),
+                "detached": sw_data.get("detached", False),
+                "reject_parent": sw_data.get("reject_parent", False),
+            }
+            SubWorkflowDefinition.objects.update_or_create(
+                parent_workflow=workflow,
+                defaults=sw_fields,
+            )
     else:
         # No sub-workflow node — remove any existing config
         SubWorkflowDefinition.objects.filter(parent_workflow=workflow).delete()

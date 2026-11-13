@@ -19,6 +19,7 @@ from django_forms_workflows.models import (
     PostSubmissionAction,
     SharedOptionList,
     StageApprovalGroup,
+    SubWorkflowDefinition,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -816,6 +817,62 @@ class TestConvertVisualToWorkflow:
         assert len(actions) == 1
         assert actions[0].name == "Update DB"
         assert actions[0].action_type == "database"
+
+    def test_action_with_null_config_uses_empty_defaults(self, form_definition):
+        visual = self._make_visual(
+            actions=[
+                {
+                    "name": "Update DB",
+                    "action_type": "database",
+                    "config": None,
+                }
+            ]
+        )
+
+        convert_visual_to_workflow(visual, form_definition)
+
+        assert form_definition.post_actions.get(name="Update DB").db_alias == ""
+
+    @pytest.mark.parametrize("target_id_type", ["workflow", "form"])
+    def test_sub_workflow_target_id_type(self, form_definition, target_id_type):
+        target_form = FormDefinition.objects.create(
+            name="Child Form", slug="child-form"
+        )
+        target_workflow = WorkflowDefinition.objects.create(form_definition=target_form)
+        target_id = (
+            target_workflow.id if target_id_type == "workflow" else target_form.id
+        )
+        visual = self._make_visual()
+        visual["nodes"].insert(
+            1,
+            {
+                "type": "sub_workflow",
+                "data": {
+                    "sub_workflow_id": target_id,
+                    "sub_workflow_id_type": target_id_type,
+                },
+            },
+        )
+
+        workflow = convert_visual_to_workflow(visual, form_definition)
+
+        assert (
+            SubWorkflowDefinition.objects.get(parent_workflow=workflow).sub_workflow_id
+            == target_workflow.id
+        )
+
+    def test_sub_workflow_rejects_malformed_target_id(self, form_definition):
+        visual = self._make_visual()
+        visual["nodes"].insert(
+            1,
+            {
+                "type": "sub_workflow",
+                "data": {"sub_workflow_id": "not-an-id"},
+            },
+        )
+
+        with pytest.raises(ValidationError, match="positive integer"):
+            convert_visual_to_workflow(visual, form_definition)
 
     def test_creates_email_actions_with_email_configuration(self, form_with_fields):
         visual = {

@@ -1003,6 +1003,8 @@ def document_template_save(request, form_id):
         )
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    except Http404:
+        raise
     except Exception:
         logger.exception("Error saving document template")
         return JsonResponse(

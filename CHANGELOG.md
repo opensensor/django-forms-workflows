@@ -245,7 +245,7 @@ here rather than lost.
 
   Migration: `0097_notificationlog_delivery_reconciliation`.
 
-## [0.74.18] - 2026-05-04
+## 0.74.18 - 2026-05-04
 
 ### Fixed
 - **`show_help_text_in_detail` now applies to PDF output too.** The
@@ -1226,7 +1226,7 @@ here rather than lost.
 - **Prevent silent auto-approval when stage trigger conditions don't match** — When a workflow has stages with approval groups but no first-order stage trigger conditions match the submission data, the submission now stays `pending_approval` instead of being silently auto-approved. A warning is logged to help admins detect misconfigured triggers (e.g. form choices renamed but stage triggers not updated).
 - **PDF regression: approval-step fields leaking into main form data** — Stage-scoped field values (including sub-workflow indexed variants like `field_name_1`) no longer appear in the main form data table of PDFs. They are properly confined to their dedicated approval-step sections.
 - **PDF privacy: `hide_approval_history` now fully respected** — When `hide_approval_history` is enabled and the viewer is the submitter, approval-step sections are suppressed in both single and bulk PDFs. Previously, stage-scoped field data could leak through the fallback "unseen keys" loop.
-- **Null-safe submitter checks in PDF views** — Fixed `submission.submitter == request.user` comparisons that would crash for anonymous submissions; now uses `submitter_id` comparison.
+- **Null-safe submitter checks in PDF views** — Updated submitter ownership checks to use `submitter_id` comparison, making the logic safe when no submitter is present (for example, anonymous submissions).
 
 ## [0.47.0] - 2026-03-31
 

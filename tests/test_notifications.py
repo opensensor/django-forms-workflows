@@ -1,5 +1,7 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth.models import User
@@ -22,6 +24,22 @@ from django_forms_workflows.tasks import (
     check_approval_deadlines,
     send_notification_rules,
 )
+
+
+def test_daily_digest_uses_active_timezone():
+    workflow = SimpleNamespace(
+        notification_cadence="daily", notification_cadence_time=None
+    )
+    fixed_now = datetime(2026, 11, 13, 15, 0, tzinfo=UTC)
+    with (
+        timezone.override(ZoneInfo("America/Los_Angeles")),
+        patch.object(tasks_module.timezone, "now", return_value=fixed_now),
+    ):
+        due = tasks_module._compute_scheduled_for(workflow)
+
+    assert due.date().isoformat() == "2026-11-13"
+    assert (due.hour, due.minute) == (8, 0)
+    assert due.utcoffset() == timedelta(hours=-8)
 
 
 @pytest.mark.parametrize(
@@ -2688,6 +2706,54 @@ def test_send_notification_rules_tolerates_deleted_task(form_definition, user):
 
     assert mock_send.called
     assert "task" not in mock_send.call_args.args[3]
+
+
+@pytest.mark.django_db
+def test_final_rule_uses_completed_task_from_its_workflow(
+    form_definition, user, mailoutbox
+):
+    workflows = [
+        WorkflowDefinition.objects.create(form_definition=form_definition)
+        for _ in range(2)
+    ]
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    for index, workflow in enumerate(workflows):
+        stage = WorkflowStage.objects.create(
+            workflow=workflow, name=f"Review {index}", order=1
+        )
+        ApprovalTask.objects.create(
+            submission=submission,
+            workflow_stage=stage,
+            step_name=stage.name,
+            status="approved",
+            comments=f"Decision {index}",
+            completed_at=timezone.now() + timedelta(minutes=index),
+        )
+        NotificationRule.objects.create(
+            workflow=workflow,
+            event="workflow_approved",
+            static_emails=f"review{index}@example.com",
+            body_template="{{ task.comments }}",
+        )
+    # A later pending task must not replace a completed decision in the email.
+    ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=workflows[0].stages.get(),
+        step_name="Pending",
+        status="pending",
+    )
+
+    send_notification_rules(submission.pk, "workflow_approved")
+
+    assert len(mailoutbox) == 2
+    bodies = {email.to[0]: email.alternatives[0][0] for email in mailoutbox}
+    assert bodies["review0@example.com"] == "Decision 0"
+    assert bodies["review1@example.com"] == "Decision 1"
 
 
 @pytest.mark.django_db

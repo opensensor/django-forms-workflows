@@ -952,6 +952,101 @@ class TestWorkflowBuilderViews:
         assert stage_names == ["B Stage"]
         assert data["workflow_id"] == second.id
 
+    def test_load_rejects_anonymous_and_non_staff(
+        self, client, django_user_model, form_definition
+    ):
+        # Seed one workflow so a successful load would have meaningful data.
+        wf = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=True,
+            name_label="Protected Track",
+        )
+        wf.stages.create(name="Protected Stage", order=1, approval_logic="all")
+
+        url = _wf_url(f"workflow/api/load/{form_definition.id}/")
+
+        # Anonymous request should be rejected.
+        anon_resp = client.get(url)
+        assert anon_resp.status_code in (302, 403)
+
+        # Authenticated non-staff request should also be rejected.
+        user = django_user_model.objects.create_user(
+            username="regular_user", password="testpass123", is_staff=False
+        )
+        client.login(username="regular_user", password="testpass123")
+        non_staff_resp = client.get(url)
+        assert non_staff_resp.status_code in (302, 403)
+
+    def test_save_rejects_anonymous_and_non_staff_and_does_not_modify_data(
+        self, client, django_user_model, form_definition, approval_group
+    ):
+        url = _wf_url("workflow/api/save/")
+        payload = {
+            "form_id": form_definition.id,
+            "workflow": {
+                "nodes": [
+                    {"type": "start", "data": {}},
+                    {
+                        "type": "stage",
+                        "data": {
+                            "stage_id": None,
+                            "name": "Unauthorized Stage",
+                            "order": 1,
+                            "approval_logic": "all",
+                            "requires_manager_approval": False,
+                            "allow_send_back": True,
+                            "approve_label": "Confirm",
+                            "approval_groups": [
+                                {
+                                    "id": approval_group.id,
+                                    "name": approval_group.name,
+                                }
+                            ],
+                        },
+                    },
+                    {"type": "end", "data": {}},
+                ],
+                "connections": [],
+            },
+        }
+
+        workflows_before = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        stages_before = WorkflowStage.objects.filter(
+            workflow_definition__form_definition=form_definition
+        ).count()
+
+        # Anonymous save should be rejected.
+        anon_resp = client.post(
+            url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        assert anon_resp.status_code in (302, 403)
+
+        # Non-staff authenticated save should also be rejected.
+        user = django_user_model.objects.create_user(
+            username="regular_user_save", password="testpass123", is_staff=False
+        )
+        client.login(username="regular_user_save", password="testpass123")
+        non_staff_resp = client.post(
+            url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        assert non_staff_resp.status_code in (302, 403)
+
+        workflows_after = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        stages_after = WorkflowStage.objects.filter(
+            workflow_definition__form_definition=form_definition
+        ).count()
+
+        assert workflows_after == workflows_before
+        assert stages_after == stages_before
+
     def test_save_creates_stages(
         self, client, superuser, form_definition, approval_group
     ):

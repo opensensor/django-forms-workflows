@@ -1855,7 +1855,6 @@ def send_notification_rules(
                 if recipient_user:
                     ctx["approver"] = recipient_user
                 email_cc = cc_pending
-                cc_pending = []
                 if rule_body.strip():
                     send_result = _send_html_email_from_string(
                         subject,
@@ -1881,6 +1880,38 @@ def send_notification_rules(
                         notification_rule_id=rule.id,
                     )
                 if send_result is False:
+                    had_dispatch_failure = True
+                else:
+                    # Consume CCs only after a successful send.
+                    cc_pending = []
+
+            # If CCs were never delivered with a successful TO send (or there
+            # were no TO recipients), attempt a CC-only send so retries do not
+            # lose CC delivery.
+            if cc_pending:
+                if rule_body.strip():
+                    cc_send_result = _send_html_email_from_string(
+                        subject,
+                        cc_pending,
+                        rule_body,
+                        {**base_context},
+                        notification_type=event,
+                        submission_id=submission_id,
+                        approval_task_id=triggering_task_id,
+                        notification_rule_id=rule.id,
+                    )
+                else:
+                    cc_send_result = _send_html_email(
+                        subject,
+                        cc_pending,
+                        default_template,
+                        {**base_context},
+                        notification_type=event,
+                        submission_id=submission_id,
+                        approval_task_id=triggering_task_id,
+                        notification_rule_id=rule.id,
+                    )
+                if cc_send_result is False:
                     had_dispatch_failure = True
 
     had_dispatch_failure = False

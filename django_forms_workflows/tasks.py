@@ -998,15 +998,42 @@ def check_approval_deadlines() -> str:
             )
             if now > auto_deadline:
                 with transaction.atomic():
+                    locked_submission = (
+                        FormSubmission.objects.select_for_update()
+                        .select_related("form_definition")
+                        .filter(id=submission.id, status="pending_approval")
+                        .first()
+                    )
+                    if not locked_submission:
+                        continue
+
+                    locked_workflow = getattr(
+                        locked_submission.form_definition, "workflow", None
+                    )
+                    if not locked_workflow or not locked_workflow.auto_approve_after_days:
+                        continue
+
+                    latest_task_created_at = ApprovalTask.objects.filter(
+                        submission_id=locked_submission.id
+                    ).aggregate(latest=Max("created_at"))["latest"]
+                    if not latest_task_created_at:
+                        continue
+
+                    locked_auto_deadline = latest_task_created_at + timedelta(
+                        days=locked_workflow.auto_approve_after_days
+                    )
+                    if now <= locked_auto_deadline:
+                        continue
+
                     updated = FormSubmission.objects.filter(
-                        id=submission.id,
+                        id=locked_submission.id,
                         status="pending_approval",
                     ).update(status="approved", completed_at=now)
                     if not updated:
                         continue
 
                     # cancel remaining tasks
-                    submission.approval_tasks.filter(status="pending").update(
+                    locked_submission.approval_tasks.filter(status="pending").update(
                         status="skipped"
                     )
                 # Dispatch after commit so a worker sees the approved state.

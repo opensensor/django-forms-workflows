@@ -1774,10 +1774,12 @@ def send_notification_rules(
                         cc=email_cc,
                     )
 
+    had_dispatch_failure = False
     for rule in rules:
         try:
             _apply_rule(rule)
         except Exception as exc:
+            had_dispatch_failure = True
             # One bad rule must not silence the rest of this event, and the
             # failure must leave a trace. Previously any exception in here
             # (e.g. a TypeError building the subject from form_data) killed
@@ -1809,6 +1811,13 @@ def send_notification_rules(
     # Completing with zero recipients still counts (a workflow with no
     # reminder rule must not re-dispatch every sweep forever); duplicate
     # sends from an overlapping sweep are absorbed by the already_sent guard.
-    if event == "approval_reminder" and task is not None and not task.reminder_sent_at:
+    # However, if dispatch failed (rule/build/send/backend error), leave the
+    # timestamp unset so the next sweep can retry.
+    if (
+        event == "approval_reminder"
+        and task is not None
+        and not task.reminder_sent_at
+        and not had_dispatch_failure
+    ):
         task.reminder_sent_at = timezone.now()
         task.save(update_fields=["reminder_sent_at"])

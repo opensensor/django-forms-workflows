@@ -594,7 +594,11 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     payment_provider = data.get("payment_provider", "")
     payment_amount_type = data.get("payment_amount_type", "fixed")
     payment_fixed_amount_raw = data.get("payment_fixed_amount")
-    payment_fixed_amount = None if payment_fixed_amount_raw is None or payment_fixed_amount_raw == "" else payment_fixed_amount_raw
+    payment_fixed_amount = (
+        None
+        if payment_fixed_amount_raw is None or payment_fixed_amount_raw == ""
+        else payment_fixed_amount_raw
+    )
     payment_amount_field = data.get("payment_amount_field", "")
     payment_currency = data.get("payment_currency", "usd")
     payment_description_template = data.get("payment_description_template", "")
@@ -768,12 +772,18 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 parsed_wf_stage_id = wf_stage_id
             elif isinstance(wf_stage_id, str):
                 wf_stage_id_str = wf_stage_id.strip()
-                if not wf_stage_id_str or not wf_stage_id_str.lstrip("+-").isdigit():
+                if not wf_stage_id_str.isascii() or not wf_stage_id_str.isdigit():
                     raise FormBuilderPayloadError(
                         "Invalid workflow_stage_id for field "
                         f"'{field_data.get('field_name', '')}'"
                     )
-                parsed_wf_stage_id = int(wf_stage_id_str)
+                try:
+                    parsed_wf_stage_id = int(wf_stage_id_str)
+                except ValueError as exc:
+                    raise FormBuilderPayloadError(
+                        "Invalid workflow_stage_id for field "
+                        f"'{field_data.get('field_name', '')}'"
+                    ) from exc
             else:
                 # Includes floats (fractional JSON numbers) and other invalid types
                 raise FormBuilderPayloadError(
@@ -851,6 +861,11 @@ def form_builder_preview(request):
                     },
                     status=400,
                 )
+        if "form_steps" in data and not isinstance(data["form_steps"], list):
+            return JsonResponse(
+                {"success": False, "error": "Preview form_steps must be a list"},
+                status=400,
+            )
 
         # If no fields, return a simple message
         if not fields:
@@ -891,8 +906,7 @@ def form_builder_preview(request):
             form_definition.allow_save_draft = data.get("allow_save_draft", True)
             form_definition.allow_withdrawal = data.get("allow_withdrawal", True)
             form_definition.enable_multi_step = data.get("enable_multi_step", False)
-            form_steps = data.get("form_steps", [])
-            form_definition.form_steps = form_steps if isinstance(form_steps, list) else []
+            form_definition.form_steps = data.get("form_steps", [])
             form_definition.save()
 
             # Create temporary fields

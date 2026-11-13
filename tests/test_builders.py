@@ -1548,15 +1548,16 @@ class TestFormBuilderSavePayloadValidation:
         assert second_field.field_label == original_second_label
         assert second_field.workflow_stage_id is None
 
+    @pytest.mark.parametrize("stage_id", ["not-a-number", True, 1.5, "++1"])
     def test_rejects_malformed_stage_id(
-        self, client, superuser, form_with_fields, field
+        self, client, superuser, form_with_fields, field, stage_id
     ):
         client.force_login(superuser)
 
         resp = self._save(
             client,
             form_with_fields,
-            [self._field_payload(field, workflow_stage_id="not-a-number")],
+            [self._field_payload(field, workflow_stage_id=stage_id)],
         )
 
         assert resp.status_code == 400
@@ -1633,6 +1634,28 @@ class TestFormBuilderViews:
 
         assert response.status_code == 200
         assert response.json()["payment_fixed_amount"] == "0.00"
+
+    def test_save_preserves_zero_payment_amount(
+        self, client, superuser, form_definition
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "id": form_definition.id,
+                    "name": form_definition.name,
+                    "slug": form_definition.slug,
+                    "payment_fixed_amount": 0,
+                    "fields": [],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        form_definition.refresh_from_db()
+        assert form_definition.payment_fixed_amount == 0
 
     def test_file_settings_survive_builder_load_and_save(
         self, client, superuser, form_definition
@@ -1907,6 +1930,7 @@ class TestFormBuilderViews:
             {"fields": [1]},
             {"fields": [{"field_name": "answer", "validation": []}]},
             {"fields": [{"field_name": "answer", "conditional": "bad"}]},
+            {"form_steps": {}},
         ],
     )
     def test_preview_rejects_invalid_payload_types(self, client, superuser, payload):

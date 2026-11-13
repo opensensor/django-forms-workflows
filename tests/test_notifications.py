@@ -2230,6 +2230,19 @@ class TestCustomBodyTemplateContext:
             form_data={},
             status="approved",
         )
+        now = timezone.now()
+        ApprovalTask.objects.create(
+            submission=sub,
+            assigned_group=approval_group,
+            workflow_stage=s1,
+            stage_number=1,
+            step_name="Final Approval",
+            status="approved",
+            decision="approve",
+            comments="Old approval comment",
+            completed_by=approver_user,
+            completed_at=now - timedelta(hours=1),
+        )
         ApprovalTask.objects.create(
             submission=sub,
             assigned_group=approval_group,
@@ -2240,7 +2253,7 @@ class TestCustomBodyTemplateContext:
             decision="approve",
             comments="Ship it",
             completed_by=approver_user,
-            completed_at=timezone.now(),
+            completed_at=now,
         )
 
         NotificationRule.objects.create(
@@ -2257,6 +2270,7 @@ class TestCustomBodyTemplateContext:
         assert len(mailoutbox) == 1
         html = mailoutbox[0].alternatives[0][0]
         assert "Final Approval approved: Ship it" in html
+        assert "Old approval comment" not in html
 
     def test_public_comments_excludes_pending_and_empty_comments(
         self, form_definition, user, approver_user, approval_group, mailoutbox

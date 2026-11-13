@@ -516,12 +516,22 @@ def dispatch_workflow_webhooks(
     ).get(id=submission_id)
     approval_task = None
     if task_id is not None:
-        approval_task = ApprovalTask.objects.select_related(
-            "assigned_to",
-            "assigned_group",
-            "completed_by",
-            "workflow_stage__workflow",
-        ).get(id=task_id)
+        approval_task = (
+            ApprovalTask.objects.select_related(
+                "assigned_to",
+                "assigned_group",
+                "completed_by",
+                "workflow_stage__workflow",
+            )
+            .filter(id=task_id, submission_id=submission_id)
+            .first()
+        )
+        if approval_task is None:
+            logger.warning(
+                "Ignoring mismatched or missing task_id=%s for submission_id=%s in webhook dispatch",
+                task_id,
+                submission_id,
+            )
     target_stage = None
     if target_stage_id is not None:
         target_stage = WorkflowStage.objects.select_related("workflow").get(

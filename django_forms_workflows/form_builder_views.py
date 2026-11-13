@@ -748,6 +748,16 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     )
 
     # Create or update fields
+    seen_non_null_field_ids = set()
+    for field_data in fields_data:
+        candidate_field_id = field_data.get("id")
+        if candidate_field_id is not None:
+            if candidate_field_id in seen_non_null_field_ids:
+                raise FormBuilderPayloadError(
+                    f"Duplicate field id {candidate_field_id} in payload"
+                )
+            seen_non_null_field_ids.add(candidate_field_id)
+
     for field_data in fields_data:
         field_id = field_data.get("id")
         old_id = field_id  # Store original ID for mapping

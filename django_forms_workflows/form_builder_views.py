@@ -189,7 +189,7 @@ def form_builder_clone(request, form_id):
                     css_class=field.css_class,
                     choices=field.choices,
                     default_value=field.default_value,
-                    prefill_source_config=field.prefill_source_config,
+                    prefill_source_config_id=field.prefill_source_config_id,
                     shared_option_list_id=field.shared_option_list_id,
                     validation_rules=field.validation_rules,
                     field_dependencies=field.field_dependencies,
@@ -524,7 +524,16 @@ def form_builder_save(request):
                     status=400,
                 )
             else:
-                form_id = int(raw_form_id)
+                try:
+                    form_id = int(raw_form_id)
+                except ValueError:
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "Invalid payload: 'id' must be a positive integer",
+                        },
+                        status=400,
+                    )
                 if form_id <= 0:
                     return JsonResponse(
                         {
@@ -748,6 +757,22 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     )
 
     # Create or update fields
+    seen_non_null_field_ids = set()
+    for field_data in fields_data:
+        candidate_field_id = field_data.get("id")
+        if candidate_field_id is not None:
+            if isinstance(candidate_field_id, bool) or not isinstance(
+                candidate_field_id, int | str
+            ):
+                raise FormBuilderPayloadError(
+                    f"Invalid field id {candidate_field_id} for this form"
+                )
+            if candidate_field_id in seen_non_null_field_ids:
+                raise FormBuilderPayloadError(
+                    f"Duplicate field id {candidate_field_id} in payload"
+                )
+            seen_non_null_field_ids.add(candidate_field_id)
+
     for field_data in fields_data:
         field_id = field_data.get("id")
         old_id = field_id  # Store original ID for mapping

@@ -2562,6 +2562,7 @@ def test_deadline_scan_has_constant_query_count(
     task_count, user, approver_user, django_assert_num_queries
 ):
     # Distinct forms prevent a relation cache from hiding per-task lookups.
+    stale_created_at = timezone.now() - timedelta(days=2)
     for index in range(task_count):
         form = FormDefinition.objects.create(name=f"Form {index}", slug=f"form-{index}")
         WorkflowDefinition.objects.create(form_definition=form)
@@ -2575,12 +2576,13 @@ def test_deadline_scan_has_constant_query_count(
             form_data={},
             status="pending_approval",
         )
-        ApprovalTask.objects.create(
+        task = ApprovalTask.objects.create(
             submission=submission,
             step_name="Review",
             assigned_to=approver_user,
             status="pending",
         )
+        ApprovalTask.objects.filter(pk=task.pk).update(created_at=stale_created_at)
     # A form without a workflow must still be skipped, not drop or crash the scan.
     orphan_form = FormDefinition.objects.create(name="No workflow", slug="no-workflow")
     orphan = FormSubmission.objects.create(
@@ -2589,12 +2591,13 @@ def test_deadline_scan_has_constant_query_count(
         form_data={},
         status="pending_approval",
     )
-    ApprovalTask.objects.create(
+    orphan_task = ApprovalTask.objects.create(
         submission=orphan,
         step_name="Review",
         assigned_to=approver_user,
         status="pending",
     )
+    ApprovalTask.objects.filter(pk=orphan_task.pk).update(created_at=stale_created_at)
     with django_assert_num_queries(2):
         result = check_approval_deadlines()
     assert result == "expired=0, reminders=0, auto_approved=0"

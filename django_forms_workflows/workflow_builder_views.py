@@ -709,8 +709,8 @@ def convert_workflow_to_visual(workflow, form_definition):
         for action in form_definition.post_actions.filter(action_type="email")
     }
     sub_workflow_defaults = None
-    if hasattr(workflow, "sub_workflow_definition"):
-        sub_wf_config = workflow.sub_workflow_definition
+    if hasattr(workflow, "sub_workflow_config"):
+        sub_wf_config = workflow.sub_workflow_config
         target_workflow = sub_wf_config.sub_workflow
         sub_workflow_defaults = {
             "sub_workflow_def_id": sub_wf_config.id,

@@ -994,9 +994,27 @@ def send_batched_notifications() -> str:
                 "approval_notification",
                 "rejection_notification",
                 "withdrawal_notification",
+                "workflow_approved",
+                "workflow_denied",
+                "form_withdrawn",
             ):
+                conclusion_type = {
+                    "workflow_approved": "approval_notification",
+                    "workflow_denied": "rejection_notification",
+                    "form_withdrawn": "withdrawal_notification",
+                }.get(notification_type, notification_type)
                 _dispatch_conclusion_digest(
-                    recipient_email, notifications, notification_type
+                    recipient_email, notifications, conclusion_type
+                )
+            elif notification_type in (
+                "stage_decision",
+                "approval_reminder",
+                "escalation",
+            ):
+                logger.info(
+                    "send_batched_notifications: bypassing unsupported batched type %r for %s.",
+                    notification_type,
+                    recipient_email,
                 )
             else:
                 logger.warning(

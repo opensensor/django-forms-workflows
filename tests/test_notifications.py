@@ -2999,6 +2999,7 @@ def test_taskless_final_notifications_keep_workflow_context_separate(
         status="approved",
     )
     for index, workflow in enumerate(workflows):
+    assert "Private to workflow 1" in first_task_comments
         stage = WorkflowStage.objects.create(
             workflow=workflow, name=f"Workflow {index + 1}", order=1
         )

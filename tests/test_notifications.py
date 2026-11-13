@@ -700,6 +700,14 @@ def test_triggering_stage_scopes_groups(
         stage_number=1,
         assigned_group=approval_group,
     )
+    ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stage 2",
+        status="pending",
+        workflow_stage=stage2,
+        stage_number=2,
+        assigned_group=second_approval_group,
+    )
 
     with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
         send_notification_rules(submission.id, "approval_request", task_id=task1.id)

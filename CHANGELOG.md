@@ -2015,7 +2015,8 @@ here rather than lost.
 - psycopg2-binary >= 2.9 (for PostgreSQL)
 - mysqlclient >= 2.2 (for MySQL)
 
-[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.77.0...HEAD
+[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.1...HEAD
+[0.78.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.0...v0.78.1
 [0.77.0]: https://github.com/opensensor/django-forms-workflows/compare/v0.76.6...v0.77.0
 [0.2.2]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.2.0...v0.2.1

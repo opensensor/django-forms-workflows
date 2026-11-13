@@ -161,6 +161,31 @@ def test_dispatch_ignores_task_from_another_submission(workflow, user, approval_
 
 
 @pytest.mark.django_db
+def test_dispatch_ignores_stage_from_different_workflow(workflow, user):
+    submission = _make_submission(workflow, user)
+    other_workflow = workflow.form_definition.workflows.create(name_label="Other")
+    other_stage = other_workflow.stages.create(name="Other stage", order=1)
+    WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="Task Hook",
+        url="https://example.com/hooks/task",
+        events=["task.created"],
+    )
+
+    with patch(
+        "django_forms_workflows.tasks.deliver_workflow_webhook.delay"
+    ) as mock_delay:
+        dispatch_workflow_webhooks(
+            submission.id,
+            "task.created",
+            workflow_id=workflow.id,
+            target_stage_id=other_stage.id,
+        )
+
+    mock_delay.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user):
     submission = _make_submission(workflow, user)
     endpoint = WebhookEndpoint.objects.create(

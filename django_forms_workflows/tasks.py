@@ -549,6 +549,23 @@ def dispatch_workflow_webhooks(
             )
             return
 
+    if (
+        target_stage is not None
+        and workflow_id is not None
+        and target_stage.workflow_id != workflow_id
+    ):
+        logger.warning("Ignoring stage and workflow IDs from different workflows")
+        return
+
+    if (
+        target_stage is not None
+        and approval_task is not None
+        and approval_task.workflow_stage_id
+        and target_stage.workflow_id != approval_task.workflow_stage.workflow_id
+    ):
+        logger.warning("Ignoring stage and task IDs from different workflows")
+        return
+
     if workflow_id is not None:
         if not submission.form_definition.workflows.filter(id=workflow_id).exists():
             logger.warning("Ignoring foreign or missing workflow_id=%s", workflow_id)
@@ -998,15 +1015,45 @@ def check_approval_deadlines() -> str:
             )
             if now > auto_deadline:
                 with transaction.atomic():
+                    locked_submission = (
+                        FormSubmission.objects.select_for_update()
+                        .select_related("form_definition")
+                        .filter(id=submission.id, status="pending_approval")
+                        .first()
+                    )
+                    if not locked_submission:
+                        continue
+
+                    locked_workflow = getattr(
+                        locked_submission.form_definition, "workflow", None
+                    )
+                    if (
+                        not locked_workflow
+                        or not locked_workflow.auto_approve_after_days
+                    ):
+                        continue
+
+                    latest_task_created_at = ApprovalTask.objects.filter(
+                        submission_id=locked_submission.id
+                    ).aggregate(latest=Max("created_at"))["latest"]
+                    if not latest_task_created_at:
+                        continue
+
+                    locked_auto_deadline = latest_task_created_at + timedelta(
+                        days=locked_workflow.auto_approve_after_days
+                    )
+                    if now <= locked_auto_deadline:
+                        continue
+
                     updated = FormSubmission.objects.filter(
-                        id=submission.id,
+                        id=locked_submission.id,
                         status="pending_approval",
                     ).update(status="approved", completed_at=now)
                     if not updated:
                         continue
 
                     # cancel remaining tasks
-                    submission.approval_tasks.filter(status="pending").update(
+                    locked_submission.approval_tasks.filter(status="pending").update(
                         status="skipped"
                     )
                 # Dispatch after commit so a worker sees the approved state.
@@ -1809,9 +1856,9 @@ def send_notification_rules(
         successful earlier recipient logs after emails were already delivered.
         """
         nonlocal had_dispatch_failure
-        # Keep the lock through delivery and log writes so a concurrent
-        # dispatch rechecks the completed recipient set before sending.
-        NotificationRule.objects.select_for_update().get(pk=rule.pk)
+        # Lock an existing row before checking delivery logs. Locking log rows
+        # cannot serialize the first send because there are no rows yet.
+        FormSubmission.objects.select_for_update().get(pk=submission_id)
         workflow = rule.workflow
         if explicit_task:
             rule_task = (
@@ -1847,6 +1894,7 @@ def send_notification_rules(
             if rule_task is None or rule.stage_id != rule_task.workflow_stage_id:
                 return
         rule_task_id = rule_task.pk if rule_task is not None else None
+
         if workflow.pk not in _public_comments_by_workflow:
             _public_comments_by_workflow[workflow.pk] = (
                 _build_public_comments_for_workflow(workflow.pk)

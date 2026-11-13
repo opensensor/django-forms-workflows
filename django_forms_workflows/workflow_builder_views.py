@@ -1299,6 +1299,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             stage = WorkflowStage.objects.create(workflow=workflow, **stage_fields)
             kept_stage_ids.add(stage.id)
 
+        sdata["stage_id"] = stage.id
+        snode["data"] = sdata
+
         StageApprovalGroup.objects.filter(stage=stage).delete()
         sorted_group_entries = sorted(
             [g for g in group_entries if g.get("id")],
@@ -1317,6 +1320,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             form_definition,
             sdata.get("approval_fields", []),
         )
+
+    workflow.visual_workflow_data = visual_data
+    workflow.save(update_fields=["visual_workflow_data"])
 
     # Delete stages that were removed in the builder
     workflow.stages.exclude(id__in=kept_stage_ids).delete()

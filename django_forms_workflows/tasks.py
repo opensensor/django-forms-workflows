@@ -1664,6 +1664,30 @@ def send_notification_rules(
         cc_recipients = _collect_notification_cc(rule, form_data)
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
+
+        # Atomic dispatch claim to prevent overlapping workers from sending twice.
+        # We claim once per (submission, rule, event, task) identity.
+        dispatch_claim, created = PendingNotification.objects.get_or_create(
+            submission=submission,
+            rule=rule,
+            event=event,
+            task=task,
+            defaults={"status": PendingNotification.Status.PENDING},
+        )
+        if not created and dispatch_claim.status in (
+            PendingNotification.Status.SENDING,
+            PendingNotification.Status.SENT,
+        ):
+            logger.info(
+                "NotificationRule %s: dispatch already claimed for submission %s; skipping overlapping worker.",
+                rule.id,
+                submission.id,
+            )
+            return
+        if dispatch_claim.status == PendingNotification.Status.PENDING:
+            dispatch_claim.status = PendingNotification.Status.SENDING
+            dispatch_claim.save(update_fields=["status"])
+
         already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(rule)
 
         # Drop recipients already successfully delivered (acks_late retry guard).

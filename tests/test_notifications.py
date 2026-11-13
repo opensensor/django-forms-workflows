@@ -2671,6 +2671,7 @@ def test_auto_approve_uses_latest_task_once(form_definition, user, approver_user
             created_at=timezone.now() - timedelta(days=3)
         )
         assert "auto_approved=1" in check_approval_deadlines()
+        assert "auto_approved=0" in check_approval_deadlines()
 
     submission.refresh_from_db()
     assert submission.status == "approved"

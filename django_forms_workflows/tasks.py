@@ -971,14 +971,15 @@ def check_approval_deadlines() -> str:
                     submission.approval_tasks.filter(status="pending").update(
                         status="skipped"
                     )
-                    try:
-                        send_notification_rules.delay(submission.id, "workflow_approved")
-                    except Exception:
-                        logger.debug(
-                            "Could not enqueue approval notification for submission %s",
-                            submission.id,
-                            exc_info=True,
-                        )
+                # Dispatch after commit so a worker sees the approved state.
+                try:
+                    send_notification_rules.delay(submission.id, "workflow_approved")
+                except Exception:
+                    logger.debug(
+                        "Could not enqueue approval notification for submission %s",
+                        submission.id,
+                        exc_info=True,
+                    )
                 auto_approved_count += 1
 
     return f"expired={expired_count}, reminders={reminder_count}, auto_approved={auto_approved_count}"
@@ -1758,6 +1759,7 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 

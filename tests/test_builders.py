@@ -499,7 +499,7 @@ class TestConvertVisualToWorkflow:
             StageApprovalGroup.objects.filter(stage=remaining[0]).order_by("position")
         )
         assert len(stage_groups) == 1
-        assert stage_groups[0].approval_group_id == approval_group.id
+        assert stage_groups[0].group_id == approval_group.id
         assert stage_groups[0].position == 0
 
     def test_deletes_removed_stages(
@@ -1778,9 +1778,9 @@ class TestFormBuilderViews:
                     "name": "Preview Form",
                     "fields": [
                         {
-                            "field_id": "preview_test_field",
+                            "field_name": "preview_test_field",
                             "field_type": "text",
-                            "label": field_label,
+                            "field_label": field_label,
                             "required": False,
                         }
                     ],

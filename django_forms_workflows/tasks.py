@@ -1836,17 +1836,21 @@ def send_notification_rules(
             # each recipient just gets the summary email. Queue CCs alongside
             # TOs so they still receive the digest.
             queued_emails = list(recipients) + list(cc_recipients)
+            created_count = 0
             for recipient in queued_emails:
-                PendingNotification.objects.create(
+                _, created = PendingNotification.objects.get_or_create(
                     workflow=workflow,
                     notification_type=event,
                     submission=submission,
                     approval_task_id=(task.id if task is not None else None),
                     recipient_email=recipient,
-                    scheduled_for=scheduled_for,
+                    defaults={"scheduled_for": scheduled_for},
                 )
+                if created:
+                    created_count += 1
             logger.info(
-                "Queued %d %s notification(s) for submission %s (due %s)",
+                "Queued %d/%d %s notification(s) for submission %s (due %s)",
+                created_count,
                 len(queued_emails),
                 event,
                 submission.id,

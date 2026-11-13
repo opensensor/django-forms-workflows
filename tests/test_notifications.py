@@ -2254,9 +2254,9 @@ class TestCustomBodyTemplateContext:
             step_name="Final Approval",
             status="approved",
             decision="approve",
-            comments="Old approval comment",
+            comments="Ship it",
             completed_by=approver_user,
-            completed_at=now - timedelta(hours=1),
+            completed_at=now,
         )
         ApprovalTask.objects.create(
             submission=sub,
@@ -2266,9 +2266,9 @@ class TestCustomBodyTemplateContext:
             step_name="Final Approval",
             status="approved",
             decision="approve",
-            comments="Ship it",
+            comments="Old approval comment",
             completed_by=approver_user,
-            completed_at=now,
+            completed_at=now - timedelta(hours=1),
         )
 
         NotificationRule.objects.create(

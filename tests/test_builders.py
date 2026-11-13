@@ -2182,6 +2182,12 @@ class TestFormBuilderTemplateAPI:
 class TestSharedOptionListAPI:
     """Tests for the centrally managed shared option list CRUD API endpoints."""
 
+        inactive = SharedOptionList.objects.create(
+            name="Inactive Departments",
+            slug="inactive-departments",
+            items=["Old"],
+            is_active=False,
+        )
     def test_list_requires_staff(self, client, user):
         client.force_login(user)
         url = _fb_url("builder/api/shared-lists/")
@@ -2193,6 +2199,7 @@ class TestSharedOptionListAPI:
 
         ol = SharedOptionList.objects.create(
             name="Departments", slug="departments", items=["HR", "IT"]
+        assert all(item["id"] != inactive.id for item in data["lists"])
         )
         client.force_login(superuser)
         url = _fb_url("builder/api/shared-lists/")

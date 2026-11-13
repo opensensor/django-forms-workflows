@@ -767,6 +767,8 @@ def convert_workflow_to_visual(workflow, form_definition):
                             )
                 elif node_type == "workflow_settings":
                     for key, value in settings_defaults.items():
+                        if key == "notification_rules":
+                            continue
                         node_data.setdefault(key, value)
                     node_data.setdefault(
                         "notification_rules", notification_rule_defaults

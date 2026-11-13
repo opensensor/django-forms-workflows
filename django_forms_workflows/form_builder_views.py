@@ -1041,9 +1041,20 @@ def document_template_save(request, form_id):
     """Create or update a document template."""
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict):
+            return JsonResponse(
+                {"success": False, "error": "JSON payload must be an object"},
+                status=400,
+            )
 
         template_id = data.get("id")
-        name = data.get("name", "").strip()
+        raw_name = data.get("name", "")
+        if not isinstance(raw_name, str):
+            return JsonResponse(
+                {"success": False, "error": "Template name must be a string"},
+                status=400,
+            )
+        name = raw_name.strip()
         html_content = data.get("html_content", "")
         page_size = data.get("page_size", "letter")
         is_default = data.get("is_default", False)

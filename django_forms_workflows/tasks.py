@@ -1066,7 +1066,7 @@ def send_batched_notifications() -> str:
     return f"sent={sent_count}"
 
 
-def _dispatch_submission_digest(recipient_email: str, notifications: list) -> None:
+def _dispatch_submission_digest(recipient_email: str, notifications: list) -> bool:
     """Send a digest of submission_received notifications to one recipient."""
     sample = notifications[0]
     workflow = sample.workflow
@@ -1091,7 +1091,7 @@ def _dispatch_submission_digest(recipient_email: str, notifications: list) -> No
         "submissions": submissions,
         "notification_type": "submission_received",
     }
-    _send_html_email(
+    return _send_html_email(
         subject,
         [recipient_email],
         "emails/notification_digest.html",
@@ -1100,7 +1100,7 @@ def _dispatch_submission_digest(recipient_email: str, notifications: list) -> No
     )
 
 
-def _dispatch_approval_digest(recipient_email: str, notifications: list) -> None:
+def _dispatch_approval_digest(recipient_email: str, notifications: list) -> bool:
     """Send a digest of approval_request notifications to one recipient."""
     sample = notifications[0]
     workflow = sample.workflow
@@ -1132,7 +1132,7 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> None
         "items": items,
         "notification_type": "approval_request",
     }
-    _send_html_email(
+    return _send_html_email(
         subject,
         [recipient_email],
         "emails/notification_digest.html",
@@ -1150,7 +1150,7 @@ _CONCLUSION_VERB: dict[str, tuple[str, str]] = {
 
 def _dispatch_conclusion_digest(
     recipient_email: str, notifications: list, notification_type: str
-) -> None:
+) -> bool:
     """Send a digest of approval/rejection/withdrawal events to one recipient."""
     sample = notifications[0]
     workflow = sample.workflow
@@ -1176,7 +1176,7 @@ def _dispatch_conclusion_digest(
         "verb": verb,
         "label": label,
     }
-    _send_html_email(
+    return _send_html_email(
         subject,
         [recipient_email],
         "emails/notification_digest.html",
@@ -1500,6 +1500,8 @@ def send_notification_rules(
         logger.warning("send_notification_rules: unknown event '%s'", event)
         return
 
+    explicit_task = task_id is not None
+
     submission = FormSubmission.objects.select_related(
         "form_definition", "submitter"
     ).get(id=submission_id)
@@ -1593,7 +1595,6 @@ def send_notification_rules(
     # Important: only narrow by workflow when task_id was explicitly supplied
     # by the caller. For task-less dispatches, an inferred task must not
     # collapse notification scope to a single workflow.
-    explicit_task = task_id is not None
     if explicit_task and task and getattr(task, "workflow_stage_id", None):
         rules_qs = rules_qs.filter(workflow_id=task.workflow_stage.workflow_id)
     else:
@@ -1645,7 +1646,6 @@ def send_notification_rules(
     # succeeded) but a delivery check showed it was never actually delivered, so
     # the sweep re-dispatched this task precisely to resend to that recipient.
     # Leaving it in ``already_sent`` would make the retry a silent no-op.
-    triggering_task_id = task.id if task is not None else None
     # Pre-migration log rows have no rule/task identity. They are safe to use
     # for retry deduplication only when the event has a single possible rule
     # and (if task-scoped) a single possible task.
@@ -1653,12 +1653,14 @@ def send_notification_rules(
         event=event, workflow__form_definition=submission.form_definition
     ).count() == 1 and (task is None or submission.approval_tasks.count() == 1)
 
-    def _already_delivered_for_dispatch(rule) -> tuple[set[str], set[str]]:
+    def _already_delivered_for_dispatch(
+        rule, rule_task_id
+    ) -> tuple[set[str], set[str]]:
         sent_filter = {
             "submission_id": submission_id,
             "notification_type": event,
             "status": "sent",
-            "approval_task_id": triggering_task_id,
+            "approval_task_id": rule_task_id,
             "notification_rule_id": rule.id,
         }
 
@@ -1699,6 +1701,21 @@ def send_notification_rules(
         """
         nonlocal had_dispatch_failure
         workflow = rule.workflow
+        rule_task = (
+            task
+            if task is not None
+            and (
+                not task.workflow_stage_id
+                or task.workflow_stage.workflow_id == workflow.pk
+            )
+            else None
+        )
+        rule_task_id = rule_task.pk if rule_task is not None else None
+        if workflow.pk not in _public_comments_by_workflow:
+            _public_comments_by_workflow[workflow.pk] = (
+                _build_public_comments_for_workflow(workflow.pk)
+            )
+        public_comments = _public_comments_by_workflow[workflow.pk]
         # Evaluate optional conditions
         if rule.conditions:
             try:
@@ -1723,13 +1740,15 @@ def send_notification_rules(
 
         # Resolve recipients
         recipients = _collect_notification_recipients(
-            rule, form_data, submission=submission, task=task
+            rule, form_data, submission=submission, task=rule_task
         )
         cc_recipients = _collect_notification_cc(rule, form_data)
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
 
-        already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(rule)
+        already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
+            rule, rule_task_id
+        )
 
         # Skip recipients successfully delivered on an earlier attempt.
         if already_sent or already_cc_or_bcc:
@@ -1817,8 +1836,8 @@ def send_notification_rules(
             # {{ c.comment }}{% endfor %}`` without iterating the model.
             "public_comments": public_comments,
         }
-        if task:
-            base_context["task"] = task
+        if rule_task:
+            base_context["task"] = rule_task
 
         # Pre-fetch User objects for all recipients so templates that
         # reference ``{{ approver }}`` (e.g. approval_request.html) work
@@ -1856,15 +1875,18 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                _, created = PendingNotification.objects.get_or_create(
-                    workflow=workflow,
-                    notification_type=event,
-                    submission=submission,
-                    approval_task_id=(task.id if task is not None else None),
-                    recipient_email=recipient,
-                    defaults={"scheduled_for": scheduled_for},
-                )
-                if created:
+                pending_identity = {
+                    "workflow": workflow,
+                    "notification_type": event,
+                    "submission": submission,
+                    "approval_task_id": rule_task_id,
+                    "recipient_email": recipient,
+                    "sent": False,
+                }
+                if not PendingNotification.objects.filter(**pending_identity).exists():
+                    PendingNotification.objects.create(
+                        **pending_identity, scheduled_for=scheduled_for
+                    )
                     created_count += 1
             logger.info(
                 "Queued %d/%d %s notification(s) for submission %s (due %s)",
@@ -1896,7 +1918,7 @@ def send_notification_rules(
                         notification_type=event,
                         submission_id=submission_id,
                         cc=email_cc,
-                        approval_task_id=triggering_task_id,
+                        approval_task_id=rule_task_id,
                         notification_rule_id=rule.id,
                     )
                 else:
@@ -1908,7 +1930,7 @@ def send_notification_rules(
                         notification_type=event,
                         submission_id=submission_id,
                         cc=email_cc,
-                        approval_task_id=triggering_task_id,
+                        approval_task_id=rule_task_id,
                         notification_rule_id=rule.id,
                     )
                 if send_result is False:
@@ -1929,7 +1951,7 @@ def send_notification_rules(
                         {**base_context},
                         notification_type=event,
                         submission_id=submission_id,
-                        approval_task_id=triggering_task_id,
+                        approval_task_id=rule_task_id,
                         notification_rule_id=rule.id,
                     )
                 else:
@@ -1940,7 +1962,7 @@ def send_notification_rules(
                         {**base_context},
                         notification_type=event,
                         submission_id=submission_id,
-                        approval_task_id=triggering_task_id,
+                        approval_task_id=rule_task_id,
                         notification_rule_id=rule.id,
                     )
                 if cc_send_result is False:

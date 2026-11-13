@@ -893,10 +893,19 @@ def check_approval_deadlines() -> str:
                 reminder_count += 1
 
     if submission_ids_for_auto_approve:
-        submissions = FormSubmission.objects.filter(
-            id__in=submission_ids_for_auto_approve,
-            status="pending_approval",
-        ).select_related("form_definition__workflow")
+        submissions = (
+            FormSubmission.objects.filter(
+                id__in=submission_ids_for_auto_approve,
+                status="pending_approval",
+            )
+            .select_related("form_definition")
+            .prefetch_related(
+                Prefetch(
+                    "form_definition__workflows",
+                    queryset=WorkflowDefinition.objects.order_by("pk"),
+                )
+            )
+        )
         for submission in submissions:
             workflow = getattr(submission.form_definition, "workflow", None)
             if not workflow or not workflow.auto_approve_after_days:
@@ -1027,6 +1036,7 @@ def send_batched_notifications() -> str:
                     notification_type,
                     recipient_email,
                 )
+                continue
             else:
                 logger.warning(
                     "send_batched_notifications: unknown type %r for %s; skipping.",
@@ -1306,10 +1316,12 @@ def _collect_notification_recipients(
             )
             if getattr(notif, "workflow_id", None):
                 candidate_stage_qs = candidate_stage_qs.filter(
-                    workflow_id=notif.workflow_id
+                    workflow_stage__workflow_id=notif.workflow_id
                 )
             candidate_stage_ids = list(
-                candidate_stage_qs.values_list("workflow_stage_id", flat=True).distinct()
+                candidate_stage_qs.values_list(
+                    "workflow_stage_id", flat=True
+                ).distinct()
             )
 
         # Step 2 — notify only the groups that actually hold a group-fallback
@@ -1698,29 +1710,6 @@ def send_notification_rules(
         cc_recipients = _collect_notification_cc(rule, form_data)
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
-
-        # Atomic dispatch claim to prevent overlapping workers from sending twice.
-        # We claim once per (submission, rule, event, task) identity.
-        dispatch_claim, created = PendingNotification.objects.get_or_create(
-            submission=submission,
-            rule=rule,
-            event=event,
-            task=task,
-            defaults={"status": PendingNotification.Status.PENDING},
-        )
-        if not created and dispatch_claim.status in (
-            PendingNotification.Status.SENDING,
-            PendingNotification.Status.SENT,
-        ):
-            logger.info(
-                "NotificationRule %s: dispatch already claimed for submission %s; skipping overlapping worker.",
-                rule.id,
-                submission.id,
-            )
-            return
-        if dispatch_claim.status == PendingNotification.Status.PENDING:
-            dispatch_claim.status = PendingNotification.Status.SENDING
-            dispatch_claim.save(update_fields=["status"])
 
         already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(rule)
 

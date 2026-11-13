@@ -13,6 +13,7 @@ from django_forms_workflows.models import (
     FormSubmission,
     NotificationLog,
     NotificationRule,
+    PendingNotification,
     StageApprovalGroup,
     WorkflowDefinition,
     WorkflowStage,
@@ -2458,6 +2459,55 @@ def test_deadline_scan_has_constant_query_count(
         result = check_approval_deadlines()
     assert result == "expired=0, reminders=0, auto_approved=0"
     assert ApprovalTask.objects.filter(status="pending").count() == task_count + 1
+
+
+@pytest.mark.django_db
+def test_auto_approve_uses_latest_task_once(form_definition, user, approver_user):
+    WorkflowDefinition.objects.create(
+        form_definition=form_definition, auto_approve_after_days=2
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    old_task = ApprovalTask.objects.create(
+        submission=submission, step_name="Old", assigned_to=approver_user
+    )
+    current_task = ApprovalTask.objects.create(
+        submission=submission, step_name="Current", assigned_to=approver_user
+    )
+    ApprovalTask.objects.filter(pk=old_task.pk).update(
+        created_at=timezone.now() - timedelta(days=5)
+    )
+
+    with patch.object(tasks_module.send_notification_rules, "delay") as notify:
+        assert "auto_approved=0" in check_approval_deadlines()
+        ApprovalTask.objects.filter(pk=current_task.pk).update(
+            created_at=timezone.now() - timedelta(days=3)
+        )
+        assert "auto_approved=1" in check_approval_deadlines()
+
+    submission.refresh_from_db()
+    assert submission.status == "approved"
+    assert submission.approval_tasks.filter(status="skipped").count() == 2
+    notify.assert_called_once_with(submission.pk, "workflow_approved")
+
+
+@pytest.mark.django_db
+def test_unsupported_batch_type_remains_pending(form_definition):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    pending = PendingNotification.objects.create(
+        workflow=workflow,
+        notification_type="stage_decision",
+        recipient_email="review@example.com",
+        scheduled_for=timezone.now() - timedelta(minutes=1),
+    )
+
+    assert tasks_module.send_batched_notifications() == "sent=0"
+    pending.refresh_from_db()
+    assert pending.sent is False
 
 
 # ── notify_stage_groups: only groups holding a task on the stage ───────────

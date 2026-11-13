@@ -75,8 +75,7 @@ def test_dispatch_workflow_webhooks_enqueues_matching_endpoints(workflow, user):
     )
     other_workflow = workflow.__class__.objects.create(
         form_definition=workflow.form_definition,
-        name=f"{workflow.name} Other",
-        slug=f"{workflow.slug}-other",
+        name_label="Other track",
     )
     WebhookEndpoint.objects.create(
         workflow=other_workflow,
@@ -89,7 +88,9 @@ def test_dispatch_workflow_webhooks_enqueues_matching_endpoints(workflow, user):
     with patch(
         "django_forms_workflows.tasks.deliver_workflow_webhook.delay"
     ) as mock_delay:
-        dispatch_workflow_webhooks(submission.id, "submission.created")
+        dispatch_workflow_webhooks(
+            submission.id, "submission.created", workflow_id=workflow.id
+        )
 
     mock_delay.assert_called_once()
     endpoint_id, event, payload, submission_id, task_id, attempt = (
@@ -295,7 +296,7 @@ def test_deliver_workflow_webhook_does_not_retry_when_retries_exhausted(workflow
     ):
         mock_request.return_value = Mock(status_code=500, text="server error")
         deliver_workflow_webhook(
-            endpoint.id, "submission.created", payload, submission.id, attempt=2
+            endpoint.id, "submission.created", payload, submission.id, attempt=3
         )
 
     mock_retry.assert_not_called()

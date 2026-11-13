@@ -1757,12 +1757,30 @@ class TestFormBuilderViews:
     def test_preview_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
         url = _fb_url("builder/api/preview/")
+        form_count_before = FormDefinition.objects.count()
+        field_count_before = FormField.objects.count()
+        field_label = "Preview Test Field"
         resp = client.post(
             url,
-            data=json.dumps({"form_id": form_with_fields.id}),
+            data=json.dumps(
+                {
+                    "name": "Preview Form",
+                    "fields": [
+                        {
+                            "field_id": "preview_test_field",
+                            "field_type": "text",
+                            "label": field_label,
+                            "required": False,
+                        }
+                    ],
+                }
+            ),
             content_type="application/json",
         )
         assert resp.status_code == 200
+        assert field_label in resp.content.decode("utf-8")
+        assert FormDefinition.objects.count() == form_count_before
+        assert FormField.objects.count() == field_count_before
 
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

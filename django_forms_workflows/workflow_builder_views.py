@@ -244,18 +244,21 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         invalid_refs = []
         for entry in raw_entries or []:
             if isinstance(entry, dict):
-                if entry.get("id") in field_ids:
+                entry_id = entry.get("id")
+                entry_field_name = entry.get("field_name")
+                if entry_id:
+                    if entry_id in field_ids:
+                        resolved_keys.append(
+                            ("id", entry_id, entry_field_name or str(entry_id))
+                        )
+                    else:
+                        invalid_refs.append(entry_id)
+                elif entry_field_name in field_names:
                     resolved_keys.append(
-                        ("id", entry["id"], entry.get("field_name") or str(entry["id"]))
-                    )
-                elif entry.get("field_name") in field_names:
-                    resolved_keys.append(
-                        ("field_name", entry["field_name"], entry["field_name"])
+                        ("field_name", entry_field_name, entry_field_name)
                     )
                 else:
-                    invalid_refs.append(
-                        entry.get("field_name") or entry.get("id") or entry
-                    )
+                    invalid_refs.append(entry_field_name or entry)
             elif isinstance(entry, int):
                 if entry in field_ids:
                     resolved_keys.append(("id", entry, str(entry)))

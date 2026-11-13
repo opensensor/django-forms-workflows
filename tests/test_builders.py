@@ -1587,6 +1587,24 @@ class TestFormBuilderSavePayloadValidation:
         assert response.json()["success"] is False
         assert not FormDefinition.objects.filter(slug="form").exists()
 
+    @pytest.mark.parametrize(
+        "field_name",
+        ["description", "instructions", "success_message", "success_redirect_url"],
+    )
+    def test_rejects_non_string_optional_text(self, client, superuser, field_name):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {"name": "Form", "slug": "form", "fields": [], field_name: []}
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["success"] is False
+        assert not FormDefinition.objects.filter(slug="form").exists()
+
     @staticmethod
     def _save(client, form, fields):
         return client.post(

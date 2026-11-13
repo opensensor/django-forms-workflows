@@ -577,16 +577,25 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     resulting integer pk, as a str-keyed dict, so the frontend can
     reconcile IDs for newly-created fields.
     """
+
+    def _optional_text(field_name):
+        if field_name not in data:
+            return ""
+        value = data.get(field_name)
+        if not isinstance(value, str):
+            raise FormBuilderPayloadError(f'"{field_name}" must be a string.')
+        return value.strip()
+
     form_name = data.get("name", "").strip()
     form_slug = data.get("slug", "").strip()
-    form_description = data.get("description", "").strip()
-    form_instructions = data.get("instructions", "").strip()
+    form_description = _optional_text("description")
+    form_instructions = _optional_text("instructions")
     is_active = data.get("is_active", True)
     requires_login = data.get("requires_login", True)
     allow_save_draft = data.get("allow_save_draft", True)
     allow_withdrawal = data.get("allow_withdrawal", True)
-    success_message = data.get("success_message", "").strip()
-    success_redirect_url = data.get("success_redirect_url", "").strip()
+    success_message = _optional_text("success_message")
+    success_redirect_url = _optional_text("success_redirect_url")
     success_redirect_rules = data.get("success_redirect_rules") or None
     close_date = data.get("close_date") or None
     max_submissions = data.get("max_submissions") or None
@@ -968,7 +977,9 @@ def form_builder_preview(request):
                     field_kwargs["max_length"] = validation.get("max_length")
 
                 # Conditional rules
-                cond_rules = conditional.get("conditional_rules")
+                cond_rules = conditional.get(
+                    "conditional_rules", field_data.get("conditional_rules")
+                )
                 if cond_rules:
                     field_kwargs["conditional_rules"] = cond_rules
 

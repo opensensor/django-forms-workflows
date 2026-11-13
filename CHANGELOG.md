@@ -214,6 +214,13 @@ here rather than lost.
 
 ## [0.75.1] - 2026-06-08
 
+[Unreleased]: https://github.com/<org>/<repo>/compare/v0.78.3...HEAD
+[0.78.3]: https://github.com/<org>/<repo>/compare/v0.78.2...v0.78.3
+[0.78.2]: https://github.com/<org>/<repo>/compare/v0.78.1...v0.78.2
+[0.78.1]: https://github.com/<org>/<repo>/compare/v0.78.0...v0.78.1
+[0.76.0]: https://github.com/<org>/<repo>/releases/tag/v0.76.0
+[0.75.1]: https://github.com/<org>/<repo>/releases/tag/v0.75.1
+
 ### Added
 - **Email delivery reconciliation against the Google Workspace Gmail log.**
   The Gmail API `messages().send()` call returns success even when a

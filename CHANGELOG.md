@@ -279,6 +279,8 @@ here rather than lost.
 - Admin: ``NotificationLogAdmin`` shows ``cc_emails`` in the list view
   and makes both new fields searchable and read-only.
 
+[0.74.17]: https://github.com/<org>/<repo>/releases/tag/0.74.17
+
 ## [0.74.16] - 2026-05-04
 
 ### Fixed

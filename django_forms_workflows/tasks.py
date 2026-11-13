@@ -25,7 +25,7 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Max, Prefetch
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -945,17 +945,17 @@ def check_approval_deadlines() -> str:
                     queryset=WorkflowDefinition.objects.order_by("pk"),
                 )
             )
+            .annotate(latest_task_created_at=Max("approval_tasks__created_at"))
         )
         for submission in submissions:
             workflow = getattr(submission.form_definition, "workflow", None)
             if not workflow or not workflow.auto_approve_after_days:
                 continue
 
-            latest_task = submission.approval_tasks.order_by("-created_at").first()
-            if not latest_task or not latest_task.created_at:
+            if not submission.latest_task_created_at:
                 continue
 
-            auto_deadline = latest_task.created_at + timedelta(
+            auto_deadline = submission.latest_task_created_at + timedelta(
                 days=workflow.auto_approve_after_days
             )
             if now > auto_deadline:

@@ -798,6 +798,10 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             field_props["workflow_stage_id"] = parsed_wf_stage_id
 
         # Create or update field
+        if isinstance(field_id, bool):
+            raise FormBuilderPayloadError(
+                f"Invalid field id {field_id} for this form"
+            )
         if field_id and isinstance(field_id, int):
             # Update existing field, scoped to current form_definition
             updated_count = FormField.objects.filter(

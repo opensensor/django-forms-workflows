@@ -1481,14 +1481,25 @@ class TestFormBuilderSavePayloadValidation:
         foreign_stage = WorkflowStage.objects.create(
             workflow=wf, name="Foreign", order=1
         )
+        second_field = FormField.objects.create(
+            form_definition=form_with_fields,
+            field_name="rollback_target",
+            field_label="Rollback Target",
+            field_type="text",
+            order=(field.order or 0) + 1,
+        )
         original_version = form_with_fields.version
         original_label = field.field_label
+        original_second_label = second_field.field_label
         client.force_login(superuser)
 
         resp = self._save(
             client,
             form_with_fields,
-            [self._field_payload(field, workflow_stage_id=foreign_stage.id)],
+            [
+                self._field_payload(field, field_label="Updated Before Failure"),
+                self._field_payload(second_field, workflow_stage_id=foreign_stage.id),
+            ],
         )
 
         assert resp.status_code == 400
@@ -1496,9 +1507,11 @@ class TestFormBuilderSavePayloadValidation:
         assert "not valid for this form" in resp.json()["error"]
         form_with_fields.refresh_from_db()
         field.refresh_from_db()
+        second_field.refresh_from_db()
         assert form_with_fields.version == original_version
         assert field.field_label == original_label
-        assert field.workflow_stage_id is None
+        assert second_field.field_label == original_second_label
+        assert second_field.workflow_stage_id is None
 
     def test_rejects_malformed_stage_id(
         self, client, superuser, form_with_fields, field

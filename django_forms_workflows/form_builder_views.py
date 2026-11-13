@@ -7,6 +7,7 @@ and editing forms without code.
 
 import json
 import logging
+import re
 import uuid
 
 from django.db import transaction
@@ -514,7 +515,7 @@ def form_builder_save(request):
             raw_form_id = raw_form_id.strip()
             if not raw_form_id:
                 form_id = None
-            elif not raw_form_id.isdigit():
+            elif not raw_form_id.isascii() or not raw_form_id.isdigit():
                 return JsonResponse(
                     {
                         "success": False,
@@ -861,7 +862,10 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         # Create or update field
         if isinstance(field_id, bool):
             raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
-        if field_id is None:
+        if field_id is None or (
+            isinstance(field_id, str)
+            and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", field_id)
+        ):
             # Create new field
             new_field = FormField.objects.create(**field_props)
             updated_field_ids.add(new_field.id)

@@ -992,7 +992,6 @@ def document_template_save(request, form_id):
     """Create or update a document template."""
     try:
         data = json.loads(request.body)
-        form_def = get_object_or_404(FormDefinition, id=form_id)
 
         template_id = data.get("id")
         name = data.get("name", "").strip()
@@ -1007,6 +1006,9 @@ def document_template_save(request, form_id):
             )
 
         with transaction.atomic():
+            form_def = get_object_or_404(
+                FormDefinition.objects.select_for_update(), id=form_id
+            )
             # If marking as default, clear other defaults for this form
             if is_default:
                 DocumentTemplate.objects.filter(

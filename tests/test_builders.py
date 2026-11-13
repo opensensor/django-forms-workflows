@@ -1498,9 +1498,7 @@ class TestFormBuilderSavePayloadValidation:
             form_with_fields,
             [
                 self._field_payload(field, field_label="Updated Before Failure"),
-                self._field_payload(
-                    second_field, workflow_stage_id=foreign_stage.id
-                ),
+                self._field_payload(second_field, workflow_stage_id=foreign_stage.id),
             ],
         )
 

@@ -501,7 +501,9 @@ def test_reminder_stamped_even_when_no_rule_matches(
 
 
 def test_reminder_not_stamped_when_email_backend_fails(
-    form_definition, user, approver_user
+    mock_delay.assert_called_once_with(
+        submission.id, "approval_reminder", task_id=task.id
+    )
 ):
     submission, task = _reminder_setup(form_definition, user, approver_user)
     NotificationRule.objects.filter(event="approval_reminder").update(

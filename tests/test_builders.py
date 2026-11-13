@@ -1144,6 +1144,27 @@ class TestWorkflowBuilderViews:
     def test_save_rejects_invalid_notification_cadence_configuration(
         self, client, superuser, form_definition
     ):
+        existing_workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            requires_approval=True,
+            name_label="Existing track",
+            notification_cadence="daily",
+        )
+        existing_stage = WorkflowStage.objects.create(
+            workflow_definition=existing_workflow,
+            stage_key="existing_stage",
+            stage_name="Existing stage",
+            stage_order=1,
+            approver_mode="single",
+        )
+        existing_rule = NotificationRule.objects.create(
+            workflow_stage=existing_stage,
+            trigger_event="on_enter",
+            send_to="stage_approvers",
+            email_subject="Original subject",
+            email_template="Original template",
+        )
+
         initial_workflow_count = WorkflowDefinition.objects.count()
         initial_stage_count = WorkflowStage.objects.count()
 
@@ -1151,6 +1172,7 @@ class TestWorkflowBuilderViews:
         url = _wf_url("workflow/api/save/")
         payload = {
             "form_id": form_definition.id,
+            "workflow_id": existing_workflow.id,
             "workflow": {
                 "nodes": [
                     {"type": "start", "data": {}},
@@ -1178,6 +1200,20 @@ class TestWorkflowBuilderViews:
         data = resp.json()
         assert data["success"] is False
         assert "validation failed" in data["error"].lower()
+
+        existing_workflow.refresh_from_db()
+        existing_stage.refresh_from_db()
+        existing_rule.refresh_from_db()
+
+        assert existing_workflow.name_label == "Existing track"
+        assert existing_workflow.notification_cadence == "daily"
+        assert existing_stage.workflow_definition_id == existing_workflow.id
+        assert existing_stage.stage_name == "Existing stage"
+        assert existing_stage.stage_order == 1
+        assert existing_rule.workflow_stage_id == existing_stage.id
+        assert existing_rule.email_subject == "Original subject"
+        assert existing_rule.email_template == "Original template"
+
         assert WorkflowDefinition.objects.count() == initial_workflow_count
         assert WorkflowStage.objects.count() == initial_stage_count
 

@@ -10,7 +10,7 @@ import logging
 import uuid
 
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
@@ -501,6 +501,8 @@ def form_builder_save(request):
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
         )
+    except Http404:
+        raise
     except Exception:
         logger.exception("Error saving form in builder")
         return JsonResponse(

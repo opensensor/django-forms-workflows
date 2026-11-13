@@ -118,7 +118,9 @@ def _send_html_email(
     submission_id: int | None = None,
     cc: Iterable[str] | None = None,
     bcc: Iterable[str] | None = None,
-) -> None:
+    approval_task_id: int | None = None,
+    notification_rule_id: int | None = None,
+) -> bool:
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
     bcc_list = [e for e in (bcc or []) if e and e not in to_list and e not in cc_list]
@@ -133,7 +135,7 @@ def _send_html_email(
             cc_emails=", ".join(cc_list),
             bcc_emails=", ".join(bcc_list),
         )
-        return
+        return True
 
     # Inject site_name so all email templates can reference {{ site_name }}
     context.setdefault("site_name", _site_name())
@@ -178,7 +180,10 @@ def _send_html_email(
                 cc_emails=cc_str,
                 bcc_emails=bcc_str,
                 rfc2822_message_id=message_id,
+                approval_task_id=approval_task_id,
+                notification_rule_id=notification_rule_id,
             )
+        return True
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
         for recipient in to_list:
@@ -191,7 +196,10 @@ def _send_html_email(
                 error_message=str(e),
                 cc_emails=cc_str,
                 bcc_emails=bcc_str,
+                approval_task_id=approval_task_id,
+                notification_rule_id=notification_rule_id,
             )
+        return False
 
 
 def _send_html_email_from_string(
@@ -205,7 +213,9 @@ def _send_html_email_from_string(
     submission_id: int | None = None,
     cc: Iterable[str] | None = None,
     bcc: Iterable[str] | None = None,
-) -> None:
+    approval_task_id: int | None = None,
+    notification_rule_id: int | None = None,
+) -> bool:
     """Like _send_html_email but renders an inline Django template string
     instead of loading a template file.  Used when a NotificationRule has a
     custom ``body_template``.
@@ -226,7 +236,7 @@ def _send_html_email_from_string(
             cc_emails=", ".join(cc_list),
             bcc_emails=", ".join(bcc_list),
         )
-        return
+        return True
 
     context.setdefault("site_name", _site_name())
 
@@ -271,7 +281,10 @@ def _send_html_email_from_string(
                 cc_emails=cc_str,
                 bcc_emails=bcc_str,
                 rfc2822_message_id=message_id,
+                approval_task_id=approval_task_id,
+                notification_rule_id=notification_rule_id,
             )
+        return True
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
         for recipient in to_list:
@@ -284,7 +297,10 @@ def _send_html_email_from_string(
                 error_message=str(e),
                 cc_emails=cc_str,
                 bcc_emails=bcc_str,
+                approval_task_id=approval_task_id,
+                notification_rule_id=notification_rule_id,
             )
+        return False
 
 
 def _write_notification_log(
@@ -298,6 +314,8 @@ def _write_notification_log(
     cc_emails: str = "",
     bcc_emails: str = "",
     rfc2822_message_id: str = "",
+    approval_task_id: int | None = None,
+    notification_rule_id: int | None = None,
 ) -> None:
     """Write a NotificationLog row; never raises so it cannot break email delivery."""
     try:
@@ -311,6 +329,8 @@ def _write_notification_log(
             cc_emails=cc_emails,
             bcc_emails=bcc_emails,
             rfc2822_message_id=rfc2822_message_id,
+            approval_task_id=approval_task_id,
+            notification_rule_id=notification_rule_id,
         )
     except Exception:  # pragma: no cover
         logger.exception("Failed to write NotificationLog (ignored)")
@@ -1194,12 +1214,15 @@ def _collect_notification_recipients(
 
     # 4. Stage assignees (NotificationRule only)
     if getattr(notif, "notify_stage_assignees", False) and submission is not None:
+        notif_workflow_id = getattr(notif, "workflow_id", None)
         qs = (
             submission.approval_tasks.select_related("assigned_to", "workflow_stage")
             .filter(assigned_to__isnull=False)
             .exclude(workflow_stage__assignee_form_field__isnull=True)
             .exclude(workflow_stage__assignee_form_field="")
         )
+        if notif_workflow_id:
+            qs = qs.filter(workflow_stage__workflow_id=notif_workflow_id)
         eff_stage = _effective_stage_id()
         if eff_stage:
             qs = qs.filter(workflow_stage_id=eff_stage)
@@ -1543,35 +1566,66 @@ def send_notification_rules(
 
     # Idempotency guard: if this task is being re-executed (e.g. acks_late
     # requeued it after a worker died mid-send), skip recipients we already
-    # successfully delivered to. Only "sent" entries dedup — "failed" entries
-    # should be retried.
+    # successfully delivered to for the *same dispatch identity*.
+    #
+    # Dispatch identity is scoped by:
+    # - submission/event
+    # - triggering task (when present)
+    # - notification rule (when present)
+    #
+    # This prevents over-broad suppression across different tasks/stages/rules
+    # while still deduplicating retries of the same dispatch.
     #
     # Exception: rows a delivery sweep marked ``delivery_state='retried'`` are
     # deliberately excluded here. Such a row has ``status='sent'`` (the send call
     # succeeded) but a delivery check showed it was never actually delivered, so
     # the sweep re-dispatched this task precisely to resend to that recipient.
     # Leaving it in ``already_sent`` would make the retry a silent no-op.
-    _sent_rows = list(
-        NotificationLog.objects.filter(
-            submission_id=submission_id,
-            notification_type=event,
-            status="sent",
+    triggering_task_id = task.id if task is not None else None
+    # Pre-migration log rows have no rule/task identity. They are safe to use
+    # for retry deduplication only when the event has a single possible rule
+    # and (if task-scoped) a single possible task.
+    use_legacy_logs = NotificationRule.objects.filter(
+        event=event, workflow__form_definition=submission.form_definition
+    ).count() == 1 and (task is None or submission.approval_tasks.count() == 1)
+
+    def _already_delivered_for_dispatch(rule) -> tuple[set[str], set[str]]:
+        sent_filter = {
+            "submission_id": submission_id,
+            "notification_type": event,
+            "status": "sent",
+            "approval_task_id": triggering_task_id,
+            "notification_rule_id": rule.id,
+        }
+
+        _sent_rows = list(
+            NotificationLog.objects.filter(**sent_filter)
+            .exclude(delivery_state="retried")
+            .values_list("recipient_email", "cc_emails", "bcc_emails")
         )
-        .exclude(delivery_state="retried")
-        .values_list("recipient_email", "cc_emails", "bcc_emails")
-    )
-    already_sent: set[str] = {row[0] for row in _sent_rows}
-    # CC/BCC addresses are stored as comma-separated lists on each To row;
-    # an address was delivered if it appears alongside any successful To send.
-    already_cc_or_bcc: set[str] = set()
-    for _, _cc, _bcc in _sent_rows:
-        for blob in (_cc, _bcc):
-            if not blob:
-                continue
-            for addr in blob.split(","):
-                addr = addr.strip()
-                if addr:
-                    already_cc_or_bcc.add(addr)
+        if use_legacy_logs:
+            _sent_rows.extend(
+                NotificationLog.objects.filter(
+                    submission_id=submission_id,
+                    notification_type=event,
+                    status="sent",
+                    approval_task__isnull=True,
+                    notification_rule__isnull=True,
+                )
+                .exclude(delivery_state="retried")
+                .values_list("recipient_email", "cc_emails", "bcc_emails")
+            )
+        already_sent_local: set[str] = {row[0] for row in _sent_rows}
+        already_cc_or_bcc_local: set[str] = set()
+        for _, _cc, _bcc in _sent_rows:
+            for blob in (_cc, _bcc):
+                if not blob:
+                    continue
+                for addr in blob.split(","):
+                    addr = addr.strip()
+                    if addr:
+                        already_cc_or_bcc_local.add(addr)
+        return already_sent_local, already_cc_or_bcc_local
 
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
@@ -1579,6 +1633,7 @@ def send_notification_rules(
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
         """
+        nonlocal had_dispatch_failure
         workflow = rule.workflow
         # Evaluate optional conditions
         if rule.conditions:
@@ -1609,6 +1664,7 @@ def send_notification_rules(
         cc_recipients = _collect_notification_cc(rule, form_data)
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         cc_recipients = [c for c in cc_recipients if c not in recipients]
+        already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(rule)
 
         # Drop recipients already successfully delivered (acks_late retry guard).
         # New rows store CCs in `cc_emails` on the To row; legacy rows from
@@ -1728,7 +1784,7 @@ def send_notification_rules(
                     workflow=workflow,
                     notification_type=event,
                     submission=submission,
-                    approval_task_id=task_id,
+                    approval_task_id=(task.id if task is not None else None),
                     recipient_email=recipient,
                     scheduled_for=scheduled_for,
                 )
@@ -1754,7 +1810,7 @@ def send_notification_rules(
                 email_cc = cc_pending
                 cc_pending = []
                 if rule_body.strip():
-                    _send_html_email_from_string(
+                    send_result = _send_html_email_from_string(
                         subject,
                         [recipient],
                         rule_body,
@@ -1762,9 +1818,11 @@ def send_notification_rules(
                         notification_type=event,
                         submission_id=submission_id,
                         cc=email_cc,
+                        approval_task_id=triggering_task_id,
+                        notification_rule_id=rule.id,
                     )
                 else:
-                    _send_html_email(
+                    send_result = _send_html_email(
                         subject,
                         [recipient],
                         default_template,
@@ -1772,12 +1830,18 @@ def send_notification_rules(
                         notification_type=event,
                         submission_id=submission_id,
                         cc=email_cc,
+                        approval_task_id=triggering_task_id,
+                        notification_rule_id=rule.id,
                     )
+                if send_result is False:
+                    had_dispatch_failure = True
 
+    had_dispatch_failure = False
     for rule in rules:
         try:
             _apply_rule(rule)
         except Exception as exc:
+            had_dispatch_failure = True
             # One bad rule must not silence the rest of this event, and the
             # failure must leave a trace. Previously any exception in here
             # (e.g. a TypeError building the subject from form_data) killed
@@ -1809,6 +1873,13 @@ def send_notification_rules(
     # Completing with zero recipients still counts (a workflow with no
     # reminder rule must not re-dispatch every sweep forever); duplicate
     # sends from an overlapping sweep are absorbed by the already_sent guard.
-    if event == "approval_reminder" and task is not None and not task.reminder_sent_at:
+    # However, if dispatch failed (rule/build/send/backend error), leave the
+    # timestamp unset so the next sweep can retry.
+    if (
+        event == "approval_reminder"
+        and task is not None
+        and not task.reminder_sent_at
+        and not had_dispatch_failure
+    ):
         task.reminder_sent_at = timezone.now()
         task.save(update_fields=["reminder_sent_at"])

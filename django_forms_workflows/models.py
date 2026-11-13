@@ -3496,6 +3496,12 @@ class NotificationLog(models.Model):
         blank=True,
         related_name="notification_logs",
     )
+    approval_task = models.ForeignKey(
+        "ApprovalTask", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    notification_rule = models.ForeignKey(
+        "NotificationRule", on_delete=models.SET_NULL, null=True, blank=True
+    )
     recipient_email = models.EmailField(db_index=True)
     cc_emails = models.TextField(
         blank=True,

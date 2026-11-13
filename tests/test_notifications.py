@@ -436,6 +436,27 @@ def test_reminder_stamped_even_when_no_rule_matches(
     assert task.reminder_sent_at is not None
 
 
+def test_reminder_not_stamped_when_email_backend_fails(
+    form_definition, user, approver_user
+):
+    submission, task = _reminder_setup(form_definition, user, approver_user)
+    NotificationRule.objects.filter(event="approval_reminder").update(
+        notify_submitter=True
+    )
+
+    with patch(
+        "django_forms_workflows.tasks.EmailMultiAlternatives.send",
+        side_effect=RuntimeError("SMTP unavailable"),
+    ):
+        send_notification_rules(submission.id, "approval_reminder", task_id=task.id)
+
+    task.refresh_from_db()
+    assert task.reminder_sent_at is None
+    assert NotificationLog.objects.filter(
+        submission=submission, approval_task=task, status="failed"
+    ).exists()
+
+
 def test_check_approval_deadlines_defers_the_stamp_to_the_worker(
     form_definition, user, approver_user
 ):
@@ -1582,6 +1603,74 @@ class TestSendNotificationRulesIdempotency:
         send_notification_rules(submission.id, "submission_received")
         assert len(mailoutbox) == 1
         assert mailoutbox[0].to == [user.email]
+
+    def test_same_recipient_receives_distinct_rules_once_each(
+        self, form_definition, user, mailoutbox
+    ):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        first = NotificationRule.objects.create(
+            workflow=workflow,
+            event="submission_received",
+            static_emails="same@example.com",
+        )
+        second = NotificationRule.objects.create(
+            workflow=workflow,
+            event="submission_received",
+            static_emails="same@example.com",
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="submitted",
+        )
+
+        send_notification_rules(submission.id, "submission_received")
+        send_notification_rules(submission.id, "submission_received")
+
+        assert len(mailoutbox) == 2
+        assert set(
+            NotificationLog.objects.filter(
+                submission=submission, status="sent"
+            ).values_list("notification_rule_id", flat=True)
+        ) == {first.id, second.id}
+
+    def test_same_recipient_receives_distinct_tasks_once_each(
+        self, form_definition, user, mailoutbox
+    ):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+        NotificationRule.objects.create(
+            workflow=workflow,
+            event="approval_request",
+            static_emails="same@example.com",
+        )
+        submission = FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="pending_approval",
+        )
+        tasks = [
+            ApprovalTask.objects.create(
+                submission=submission,
+                workflow_stage=stage,
+                step_name=f"Review {number}",
+                status="pending",
+            )
+            for number in (1, 2)
+        ]
+
+        for task in tasks:
+            send_notification_rules(submission.id, "approval_request", task_id=task.id)
+            send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+        assert len(mailoutbox) == 2
+        assert set(
+            NotificationLog.objects.filter(
+                submission=submission, status="sent"
+            ).values_list("approval_task_id", flat=True)
+        ) == {task.id for task in tasks}
 
 
 # ── Stage scoping (rule.stage FK must filter dispatch) ─────────────────────

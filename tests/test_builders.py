@@ -1593,7 +1593,7 @@ class TestFormBuilderViews:
     """Integration tests for the form builder HTTP endpoints."""
 
     def test_builder_view_requires_staff(self, client, form_definition, user):
-        client.login(username="testuser", password="testpass123")
+        client.force_login(user)
         url = _fb_url(f"builder/{form_definition.id}/")
         resp = client.get(url)
         assert resp.status_code in (302, 403)

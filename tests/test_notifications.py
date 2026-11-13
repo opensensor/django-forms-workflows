@@ -132,9 +132,7 @@ def test_notification_subject_unknown_field_becomes_empty(form_definition, user)
         send_notification_rules(submission.id, "workflow_approved")
 
     subject = mock_send.call_args[0][0]
-    # {ghost_field} → "" so the subject should not contain a literal brace token
-    assert "{ghost_field}" not in subject
-    assert "Hi " in subject
+    assert subject == "Hi , your form is done"
 
 
 def test_notification_subject_builtin_placeholders_still_work(form_definition, user):

@@ -858,7 +858,7 @@ class TestWorkflowBuilderViews:
     """Integration tests for the workflow builder HTTP endpoints."""
 
     def test_builder_view_requires_staff(self, client, form_definition, user):
-        client.login(username="testuser", password="testpass123")
+        client.force_login(user)
         url = _wf_url(f"{form_definition.id}/workflow/")
         resp = client.get(url)
         assert resp.status_code in (302, 403)

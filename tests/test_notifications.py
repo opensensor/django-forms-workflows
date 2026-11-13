@@ -2789,7 +2789,17 @@ def test_taskless_final_notifications_keep_workflow_context_separate(
     by_recipient = {message.to[0]: message.alternatives[0][0] for message in mailoutbox}
     first = by_recipient["recipient1@example.com"]
     second = by_recipient["recipient2@example.com"]
-    assert "Private to workflow 1" in first
-    assert "Private to workflow 2" not in first
-    assert "Private to workflow 2" in second
-    assert "Private to workflow 1" not in second
+
+    assert first.count("|") == 1
+    first_public_comments, first_task_comments = first.split("|", 1)
+    assert "Private to workflow 1" in first_public_comments
+    assert "Private to workflow 1" in first_task_comments
+    assert "Private to workflow 2" not in first_public_comments
+    assert "Private to workflow 2" not in first_task_comments
+
+    assert second.count("|") == 1
+    second_public_comments, second_task_comments = second.split("|", 1)
+    assert "Private to workflow 2" in second_public_comments
+    assert "Private to workflow 2" in second_task_comments
+    assert "Private to workflow 1" not in second_public_comments
+    assert "Private to workflow 1" not in second_task_comments

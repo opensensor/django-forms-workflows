@@ -1809,21 +1809,26 @@ def send_notification_rules(
         # Drop recipients who have muted this rule via per-user preference.
         # Matches by email, case-insensitively — same key the resolver uses.
         from django.contrib.auth import get_user_model
+        from django.db.models.functions import Lower
 
+        _recipient_emails_lc = {
+            e.lower() for e in list(recipients) + list(cc_recipients) if e
+        }
         _muted_emails = set(
             get_user_model()
             .objects.filter(
                 notification_preferences__rule_id=rule.id,
                 notification_preferences__muted=True,
-                email__in=list(recipients) + list(cc_recipients),
             )
             .exclude(email="")
-            .values_list("email", flat=True)
+            .annotate(email_lc=Lower("email"))
+            .filter(email_lc__in=_recipient_emails_lc)
+            .values_list("email_lc", flat=True)
         )
         if _muted_emails:
             before = len(recipients)
-            recipients = [r for r in recipients if r not in _muted_emails]
-            cc_recipients = [c for c in cc_recipients if c not in _muted_emails]
+            recipients = [r for r in recipients if r.lower() not in _muted_emails]
+            cc_recipients = [c for c in cc_recipients if c.lower() not in _muted_emails]
             logger.info(
                 "NotificationRule %s: dropped %d muted recipient(s) for submission %s",
                 rule.id,

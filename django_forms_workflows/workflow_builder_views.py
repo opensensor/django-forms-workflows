@@ -263,6 +263,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     for index, stage_node in enumerate(stage_nodes, start=1):
         stage_data = stage_node.get("data", {})
         stage_label = stage_data.get("name") or f"Stage {index}"
+        stage_identity = stage_node.get("id") or f"stage-index-{index}"
         group_entries = [
             g for g in stage_data.get("approval_groups", []) if g.get("id")
         ]
@@ -309,14 +310,27 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 f"{stage_label} references unknown approval-only fields: {', '.join(str(ref) for ref in invalid_field_refs)}."
             )
         for key_type, key_value, label in normalized_field_refs:
-            field_key = (key_type, key_value)
-            previous_stage = field_assignments.get(field_key)
-            if previous_stage and previous_stage != stage_label:
+            if key_type == "id":
+                canonical_field_id = key_value
+            else:
+                canonical_field_id = field_name_to_id.get(str(key_value).strip().lower())
+
+            if not canonical_field_id:
+                continue
+
+            previous_assignment = field_assignments.get(canonical_field_id)
+            if (
+                previous_assignment
+                and previous_assignment["stage_identity"] != stage_identity
+            ):
                 add_error(
-                    f"Approval-only field '{label}' is assigned to multiple stages: {previous_stage} and {stage_label}."
+                    f"Approval-only field '{label}' is assigned to multiple stages: {previous_assignment['stage_label']} and {stage_label}."
                 )
             else:
-                field_assignments[field_key] = stage_label
+                field_assignments[canonical_field_id] = {
+                    "stage_identity": stage_identity,
+                    "stage_label": stage_label,
+                }
 
     settings_data = settings_nodes[0].get("data", {}) if settings_nodes else {}
     cadence = settings_data.get("notification_cadence") or "immediate"

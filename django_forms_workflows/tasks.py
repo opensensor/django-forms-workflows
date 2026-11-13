@@ -1468,7 +1468,11 @@ def send_notification_rules(
         task,
     )
 
-    workflow = getattr(submission.form_definition, "workflow", None)
+    workflow = None
+    if task and getattr(task, "workflow_stage", None):
+        workflow = getattr(task.workflow_stage, "workflow", None)
+    if workflow is None:
+        workflow = getattr(submission.form_definition, "workflow", None)
     hide_approval_history = bool(getattr(workflow, "hide_approval_history", False))
 
     # Build a denormalized "public_comments" list for the template context

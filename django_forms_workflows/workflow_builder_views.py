@@ -213,6 +213,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     )
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
+    field_name_to_id = {
+        field["field_name"].strip().lower(): field["id"] for field in field_records
+    }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
         set(workflow.stages.values_list("id", flat=True))
@@ -220,6 +223,11 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         else set()
     )
     stage_node_ids = {node.get("id") for node in stage_nodes if node.get("id")}
+    stage_ids_in_payload = {
+        node.get("data", {}).get("stage_id")
+        for node in stage_nodes
+        if node.get("data", {}).get("stage_id")
+    }
     errors = []
     field_assignments = {}
 
@@ -313,7 +321,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             if key_type == "id":
                 canonical_field_id = key_value
             else:
-                canonical_field_id = field_name_to_id.get(str(key_value).strip().lower())
+                canonical_field_id = field_name_to_id.get(
+                    str(key_value).strip().lower()
+                )
 
             if not canonical_field_id:
                 continue

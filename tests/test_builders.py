@@ -1134,7 +1134,6 @@ class TestWorkflowBuilderViews:
                             ],
                             "approval_fields": [
                                 {
-                                    "id": notes_field.id,
                                     "field_name": notes_field.field_name,
                                 }
                             ],
@@ -1310,6 +1309,44 @@ class TestWorkflowBuilderViews:
             "operator": "OR",
             "conditions": [{"field": "amount", "operator": "gt", "value": "500"}],
         }
+
+    def test_save_requires_track_id_when_form_has_multiple_workflows(
+        self, client, superuser, form_definition
+    ):
+        first = WorkflowDefinition.objects.create(
+            form_definition=form_definition, name_label="Track A"
+        )
+        second = WorkflowDefinition.objects.create(
+            form_definition=form_definition, name_label="Track B"
+        )
+        client.force_login(superuser)
+
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {
+                        "nodes": [
+                            {"type": "start", "data": {}},
+                            {"type": "end", "data": {}},
+                        ],
+                        "connections": [],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert (
+            WorkflowDefinition.objects.filter(form_definition=form_definition).count()
+            == 2
+        )
+        first.refresh_from_db()
+        second.refresh_from_db()
+        assert first.name_label == "Track A"
+        assert second.name_label == "Track B"
 
     def test_foreign_workflow_id_is_rejected(self, client, superuser, form_definition):
         other_form = FormDefinition.objects.create(name="Other form", slug="other-form")

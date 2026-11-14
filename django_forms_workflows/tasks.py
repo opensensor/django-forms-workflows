@@ -937,7 +937,13 @@ def check_approval_deadlines() -> str:
     expired_count = 0
     reminder_count = 0
     auto_approved_count = 0
-    submission_ids_for_auto_approve = set()
+    submission_ids_for_auto_approve = set(
+        FormSubmission.objects.filter(
+            status="pending_approval",
+            form_definition__workflows__auto_approve_after_days__isnull=False,
+            form_definition__workflows__auto_approve_after_days__gt=0,
+        ).values_list("id", flat=True)
+    )
 
     for task in pending:
         submission = task.submission
@@ -949,9 +955,6 @@ def check_approval_deadlines() -> str:
             workflow = getattr(submission.form_definition, "workflow", None)
         if not workflow:
             continue
-
-        if workflow.auto_approve_after_days and submission.status == "pending_approval":
-            submission_ids_for_auto_approve.add(submission.id)
 
         # Expire tasks after deadline
         if workflow.approval_deadline_days and task.created_at:

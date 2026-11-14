@@ -1439,17 +1439,36 @@ def shared_option_list_save(request):
             ol.slug = slug
             ol.items = validated_items
             ol.is_active = is_active
-            ol.save()
         else:
-            ol = SharedOptionList.objects.create(
+            ol = SharedOptionList(
                 name=name, slug=slug, items=validated_items, is_active=is_active
             )
+
+        ol.full_clean()
+        ol.save()
 
         return JsonResponse(
             {"success": True, "id": ol.id, "message": "List saved successfully"}
         )
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    except ValidationError as e:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Validation failed",
+                "details": getattr(e, "message_dict", {"__all__": e.messages}),
+            },
+            status=400,
+        )
+    except IntegrityError:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "A list with this name or slug already exists, or violates a database constraint.",
+            },
+            status=400,
+        )
     except Http404:
         raise
     except Exception:

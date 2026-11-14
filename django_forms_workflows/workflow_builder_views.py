@@ -1634,53 +1634,64 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
         actions_to_keep.append(action.id)
 
-    for node in action_nodes:
-        data = node.get("data", {})
-        action_name = data.get("name", "Unnamed Action")
-        action_type = data.get("action_type", "database")
+    ordered_nodes = []
+    for node in (action_nodes + email_nodes):
+        node_data = node.get("data", {})
+        node_type = node_data.get("node_type")
+        if not node_type:
+            node_type = "email" if node in email_nodes else "action"
+        ordered_nodes.append((node_type, node))
 
-        config = data.get("config") or {}
-        if isinstance(config, str):
-            try:
-                config = json.loads(config)
-            except json.JSONDecodeError:
+    for order, (node_type, node) in enumerate(ordered_nodes):
+        if node_type == "action":
+            data = node.get("data", {})
+            action_name = data.get("name", "Unnamed Action")
+            action_type = data.get("action_type", "database")
+
+            config = data.get("config") or {}
+            if isinstance(config, str):
+                try:
+                    config = json.loads(config)
+                except json.JSONDecodeError:
+                    config = {}
+
+            if config is None:
+                config = {}
+            elif not isinstance(config, dict | list):
                 config = {}
 
-        if config is None:
-            config = {}
-        elif not isinstance(config, dict | list):
-            config = {}
+            action_data = {
+                "action_type": action_type,
+                "trigger": data.get("trigger", "on_approve"),
+                "order": order,
+            }
 
-        action_data = {
-            "action_type": action_type,
-            "trigger": data.get("trigger", "on_approve"),
-        }
+            if action_type == "database":
+                action_data["db_alias"] = config.get("db_alias", "")
+                action_data["db_schema"] = config.get("db_schema", "")
+                action_data["db_table"] = config.get("db_table", "")
+                action_data["db_lookup_field"] = config.get("db_lookup_field", "ID_NUMBER")
+                action_data["db_user_field"] = config.get("db_user_field", "employee_id")
+                action_data["db_field_mappings"] = config.get(
+                    "field_mappings", config if isinstance(config, list) else []
+                )
+            elif action_type == "ldap":
+                action_data["ldap_dn_template"] = config.get("ldap_dn_template", "")
+                action_data["ldap_field_mappings"] = config.get(
+                    "field_mappings", config if isinstance(config, list) else []
+                )
+            elif action_type == "api":
+                action_data["api_endpoint"] = config.get("endpoint", "")
+                action_data["api_method"] = config.get("method", "POST")
+                action_data["api_headers"] = config.get("headers", {})
+                action_data["api_body_template"] = config.get("body_template", "")
+            elif action_type == "custom":
+                action_data["custom_handler_config"] = config
 
-        if action_type == "database":
-            action_data["db_alias"] = config.get("db_alias", "")
-            action_data["db_schema"] = config.get("db_schema", "")
-            action_data["db_table"] = config.get("db_table", "")
-            action_data["db_lookup_field"] = config.get("db_lookup_field", "ID_NUMBER")
-            action_data["db_user_field"] = config.get("db_user_field", "employee_id")
-            action_data["db_field_mappings"] = config.get(
-                "field_mappings", config if isinstance(config, list) else []
-            )
-        elif action_type == "ldap":
-            action_data["ldap_dn_template"] = config.get("ldap_dn_template", "")
-            action_data["ldap_field_mappings"] = config.get(
-                "field_mappings", config if isinstance(config, list) else []
-            )
-        elif action_type == "api":
-            action_data["api_endpoint"] = config.get("endpoint", "")
-            action_data["api_method"] = config.get("method", "POST")
-            action_data["api_headers"] = config.get("headers", {})
-            action_data["api_body_template"] = config.get("body_template", "")
-        elif action_type == "custom":
-            action_data["custom_handler_config"] = config
+            save_action(data, action_name, action_data)
+            continue
 
-        save_action(data, action_name, action_data)
-
-    for node in email_nodes:
+        data = node.get("data", {})
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
         action_data = {

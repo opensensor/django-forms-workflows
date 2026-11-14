@@ -358,19 +358,22 @@ def _write_notification_log(
 ) -> None:
     """Write a NotificationLog row; never raises so it cannot break email delivery."""
     try:
-        NotificationLog.objects.create(
-            notification_type=notification_type,
-            submission_id=submission_id,
-            recipient_email=recipient_email,
-            subject=subject,
-            status=status,
-            error_message=error_message,
-            cc_emails=cc_emails,
-            bcc_emails=bcc_emails,
-            rfc2822_message_id=rfc2822_message_id,
-            approval_task_id=approval_task_id,
-            notification_rule_id=notification_rule_id,
-        )
+        # Isolate logging insert in its own savepoint so DB errors here do not
+        # poison any surrounding transaction.atomic() in the caller.
+        with transaction.atomic():
+            NotificationLog.objects.create(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=recipient_email,
+                subject=subject,
+                status=status,
+                error_message=error_message,
+                cc_emails=cc_emails,
+                bcc_emails=bcc_emails,
+                rfc2822_message_id=rfc2822_message_id,
+                approval_task_id=approval_task_id,
+                notification_rule_id=notification_rule_id,
+            )
     except Exception:  # pragma: no cover
         logger.exception("Failed to write NotificationLog (ignored)")
 

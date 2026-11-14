@@ -1750,7 +1750,10 @@ def send_notification_rules(
         for _t in _comments_qs:
             _actor = ""
             if _t.completed_by:
-                _actor = _t.completed_by.get_full_name() or _t.completed_by.username
+                _actor = (
+                    _t.completed_by.get_full_name()
+                    or _t.completed_by.get_username()
+                )
             _public_comments.append(
                 {
                     "stage_name": (

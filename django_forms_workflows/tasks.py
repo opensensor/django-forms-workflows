@@ -1091,15 +1091,22 @@ def check_approval_deadlines() -> str:
                     locked_submission.approval_tasks.filter(status="pending").update(
                         status="skipped"
                     )
-                # Dispatch after commit so a worker sees the approved state.
-                try:
-                    send_notification_rules.delay(submission.id, "workflow_approved")
-                except Exception:
-                    logger.debug(
-                        "Could not enqueue approval notification for submission %s",
-                        submission.id,
-                        exc_info=True,
-                    )
+                # Dispatch after the outermost commit so a worker sees the approved state.
+                submission_id = submission.id
+
+                def _enqueue_workflow_approved_notification() -> None:
+                    try:
+                        send_notification_rules.delay(
+                            submission_id, "workflow_approved"
+                        )
+                    except Exception:
+                        logger.debug(
+                            "Could not enqueue approval notification for submission %s",
+                            submission_id,
+                            exc_info=True,
+                        )
+
+                transaction.on_commit(_enqueue_workflow_approved_notification)
                 auto_approved_count += 1
 
     return f"expired={expired_count}, reminders={reminder_count}, auto_approved={auto_approved_count}"

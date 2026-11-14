@@ -221,8 +221,10 @@ def form_builder_clone(request, form_id):
                 original_stages = list(
                     wf.stages.prefetch_related(
                         Prefetch(
-                            "approval_groups",
-                            queryset=StageApprovalGroup.objects.order_by("role", "position"),
+                            "stageapprovalgroup_set",
+                            queryset=StageApprovalGroup.objects.order_by(
+                                "role", "position"
+                            ),
                             to_attr="prefetched_approval_groups",
                         )
                     ).order_by("order")

@@ -225,10 +225,14 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
     if "data" in request_kwargs and request_kwargs["data"] is not None:
         body = request_kwargs["data"]
         if isinstance(body, str):
+            body_text = body
             body_bytes = body.encode("utf-8")
         else:
             body_bytes = body
+            body_text = body.decode("utf-8")
+        assert json.loads(body_text) == payload
     else:
+        assert request_kwargs["json"] == payload
         body_bytes = json.dumps(request_kwargs["json"]).encode("utf-8")
     expected_signature = (
         "sha256="

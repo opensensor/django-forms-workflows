@@ -253,11 +253,21 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         else set()
     )
     stage_node_ids = {node.get("id") for node in stage_nodes if node.get("id")}
-    stage_ids_in_payload = {
-        node.get("data", {}).get("stage_id")
-        for node in stage_nodes
-        if node.get("data", {}).get("stage_id")
-    }
+    stage_ids_in_payload = set()
+    for node in stage_nodes:
+        raw_stage_id = node.get("data", {}).get("stage_id")
+        if raw_stage_id in (None, ""):
+            continue
+        if isinstance(raw_stage_id, int):
+            stage_ids_in_payload.add(raw_stage_id)
+        elif isinstance(raw_stage_id, str):
+            normalized_stage_id = raw_stage_id.strip()
+            if not normalized_stage_id:
+                continue
+            if normalized_stage_id.isdigit():
+                stage_ids_in_payload.add(int(normalized_stage_id))
+            else:
+                stage_ids_in_payload.add(normalized_stage_id)
     errors = []
     field_assignments = {}
 

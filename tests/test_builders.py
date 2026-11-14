@@ -2095,6 +2095,45 @@ class TestFormBuilderSavePayloadValidation:
 class TestFormBuilderViews:
     """Integration tests for the form builder HTTP endpoints."""
 
+    def test_save_rejects_duplicate_slug_as_text(self, client, superuser):
+        FormDefinition.objects.create(name="Existing", slug="taken")
+        client.force_login(superuser)
+
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps({"name": "New", "slug": "taken", "fields": []}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert isinstance(response.json()["error"], str)
+        assert "slug" in response.json()["error"].lower()
+        assert FormDefinition.objects.count() == 1
+
+    def test_save_rejects_overlong_slug_without_updating_form(
+        self, client, superuser, form_definition
+    ):
+        original_slug = form_definition.slug
+        client.force_login(superuser)
+
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "id": form_definition.id,
+                    "name": form_definition.name,
+                    "slug": "x" * 51,
+                    "fields": [],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert "slug" in response.json()["error"].lower()
+        form_definition.refresh_from_db()
+        assert form_definition.slug == original_slug
+
     def test_builder_view_requires_staff(self, client, form_definition, user):
         client.force_login(user)
         url = _fb_url(f"builder/{form_definition.id}/")

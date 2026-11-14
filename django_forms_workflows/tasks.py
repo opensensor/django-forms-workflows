@@ -1916,21 +1916,20 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Keep the transaction through delivery and log writes so locking the
-        submission row serializes concurrent attempts. Per-recipient failures
-        are caught inside this function so later recipients can still be sent.
+        Avoid a single transaction spanning all deliveries/log writes so
+        already-completed recipient progress is not lost on worker death.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows
         # cannot serialize the first send because there are no rows yet.
-        FormSubmission.objects.select_for_update().get(pk=submission_id)
+        with transaction.atomic():
+            FormSubmission.objects.select_for_update().get(pk=submission_id)
         workflow = rule.workflow
         if explicit_task:
             locked_task = None

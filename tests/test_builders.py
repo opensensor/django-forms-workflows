@@ -842,16 +842,13 @@ class TestConvertVisualToWorkflow:
 
         # Ensure IDs are distinct so this test really exercises sub_workflow_id_type.
         if target_form.id == target_workflow.id:
-            suffix = 2
-            while True:
-                candidate = FormDefinition.objects.create(
-                    name=f"Child Form {suffix}",
-                    slug=f"child-form-{suffix}",
-                )
-                if candidate.id != target_workflow.id:
-                    target_form = candidate
-                    break
-                suffix += 1
+            FormDefinition.objects.create(name="ID spacer", slug="id-spacer")
+            target_form = FormDefinition.objects.create(
+                name="Child Form 2", slug="child-form-2"
+            )
+            target_workflow = WorkflowDefinition.objects.create(
+                form_definition=target_form
+            )
 
         assert target_form.id != target_workflow.id
 

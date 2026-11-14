@@ -84,11 +84,15 @@ def _normalize_trigger_conditions(raw_conditions):
             raw_conditions = json.loads(raw_conditions)
         except json.JSONDecodeError as exc:
             raise ValidationError("Trigger conditions must be valid JSON.") from exc
+        if not raw_conditions:
+            return None
 
     if isinstance(raw_conditions, list):
         group_operator = "AND"
         condition_list = raw_conditions
     elif isinstance(raw_conditions, dict):
+        if not raw_conditions:
+            return None
         if isinstance(raw_conditions.get("conditions"), list):
             group_operator = str(raw_conditions.get("operator", "AND")).upper()
             condition_list = raw_conditions.get("conditions", [])
@@ -96,9 +100,13 @@ def _normalize_trigger_conditions(raw_conditions):
             group_operator = "AND"
             condition_list = [raw_conditions]
         else:
-            return None
+            raise ValidationError(
+                "Trigger conditions must be a list, a single condition object, or an object with a 'conditions' list."
+            )
     else:
-        return None
+        raise ValidationError(
+            "Trigger conditions must be a list, a single condition object, or an object with a 'conditions' list."
+        )
 
     group_operator = "OR" if group_operator == "OR" else "AND"
     normalized = []
@@ -1429,6 +1437,43 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     stage_node_map = {}
     stage_field_map = {}
 
+    submitted_stage_ids = set()
+    duplicate_stage_ids = set()
+    for snode in stage_nodes:
+        sdata = snode.get("data", {})
+        raw_stage_id = sdata.get("stage_id")
+        if raw_stage_id in (None, ""):
+            continue
+        if isinstance(raw_stage_id, bool):
+            raise ValidationError("Invalid stage_id.")
+        if isinstance(raw_stage_id, int):
+            stage_id = raw_stage_id
+        elif isinstance(raw_stage_id, str):
+            value = raw_stage_id.strip()
+            if not value.isascii() or not value.isdigit():
+                raise ValidationError("Invalid stage_id.")
+            try:
+                stage_id = int(value)
+            except ValueError as exc:
+                raise ValidationError("Invalid stage_id.") from exc
+        else:
+            raise ValidationError("Invalid stage_id.")
+        if stage_id <= 0:
+            raise ValidationError("Invalid stage_id.")
+        sdata["stage_id"] = stage_id
+        if stage_id in submitted_stage_ids:
+            duplicate_stage_ids.add(stage_id)
+        else:
+            submitted_stage_ids.add(stage_id)
+
+    if duplicate_stage_ids:
+        duplicate_ids_display = ", ".join(
+            str(sid) for sid in sorted(duplicate_stage_ids)
+        )
+        raise ValidationError(
+            f"Duplicate stage_id values in workflow data are not allowed: {duplicate_ids_display}."
+        )
+
     for idx, snode in enumerate(stage_nodes, start=1):
         sdata = snode.get("data", {})
         stage_id = sdata.get("stage_id")
@@ -1547,10 +1592,22 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         if raw_action_id not in (None, ""):
             if isinstance(raw_action_id, bool):
                 raise ValidationError("Invalid action ID.")
-            try:
-                action_id = int(raw_action_id)
-            except (TypeError, ValueError) as exc:
-                raise ValidationError("Invalid action ID.") from exc
+            if isinstance(raw_action_id, int):
+                action_id = raw_action_id
+            elif isinstance(raw_action_id, str):
+                action_id_str = raw_action_id.strip()
+                if not action_id_str.isascii() or not action_id_str.isdigit():
+                    raise ValidationError("Invalid action ID.")
+                try:
+                    action_id = int(action_id_str)
+                except ValueError as exc:
+                    raise ValidationError("Invalid action ID.") from exc
+            else:
+                raise ValidationError("Invalid action ID.")
+
+            if action_id <= 0:
+                raise ValidationError("Invalid action ID.")
+
             action = existing_actions_by_id.get(action_id)
             if action is None:
                 raise ValidationError("Action ID does not belong to this form.")
@@ -1644,7 +1701,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         }
         save_action(data, action_name, action_data)
 
-    form_definition.post_actions.exclude(id__in=actions_to_keep).delete()
+    # Do not delete form-level actions that are absent from the current graph payload.
+    # A form can be edited via separate workflow tracks/graphs, and removing actions here
+    # would unintentionally delete actions owned by another track.
 
     # ── Sub-workflow definitions ────────────────────────────────────────
     if len(sub_workflow_nodes) > 1:

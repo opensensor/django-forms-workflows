@@ -1644,7 +1644,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         }
         save_action(data, action_name, action_data)
 
-    form_definition.post_actions.exclude(id__in=actions_to_keep).delete()
+    # Do not delete form-level actions that are absent from the current graph payload.
+    # A form can be edited via separate workflow tracks/graphs, and removing actions here
+    # would unintentionally delete actions owned by another track.
 
     # ── Sub-workflow definitions ────────────────────────────────────────
     if len(sub_workflow_nodes) > 1:

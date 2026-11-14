@@ -82,8 +82,8 @@ def _normalize_trigger_conditions(raw_conditions):
     if isinstance(raw_conditions, str):
         try:
             raw_conditions = json.loads(raw_conditions)
-        except json.JSONDecodeError:
-            raise ValidationError("Trigger conditions must be valid JSON.")
+        except json.JSONDecodeError as exc:
+            raise ValidationError("Trigger conditions must be valid JSON.") from exc
 
     if isinstance(raw_conditions, list):
         group_operator = "AND"
@@ -102,8 +102,6 @@ def _normalize_trigger_conditions(raw_conditions):
 
     group_operator = "OR" if group_operator == "OR" else "AND"
     normalized = []
-    supplied_count = len(condition_list)
-
     for condition in condition_list:
         if not isinstance(condition, dict):
             raise ValidationError(
@@ -125,9 +123,6 @@ def _normalize_trigger_conditions(raw_conditions):
 
         normalized.append(normalized_condition)
 
-    if supplied_count > 0 and not normalized:
-        raise ValidationError("At least one valid trigger condition is required.")
-
     if not normalized:
         return None
 
@@ -135,6 +130,24 @@ def _normalize_trigger_conditions(raw_conditions):
         "operator": group_operator,
         "conditions": normalized,
     }
+
+
+def _parse_optional_int_setting(field_name, raw_value):
+    if raw_value in (None, ""):
+        return None
+    if isinstance(raw_value, bool):
+        raise ValidationError({field_name: "Must be an integer."})
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, str):
+        value = raw_value.strip()
+        digits = value.lstrip("+-")
+        if digits and digits.isascii() and digits.isdigit():
+            try:
+                return int(value)
+            except ValueError as exc:
+                raise ValidationError({field_name: "Must be an integer."}) from exc
+    raise ValidationError({field_name: "Must be an integer."})
 
 
 def _serialize_stage_approval_groups(stage):
@@ -366,12 +379,10 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     if cadence in {"weekly", "monthly"}:
         try:
             cadence_day = _parse_optional_int_setting(
-                cadence_day_raw, "notification_cadence_day"
+                "notification_cadence_day", cadence_day_raw
             )
         except ValidationError:
-            add_error(
-                "Notification cadence day must be an integer value."
-            )
+            add_error("Notification cadence day must be an integer value.")
 
     if cadence == "weekly" and cadence_day not in range(0, 7):
         add_error("Weekly notification cadence requires a digest day between 0 and 6.")
@@ -1353,24 +1364,6 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     }
 
     # Optional numeric fields
-    def _parse_optional_int_setting(field_name, raw_value):
-        if raw_value in (None, ""):
-            return None
-        if isinstance(raw_value, bool):
-            raise ValidationError({field_name: "Must be an integer."})
-        if isinstance(raw_value, int):
-            return raw_value
-        if isinstance(raw_value, str):
-            value = raw_value.strip()
-            digits = value.lstrip("+-")
-            if digits and digits.isascii() and digits.isdigit():
-                try:
-                    return int(value)
-                except ValueError as exc:
-                    raise ValidationError({field_name: "Must be an integer."}) from exc
-            raise ValidationError({field_name: "Must be an integer."})
-        raise ValidationError({field_name: "Must be an integer."})
-
     for key in (
         "approval_deadline_days",
         "send_reminder_after_days",

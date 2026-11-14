@@ -1750,7 +1750,7 @@ class TestFormBuilderSavePayloadValidation:
         assert response.json()["success"] is False
         assert not FormDefinition.objects.filter(slug="form").exists()
 
-    @pytest.mark.parametrize("field_ids", [[[], []], ["new_1", "new_1"], [1, 1]])
+    @pytest.mark.parametrize("field_ids", [[[], []], ["new_1", "new_1"]])
     def test_rejects_malformed_or_duplicate_field_ids(
         self, client, superuser, field_ids
     ):
@@ -1773,6 +1773,31 @@ class TestFormBuilderSavePayloadValidation:
         assert response.status_code == 400
         assert response.json()["success"] is False
         assert not FormDefinition.objects.filter(slug="form").exists()
+
+    def test_rejects_duplicate_persisted_field_ids_on_update(self, client, superuser):
+        client.force_login(superuser)
+        form = FormDefinition.objects.create(name="Form", slug="form")
+        field = FormField.objects.create(form_definition=form, field_name="field_0")
+
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "id": form.id,
+                    "name": form.name,
+                    "slug": form.slug,
+                    "fields": [
+                        {"id": field.id, "field_name": "field_0"},
+                        {"id": field.id, "field_name": "field_0_dup"},
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["success"] is False
+        assert FormField.objects.filter(form_definition=form).count() == 1
 
     @pytest.mark.parametrize(
         "field_name",
@@ -2552,8 +2577,17 @@ class TestDocumentTemplateAPI:
             content_type="application/json",
         )
         assert resp.status_code == 200
+        payload = resp.json()
+        t2 = DocumentTemplate.objects.get(id=payload["id"])
         t1.refresh_from_db()
         assert t1.is_default is False
+        assert t2.is_default is True
+        assert (
+            DocumentTemplate.objects.filter(
+                form_definition=form_definition, is_default=True
+            ).count()
+            == 1
+        )
 
     def test_non_staff_cannot_access(self, client, user, form_definition):
         client.force_login(user)

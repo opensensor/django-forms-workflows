@@ -26,7 +26,7 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import F, Prefetch
+from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -1025,14 +1025,18 @@ def check_approval_deadlines() -> str:
         submission_ids = list(submissions.values_list("id", flat=True))
         latest_task_by_submission_id = {}
         if submission_ids:
+            latest_task_id_per_submission = (
+                ApprovalTask.objects.filter(submission_id=OuterRef("submission_id"))
+                .order_by("-created_at", "-pk")
+                .values("pk")[:1]
+            )
             latest_tasks = (
                 ApprovalTask.objects.filter(submission_id__in=submission_ids)
+                .filter(pk=Subquery(latest_task_id_per_submission))
                 .select_related("workflow_stage__workflow")
-                .order_by("submission_id", "-created_at", "-pk")
             )
             for task in latest_tasks:
-                if task.submission_id not in latest_task_by_submission_id:
-                    latest_task_by_submission_id[task.submission_id] = task
+                latest_task_by_submission_id[task.submission_id] = task
 
         for submission in submissions:
             latest_task = latest_task_by_submission_id.get(submission.id)

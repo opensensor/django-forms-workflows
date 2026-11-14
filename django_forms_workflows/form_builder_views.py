@@ -35,6 +35,21 @@ from .security import builder_permission_required
 logger = logging.getLogger(__name__)
 
 
+def _clone_document_templates(*, original_form, cloned_form):
+    """
+    Clone DocumentTemplate records from `original_form` to `cloned_form`.
+
+    This preserves template content and configuration flags (including default
+    and active settings) by copying all model fields except identity and
+    re-binding the foreign key to the cloned form definition.
+    """
+    for template in DocumentTemplate.objects.filter(form_definition=original_form):
+        template.pk = None
+        template.id = None
+        template.form_definition = cloned_form
+        template.save()
+
+
 def _copy_model_fields(instance, excluded):
     """Return concrete field values suitable for creating an independent copy."""
     return {
@@ -300,6 +315,10 @@ def form_builder_clone(request, form_id):
                 cloned_stages=cloned_stages_by_original_id,
             )
             _clone_post_submission_actions(
+                original_form=original_form,
+                cloned_form=cloned_form,
+            )
+            _clone_document_templates(
                 original_form=original_form,
                 cloned_form=cloned_form,
             )

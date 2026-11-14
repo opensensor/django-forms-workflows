@@ -344,7 +344,7 @@ def test_deliver_workflow_webhook_does_not_retry_on_connection_error_at_max_retr
     ):
         mock_request.side_effect = requests.ConnectionError("connection failed")
         deliver_workflow_webhook(
-            endpoint.id, "submission.created", payload, submission.id, attempt=1
+            endpoint.id, "submission.created", payload, submission.id, attempt=2
         )
 
     mock_retry.assert_not_called()

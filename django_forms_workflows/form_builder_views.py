@@ -696,7 +696,14 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     form_steps = data.get("form_steps", [])
     enable_auto_save = data.get("enable_auto_save", True)
     auto_save_interval = data.get("auto_save_interval", 30)
-    fields_data = data.get("fields", [])
+
+    if "fields" not in data:
+        raise FormBuilderPayloadError("Missing required 'fields' property.")
+    fields_data = data["fields"]
+    if not isinstance(fields_data, list):
+        raise FormBuilderPayloadError("'fields' must be a list.")
+    if any(not isinstance(field, dict) for field in fields_data):
+        raise FormBuilderPayloadError("'fields' must be a list of objects.")
 
     # Create or update form definition
     if form_definition is not None:

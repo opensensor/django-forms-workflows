@@ -26,7 +26,7 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import F, Prefetch
+from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -1025,14 +1025,18 @@ def check_approval_deadlines() -> str:
         submission_ids = list(submissions.values_list("id", flat=True))
         latest_task_by_submission_id = {}
         if submission_ids:
+            latest_task_id_per_submission = (
+                ApprovalTask.objects.filter(submission_id=OuterRef("submission_id"))
+                .order_by("-created_at", "-pk")
+                .values("pk")[:1]
+            )
             latest_tasks = (
                 ApprovalTask.objects.filter(submission_id__in=submission_ids)
+                .filter(pk=Subquery(latest_task_id_per_submission))
                 .select_related("workflow_stage__workflow")
-                .order_by("submission_id", "-created_at", "-pk")
             )
             for task in latest_tasks:
-                if task.submission_id not in latest_task_by_submission_id:
-                    latest_task_by_submission_id[task.submission_id] = task
+                latest_task_by_submission_id[task.submission_id] = task
 
         for submission in submissions:
             latest_task = latest_task_by_submission_id.get(submission.id)
@@ -1208,6 +1212,21 @@ def send_batched_notifications() -> str:
                 if notification_type == "submission_received":
                     delivered = _dispatch_submission_digest(recipient_email, current)
                 elif notification_type == "approval_request":
+                    actionable = [
+                        n
+                        for n in current
+                        if n.submission
+                        and n.approval_task
+                        and n.approval_task.status == "pending"
+                    ]
+                    obsolete_ids = {n.id for n in current} - {n.id for n in actionable}
+                    if obsolete_ids:
+                        PendingNotification.objects.filter(id__in=obsolete_ids).update(
+                            sent=True
+                        )
+                    current = actionable
+                    if not current:
+                        continue
                     delivered = _dispatch_approval_digest(recipient_email, current)
                 elif notification_type in (
                     "approval_notification",
@@ -1300,13 +1319,13 @@ def _dispatch_submission_digest(recipient_email: str, notifications: list) -> bo
 
 def _dispatch_approval_digest(recipient_email: str, notifications: list) -> bool:
     """Send a digest of approval_request notifications to one recipient."""
+
     sample = notifications[0]
     workflow = sample.workflow
     form_name = workflow.form_definition.name
-    count = len(notifications)
     items = []
     for n in notifications:
-        if n.submission:
+        if n.submission and n.approval_task and n.approval_task.status == "pending":
             items.append(
                 {
                     "submission": n.submission,
@@ -1316,11 +1335,11 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> bool
                             "forms_workflows:approve_submission",
                             args=[n.approval_task.id],
                         )
-                    )
-                    if n.approval_task
-                    else None,
+                    ),
                 }
             )
+
+    count = len(items)
     subject = (
         f"{count} item{'s' if count != 1 else ''} pending your approval — {form_name}"
     )
@@ -1923,9 +1942,8 @@ def send_notification_rules(
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Keep the transaction through delivery and log writes so locking the
-        submission row serializes concurrent attempts. Per-recipient failures
-        are caught inside this function so later recipients can still be sent.
+        Hold the submission lock through delivery and log writes so
+        concurrent dispatches cannot send the same recipient twice.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows
@@ -1933,15 +1951,29 @@ def send_notification_rules(
         FormSubmission.objects.select_for_update().get(pk=submission_id)
         workflow = rule.workflow
         if explicit_task:
-            rule_task = (
-                task
-                if task is not None
-                and (
-                    not task.workflow_stage_id
-                    or task.workflow_stage.workflow_id == workflow.pk
+            locked_task = None
+            if task is not None:
+                locked_task = (
+                    ApprovalTask.objects.select_for_update()
+                    .select_related("workflow_stage")
+                    .filter(pk=task.pk)
+                    .first()
                 )
-                else None
-            )
+            if (
+                locked_task is not None
+                and locked_task.submission_id == submission_id
+                and (
+                    not locked_task.workflow_stage_id
+                    or locked_task.workflow_stage.workflow_id == workflow.pk
+                )
+                and (
+                    event not in {"approval_request", "approval_reminder"}
+                    or locked_task.status == "pending"
+                )
+            ):
+                rule_task = locked_task
+            else:
+                rule_task = None
         elif event in ("workflow_approved", "workflow_denied"):
             if workflow.pk not in inferred_tasks_by_workflow:
                 final_status = (

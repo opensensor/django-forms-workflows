@@ -2859,6 +2859,76 @@ def test_unsupported_batch_type_remains_pending(form_definition):
 
 
 @pytest.mark.django_db
+def test_approval_digest_drops_obsolete_tasks_and_sends_pending_ones(
+    form_definition, user
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    approved_task = ApprovalTask.objects.create(
+        submission=submission, step_name="Done", status="approved"
+    )
+    pending_task = ApprovalTask.objects.create(
+        submission=submission, step_name="Review", status="pending"
+    )
+    notifications = [
+        PendingNotification.objects.create(
+            workflow=workflow,
+            notification_type="approval_request",
+            submission=submission,
+            approval_task=task,
+            recipient_email=user.email,
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+        )
+        for task in (approved_task, pending_task)
+    ]
+
+    with patch(
+        "django_forms_workflows.tasks._send_html_email", return_value=True
+    ) as send:
+        assert tasks_module.send_batched_notifications() == "sent=1"
+
+    assert len(send.call_args.args[3]["items"]) == 1
+    assert send.call_args.args[3]["items"][0]["approval_task"].id == pending_task.id
+    for notification in notifications:
+        notification.refresh_from_db()
+        assert notification.sent is True
+
+
+@pytest.mark.django_db
+def test_approval_digest_marks_all_obsolete_items_handled(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    approved_task = ApprovalTask.objects.create(
+        submission=submission, step_name="Done", status="approved"
+    )
+    notification = PendingNotification.objects.create(
+        workflow=workflow,
+        notification_type="approval_request",
+        submission=submission,
+        approval_task=approved_task,
+        recipient_email=user.email,
+        scheduled_for=timezone.now() - timedelta(minutes=1),
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as send:
+        assert tasks_module.send_batched_notifications() == "sent=0"
+
+    send.assert_not_called()
+    notification.refresh_from_db()
+    assert notification.sent is True
+
+
+@pytest.mark.django_db
 def test_daily_workflow_approved_queues_supported_digest(form_definition, user):
     workflow = WorkflowDefinition.objects.create(
         form_definition=form_definition, notification_cadence="daily"

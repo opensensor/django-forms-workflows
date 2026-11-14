@@ -4,6 +4,7 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 from django.core.exceptions import ValidationError
 
 from django_forms_workflows.models import (
@@ -287,6 +288,69 @@ def test_deliver_workflow_webhook_retries_failed_delivery(workflow, user):
     log = WebhookDeliveryLog.objects.get()
     assert log.success is False
     assert log.status_code == 500
+
+
+@pytest.mark.django_db
+def test_deliver_workflow_webhook_retries_on_timeout(workflow, user):
+    submission = _make_submission(workflow, user)
+    endpoint = WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="ERP",
+        url="https://example.com/hooks/erp",
+        events=["submission.created"],
+        max_retries=2,
+    )
+    payload = {"event": "submission.created", "submission": {"id": submission.id}}
+
+    with (
+        patch("django_forms_workflows.tasks.requests.request") as mock_request,
+        patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
+    ):
+        mock_request.side_effect = requests.Timeout("timed out")
+        deliver_workflow_webhook(
+            endpoint.id, "submission.created", payload, submission.id
+        )
+
+    mock_retry.assert_called_once_with(
+        endpoint_id=endpoint.id,
+        event="submission.created",
+        payload=payload,
+        submission_id=submission.id,
+        task_id=None,
+        attempt=2,
+    )
+    log = WebhookDeliveryLog.objects.get(endpoint=endpoint)
+    assert log.success is False
+    assert log.status_code is None
+
+
+@pytest.mark.django_db
+def test_deliver_workflow_webhook_does_not_retry_on_connection_error_at_max_retries(
+    workflow, user
+):
+    submission = _make_submission(workflow, user)
+    endpoint = WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="ERP",
+        url="https://example.com/hooks/erp",
+        events=["submission.created"],
+        max_retries=1,
+    )
+    payload = {"event": "submission.created", "submission": {"id": submission.id}}
+
+    with (
+        patch("django_forms_workflows.tasks.requests.request") as mock_request,
+        patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
+    ):
+        mock_request.side_effect = requests.ConnectionError("connection failed")
+        deliver_workflow_webhook(
+            endpoint.id, "submission.created", payload, submission.id, attempt=1
+        )
+
+    mock_retry.assert_not_called()
+    log = WebhookDeliveryLog.objects.get(endpoint=endpoint)
+    assert log.success is False
+    assert log.status_code is None
 
 
 @pytest.mark.django_db

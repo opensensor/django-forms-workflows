@@ -482,7 +482,15 @@ def form_builder_save(request):
                 status=400,
             )
 
-        fields = data.get("fields", [])
+        if "fields" not in data:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: missing required 'fields' property",
+                },
+                status=400,
+            )
+        fields = data.get("fields")
         if not isinstance(fields, list):
             return JsonResponse(
                 {"success": False, "error": "Invalid payload: 'fields' must be a list"},

@@ -701,7 +701,9 @@ def deliver_workflow_webhook(
             error_message="" if success else f"HTTP {response.status_code}",
             **log_data,
         )
-        should_retry = (not success) and endpoint.retry_on_failure and attempt < max_attempts
+        should_retry = (
+            (not success) and endpoint.retry_on_failure and attempt < max_attempts
+        )
     except Exception as exc:  # pragma: no cover
         WebhookDeliveryLog.objects.create(
             success=False,
@@ -2150,10 +2152,11 @@ def send_notification_rules(
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
                 if not PendingNotification.objects.filter(**pending_identity).exists():
                     PendingNotification.objects.create(
-                        **pending_identity, sent=False, scheduled_for=scheduled_for
+                        **pending_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

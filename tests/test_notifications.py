@@ -2678,7 +2678,8 @@ def test_deadline_scan_has_constant_query_count(
         status="pending",
     )
     ApprovalTask.objects.filter(pk=orphan_task.pk).update(created_at=stale_created_at)
-    with django_assert_num_queries(2):
+    # One bounded query identifies submissions that may need auto-approval.
+    with django_assert_num_queries(3):
         result = check_approval_deadlines()
     assert result == "expired=0, reminders=0, auto_approved=0"
     assert ApprovalTask.objects.filter(status="pending").count() == task_count + 1

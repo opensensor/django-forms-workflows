@@ -1933,15 +1933,34 @@ def send_notification_rules(
         FormSubmission.objects.select_for_update().get(pk=submission_id)
         workflow = rule.workflow
         if explicit_task:
-            rule_task = (
-                task
-                if task is not None
-                and (
-                    not task.workflow_stage_id
-                    or task.workflow_stage.workflow_id == workflow.pk
+            locked_task = None
+            if task is not None:
+                locked_task = (
+                    ApprovalTask.objects.select_for_update()
+                    .select_related("workflow_stage")
+                    .filter(pk=task.pk)
+                    .first()
                 )
-                else None
-            )
+            if (
+                locked_task is not None
+                and locked_task.submission_id == submission_id
+                and (
+                    not locked_task.workflow_stage_id
+                    or locked_task.workflow_stage.workflow_id == workflow.pk
+                )
+                and locked_task.status
+                not in {
+                    "approved",
+                    "rejected",
+                    "completed",
+                    "expired",
+                    "cancelled",
+                    "withdrawn",
+                }
+            ):
+                rule_task = locked_task
+            else:
+                rule_task = None
         elif event in ("workflow_approved", "workflow_denied"):
             if workflow.pk not in inferred_tasks_by_workflow:
                 final_status = (

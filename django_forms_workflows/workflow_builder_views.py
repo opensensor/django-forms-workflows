@@ -743,7 +743,16 @@ def workflow_builder_save(request):
                             )
 
         logger.info(f"Saving workflow for form {form_id}")
-        logger.info(f"Workflow data: {workflow_data}")
+        edge_data = workflow_data.get("edges", [])
+        node_count = len(nodes) if isinstance(nodes, list) else 0
+        edge_count = len(edge_data) if isinstance(edge_data, list) else 0
+        logger.info(
+            "Workflow payload metadata: form_id=%s workflow_id=%s node_count=%s edge_count=%s",
+            form_id,
+            workflow_id,
+            node_count,
+            edge_count,
+        )
 
         if not form_id:
             return JsonResponse(

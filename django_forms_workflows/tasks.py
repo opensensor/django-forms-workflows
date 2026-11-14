@@ -682,6 +682,7 @@ def deliver_workflow_webhook(
     }
     max_attempts = 1 + max(0, endpoint.max_retries)
 
+    should_retry = False
     try:
         response = requests.request(
             "POST",
@@ -699,7 +700,17 @@ def deliver_workflow_webhook(
             error_message="" if success else f"HTTP {response.status_code}",
             **log_data,
         )
-        if not success and endpoint.retry_on_failure and attempt < max_attempts:
+        should_retry = (not success) and endpoint.retry_on_failure and attempt < max_attempts
+    except Exception as exc:  # pragma: no cover
+        WebhookDeliveryLog.objects.create(
+            success=False,
+            error_message=str(exc),
+            **log_data,
+        )
+        should_retry = endpoint.retry_on_failure and attempt < max_attempts
+
+    if should_retry:
+        try:
             _schedule_webhook_retry(
                 endpoint_id=endpoint.id,
                 event=event,
@@ -708,20 +719,11 @@ def deliver_workflow_webhook(
                 task_id=task_id,
                 attempt=attempt + 1,
             )
-    except Exception as exc:  # pragma: no cover
-        WebhookDeliveryLog.objects.create(
-            success=False,
-            error_message=str(exc),
-            **log_data,
-        )
-        if endpoint.retry_on_failure and attempt < max_attempts:
-            _schedule_webhook_retry(
-                endpoint_id=endpoint.id,
-                event=event,
-                payload=payload,
-                submission_id=submission_id,
-                task_id=task_id,
-                attempt=attempt + 1,
+        except Exception:  # pragma: no cover
+            logger.exception(
+                "Failed to enqueue webhook retry for endpoint %s on attempt %s",
+                endpoint.id,
+                attempt,
             )
 
 

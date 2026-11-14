@@ -351,8 +351,19 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
 
     settings_data = settings_nodes[0].get("data", {}) if settings_nodes else {}
     cadence = settings_data.get("notification_cadence") or "immediate"
-    cadence_day = settings_data.get("notification_cadence_day")
+    cadence_day_raw = settings_data.get("notification_cadence_day")
     cadence_field = settings_data.get("notification_cadence_form_field")
+
+    cadence_day = None
+    if cadence in {"weekly", "monthly"}:
+        try:
+            cadence_day = _parse_optional_int_setting(
+                cadence_day_raw, "notification_cadence_day"
+            )
+        except ValidationError:
+            add_error(
+                "Notification cadence day must be an integer value."
+            )
 
     if cadence == "weekly" and cadence_day not in range(0, 7):
         add_error("Weekly notification cadence requires a digest day between 0 and 6.")

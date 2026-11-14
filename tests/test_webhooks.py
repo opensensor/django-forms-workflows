@@ -219,9 +219,12 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
             endpoint.id, "submission.created", payload, submission.id
         )
 
-    headers = mock_request.call_args.kwargs["headers"]
-    assert headers["Authorization"] == "Bearer abc"
+    mock_request.assert_called_once()
     request_kwargs = mock_request.call_args.kwargs
+    assert request_kwargs["url"] == endpoint.url
+    assert request_kwargs["method"].upper() == "POST"
+    headers = request_kwargs["headers"]
+    assert headers["Authorization"] == "Bearer abc"
     if "data" in request_kwargs and request_kwargs["data"] is not None:
         body = request_kwargs["data"]
         if isinstance(body, str):

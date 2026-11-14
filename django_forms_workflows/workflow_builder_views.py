@@ -880,6 +880,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         node_data["sub_workflow_id"] = sub_workflow_defaults[
                             "sub_workflow_id"
                         ]
+                        node_data["sub_workflow_id_type"] = "workflow"
                         node_data["sub_workflow_name"] = sub_workflow_defaults[
                             "sub_workflow_name"
                         ]

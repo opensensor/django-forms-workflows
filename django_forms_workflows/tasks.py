@@ -2063,7 +2063,7 @@ def send_notification_rules(
         try:
             subject = subject_tpl.format_map(defaultdict(str, _pipe_vars))
         except Exception:
-            subject = subject_tpl.format(
+            subject = default_subject_tpl.format(
                 form_name=form_name, submission_id=submission.id
             )
 

@@ -884,6 +884,19 @@ class TestConvertVisualToWorkflow:
             name="Child Form", slug="child-form"
         )
         target_workflow = WorkflowDefinition.objects.create(form_definition=target_form)
+
+        # Ensure IDs are distinct so this test really exercises sub_workflow_id_type.
+        if target_form.id == target_workflow.id:
+            FormDefinition.objects.create(name="ID spacer", slug="id-spacer")
+            target_form = FormDefinition.objects.create(
+                name="Child Form 2", slug="child-form-2"
+            )
+            target_workflow = WorkflowDefinition.objects.create(
+                form_definition=target_form
+            )
+
+        assert target_form.id != target_workflow.id
+
         target_id = (
             target_workflow.id if target_id_type == "workflow" else target_form.id
         )

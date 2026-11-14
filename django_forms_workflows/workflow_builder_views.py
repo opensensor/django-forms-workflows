@@ -83,7 +83,7 @@ def _normalize_trigger_conditions(raw_conditions):
         try:
             raw_conditions = json.loads(raw_conditions)
         except json.JSONDecodeError:
-            return None
+            raise ValidationError("Trigger conditions must be valid JSON.")
 
     if isinstance(raw_conditions, list):
         group_operator = "AND"
@@ -102,14 +102,19 @@ def _normalize_trigger_conditions(raw_conditions):
 
     group_operator = "OR" if group_operator == "OR" else "AND"
     normalized = []
+    supplied_count = len(condition_list)
 
     for condition in condition_list:
         if not isinstance(condition, dict):
-            continue
+            raise ValidationError(
+                "Each trigger condition must be an object with 'field' and 'operator'."
+            )
         field_name = str(condition.get("field", "")).strip()
         operator = str(condition.get("operator", "equals")).strip()
-        if not field_name or operator not in SUPPORTED_CONDITION_OPERATORS:
-            continue
+        if not field_name:
+            raise ValidationError("Trigger condition field cannot be empty.")
+        if operator not in SUPPORTED_CONDITION_OPERATORS:
+            raise ValidationError(f"Unsupported trigger condition operator: {operator}")
 
         normalized_condition = {
             "field": field_name,
@@ -119,6 +124,9 @@ def _normalize_trigger_conditions(raw_conditions):
             normalized_condition["value"] = condition.get("value", "")
 
         normalized.append(normalized_condition)
+
+    if supplied_count > 0 and not normalized:
+        raise ValidationError("At least one valid trigger condition is required.")
 
     if not normalized:
         return None

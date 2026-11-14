@@ -949,8 +949,8 @@ def test_notification_ignores_task_from_another_submission(form_definition, user
             submission.id, "approval_request", task_id=other_task.id
         )
 
-    assert mock_send.call_count == 1
-    assert "task" not in mock_send.call_args.args[3]
+    mock_send.assert_not_called()
+    assert not NotificationLog.objects.filter(submission=submission).exists()
 
 
 # ── approver context in template rendering ─────────────────────────────
@@ -2917,8 +2917,8 @@ class TestNotifyStageGroupsOnlyTaskHolders:
 
 
 @pytest.mark.django_db
-def test_send_notification_rules_tolerates_deleted_task(form_definition, user):
-    """A task deleted before the Celery job runs must not abort the dispatch."""
+def test_send_notification_rules_skips_deleted_explicit_task(form_definition, user):
+    """A task deleted before the Celery job runs must not dispatch unscoped."""
     wf = WorkflowDefinition.objects.create(form_definition=form_definition)
     NotificationRule.objects.create(
         workflow=wf,
@@ -2935,8 +2935,8 @@ def test_send_notification_rules_tolerates_deleted_task(form_definition, user):
     with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
         send_notification_rules(submission.id, "approval_request", task_id=999999)
 
-    assert mock_send.called
-    assert "task" not in mock_send.call_args.args[3]
+    mock_send.assert_not_called()
+    assert not NotificationLog.objects.filter(submission=submission).exists()
 
 
 @pytest.mark.django_db

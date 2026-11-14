@@ -369,9 +369,20 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 f"Notification cadence references an unknown date field: {cadence_field}."
             )
 
-    for rule_index, rule_data in enumerate(
-        settings_data.get("notification_rules", []) or [], start=1
-    ):
+    notification_rules = settings_data.get("notification_rules", [])
+    if notification_rules is None:
+        notification_rules = []
+    elif not isinstance(notification_rules, list):
+        add_error("Workflow settings 'notification_rules' must be a list.")
+        notification_rules = []
+
+    for rule_index, rule_data in enumerate(notification_rules, start=1):
+        if not isinstance(rule_data, dict):
+            add_error(
+                f"Notification rule {rule_index} must be an object."
+            )
+            continue
+
         stage_node_id = rule_data.get("stage_node_id")
         stage_id = rule_data.get("stage_id")
         if stage_node_id and stage_node_id not in stage_node_ids:

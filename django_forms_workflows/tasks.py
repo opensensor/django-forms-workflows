@@ -25,7 +25,7 @@ import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import F, Prefetch
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -1934,7 +1934,7 @@ def send_notification_rules(
                         workflow_stage__workflow_id=workflow.pk,
                         status=final_status,
                     )
-                    .order_by("-completed_at", "-id")
+                    .order_by(F("completed_at").desc(nulls_last=True), "-id")
                     .first()
                 )
             rule_task = inferred_tasks_by_workflow[workflow.pk]

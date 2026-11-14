@@ -11,6 +11,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_time
@@ -590,13 +591,18 @@ def workflow_builder_load(request, form_id):
 
     # Legacy additional-form support in the builder.
     forms = []
-    for form in FormDefinition.objects.filter(is_active=True).order_by("name"):
+    active_forms = (
+        FormDefinition.objects.filter(is_active=True)
+        .annotate(field_count=Count("fields"))
+        .order_by("name")
+    )
+    for form in active_forms:
         forms.append(
             {
                 "id": form.id,
                 "name": form.name,
                 "slug": form.slug,
-                "field_count": form.fields.count(),
+                "field_count": form.field_count,
             }
         )
 
@@ -605,6 +611,7 @@ def workflow_builder_load(request, form_id):
         WorkflowDefinition.objects.select_related("form_definition")
         .filter(form_definition__is_active=True)
         .exclude(form_definition_id=form_definition.id)
+        .annotate(form_field_count=Count("form_definition__fields"))
         .order_by("form_definition__name", "id")
     )
     for idx, target_workflow in enumerate(eligible_workflows, start=1):
@@ -616,7 +623,7 @@ def workflow_builder_load(request, form_id):
                 ),
                 "form_id": target_workflow.form_definition_id,
                 "form_name": target_workflow.form_definition.name,
-                "field_count": target_workflow.form_definition.fields.count(),
+                "field_count": target_workflow.form_field_count,
             }
         )
 

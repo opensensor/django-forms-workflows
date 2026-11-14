@@ -969,7 +969,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 new_field.full_clean()
             except ValidationError as exc:
                 raise FormBuilderPayloadError(
-                    f"Invalid field payload for '{field_data.get('field_name', '')}'"
+                    f"Invalid field payload for '{field_data.get('field_name', '')}': "
+                    f"{_form_validation_message(exc)}"
                 ) from exc
             new_field.save()
             updated_field_ids.add(new_field.id)
@@ -981,10 +982,10 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 existing_field = FormField.objects.get(
                     id=field_id, form_definition=form_definition
                 )
-            except FormField.DoesNotExist:
+            except FormField.DoesNotExist as exc:
                 raise FormBuilderPayloadError(
                     f"Invalid field id {field_id} for this form"
-                )
+                ) from exc
 
             for prop_name, prop_value in field_props.items():
                 setattr(existing_field, prop_name, prop_value)
@@ -992,7 +993,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 existing_field.full_clean()
             except ValidationError as exc:
                 raise FormBuilderPayloadError(
-                    f"Invalid field payload for '{field_data.get('field_name', '')}'"
+                    f"Invalid field payload for '{field_data.get('field_name', '')}': "
+                    f"{_form_validation_message(exc)}"
                 ) from exc
             existing_field.save()
             updated_field_ids.add(field_id)

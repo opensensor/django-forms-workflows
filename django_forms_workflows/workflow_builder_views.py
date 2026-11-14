@@ -84,11 +84,15 @@ def _normalize_trigger_conditions(raw_conditions):
             raw_conditions = json.loads(raw_conditions)
         except json.JSONDecodeError as exc:
             raise ValidationError("Trigger conditions must be valid JSON.") from exc
+        if not raw_conditions:
+            return None
 
     if isinstance(raw_conditions, list):
         group_operator = "AND"
         condition_list = raw_conditions
     elif isinstance(raw_conditions, dict):
+        if not raw_conditions:
+            return None
         if isinstance(raw_conditions.get("conditions"), list):
             group_operator = str(raw_conditions.get("operator", "AND")).upper()
             condition_list = raw_conditions.get("conditions", [])
@@ -96,9 +100,13 @@ def _normalize_trigger_conditions(raw_conditions):
             group_operator = "AND"
             condition_list = [raw_conditions]
         else:
-            return None
+            raise ValidationError(
+                "Trigger conditions must be a list, a single condition object, or an object with a 'conditions' list."
+            )
     else:
-        return None
+        raise ValidationError(
+            "Trigger conditions must be a list, a single condition object, or an object with a 'conditions' list."
+        )
 
     group_operator = "OR" if group_operator == "OR" else "AND"
     normalized = []

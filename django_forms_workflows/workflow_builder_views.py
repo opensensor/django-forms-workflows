@@ -1094,7 +1094,9 @@ def convert_workflow_to_visual(workflow, form_definition):
         .order_by("event", "stage_id", "id")
     ]
     # Post-submission actions
-    actions = form_definition.post_actions.filter(is_active=True).order_by("order")
+    # Include both active and inactive actions so load/save round-trips do not
+    # accidentally delete inactive actions omitted from the visual model.
+    actions = form_definition.post_actions.order_by("order")
 
     # Actions continue on the same horizontal line for a cleaner flow
     for action in actions:
@@ -1107,6 +1109,7 @@ def convert_workflow_to_visual(workflow, form_definition):
             "name": action.name,
             "action_type": action.action_type,
             "trigger": action.trigger,
+            "is_active": action.is_active,
         }
 
         # Add action-type-specific configuration

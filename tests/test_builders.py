@@ -555,6 +555,43 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Must be an integer"):
             convert_visual_to_workflow(visual, form_definition)
 
+    def test_rejects_duplicate_stage_ids_across_integer_and_string(
+        self, staged_workflow, form_definition
+    ):
+        stage = staged_workflow.stages.first()
+        visual = self._make_visual(
+            stages=[
+                {
+                    "stage_id": stage.id,
+                    "name": "First",
+                    "requires_manager_approval": True,
+                },
+                {
+                    "stage_id": str(stage.id),
+                    "name": "Second",
+                    "requires_manager_approval": True,
+                },
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="Duplicate stage_id"):
+            convert_visual_to_workflow(visual, form_definition, staged_workflow)
+
+    @pytest.mark.parametrize("stage_id", [True, [], "²", "9" * 5000])
+    def test_rejects_invalid_stage_id(self, form_definition, stage_id):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "stage_id": stage_id,
+                    "name": "Review",
+                    "requires_manager_approval": True,
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="Invalid stage_id"):
+            convert_visual_to_workflow(visual, form_definition)
+
     @pytest.mark.parametrize(("cadence", "day"), [("weekly", "3"), ("monthly", "15")])
     def test_accepts_string_notification_cadence_day(
         self, form_definition, cadence, day

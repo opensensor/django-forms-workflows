@@ -935,29 +935,25 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data.setdefault(key, value)
 
-            existing_action_ids = {
+            existing_email_action_ids = {
                 node.get("data", {}).get("action_id")
                 for node in visual_data.get("nodes", [])
-                if node.get("data", {}).get("action_id")
+                if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
             for index, (action_id, defaults) in enumerate(
-                post_submission_action_defaults.items()
+                email_action_defaults.items()
             ):
-                if action_id in existing_action_ids:
+                if action_id in existing_email_action_ids:
                     continue
                 visual_data.setdefault("nodes", []).append(
                     {
-                        "id": defaults.get("node_id", f"post-submission-action-{action_id}"),
-                        "type": defaults.get("node_type", "post_submission_action"),
-                        "x": defaults.get("x", 0),
-                        "y": defaults.get("y", index * 120),
+                        "id": f"email-action-{action_id}",
+                        "type": "email",
+                        "x": 0,
+                        "y": index * 120,
                         "data": {
                             "action_id": action_id,
-                            **{
-                                key: value
-                                for key, value in defaults.items()
-                                if key not in {"node_id", "node_type", "x", "y"}
-                            },
+                            **defaults,
                         },
                     }
                 )
@@ -1441,19 +1437,39 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     stage_node_map = {}
     stage_field_map = {}
 
-    submitted_stage_ids = []
+    submitted_stage_ids = set()
     duplicate_stage_ids = set()
     for snode in stage_nodes:
         sdata = snode.get("data", {})
-        stage_id = sdata.get("stage_id")
-        if stage_id:
-            if stage_id in submitted_stage_ids:
-                duplicate_stage_ids.add(stage_id)
-            else:
-                submitted_stage_ids.append(stage_id)
+        raw_stage_id = sdata.get("stage_id")
+        if raw_stage_id in (None, ""):
+            continue
+        if isinstance(raw_stage_id, bool):
+            raise ValidationError("Invalid stage_id.")
+        if isinstance(raw_stage_id, int):
+            stage_id = raw_stage_id
+        elif isinstance(raw_stage_id, str):
+            value = raw_stage_id.strip()
+            if not value.isascii() or not value.isdigit():
+                raise ValidationError("Invalid stage_id.")
+            try:
+                stage_id = int(value)
+            except ValueError as exc:
+                raise ValidationError("Invalid stage_id.") from exc
+        else:
+            raise ValidationError("Invalid stage_id.")
+        if stage_id <= 0:
+            raise ValidationError("Invalid stage_id.")
+        sdata["stage_id"] = stage_id
+        if stage_id in submitted_stage_ids:
+            duplicate_stage_ids.add(stage_id)
+        else:
+            submitted_stage_ids.add(stage_id)
 
     if duplicate_stage_ids:
-        duplicate_ids_display = ", ".join(str(sid) for sid in sorted(duplicate_stage_ids))
+        duplicate_ids_display = ", ".join(
+            str(sid) for sid in sorted(duplicate_stage_ids)
+        )
         raise ValidationError(
             f"Duplicate stage_id values in workflow data are not allowed: {duplicate_ids_display}."
         )
@@ -1580,9 +1596,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 action_id = raw_action_id
             elif isinstance(raw_action_id, str):
                 action_id_str = raw_action_id.strip()
-                if not action_id_str.isdigit():
+                if not action_id_str.isascii() or not action_id_str.isdigit():
                     raise ValidationError("Invalid action ID.")
-                action_id = int(action_id_str)
+                try:
+                    action_id = int(action_id_str)
+                except ValueError as exc:
+                    raise ValidationError("Invalid action ID.") from exc
             else:
                 raise ValidationError("Invalid action ID.")
 

@@ -1894,6 +1894,31 @@ class TestFormBuilderSavePayloadValidation:
     """form_builder_save must keep fields and stages scoped to the form being
     saved, and reject bad references without persisting any of the save."""
 
+    def test_rejects_invalid_field_name_and_rolls_back_form(self, client, superuser):
+        client.force_login(superuser)
+
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "name": "New form",
+                    "slug": "new-form",
+                    "fields": [
+                        {
+                            "field_name": "invalid name",
+                            "field_label": "Invalid",
+                            "field_type": "text",
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert "field_name" in response.json()["error"]
+        assert not FormDefinition.objects.filter(slug="new-form").exists()
+
     @pytest.mark.parametrize(
         "payload",
         [
@@ -2936,6 +2961,21 @@ class TestFormBuilderTemplateAPI:
 
 class TestSharedOptionListAPI:
     """Tests for the centrally managed shared option list CRUD API endpoints."""
+
+    def test_save_rejects_invalid_slug(self, client, superuser):
+        client.force_login(superuser)
+
+        response = client.post(
+            _fb_url("builder/api/shared-lists/save/"),
+            data=json.dumps(
+                {"name": "Invalid list", "slug": "bad slug", "items": ["One"]}
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert "slug" in response.json()["details"]
+        assert not SharedOptionList.objects.filter(name="Invalid list").exists()
 
     def test_list_requires_staff(self, client, user):
         client.force_login(user)

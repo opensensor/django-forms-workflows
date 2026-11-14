@@ -772,7 +772,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             form_definition.save()
         except IntegrityError as exc:
             raise FormBuilderPayloadError(
-                {"slug": ["A form with this slug already exists."]}
+                "A form with this slug already exists."
             ) from exc
     else:
         form_definition = FormDefinition(
@@ -813,7 +813,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             form_definition.save()
         except IntegrityError as exc:
             raise FormBuilderPayloadError(
-                {"slug": ["A form with this slug already exists."]}
+                "A form with this slug already exists."
             ) from exc
 
     # Track existing field IDs to determine which to delete
@@ -963,20 +963,40 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             isinstance(field_id, str)
             and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", field_id)
         ):
-            # Create new field
-            new_field = FormField.objects.create(**field_props)
+            # Create new field (validate model-level constraints before persisting)
+            new_field = FormField(**field_props)
+            try:
+                new_field.full_clean()
+            except ValidationError as exc:
+                raise FormBuilderPayloadError(
+                    f"Invalid field payload for '{field_data.get('field_name', '')}': "
+                    f"{_form_validation_message(exc)}"
+                ) from exc
+            new_field.save()
             updated_field_ids.add(new_field.id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = new_field.id
         elif isinstance(field_id, int):
             # Update existing field, scoped to current form_definition
-            updated_count = FormField.objects.filter(
-                id=field_id, form_definition=form_definition
-            ).update(**field_props)
-            if updated_count == 0:
+            try:
+                existing_field = FormField.objects.get(
+                    id=field_id, form_definition=form_definition
+                )
+            except FormField.DoesNotExist as exc:
                 raise FormBuilderPayloadError(
                     f"Invalid field id {field_id} for this form"
-                )
+                ) from exc
+
+            for prop_name, prop_value in field_props.items():
+                setattr(existing_field, prop_name, prop_value)
+            try:
+                existing_field.full_clean()
+            except ValidationError as exc:
+                raise FormBuilderPayloadError(
+                    f"Invalid field payload for '{field_data.get('field_name', '')}': "
+                    f"{_form_validation_message(exc)}"
+                ) from exc
+            existing_field.save()
             updated_field_ids.add(field_id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id
@@ -1439,17 +1459,36 @@ def shared_option_list_save(request):
             ol.slug = slug
             ol.items = validated_items
             ol.is_active = is_active
-            ol.save()
         else:
-            ol = SharedOptionList.objects.create(
+            ol = SharedOptionList(
                 name=name, slug=slug, items=validated_items, is_active=is_active
             )
+
+        ol.full_clean()
+        ol.save()
 
         return JsonResponse(
             {"success": True, "id": ol.id, "message": "List saved successfully"}
         )
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
+    except ValidationError as e:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Validation failed",
+                "details": getattr(e, "message_dict", {"__all__": e.messages}),
+            },
+            status=400,
+        )
+    except IntegrityError:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "A list with this name or slug already exists, or violates a database constraint.",
+            },
+            status=400,
+        )
     except Http404:
         raise
     except Exception:

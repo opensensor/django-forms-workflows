@@ -1429,6 +1429,23 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     stage_node_map = {}
     stage_field_map = {}
 
+    submitted_stage_ids = []
+    duplicate_stage_ids = set()
+    for snode in stage_nodes:
+        sdata = snode.get("data", {})
+        stage_id = sdata.get("stage_id")
+        if stage_id:
+            if stage_id in submitted_stage_ids:
+                duplicate_stage_ids.add(stage_id)
+            else:
+                submitted_stage_ids.append(stage_id)
+
+    if duplicate_stage_ids:
+        duplicate_ids_display = ", ".join(str(sid) for sid in sorted(duplicate_stage_ids))
+        raise ValidationError(
+            f"Duplicate stage_id values in workflow data are not allowed: {duplicate_ids_display}."
+        )
+
     for idx, snode in enumerate(stage_nodes, start=1):
         sdata = snode.get("data", {})
         stage_id = sdata.get("stage_id")

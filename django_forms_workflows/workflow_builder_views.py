@@ -258,16 +258,15 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         raw_stage_id = node.get("data", {}).get("stage_id")
         if raw_stage_id in (None, ""):
             continue
-        if isinstance(raw_stage_id, int):
+        if isinstance(raw_stage_id, int) and not isinstance(raw_stage_id, bool):
             stage_ids_in_payload.add(raw_stage_id)
         elif isinstance(raw_stage_id, str):
             normalized_stage_id = raw_stage_id.strip()
-            if not normalized_stage_id:
-                continue
-            if normalized_stage_id.isdigit():
-                stage_ids_in_payload.add(int(normalized_stage_id))
-            else:
-                stage_ids_in_payload.add(normalized_stage_id)
+            if normalized_stage_id.isascii() and normalized_stage_id.isdigit():
+                try:
+                    stage_ids_in_payload.add(int(normalized_stage_id))
+                except ValueError:
+                    pass  # The converter reports malformed stage IDs.
     errors = []
     field_assignments = {}
 
@@ -437,33 +436,26 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 f"Notification rule {rule_index} references a stage that is not present in the builder graph."
             )
 
-        normalized_existing_stage_ids = {
-            int(existing_id)
-            for existing_id in existing_stage_ids
-            if str(existing_id).isdigit()
-        }
-        normalized_stage_ids_in_payload = {
-            int(payload_id)
-            for payload_id in stage_ids_in_payload
-            if str(payload_id).isdigit()
-        }
-
         normalized_stage_id = None
         if stage_id not in (None, ""):
-            if isinstance(stage_id, int):
+            if isinstance(stage_id, int) and not isinstance(stage_id, bool):
                 normalized_stage_id = stage_id
-            elif isinstance(stage_id, str) and stage_id.isdigit():
-                normalized_stage_id = int(stage_id)
+            elif isinstance(stage_id, str):
+                value = stage_id.strip()
+                if value.isascii() and value.isdigit():
+                    try:
+                        normalized_stage_id = int(value)
+                    except ValueError:
+                        pass
+            if normalized_stage_id is None or normalized_stage_id <= 0:
+                add_error(f"Notification rule {rule_index} has an invalid stage ID.")
 
-        if normalized_stage_id is not None:
-            if normalized_stage_id not in normalized_existing_stage_ids:
+        if normalized_stage_id is not None and normalized_stage_id > 0:
+            if normalized_stage_id not in existing_stage_ids:
                 add_error(
                     f"Notification rule {rule_index} references an unknown workflow stage ID: {stage_id}."
                 )
-            elif (
-                normalized_stage_id not in normalized_stage_ids_in_payload
-                and not stage_node_id
-            ):
+            elif normalized_stage_id not in stage_ids_in_payload and not stage_node_id:
                 add_error(
                     f"Notification rule {rule_index} references workflow stage ID {stage_id}, but that stage is not present in the submitted builder graph."
                 )
@@ -1675,15 +1667,14 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
         actions_to_keep.append(action.id)
 
-    ordered_nodes = []
-    for node in (action_nodes + email_nodes):
-        node_data = node.get("data", {})
-        node_type = node_data.get("node_type")
-        if not node_type:
-            node_type = "email" if node in email_nodes else "action"
-        ordered_nodes.append((node_type, node))
+    ordered_nodes = [
+        node
+        for node in workflow_data.get("nodes", [])
+        if node.get("type") in {"action", "email"}
+    ]
 
-    for order, (node_type, node) in enumerate(ordered_nodes):
+    for order, node in enumerate(ordered_nodes):
+        node_type = node["type"]
         if node_type == "action":
             data = node.get("data", {})
             action_name = data.get("name", "Unnamed Action")
@@ -1711,8 +1702,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 action_data["db_alias"] = config.get("db_alias", "")
                 action_data["db_schema"] = config.get("db_schema", "")
                 action_data["db_table"] = config.get("db_table", "")
-                action_data["db_lookup_field"] = config.get("db_lookup_field", "ID_NUMBER")
-                action_data["db_user_field"] = config.get("db_user_field", "employee_id")
+                action_data["db_lookup_field"] = config.get(
+                    "db_lookup_field", "ID_NUMBER"
+                )
+                action_data["db_user_field"] = config.get(
+                    "db_user_field", "employee_id"
+                )
                 action_data["db_field_mappings"] = config.get(
                     "field_mappings", config if isinstance(config, list) else []
                 )
@@ -1733,11 +1728,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             continue
 
         data = node.get("data", {})
-        data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
         action_data = {
             "action_type": "email",
             "trigger": data.get("trigger", "on_approve"),
+            "order": order,
             "email_to": data.get("email_to", ""),
             "email_to_field": data.get("email_to_field", ""),
             "email_cc": data.get("email_cc", ""),

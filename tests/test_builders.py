@@ -798,6 +798,43 @@ class TestConvertVisualToWorkflow:
             "conditions": [{"field": "amount", "operator": "gt", "value": "500"}],
         }
 
+    def test_accepts_numeric_string_stage_reference_in_notification_rule(
+        self, staged_workflow, form_definition
+    ):
+        stage = staged_workflow.stages.order_by("order").first()
+        visual = {
+            "nodes": [
+                {"type": "start", "data": {}},
+                {
+                    "type": "workflow_settings",
+                    "data": {
+                        "notification_rules": [
+                            {
+                                "stage_id": str(stage.id),
+                                "event": "approval_request",
+                                "notify_submitter": True,
+                            }
+                        ]
+                    },
+                },
+                {
+                    "id": "stage_1",
+                    "type": "stage",
+                    "data": {
+                        "stage_id": str(stage.id),
+                        "name": stage.name,
+                        "requires_manager_approval": True,
+                    },
+                },
+                {"type": "end", "data": {}},
+            ],
+            "connections": [],
+        }
+
+        convert_visual_to_workflow(visual, form_definition, staged_workflow)
+
+        assert staged_workflow.notification_rules.get().stage_id == stage.id
+
     def test_creates_stage_approval_fields(self, form_with_fields, approval_group):
         field_email = form_with_fields.fields.get(field_name="email")
         field_notes = form_with_fields.fields.get(field_name="notes")
@@ -922,6 +959,33 @@ class TestConvertVisualToWorkflow:
         assert len(actions) == 1
         assert actions[0].name == "Update DB"
         assert actions[0].action_type == "database"
+
+    def test_preserves_mixed_email_and_action_order(self, form_definition):
+        visual = {
+            "nodes": [
+                {"type": "start", "data": {}},
+                {
+                    "type": "email",
+                    "data": {"name": "First email", "email_to": "first@example.com"},
+                },
+                {
+                    "type": "action",
+                    "data": {"name": "Database update", "action_type": "database"},
+                },
+                {
+                    "type": "email",
+                    "data": {"name": "Second email", "email_to": "second@example.com"},
+                },
+                {"type": "end", "data": {}},
+            ],
+            "connections": [],
+        }
+
+        convert_visual_to_workflow(visual, form_definition)
+
+        assert list(
+            form_definition.post_actions.order_by("order").values_list("name", "order")
+        ) == [("First email", 0), ("Database update", 1), ("Second email", 2)]
 
     def test_inactive_action_round_trip_preserves_identity(self, form_definition):
         workflow = WorkflowDefinition.objects.create(form_definition=form_definition)

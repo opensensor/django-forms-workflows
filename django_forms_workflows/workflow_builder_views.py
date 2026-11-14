@@ -253,11 +253,20 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         else set()
     )
     stage_node_ids = {node.get("id") for node in stage_nodes if node.get("id")}
-    stage_ids_in_payload = {
-        node.get("data", {}).get("stage_id")
-        for node in stage_nodes
-        if node.get("data", {}).get("stage_id")
-    }
+    stage_ids_in_payload = set()
+    for node in stage_nodes:
+        raw_stage_id = node.get("data", {}).get("stage_id")
+        if raw_stage_id in (None, ""):
+            continue
+        if isinstance(raw_stage_id, int) and not isinstance(raw_stage_id, bool):
+            stage_ids_in_payload.add(raw_stage_id)
+        elif isinstance(raw_stage_id, str):
+            normalized_stage_id = raw_stage_id.strip()
+            if normalized_stage_id.isascii() and normalized_stage_id.isdigit():
+                try:
+                    stage_ids_in_payload.add(int(normalized_stage_id))
+                except ValueError:
+                    pass  # The converter reports malformed stage IDs.
     errors = []
     field_assignments = {}
 
@@ -426,12 +435,27 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             add_error(
                 f"Notification rule {rule_index} references a stage that is not present in the builder graph."
             )
-        if stage_id:
-            if stage_id not in existing_stage_ids:
+
+        normalized_stage_id = None
+        if stage_id not in (None, ""):
+            if isinstance(stage_id, int) and not isinstance(stage_id, bool):
+                normalized_stage_id = stage_id
+            elif isinstance(stage_id, str):
+                value = stage_id.strip()
+                if value.isascii() and value.isdigit():
+                    try:
+                        normalized_stage_id = int(value)
+                    except ValueError:
+                        pass
+            if normalized_stage_id is None or normalized_stage_id <= 0:
+                add_error(f"Notification rule {rule_index} has an invalid stage ID.")
+
+        if normalized_stage_id is not None and normalized_stage_id > 0:
+            if normalized_stage_id not in existing_stage_ids:
                 add_error(
                     f"Notification rule {rule_index} references an unknown workflow stage ID: {stage_id}."
                 )
-            elif stage_id not in stage_ids_in_payload and not stage_node_id:
+            elif normalized_stage_id not in stage_ids_in_payload and not stage_node_id:
                 add_error(
                     f"Notification rule {rule_index} references workflow stage ID {stage_id}, but that stage is not present in the submitted builder graph."
                 )
@@ -743,7 +767,16 @@ def workflow_builder_save(request):
                             )
 
         logger.info(f"Saving workflow for form {form_id}")
-        logger.info(f"Workflow data: {workflow_data}")
+        edge_data = workflow_data.get("edges", [])
+        node_count = len(nodes) if isinstance(nodes, list) else 0
+        edge_count = len(edge_data) if isinstance(edge_data, list) else 0
+        logger.info(
+            "Workflow payload metadata: form_id=%s workflow_id=%s node_count=%s edge_count=%s",
+            form_id,
+            workflow_id,
+            node_count,
+            edge_count,
+        )
 
         if not form_id:
             return JsonResponse(
@@ -1634,58 +1667,72 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
         actions_to_keep.append(action.id)
 
-    for node in action_nodes:
-        data = node.get("data", {})
-        action_name = data.get("name", "Unnamed Action")
-        action_type = data.get("action_type", "database")
+    ordered_nodes = [
+        node
+        for node in workflow_data.get("nodes", [])
+        if node.get("type") in {"action", "email"}
+    ]
 
-        config = data.get("config") or {}
-        if isinstance(config, str):
-            try:
-                config = json.loads(config)
-            except json.JSONDecodeError:
+    for order, node in enumerate(ordered_nodes):
+        node_type = node["type"]
+        if node_type == "action":
+            data = node.get("data", {})
+            action_name = data.get("name", "Unnamed Action")
+            action_type = data.get("action_type", "database")
+
+            config = data.get("config") or {}
+            if isinstance(config, str):
+                try:
+                    config = json.loads(config)
+                except json.JSONDecodeError:
+                    config = {}
+
+            if config is None:
+                config = {}
+            elif not isinstance(config, dict | list):
                 config = {}
 
-        if config is None:
-            config = {}
-        elif not isinstance(config, dict | list):
-            config = {}
+            action_data = {
+                "action_type": action_type,
+                "trigger": data.get("trigger", "on_approve"),
+                "order": order,
+            }
 
-        action_data = {
-            "action_type": action_type,
-            "trigger": data.get("trigger", "on_approve"),
-        }
+            if action_type == "database":
+                action_data["db_alias"] = config.get("db_alias", "")
+                action_data["db_schema"] = config.get("db_schema", "")
+                action_data["db_table"] = config.get("db_table", "")
+                action_data["db_lookup_field"] = config.get(
+                    "db_lookup_field", "ID_NUMBER"
+                )
+                action_data["db_user_field"] = config.get(
+                    "db_user_field", "employee_id"
+                )
+                action_data["db_field_mappings"] = config.get(
+                    "field_mappings", config if isinstance(config, list) else []
+                )
+            elif action_type == "ldap":
+                action_data["ldap_dn_template"] = config.get("ldap_dn_template", "")
+                action_data["ldap_field_mappings"] = config.get(
+                    "field_mappings", config if isinstance(config, list) else []
+                )
+            elif action_type == "api":
+                action_data["api_endpoint"] = config.get("endpoint", "")
+                action_data["api_method"] = config.get("method", "POST")
+                action_data["api_headers"] = config.get("headers", {})
+                action_data["api_body_template"] = config.get("body_template", "")
+            elif action_type == "custom":
+                action_data["custom_handler_config"] = config
 
-        if action_type == "database":
-            action_data["db_alias"] = config.get("db_alias", "")
-            action_data["db_schema"] = config.get("db_schema", "")
-            action_data["db_table"] = config.get("db_table", "")
-            action_data["db_lookup_field"] = config.get("db_lookup_field", "ID_NUMBER")
-            action_data["db_user_field"] = config.get("db_user_field", "employee_id")
-            action_data["db_field_mappings"] = config.get(
-                "field_mappings", config if isinstance(config, list) else []
-            )
-        elif action_type == "ldap":
-            action_data["ldap_dn_template"] = config.get("ldap_dn_template", "")
-            action_data["ldap_field_mappings"] = config.get(
-                "field_mappings", config if isinstance(config, list) else []
-            )
-        elif action_type == "api":
-            action_data["api_endpoint"] = config.get("endpoint", "")
-            action_data["api_method"] = config.get("method", "POST")
-            action_data["api_headers"] = config.get("headers", {})
-            action_data["api_body_template"] = config.get("body_template", "")
-        elif action_type == "custom":
-            action_data["custom_handler_config"] = config
+            save_action(data, action_name, action_data)
+            continue
 
-        save_action(data, action_name, action_data)
-
-    for node in email_nodes:
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
         action_data = {
             "action_type": "email",
             "trigger": data.get("trigger", "on_approve"),
+            "order": order,
             "email_to": data.get("email_to", ""),
             "email_to_field": data.get("email_to_field", ""),
             "email_cc": data.get("email_cc", ""),

@@ -11,6 +11,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_time
@@ -590,13 +591,18 @@ def workflow_builder_load(request, form_id):
 
     # Legacy additional-form support in the builder.
     forms = []
-    for form in FormDefinition.objects.filter(is_active=True).order_by("name"):
+    active_forms = (
+        FormDefinition.objects.filter(is_active=True)
+        .annotate(field_count=Count("fields"))
+        .order_by("name")
+    )
+    for form in active_forms:
         forms.append(
             {
                 "id": form.id,
                 "name": form.name,
                 "slug": form.slug,
-                "field_count": form.fields.count(),
+                "field_count": form.field_count,
             }
         )
 
@@ -605,6 +611,7 @@ def workflow_builder_load(request, form_id):
         WorkflowDefinition.objects.select_related("form_definition")
         .filter(form_definition__is_active=True)
         .exclude(form_definition_id=form_definition.id)
+        .annotate(form_field_count=Count("form_definition__fields"))
         .order_by("form_definition__name", "id")
     )
     for idx, target_workflow in enumerate(eligible_workflows, start=1):
@@ -616,7 +623,7 @@ def workflow_builder_load(request, form_id):
                 ),
                 "form_id": target_workflow.form_definition_id,
                 "form_name": target_workflow.form_definition.name,
-                "field_count": target_workflow.form_definition.fields.count(),
+                "field_count": target_workflow.form_field_count,
             }
         )
 
@@ -789,6 +796,9 @@ def convert_workflow_to_visual(workflow, form_definition):
     }
     email_action_defaults = {
         action.id: {
+            "name": action.name,
+            "trigger": action.trigger,
+            "is_active": action.is_active,
             "email_to": action.email_to or "",
             "email_to_field": action.email_to_field or "",
             "email_cc": action.email_cc or "",
@@ -880,11 +890,33 @@ def convert_workflow_to_visual(workflow, form_definition):
                         node_data["sub_workflow_id"] = sub_workflow_defaults[
                             "sub_workflow_id"
                         ]
+                        node_data["sub_workflow_id_type"] = "workflow"
                         node_data["sub_workflow_name"] = sub_workflow_defaults[
                             "sub_workflow_name"
                         ]
                     for key, value in sub_workflow_defaults.items():
                         node_data.setdefault(key, value)
+
+            existing_email_action_ids = {
+                node.get("data", {}).get("action_id")
+                for node in visual_data.get("nodes", [])
+                if node.get("type") == "email" and node.get("data", {}).get("action_id")
+            }
+            for action_id, defaults in email_action_defaults.items():
+                if action_id in existing_email_action_ids:
+                    continue
+                visual_data.setdefault("nodes", []).append(
+                    {
+                        "id": f"email-action-{action_id}",
+                        "type": "email",
+                        "position": {"x": 0, "y": 0},
+                        "data": {
+                            "action_id": action_id,
+                            **defaults,
+                        },
+                    }
+                )
+
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
         # Old format (e.g., stages array) - regenerate
@@ -1299,6 +1331,24 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     }
 
     # Optional numeric fields
+    def _parse_optional_int_setting(field_name, raw_value):
+        if raw_value in (None, ""):
+            return None
+        if isinstance(raw_value, bool):
+            raise ValidationError({field_name: "Must be an integer."})
+        if isinstance(raw_value, int):
+            return raw_value
+        if isinstance(raw_value, str):
+            value = raw_value.strip()
+            digits = value.lstrip("+-")
+            if digits and digits.isascii() and digits.isdigit():
+                try:
+                    return int(value)
+                except ValueError as exc:
+                    raise ValidationError({field_name: "Must be an integer."}) from exc
+            raise ValidationError({field_name: "Must be an integer."})
+        raise ValidationError({field_name: "Must be an integer."})
+
     for key in (
         "approval_deadline_days",
         "send_reminder_after_days",
@@ -1306,7 +1356,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         "notification_cadence_day",
     ):
         raw = settings_data.get(key)
-        wf_defaults[key] = int(raw) if raw not in (None, "") else None
+        wf_defaults[key] = _parse_optional_int_setting(key, raw)
     raw_time = settings_data.get("notification_cadence_time")
     wf_defaults["notification_cadence_time"] = (
         parse_time(raw_time) if raw_time else None
@@ -1563,6 +1613,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     form_definition.post_actions.exclude(id__in=actions_to_keep).delete()
 
     # ── Sub-workflow definitions ────────────────────────────────────────
+    if len(sub_workflow_nodes) > 1:
+        raise ValidationError(
+            {
+                "sub_workflow_nodes": (
+                    "Only one sub-workflow node is allowed per workflow graph."
+                )
+            }
+        )
+
     if sub_workflow_nodes:
         # We only support one sub-workflow config per parent workflow (OneToOneField)
         sw_node = sub_workflow_nodes[0]

@@ -316,6 +316,41 @@ class TestConvertWorkflowToVisual:
             email_node["data"]["email_subject_template"] == "Form {form_name} approved"
         )
 
+    def test_saved_visual_restores_missing_email_action(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": "start", "type": "start", "data": {}},
+                    {"id": "end", "type": "end", "data": {}},
+                ],
+                "connections": [],
+            },
+        )
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Notify owner",
+            action_type="email",
+            trigger="on_submit",
+            is_active=False,
+            email_to="owner@example.com",
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        email_node = next(node for node in visual["nodes"] if node["type"] == "email")
+        assert email_node["data"]["action_id"] == action.id
+        assert email_node["data"]["name"] == action.name
+        assert email_node["data"]["trigger"] == "on_submit"
+        assert email_node["data"]["is_active"] is False
+        assert email_node["data"]["email_to"] == "owner@example.com"
+
+        convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+        action.refresh_from_db()
+        assert action.name == "Notify owner"
+        assert action.trigger == "on_submit"
+        assert action.is_active is False
+        assert action.email_to == "owner@example.com"
+
     def test_loads_notification_rules_into_workflow_settings(
         self, staged_workflow, approval_group, second_approval_group, form_definition
     ):
@@ -513,6 +548,12 @@ class TestConvertVisualToWorkflow:
         visual = self._make_visual(stages=[])
         wf = convert_visual_to_workflow(visual, form_definition)
         assert wf.stages.count() == 0
+
+    def test_rejects_non_ascii_integer_setting(self, form_definition):
+        visual = self._make_visual(settings={"approval_deadline_days": "²"})
+
+        with pytest.raises(ValidationError, match="Must be an integer"):
+            convert_visual_to_workflow(visual, form_definition)
 
     def test_saves_workflow_settings(self, form_with_fields):
         visual = self._make_visual(

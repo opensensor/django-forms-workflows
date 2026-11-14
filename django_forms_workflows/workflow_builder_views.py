@@ -902,14 +902,17 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in visual_data.get("nodes", [])
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
-            for action_id, defaults in email_action_defaults.items():
+            for index, (action_id, defaults) in enumerate(
+                email_action_defaults.items()
+            ):
                 if action_id in existing_email_action_ids:
                     continue
                 visual_data.setdefault("nodes", []).append(
                     {
                         "id": f"email-action-{action_id}",
                         "type": "email",
-                        "position": {"x": 0, "y": 0},
+                        "x": 0,
+                        "y": index * 120,
                         "data": {
                             "action_id": action_id,
                             **defaults,

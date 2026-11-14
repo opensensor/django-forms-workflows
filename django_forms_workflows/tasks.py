@@ -1745,6 +1745,18 @@ def send_notification_rules(
             # A concurrently deleted inferred task simply leaves notification context unscoped.
             pass
 
+    # Actionable approval notifications must only be sent for tasks that are
+    # still pending at dispatch time (queue delay / race-safe recheck).
+    if event in {"approval_request", "approval_reminder"}:
+        if task is None or task.status != "pending":
+            logger.info(
+                "Skipping %s notification for submission_id=%s task_id=%s because task is not pending.",
+                event,
+                submission_id,
+                task_id,
+            )
+            return
+
     submission_url, approval_url = _build_form_field_notification_context(
         submission,
         task,

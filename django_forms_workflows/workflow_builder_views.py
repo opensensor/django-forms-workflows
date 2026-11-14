@@ -426,12 +426,34 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             add_error(
                 f"Notification rule {rule_index} references a stage that is not present in the builder graph."
             )
-        if stage_id:
-            if stage_id not in existing_stage_ids:
+
+        normalized_existing_stage_ids = {
+            int(existing_id)
+            for existing_id in existing_stage_ids
+            if str(existing_id).isdigit()
+        }
+        normalized_stage_ids_in_payload = {
+            int(payload_id)
+            for payload_id in stage_ids_in_payload
+            if str(payload_id).isdigit()
+        }
+
+        normalized_stage_id = None
+        if stage_id not in (None, ""):
+            if isinstance(stage_id, int):
+                normalized_stage_id = stage_id
+            elif isinstance(stage_id, str) and stage_id.isdigit():
+                normalized_stage_id = int(stage_id)
+
+        if normalized_stage_id is not None:
+            if normalized_stage_id not in normalized_existing_stage_ids:
                 add_error(
                     f"Notification rule {rule_index} references an unknown workflow stage ID: {stage_id}."
                 )
-            elif stage_id not in stage_ids_in_payload and not stage_node_id:
+            elif (
+                normalized_stage_id not in normalized_stage_ids_in_payload
+                and not stage_node_id
+            ):
                 add_error(
                     f"Notification rule {rule_index} references workflow stage ID {stage_id}, but that stage is not present in the submitted builder graph."
                 )

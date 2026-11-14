@@ -13,6 +13,7 @@ from django_forms_workflows.form_builder_views import (
     save_form_definition_from_builder_data,
 )
 from django_forms_workflows.models import (
+    DocumentTemplate,
     FormDefinition,
     FormField,
     NotificationRule,
@@ -2310,6 +2311,29 @@ class TestFormBuilderViews:
         assert cloned.name.startswith(form_with_fields.name)
         assert cloned.id != form_with_fields.id
         assert cloned.fields.count() == form_with_fields.fields.count()
+
+    def test_clone_copies_document_templates(self, client, superuser, form_definition):
+        template = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="Certificate",
+            html_content="<h1>{form_name}</h1>",
+            page_size="a4",
+            is_default=True,
+            is_active=False,
+        )
+        client.force_login(superuser)
+
+        response = client.post(_fb_url(f"builder/api/clone/{form_definition.id}/"))
+
+        assert response.status_code == 200
+        cloned_form = FormDefinition.objects.get(pk=response.json()["form_id"])
+        cloned_template = cloned_form.document_templates.get()
+        assert cloned_template.pk != template.pk
+        assert cloned_template.name == template.name
+        assert cloned_template.html_content == template.html_content
+        assert cloned_template.page_size == "a4"
+        assert cloned_template.is_default is True
+        assert cloned_template.is_active is False
 
     def test_clone_copies_automation_and_settings(
         self, client, superuser, form_with_fields, approval_group

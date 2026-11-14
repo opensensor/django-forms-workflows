@@ -796,6 +796,9 @@ def convert_workflow_to_visual(workflow, form_definition):
     }
     email_action_defaults = {
         action.id: {
+            "name": action.name,
+            "trigger": action.trigger,
+            "is_active": action.is_active,
             "email_to": action.email_to or "",
             "email_to_field": action.email_to_field or "",
             "email_cc": action.email_cc or "",
@@ -1337,8 +1340,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             return raw_value
         if isinstance(raw_value, str):
             value = raw_value.strip()
-            if value and (value.isdigit() or (value[0] in "+-" and value[1:].isdigit())):
-                return int(value)
+            digits = value.lstrip("+-")
+            if digits and digits.isascii() and digits.isdigit():
+                try:
+                    return int(value)
+                except ValueError as exc:
+                    raise ValidationError({field_name: "Must be an integer."}) from exc
             raise ValidationError({field_name: "Must be an integer."})
         raise ValidationError({field_name: "Must be an integer."})
 

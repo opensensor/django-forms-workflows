@@ -1747,7 +1747,7 @@ class TestSendNotificationRulesIdempotency:
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition, requires_approval=False
         )
-        NotificationRule.objects.create(
+        rule = NotificationRule.objects.create(
             workflow=wf,
             event="submission_received",
             notify_submitter=True,
@@ -1758,11 +1758,22 @@ class TestSendNotificationRulesIdempotency:
             form_data={},
             status="approved",
         )
+        # Legacy failed log without rule linkage should not block retry.
         NotificationLog.objects.create(
             notification_type="submission_received",
             submission_id=submission.id,
             recipient_email=user.email,
             subject="prior",
+            status="failed",
+            error_message="SMTP timeout",
+        )
+        # Failed log linked to the current rule should also not block retry.
+        NotificationLog.objects.create(
+            notification_type="submission_received",
+            submission_id=submission.id,
+            notification_rule=rule,
+            recipient_email=user.email,
+            subject="prior-linked",
             status="failed",
             error_message="SMTP timeout",
         )

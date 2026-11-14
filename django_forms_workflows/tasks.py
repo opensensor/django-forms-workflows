@@ -1300,13 +1300,43 @@ def _dispatch_submission_digest(recipient_email: str, notifications: list) -> bo
 
 def _dispatch_approval_digest(recipient_email: str, notifications: list) -> bool:
     """Send a digest of approval_request notifications to one recipient."""
+
+    def _is_still_pending(task: ApprovalTask | None) -> bool:
+        if not task:
+            return False
+
+        # If explicit terminal timestamps exist, task is no longer pending.
+        for attr in ("completed_at", "resolved_at", "finished_at", "closed_at", "decided_at"):
+            if hasattr(task, attr) and getattr(task, attr):
+                return False
+
+        # If status/state exists, exclude known terminal values.
+        terminal_states = {
+            "approved",
+            "rejected",
+            "completed",
+            "expired",
+            "cancelled",
+            "canceled",
+            "withdrawn",
+            "closed",
+            "resolved",
+            "done",
+        }
+        for attr in ("status", "state"):
+            if hasattr(task, attr):
+                value = getattr(task, attr)
+                if isinstance(value, str) and value.strip().lower() in terminal_states:
+                    return False
+
+        return True
+
     sample = notifications[0]
     workflow = sample.workflow
     form_name = workflow.form_definition.name
-    count = len(notifications)
     items = []
     for n in notifications:
-        if n.submission:
+        if n.submission and _is_still_pending(n.approval_task):
             items.append(
                 {
                     "submission": n.submission,
@@ -1316,11 +1346,15 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> bool
                             "forms_workflows:approve_submission",
                             args=[n.approval_task.id],
                         )
-                    )
-                    if n.approval_task
-                    else None,
+                    ),
                 }
             )
+
+    # All queued approval items became obsolete before dispatch.
+    if not items:
+        return False
+
+    count = len(items)
     subject = (
         f"{count} item{'s' if count != 1 else ''} pending your approval — {form_name}"
     )

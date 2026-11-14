@@ -555,6 +555,32 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Must be an integer"):
             convert_visual_to_workflow(visual, form_definition)
 
+    @pytest.mark.parametrize(("cadence", "day"), [("weekly", "3"), ("monthly", "15")])
+    def test_accepts_string_notification_cadence_day(
+        self, form_definition, cadence, day
+    ):
+        visual = self._make_visual(
+            settings={"notification_cadence": cadence, "notification_cadence_day": day}
+        )
+
+        workflow = convert_visual_to_workflow(visual, form_definition)
+
+        assert workflow.notification_cadence_day == int(day)
+
+    def test_rejects_non_integer_notification_cadence_day(self, form_definition):
+        visual = self._make_visual(
+            settings={"notification_cadence": "weekly", "notification_cadence_day": "x"}
+        )
+
+        with pytest.raises(ValidationError, match="Notification cadence day"):
+            convert_visual_to_workflow(visual, form_definition)
+
+    def test_rejects_malformed_notification_cadence_time(self, form_definition):
+        visual = self._make_visual(settings={"notification_cadence_time": "25:99"})
+
+        with pytest.raises(ValidationError, match="Must be a valid time"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_saves_workflow_settings(self, form_with_fields):
         visual = self._make_visual(
             settings={

@@ -82,8 +82,8 @@ def _normalize_trigger_conditions(raw_conditions):
     if isinstance(raw_conditions, str):
         try:
             raw_conditions = json.loads(raw_conditions)
-        except json.JSONDecodeError:
-            return None
+        except json.JSONDecodeError as exc:
+            raise ValidationError("Trigger conditions must be valid JSON.") from exc
 
     if isinstance(raw_conditions, list):
         group_operator = "AND"
@@ -102,14 +102,17 @@ def _normalize_trigger_conditions(raw_conditions):
 
     group_operator = "OR" if group_operator == "OR" else "AND"
     normalized = []
-
     for condition in condition_list:
         if not isinstance(condition, dict):
-            continue
+            raise ValidationError(
+                "Each trigger condition must be an object with 'field' and 'operator'."
+            )
         field_name = str(condition.get("field", "")).strip()
         operator = str(condition.get("operator", "equals")).strip()
-        if not field_name or operator not in SUPPORTED_CONDITION_OPERATORS:
-            continue
+        if not field_name:
+            raise ValidationError("Trigger condition field cannot be empty.")
+        if operator not in SUPPORTED_CONDITION_OPERATORS:
+            raise ValidationError(f"Unsupported trigger condition operator: {operator}")
 
         normalized_condition = {
             "field": field_name,
@@ -127,6 +130,24 @@ def _normalize_trigger_conditions(raw_conditions):
         "operator": group_operator,
         "conditions": normalized,
     }
+
+
+def _parse_optional_int_setting(field_name, raw_value):
+    if raw_value in (None, ""):
+        return None
+    if isinstance(raw_value, bool):
+        raise ValidationError({field_name: "Must be an integer."})
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, str):
+        value = raw_value.strip()
+        digits = value.lstrip("+-")
+        if digits and digits.isascii() and digits.isdigit():
+            try:
+                return int(value)
+            except ValueError as exc:
+                raise ValidationError({field_name: "Must be an integer."}) from exc
+    raise ValidationError({field_name: "Must be an integer."})
 
 
 def _serialize_stage_approval_groups(stage):
@@ -351,8 +372,17 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
 
     settings_data = settings_nodes[0].get("data", {}) if settings_nodes else {}
     cadence = settings_data.get("notification_cadence") or "immediate"
-    cadence_day = settings_data.get("notification_cadence_day")
+    cadence_day_raw = settings_data.get("notification_cadence_day")
     cadence_field = settings_data.get("notification_cadence_form_field")
+
+    cadence_day = None
+    if cadence in {"weekly", "monthly"}:
+        try:
+            cadence_day = _parse_optional_int_setting(
+                "notification_cadence_day", cadence_day_raw
+            )
+        except ValidationError:
+            add_error("Notification cadence day must be an integer value.")
 
     if cadence == "weekly" and cadence_day not in range(0, 7):
         add_error("Weekly notification cadence requires a digest day between 0 and 6.")
@@ -902,14 +932,17 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in visual_data.get("nodes", [])
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
-            for action_id, defaults in email_action_defaults.items():
+            for index, (action_id, defaults) in enumerate(
+                email_action_defaults.items()
+            ):
                 if action_id in existing_email_action_ids:
                     continue
                 visual_data.setdefault("nodes", []).append(
                     {
                         "id": f"email-action-{action_id}",
                         "type": "email",
-                        "position": {"x": 0, "y": 0},
+                        "x": 0,
+                        "y": index * 120,
                         "data": {
                             "action_id": action_id,
                             **defaults,
@@ -1331,24 +1364,6 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     }
 
     # Optional numeric fields
-    def _parse_optional_int_setting(field_name, raw_value):
-        if raw_value in (None, ""):
-            return None
-        if isinstance(raw_value, bool):
-            raise ValidationError({field_name: "Must be an integer."})
-        if isinstance(raw_value, int):
-            return raw_value
-        if isinstance(raw_value, str):
-            value = raw_value.strip()
-            digits = value.lstrip("+-")
-            if digits and digits.isascii() and digits.isdigit():
-                try:
-                    return int(value)
-                except ValueError as exc:
-                    raise ValidationError({field_name: "Must be an integer."}) from exc
-            raise ValidationError({field_name: "Must be an integer."})
-        raise ValidationError({field_name: "Must be an integer."})
-
     for key in (
         "approval_deadline_days",
         "send_reminder_after_days",
@@ -1358,9 +1373,28 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         raw = settings_data.get(key)
         wf_defaults[key] = _parse_optional_int_setting(key, raw)
     raw_time = settings_data.get("notification_cadence_time")
-    wf_defaults["notification_cadence_time"] = (
-        parse_time(raw_time) if raw_time else None
-    )
+    if raw_time in (None, ""):
+        wf_defaults["notification_cadence_time"] = None
+    else:
+        if not isinstance(raw_time, str):
+            raise ValidationError(
+                {"notification_cadence_time": "Must be a valid time string."}
+            )
+        time_value = raw_time.strip()
+        if not time_value:
+            wf_defaults["notification_cadence_time"] = None
+        else:
+            try:
+                parsed_time = parse_time(time_value)
+            except ValueError as exc:
+                raise ValidationError(
+                    {"notification_cadence_time": "Must be a valid time."}
+                ) from exc
+            if parsed_time is None:
+                raise ValidationError(
+                    {"notification_cadence_time": "Must be a valid time."}
+                )
+            wf_defaults["notification_cadence_time"] = parsed_time
 
     if workflow is None:
         candidate_workflows = WorkflowDefinition.objects.filter(

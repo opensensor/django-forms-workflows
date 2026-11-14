@@ -927,25 +927,29 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data.setdefault(key, value)
 
-            existing_email_action_ids = {
+            existing_action_ids = {
                 node.get("data", {}).get("action_id")
                 for node in visual_data.get("nodes", [])
-                if node.get("type") == "email" and node.get("data", {}).get("action_id")
+                if node.get("data", {}).get("action_id")
             }
             for index, (action_id, defaults) in enumerate(
-                email_action_defaults.items()
+                post_submission_action_defaults.items()
             ):
-                if action_id in existing_email_action_ids:
+                if action_id in existing_action_ids:
                     continue
                 visual_data.setdefault("nodes", []).append(
                     {
-                        "id": f"email-action-{action_id}",
-                        "type": "email",
-                        "x": 0,
-                        "y": index * 120,
+                        "id": defaults.get("node_id", f"post-submission-action-{action_id}"),
+                        "type": defaults.get("node_type", "post_submission_action"),
+                        "x": defaults.get("x", 0),
+                        "y": defaults.get("y", index * 120),
                         "data": {
                             "action_id": action_id,
-                            **defaults,
+                            **{
+                                key: value
+                                for key, value in defaults.items()
+                                if key not in {"node_id", "node_type", "x", "y"}
+                            },
                         },
                     }
                 )

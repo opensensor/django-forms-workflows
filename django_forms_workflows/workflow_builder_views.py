@@ -1299,6 +1299,20 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     }
 
     # Optional numeric fields
+    def _parse_optional_int_setting(field_name, raw_value):
+        if raw_value in (None, ""):
+            return None
+        if isinstance(raw_value, bool):
+            raise ValidationError({field_name: "Must be an integer."})
+        if isinstance(raw_value, int):
+            return raw_value
+        if isinstance(raw_value, str):
+            value = raw_value.strip()
+            if value and (value.isdigit() or (value[0] in "+-" and value[1:].isdigit())):
+                return int(value)
+            raise ValidationError({field_name: "Must be an integer."})
+        raise ValidationError({field_name: "Must be an integer."})
+
     for key in (
         "approval_deadline_days",
         "send_reminder_after_days",
@@ -1306,7 +1320,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         "notification_cadence_day",
     ):
         raw = settings_data.get(key)
-        wf_defaults[key] = int(raw) if raw not in (None, "") else None
+        wf_defaults[key] = _parse_optional_int_setting(key, raw)
     raw_time = settings_data.get("notification_cadence_time")
     wf_defaults["notification_cadence_time"] = (
         parse_time(raw_time) if raw_time else None

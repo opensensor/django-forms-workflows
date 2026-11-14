@@ -1,8 +1,9 @@
 """
 Celery-friendly email tasks for Django Forms Workflows.
 
-- Uses Celery if available (shared_task). If Celery isn't installed/running,
+- Uses Celery if available (shared_task). If Celery cannot be imported,
   tasks still import and `.delay(...)` will call synchronously as a graceful fallback.
+  If Celery is installed, `.delay(...)` uses the configured broker/worker setup.
 - Emails use the package's generic templates under django_forms_workflows/templates/emails/.
 - Absolute URLs are built from settings.FORMS_WORKFLOWS_BASE_URL (or SITE_BASE_URL) if set;
   otherwise fall back to relative paths.

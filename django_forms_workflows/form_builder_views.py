@@ -963,20 +963,38 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             isinstance(field_id, str)
             and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", field_id)
         ):
-            # Create new field
-            new_field = FormField.objects.create(**field_props)
+            # Create new field (validate model-level constraints before persisting)
+            new_field = FormField(**field_props)
+            try:
+                new_field.full_clean()
+            except ValidationError as exc:
+                raise FormBuilderPayloadError(
+                    f"Invalid field payload for '{field_data.get('field_name', '')}'"
+                ) from exc
+            new_field.save()
             updated_field_ids.add(new_field.id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = new_field.id
         elif isinstance(field_id, int):
             # Update existing field, scoped to current form_definition
-            updated_count = FormField.objects.filter(
-                id=field_id, form_definition=form_definition
-            ).update(**field_props)
-            if updated_count == 0:
+            try:
+                existing_field = FormField.objects.get(
+                    id=field_id, form_definition=form_definition
+                )
+            except FormField.DoesNotExist:
                 raise FormBuilderPayloadError(
                     f"Invalid field id {field_id} for this form"
                 )
+
+            for prop_name, prop_value in field_props.items():
+                setattr(existing_field, prop_name, prop_value)
+            try:
+                existing_field.full_clean()
+            except ValidationError as exc:
+                raise FormBuilderPayloadError(
+                    f"Invalid field payload for '{field_data.get('field_name', '')}'"
+                ) from exc
+            existing_field.save()
             updated_field_ids.add(field_id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id

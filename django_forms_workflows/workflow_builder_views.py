@@ -1227,6 +1227,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     }
 
 
+@transaction.atomic
 def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     """
     Convert visual workflow format to WorkflowDefinition model.

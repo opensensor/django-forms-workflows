@@ -1358,9 +1358,28 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         raw = settings_data.get(key)
         wf_defaults[key] = _parse_optional_int_setting(key, raw)
     raw_time = settings_data.get("notification_cadence_time")
-    wf_defaults["notification_cadence_time"] = (
-        parse_time(raw_time) if raw_time else None
-    )
+    if raw_time in (None, ""):
+        wf_defaults["notification_cadence_time"] = None
+    else:
+        if not isinstance(raw_time, str):
+            raise ValidationError(
+                {"notification_cadence_time": "Must be a valid time string."}
+            )
+        time_value = raw_time.strip()
+        if not time_value:
+            wf_defaults["notification_cadence_time"] = None
+        else:
+            try:
+                parsed_time = parse_time(time_value)
+            except ValueError as exc:
+                raise ValidationError(
+                    {"notification_cadence_time": "Must be a valid time."}
+                ) from exc
+            if parsed_time is None:
+                raise ValidationError(
+                    {"notification_cadence_time": "Must be a valid time."}
+                )
+            wf_defaults["notification_cadence_time"] = parsed_time
 
     if workflow is None:
         candidate_workflows = WorkflowDefinition.objects.filter(

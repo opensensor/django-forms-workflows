@@ -211,7 +211,10 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
         events=["submission.created"],
         custom_headers={"Authorization": "Bearer abc"},
     )
-    payload = {"event": "submission.created", "submission": {"id": submission.id}}
+    payload = {
+        "event": "submission.created",
+        "submission": {"id": submission.id, "title": "Café 🚀"},
+    }
 
     with patch("django_forms_workflows.tasks.requests.request") as mock_request:
         mock_request.return_value = Mock(status_code=202, text="accepted")

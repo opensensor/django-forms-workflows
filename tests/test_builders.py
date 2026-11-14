@@ -1791,7 +1791,27 @@ class TestFormBuilderSavePayloadValidation:
         assert response.json()["success"] is False
         assert not FormDefinition.objects.filter(slug="form").exists()
 
-    @pytest.mark.parametrize("field_ids", [[[], []], ["new_1", "new_1"]])
+    def test_missing_fields_does_not_delete_existing_fields(
+        self, client, superuser, form_with_fields
+    ):
+        original_ids = set(form_with_fields.fields.values_list("id", flat=True))
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "id": form_with_fields.id,
+                    "name": form_with_fields.name,
+                    "slug": form_with_fields.slug,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert set(form_with_fields.fields.values_list("id", flat=True)) == original_ids
+
+    @pytest.mark.parametrize("field_ids", [[[], []], ["new_1", "new_1"], [1, 1]])
     def test_rejects_malformed_or_duplicate_field_ids(
         self, client, superuser, field_ids
     ):
@@ -2240,6 +2260,18 @@ class TestFormBuilderViews:
         assert allowed.status_code == 200
         assert allowed.json()["success"] is True
         assert form_definition.fields.filter(field_name="staff_perm_field").exists()
+
+    def test_clone_long_slug_fits_model_limit(self, client, superuser):
+        source = FormDefinition.objects.create(name="Long slug", slug="a" * 50)
+        client.force_login(superuser)
+
+        response = client.post(_fb_url(f"builder/api/clone/{source.id}/"))
+
+        assert response.status_code == 200
+        cloned = FormDefinition.objects.get(pk=response.json()["form_id"])
+        assert len(cloned.slug) <= FormDefinition._meta.get_field("slug").max_length
+        assert cloned.slug.startswith("a")
+        assert cloned.slug != source.slug
 
     def test_clone_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")

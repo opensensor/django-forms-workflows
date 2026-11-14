@@ -135,13 +135,15 @@ def form_builder_clone(request, form_id):
 
         # Create a new form with copied data
         with transaction.atomic():
-            # Generate unique slug
-            base_slug = f"{original_form.slug}-copy"
-            slug = base_slug
-            counter = 1
+            # Generate a collision-resistant unique slug.
+            # Avoid deterministic counter allocation, which is race-prone
+            # under concurrent clone requests.
+            suffix = f"-copy-{uuid.uuid4().hex[:8]}"
+            slug_max_length = FormDefinition._meta.get_field("slug").max_length
+            base_slug = original_form.slug[: slug_max_length - len(suffix)].rstrip("-")
+            slug = f"{base_slug}{suffix}"
             while FormDefinition.objects.filter(slug=slug).exists():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
+                slug = f"{base_slug}-copy-{uuid.uuid4().hex[:8]}"
 
             # Clone the form definition
             # Copy all persisted form settings by default so cloning does not
@@ -482,7 +484,15 @@ def form_builder_save(request):
                 status=400,
             )
 
-        fields = data.get("fields", [])
+        if "fields" not in data:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Invalid payload: missing required 'fields' property",
+                },
+                status=400,
+            )
+        fields = data.get("fields")
         if not isinstance(fields, list):
             return JsonResponse(
                 {"success": False, "error": "Invalid payload: 'fields' must be a list"},

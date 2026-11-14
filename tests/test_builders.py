@@ -2552,8 +2552,17 @@ class TestDocumentTemplateAPI:
             content_type="application/json",
         )
         assert resp.status_code == 200
+        payload = resp.json()
+        t2 = DocumentTemplate.objects.get(id=payload["id"])
         t1.refresh_from_db()
         assert t1.is_default is False
+        assert t2.is_default is True
+        assert (
+            DocumentTemplate.objects.filter(
+                form_definition=form_definition, is_default=True
+            ).count()
+            == 1
+        )
 
     def test_non_staff_cannot_access(self, client, user, form_definition):
         client.force_login(user)

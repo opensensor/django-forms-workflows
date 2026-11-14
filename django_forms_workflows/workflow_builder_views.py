@@ -369,9 +369,18 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 f"Notification cadence references an unknown date field: {cadence_field}."
             )
 
-    for rule_index, rule_data in enumerate(
-        settings_data.get("notification_rules", []) or [], start=1
-    ):
+    notification_rules = settings_data.get("notification_rules", [])
+    if notification_rules is None:
+        notification_rules = []
+    elif not isinstance(notification_rules, list):
+        add_error("Workflow settings 'notification_rules' must be a list.")
+        notification_rules = []
+
+    for rule_index, rule_data in enumerate(notification_rules, start=1):
+        if not isinstance(rule_data, dict):
+            add_error(f"Notification rule {rule_index} must be an object.")
+            continue
+
         stage_node_id = rule_data.get("stage_node_id")
         stage_id = rule_data.get("stage_id")
         if stage_node_id and stage_node_id not in stage_node_ids:
@@ -1094,7 +1103,9 @@ def convert_workflow_to_visual(workflow, form_definition):
         .order_by("event", "stage_id", "id")
     ]
     # Post-submission actions
-    actions = form_definition.post_actions.filter(is_active=True).order_by("order")
+    # Include both active and inactive actions so load/save round-trips do not
+    # accidentally delete inactive actions omitted from the visual model.
+    actions = form_definition.post_actions.order_by("order")
 
     # Actions continue on the same horizontal line for a cleaner flow
     for action in actions:
@@ -1107,6 +1118,7 @@ def convert_workflow_to_visual(workflow, form_definition):
             "name": action.name,
             "action_type": action.action_type,
             "trigger": action.trigger,
+            "is_active": action.is_active,
         }
 
         # Add action-type-specific configuration
@@ -1227,6 +1239,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     }
 
 
+@transaction.atomic
 def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     """
     Convert visual workflow format to WorkflowDefinition model.
@@ -1436,10 +1449,49 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
 
     # ── Post-submission actions (unchanged logic) ───────────────────────
-    existing_actions = {
+    existing_actions_by_id = {
+        action.id: action for action in form_definition.post_actions.all()
+    }
+    # Legacy fallback for payloads that don't yet send action_id.
+    existing_actions_by_name = {
         action.name: action for action in form_definition.post_actions.all()
     }
     actions_to_keep = []
+
+    def save_action(node_data, action_name, action_data):
+        raw_action_id = node_data.get("action_id")
+        if raw_action_id not in (None, ""):
+            if isinstance(raw_action_id, bool):
+                raise ValidationError("Invalid action ID.")
+            try:
+                action_id = int(raw_action_id)
+            except (TypeError, ValueError) as exc:
+                raise ValidationError("Invalid action ID.") from exc
+            action = existing_actions_by_id.get(action_id)
+            if action is None:
+                raise ValidationError("Action ID does not belong to this form.")
+        else:
+            action = existing_actions_by_name.get(action_name)
+
+        if action and action.id in actions_to_keep:
+            raise ValidationError(
+                "An action appears more than once in the builder graph."
+            )
+
+        if action:
+            action.name = action_name
+            action.is_active = node_data.get("is_active", action.is_active)
+            for key, value in action_data.items():
+                setattr(action, key, value)
+            action.save()
+        else:
+            action = PostSubmissionAction.objects.create(
+                form_definition=form_definition,
+                name=action_name,
+                is_active=node_data.get("is_active", True),
+                **action_data,
+            )
+        actions_to_keep.append(action.id)
 
     for node in action_nodes:
         data = node.get("data", {})
@@ -1452,6 +1504,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 config = json.loads(config)
             except json.JSONDecodeError:
                 config = {}
+
+        if config is None:
+            config = {}
+        elif not isinstance(config, dict | list):
+            config = {}
 
         action_data = {
             "action_type": action_type,
@@ -1480,16 +1537,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         elif action_type == "custom":
             action_data["custom_handler_config"] = config
 
-        if action_name in existing_actions:
-            action = existing_actions[action_name]
-            for key, value in action_data.items():
-                setattr(action, key, value)
-            action.save()
-        else:
-            action = PostSubmissionAction.objects.create(
-                form_definition=form_definition, name=action_name, **action_data
-            )
-        actions_to_keep.append(action.id)
+        save_action(data, action_name, action_data)
 
     for node in email_nodes:
         data = node.get("data", {})
@@ -1510,16 +1558,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 f"Subject: {data.get('email_subject_template', '')}",
             ),
         }
-        if action_name in existing_actions:
-            action = existing_actions[action_name]
-            for key, value in action_data.items():
-                setattr(action, key, value)
-            action.save()
-        else:
-            action = PostSubmissionAction.objects.create(
-                form_definition=form_definition, name=action_name, **action_data
-            )
-        actions_to_keep.append(action.id)
+        save_action(data, action_name, action_data)
 
     form_definition.post_actions.exclude(id__in=actions_to_keep).delete()
 

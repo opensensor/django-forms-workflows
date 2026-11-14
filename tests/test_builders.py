@@ -818,6 +818,51 @@ class TestConvertVisualToWorkflow:
         assert actions[0].name == "Update DB"
         assert actions[0].action_type == "database"
 
+    def test_inactive_action_round_trip_preserves_identity(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Original",
+            action_type="database",
+            is_active=False,
+        )
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        action_node = next(node for node in visual["nodes"] if node["type"] == "action")
+        assert action_node["data"]["action_id"] == action.id
+        assert action_node["data"]["is_active"] is False
+        action_node["data"]["name"] = "Renamed"
+
+        convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        action.refresh_from_db()
+        assert action.name == "Renamed"
+        assert action.is_active is False
+        assert list(form_definition.post_actions.values_list("id", flat=True)) == [
+            action.id
+        ]
+
+    def test_action_id_from_another_form_is_rejected(self, form_definition):
+        other_form = FormDefinition.objects.create(name="Other", slug="other")
+        foreign_action = PostSubmissionAction.objects.create(
+            form_definition=other_form,
+            name="Foreign",
+            action_type="database",
+        )
+        visual = self._make_visual(
+            actions=[
+                {
+                    "action_id": foreign_action.id,
+                    "name": "Foreign",
+                    "action_type": "database",
+                    "config": {},
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="does not belong"):
+            convert_visual_to_workflow(visual, form_definition)
+        assert not form_definition.post_actions.exists()
+
     def test_action_with_null_config_uses_empty_defaults(self, form_definition):
         visual = self._make_visual(
             actions=[

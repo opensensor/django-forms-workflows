@@ -1696,6 +1696,7 @@ def send_notification_rules(
     # the admin "Retry failed" action re-fire these events without losing
     # the task context. Only applies when no explicit ``task_id`` was
     # passed; an explicit task always wins.
+    _task_id_was_explicit = bool(task_id)
     if not task_id:
         if event == "workflow_approved":
             _finalizing = (
@@ -1723,7 +1724,14 @@ def send_notification_rules(
                 submission_id=submission_id,
             )
         except ApprovalTask.DoesNotExist:
-            # A concurrently deleted or mismatched task simply leaves notification context unscoped.
+            if _task_id_was_explicit:
+                logger.warning(
+                    "Skipping notification dispatch: explicit task_id=%s could not be resolved for submission_id=%s.",
+                    task_id,
+                    submission_id,
+                )
+                return
+            # A concurrently deleted inferred task simply leaves notification context unscoped.
             pass
 
     submission_url, approval_url = _build_form_field_notification_context(

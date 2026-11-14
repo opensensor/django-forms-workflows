@@ -772,7 +772,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             form_definition.save()
         except IntegrityError as exc:
             raise FormBuilderPayloadError(
-                {"slug": ["A form with this slug already exists."]}
+                "A form with this slug already exists."
             ) from exc
     else:
         form_definition = FormDefinition(
@@ -813,7 +813,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             form_definition.save()
         except IntegrityError as exc:
             raise FormBuilderPayloadError(
-                {"slug": ["A form with this slug already exists."]}
+                "A form with this slug already exists."
             ) from exc
 
     # Track existing field IDs to determine which to delete

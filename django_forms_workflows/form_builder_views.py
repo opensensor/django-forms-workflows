@@ -11,6 +11,7 @@ import re
 import uuid
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
@@ -218,7 +219,13 @@ def form_builder_clone(request, form_id):
             cloned_workflows_by_original_id = {}
             for wf in original_form.workflows.all():
                 original_stages = list(
-                    wf.stages.prefetch_related("approval_groups").order_by("order")
+                    wf.stages.prefetch_related(
+                        Prefetch(
+                            "approval_groups",
+                            queryset=StageApprovalGroup.objects.order_by("role", "position"),
+                            to_attr="prefetched_approval_groups",
+                        )
+                    ).order_by("order")
                 )
                 cloned_wf = WorkflowDefinition.objects.create(
                     form_definition=cloned_form,
@@ -255,9 +262,7 @@ def form_builder_clone(request, form_id):
                         validate_assignee_group=stage.validate_assignee_group,
                     )
                     cloned_stages_by_original_id[stage.id] = cloned_stage
-                    for sag in StageApprovalGroup.objects.filter(stage=stage).order_by(
-                        "role", "position"
-                    ):
+                    for sag in stage.prefetched_approval_groups:
                         StageApprovalGroup.objects.create(
                             stage=cloned_stage,
                             group_id=sag.group_id,

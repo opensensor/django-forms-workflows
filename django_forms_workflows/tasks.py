@@ -1212,6 +1212,21 @@ def send_batched_notifications() -> str:
                 if notification_type == "submission_received":
                     delivered = _dispatch_submission_digest(recipient_email, current)
                 elif notification_type == "approval_request":
+                    actionable = [
+                        n
+                        for n in current
+                        if n.submission
+                        and n.approval_task
+                        and n.approval_task.status == "pending"
+                    ]
+                    obsolete_ids = {n.id for n in current} - {n.id for n in actionable}
+                    if obsolete_ids:
+                        PendingNotification.objects.filter(id__in=obsolete_ids).update(
+                            sent=True
+                        )
+                    current = actionable
+                    if not current:
+                        continue
                     delivered = _dispatch_approval_digest(recipient_email, current)
                 elif notification_type in (
                     "approval_notification",
@@ -1305,42 +1320,12 @@ def _dispatch_submission_digest(recipient_email: str, notifications: list) -> bo
 def _dispatch_approval_digest(recipient_email: str, notifications: list) -> bool:
     """Send a digest of approval_request notifications to one recipient."""
 
-    def _is_still_pending(task: ApprovalTask | None) -> bool:
-        if not task:
-            return False
-
-        # If explicit terminal timestamps exist, task is no longer pending.
-        for attr in ("completed_at", "resolved_at", "finished_at", "closed_at", "decided_at"):
-            if hasattr(task, attr) and getattr(task, attr):
-                return False
-
-        # If status/state exists, exclude known terminal values.
-        terminal_states = {
-            "approved",
-            "rejected",
-            "completed",
-            "expired",
-            "cancelled",
-            "canceled",
-            "withdrawn",
-            "closed",
-            "resolved",
-            "done",
-        }
-        for attr in ("status", "state"):
-            if hasattr(task, attr):
-                value = getattr(task, attr)
-                if isinstance(value, str) and value.strip().lower() in terminal_states:
-                    return False
-
-        return True
-
     sample = notifications[0]
     workflow = sample.workflow
     form_name = workflow.form_definition.name
     items = []
     for n in notifications:
-        if n.submission and _is_still_pending(n.approval_task):
+        if n.submission and n.approval_task and n.approval_task.status == "pending":
             items.append(
                 {
                     "submission": n.submission,
@@ -1353,10 +1338,6 @@ def _dispatch_approval_digest(recipient_email: str, notifications: list) -> bool
                     ),
                 }
             )
-
-    # All queued approval items became obsolete before dispatch.
-    if not items:
-        return False
 
     count = len(items)
     subject = (
@@ -1954,20 +1935,20 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Avoid a single transaction spanning all deliveries/log writes so
-        already-completed recipient progress is not lost on worker death.
+        Hold the submission lock through delivery and log writes so
+        concurrent dispatches cannot send the same recipient twice.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows
         # cannot serialize the first send because there are no rows yet.
-        with transaction.atomic():
-            FormSubmission.objects.select_for_update().get(pk=submission_id)
+        FormSubmission.objects.select_for_update().get(pk=submission_id)
         workflow = rule.workflow
         if explicit_task:
             locked_task = None
@@ -1985,15 +1966,10 @@ def send_notification_rules(
                     not locked_task.workflow_stage_id
                     or locked_task.workflow_stage.workflow_id == workflow.pk
                 )
-                and locked_task.status
-                not in {
-                    "approved",
-                    "rejected",
-                    "completed",
-                    "expired",
-                    "cancelled",
-                    "withdrawn",
-                }
+                and (
+                    event not in {"approval_request", "approval_reminder"}
+                    or locked_task.status == "pending"
+                )
             ):
                 rule_task = locked_task
             else:

@@ -1563,6 +1563,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     form_definition.post_actions.exclude(id__in=actions_to_keep).delete()
 
     # ── Sub-workflow definitions ────────────────────────────────────────
+    if len(sub_workflow_nodes) > 1:
+        raise ValidationError(
+            {
+                "sub_workflow_nodes": (
+                    "Only one sub-workflow node is allowed per workflow graph."
+                )
+            }
+        )
+
     if sub_workflow_nodes:
         # We only support one sub-workflow config per parent workflow (OneToOneField)
         sw_node = sub_workflow_nodes[0]

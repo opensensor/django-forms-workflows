@@ -1436,13 +1436,18 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
 
     # ── Post-submission actions (unchanged logic) ───────────────────────
-    existing_actions = {
+    existing_actions_by_id = {
+        action.id: action for action in form_definition.post_actions.all()
+    }
+    # Legacy fallback for payloads that don't yet send action_id.
+    existing_actions_by_name = {
         action.name: action for action in form_definition.post_actions.all()
     }
     actions_to_keep = []
 
     for node in action_nodes:
         data = node.get("data", {})
+        action_id = data.get("action_id")
         action_name = data.get("name", "Unnamed Action")
         action_type = data.get("action_type", "database")
 

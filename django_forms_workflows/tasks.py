@@ -1091,15 +1091,23 @@ def check_approval_deadlines() -> str:
                     locked_submission.approval_tasks.filter(status="pending").update(
                         status="skipped"
                     )
-                # Dispatch after commit so a worker sees the approved state.
-                try:
-                    send_notification_rules.delay(submission.id, "workflow_approved")
-                except Exception:
-                    logger.debug(
-                        "Could not enqueue approval notification for submission %s",
-                        submission.id,
-                        exc_info=True,
-                    )
+
+                # Dispatch after the outermost commit so a worker sees the approved state.
+                def _enqueue_workflow_approved_notification(
+                    submission_id: int = submission.id,
+                ) -> None:
+                    try:
+                        send_notification_rules.delay(
+                            submission_id, "workflow_approved"
+                        )
+                    except Exception:
+                        logger.debug(
+                            "Could not enqueue approval notification for submission %s",
+                            submission_id,
+                            exc_info=True,
+                        )
+
+                transaction.on_commit(_enqueue_workflow_approved_notification)
                 auto_approved_count += 1
 
     return f"expired={expired_count}, reminders={reminder_count}, auto_approved={auto_approved_count}"
@@ -1895,11 +1903,9 @@ def send_notification_rules(
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        IMPORTANT: per-recipient send/render/log work must catch exceptions
-        inside this function so a later recipient failure does not roll back
-        successful earlier recipient logs after emails were already delivered.
-        The submission row lock serializes concurrent delivery attempts for
-        the same submission until their logs are written.
+        Keep the transaction through delivery and log writes so locking the
+        submission row serializes concurrent attempts. Per-recipient failures
+        are caught inside this function so later recipients can still be sent.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows
@@ -2088,8 +2094,11 @@ def send_notification_rules(
 
         user_model = get_user_model()
         _users_by_email: dict = {}
-        if recipients:
-            for u in user_model.objects.filter(email__in=recipients):
+        all_recipient_emails = list(
+            dict.fromkeys(list(recipients) + list(cc_recipients))
+        )
+        if all_recipient_emails:
+            for u in user_model.objects.filter(email__in=all_recipient_emails):
                 _users_by_email[u.email] = u
 
         # Check cadence — batch or send immediately

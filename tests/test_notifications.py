@@ -2685,7 +2685,9 @@ def test_deadline_scan_has_constant_query_count(
 
 
 @pytest.mark.django_db
-def test_auto_approve_uses_latest_task_once(form_definition, user, approver_user):
+def test_auto_approve_uses_latest_task_once(
+    form_definition, user, approver_user, django_capture_on_commit_callbacks
+):
     WorkflowDefinition.objects.create(
         form_definition=form_definition, auto_approve_after_days=2
     )
@@ -2705,7 +2707,10 @@ def test_auto_approve_uses_latest_task_once(form_definition, user, approver_user
         created_at=timezone.now() - timedelta(days=5)
     )
 
-    with patch.object(tasks_module.send_notification_rules, "delay") as notify:
+    with (
+        patch.object(tasks_module.send_notification_rules, "delay") as notify,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
         assert "auto_approved=0" in check_approval_deadlines()
         ApprovalTask.objects.filter(pk=current_task.pk).update(
             created_at=timezone.now() - timedelta(days=3)
@@ -2720,7 +2725,9 @@ def test_auto_approve_uses_latest_task_once(form_definition, user, approver_user
 
 
 @pytest.mark.django_db
-def test_auto_approve_uses_task_workflow_track(form_definition, user, approver_user):
+def test_auto_approve_uses_task_workflow_track(
+    form_definition, user, approver_user, django_capture_on_commit_callbacks
+):
     WorkflowDefinition.objects.create(
         form_definition=form_definition,
         name_label="Other",
@@ -2747,13 +2754,60 @@ def test_auto_approve_uses_task_workflow_track(form_definition, user, approver_u
         created_at=timezone.now() - timedelta(days=3)
     )
 
-    with patch.object(tasks_module.send_notification_rules, "delay") as notify:
+    with (
+        patch.object(tasks_module.send_notification_rules, "delay") as notify,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
         result = check_approval_deadlines()
 
     assert "auto_approved=1" in result
     submission.refresh_from_db()
     assert submission.status == "approved"
     notify.assert_called_once_with(submission.pk, "workflow_approved")
+
+
+@pytest.mark.django_db
+def test_auto_approve_enqueues_each_submission_after_commit(
+    form_definition,
+    user,
+    approver_user,
+    django_capture_on_commit_callbacks,
+):
+    WorkflowDefinition.objects.create(
+        form_definition=form_definition, auto_approve_after_days=2
+    )
+    submissions = [
+        FormSubmission.objects.create(
+            form_definition=form_definition,
+            submitter=user,
+            form_data={},
+            status="pending_approval",
+        )
+        for _ in range(2)
+    ]
+    for submission in submissions:
+        task = ApprovalTask.objects.create(
+            submission=submission,
+            step_name="Review",
+            assigned_to=approver_user,
+            status="pending",
+        )
+        ApprovalTask.objects.filter(pk=task.pk).update(
+            created_at=timezone.now() - timedelta(days=3)
+        )
+
+    with (
+        patch.object(tasks_module.send_notification_rules, "delay") as notify,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        result = check_approval_deadlines()
+        notify.assert_not_called()
+
+    assert "auto_approved=2" in result
+    assert notify.call_count == 2
+    assert {call.args[0] for call in notify.call_args_list} == {
+        submission.id for submission in submissions
+    }
 
 
 @pytest.mark.django_db

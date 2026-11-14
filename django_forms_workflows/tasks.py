@@ -1,8 +1,9 @@
 """
 Celery-friendly email tasks for Django Forms Workflows.
 
-- Uses Celery if available (shared_task). If Celery isn't installed/running,
+- Uses Celery if available (shared_task). If Celery cannot be imported,
   tasks still import and `.delay(...)` will call synchronously as a graceful fallback.
+  If Celery is installed, `.delay(...)` uses the configured broker/worker setup.
 - Emails use the package's generic templates under django_forms_workflows/templates/emails/.
 - Absolute URLs are built from settings.FORMS_WORKFLOWS_BASE_URL (or SITE_BASE_URL) if set;
   otherwise fall back to relative paths.
@@ -682,6 +683,7 @@ def deliver_workflow_webhook(
     }
     max_attempts = 1 + max(0, endpoint.max_retries)
 
+    should_retry = False
     try:
         response = requests.request(
             "POST",
@@ -699,7 +701,19 @@ def deliver_workflow_webhook(
             error_message="" if success else f"HTTP {response.status_code}",
             **log_data,
         )
-        if not success and endpoint.retry_on_failure and attempt < max_attempts:
+        should_retry = (
+            (not success) and endpoint.retry_on_failure and attempt < max_attempts
+        )
+    except Exception as exc:  # pragma: no cover
+        WebhookDeliveryLog.objects.create(
+            success=False,
+            error_message=str(exc),
+            **log_data,
+        )
+        should_retry = endpoint.retry_on_failure and attempt < max_attempts
+
+    if should_retry:
+        try:
             _schedule_webhook_retry(
                 endpoint_id=endpoint.id,
                 event=event,
@@ -708,20 +722,11 @@ def deliver_workflow_webhook(
                 task_id=task_id,
                 attempt=attempt + 1,
             )
-    except Exception as exc:  # pragma: no cover
-        WebhookDeliveryLog.objects.create(
-            success=False,
-            error_message=str(exc),
-            **log_data,
-        )
-        if endpoint.retry_on_failure and attempt < max_attempts:
-            _schedule_webhook_retry(
-                endpoint_id=endpoint.id,
-                event=event,
-                payload=payload,
-                submission_id=submission_id,
-                task_id=task_id,
-                attempt=attempt + 1,
+        except Exception:  # pragma: no cover
+            logger.exception(
+                "Failed to enqueue webhook retry for endpoint %s on attempt %s",
+                endpoint.id,
+                attempt,
             )
 
 
@@ -937,7 +942,13 @@ def check_approval_deadlines() -> str:
     expired_count = 0
     reminder_count = 0
     auto_approved_count = 0
-    submission_ids_for_auto_approve = set()
+    submission_ids_for_auto_approve = set(
+        FormSubmission.objects.filter(
+            status="pending_approval",
+            form_definition__workflows__auto_approve_after_days__isnull=False,
+            form_definition__workflows__auto_approve_after_days__gt=0,
+        ).values_list("id", flat=True)
+    )
 
     for task in pending:
         submission = task.submission
@@ -949,9 +960,6 @@ def check_approval_deadlines() -> str:
             workflow = getattr(submission.form_definition, "workflow", None)
         if not workflow:
             continue
-
-        if workflow.auto_approve_after_days and submission.status == "pending_approval":
-            submission_ids_for_auto_approve.add(submission.id)
 
         # Expire tasks after deadline
         if workflow.approval_deadline_days and task.created_at:
@@ -1744,6 +1752,18 @@ def send_notification_rules(
                 return
             # A concurrently deleted inferred task simply leaves notification context unscoped.
             pass
+
+    # Actionable approval notifications must only be sent for tasks that are
+    # still pending at dispatch time (queue delay / race-safe recheck).
+    if event in {"approval_request", "approval_reminder"}:
+        if task is None or task.status != "pending":
+            logger.info(
+                "Skipping %s notification for submission_id=%s task_id=%s because task is not pending.",
+                event,
+                submission_id,
+                task_id,
+            )
+            return
 
     submission_url, approval_url = _build_form_field_notification_context(
         submission,

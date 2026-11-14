@@ -1547,10 +1547,19 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         if raw_action_id not in (None, ""):
             if isinstance(raw_action_id, bool):
                 raise ValidationError("Invalid action ID.")
-            try:
-                action_id = int(raw_action_id)
-            except (TypeError, ValueError) as exc:
-                raise ValidationError("Invalid action ID.") from exc
+            if isinstance(raw_action_id, int):
+                action_id = raw_action_id
+            elif isinstance(raw_action_id, str):
+                action_id_str = raw_action_id.strip()
+                if not action_id_str.isdigit():
+                    raise ValidationError("Invalid action ID.")
+                action_id = int(action_id_str)
+            else:
+                raise ValidationError("Invalid action ID.")
+
+            if action_id <= 0:
+                raise ValidationError("Invalid action ID.")
+
             action = existing_actions_by_id.get(action_id)
             if action is None:
                 raise ValidationError("Action ID does not belong to this form.")

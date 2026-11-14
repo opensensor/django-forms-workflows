@@ -803,6 +803,7 @@ def send_approval_request(task_id: int) -> None:
         "assigned_to",
         "assigned_group",
         "workflow_stage",
+        "workflow_stage__workflow",
     ).get(id=task_id)
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
     subject = f"Approval Request: {task.submission.form_definition.name} (ID {task.submission.id})"
@@ -812,7 +813,7 @@ def send_approval_request(task_id: int) -> None:
     stage_context: dict = {}
     if task.workflow_stage:
         stage = task.workflow_stage
-        workflow = getattr(task.submission.form_definition, "workflow", None)
+        workflow = getattr(stage, "workflow", None)
         total_stages = workflow.stages.count() if workflow else 1
         # Count sibling tasks in the same stage
         sibling_tasks = task.submission.approval_tasks.filter(

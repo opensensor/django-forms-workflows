@@ -658,6 +658,15 @@ class FormBuilderPayloadError(ValueError):
         self.client_message = client_message
 
 
+def _form_validation_message(exc):
+    if hasattr(exc, "message_dict"):
+        return "; ".join(
+            f"{field}: {', '.join(messages)}"
+            for field, messages in exc.message_dict.items()
+        )
+    return "; ".join(exc.messages)
+
+
 @transaction.atomic
 def save_form_definition_from_builder_data(data, user, form_definition=None):
     """
@@ -756,13 +765,15 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         form_definition.auto_save_interval = auto_save_interval
         form_definition.version += 1  # Increment version on edit
         try:
-            form_definition.full_clean()
+            form_definition.full_clean(exclude={"description"})
         except ValidationError as exc:
-            raise FormBuilderPayloadError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages) from exc
+            raise FormBuilderPayloadError(_form_validation_message(exc)) from exc
         try:
             form_definition.save()
         except IntegrityError as exc:
-            raise FormBuilderPayloadError({"slug": ["A form with this slug already exists."]}) from exc
+            raise FormBuilderPayloadError(
+                {"slug": ["A form with this slug already exists."]}
+            ) from exc
     else:
         form_definition = FormDefinition(
             name=form_name,
@@ -795,13 +806,15 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             created_by=user,
         )
         try:
-            form_definition.full_clean()
+            form_definition.full_clean(exclude={"description"})
         except ValidationError as exc:
-            raise FormBuilderPayloadError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages) from exc
+            raise FormBuilderPayloadError(_form_validation_message(exc)) from exc
         try:
             form_definition.save()
         except IntegrityError as exc:
-            raise FormBuilderPayloadError({"slug": ["A form with this slug already exists."]}) from exc
+            raise FormBuilderPayloadError(
+                {"slug": ["A form with this slug already exists."]}
+            ) from exc
 
     # Track existing field IDs to determine which to delete
     existing_field_ids = set(form_definition.fields.values_list("id", flat=True))

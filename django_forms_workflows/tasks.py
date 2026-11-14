@@ -2110,11 +2110,10 @@ def send_notification_rules(
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
-                    "sent": False,
                 }
                 if not PendingNotification.objects.filter(**pending_identity).exists():
                     PendingNotification.objects.create(
-                        **pending_identity, scheduled_for=scheduled_for
+                        **pending_identity, sent=False, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

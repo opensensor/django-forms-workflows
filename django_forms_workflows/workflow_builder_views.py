@@ -1453,6 +1453,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             except json.JSONDecodeError:
                 config = {}
 
+        if config is None:
+            config = {}
+        elif not isinstance(config, (dict, list)):
+            config = {}
+
         action_data = {
             "action_type": action_type,
             "trigger": data.get("trigger", "on_approve"),

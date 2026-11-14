@@ -358,19 +358,22 @@ def _write_notification_log(
 ) -> None:
     """Write a NotificationLog row; never raises so it cannot break email delivery."""
     try:
-        NotificationLog.objects.create(
-            notification_type=notification_type,
-            submission_id=submission_id,
-            recipient_email=recipient_email,
-            subject=subject,
-            status=status,
-            error_message=error_message,
-            cc_emails=cc_emails,
-            bcc_emails=bcc_emails,
-            rfc2822_message_id=rfc2822_message_id,
-            approval_task_id=approval_task_id,
-            notification_rule_id=notification_rule_id,
-        )
+        # Isolate logging insert in its own savepoint so DB errors here do not
+        # poison any surrounding transaction.atomic() in the caller.
+        with transaction.atomic():
+            NotificationLog.objects.create(
+                notification_type=notification_type,
+                submission_id=submission_id,
+                recipient_email=recipient_email,
+                subject=subject,
+                status=status,
+                error_message=error_message,
+                cc_emails=cc_emails,
+                bcc_emails=bcc_emails,
+                rfc2822_message_id=rfc2822_message_id,
+                approval_task_id=approval_task_id,
+                notification_rule_id=notification_rule_id,
+            )
     except Exception:  # pragma: no cover
         logger.exception("Failed to write NotificationLog (ignored)")
 
@@ -803,6 +806,7 @@ def send_approval_request(task_id: int) -> None:
         "assigned_to",
         "assigned_group",
         "workflow_stage",
+        "workflow_stage__workflow",
     ).get(id=task_id)
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
     subject = f"Approval Request: {task.submission.form_definition.name} (ID {task.submission.id})"
@@ -812,7 +816,7 @@ def send_approval_request(task_id: int) -> None:
     stage_context: dict = {}
     if task.workflow_stage:
         stage = task.workflow_stage
-        workflow = getattr(task.submission.form_definition, "workflow", None)
+        workflow = getattr(stage, "workflow", None)
         total_stages = workflow.stages.count() if workflow else 1
         # Count sibling tasks in the same stage
         sibling_tasks = task.submission.approval_tasks.filter(
@@ -1696,7 +1700,7 @@ def send_notification_rules(
     # the admin "Retry failed" action re-fire these events without losing
     # the task context. Only applies when no explicit ``task_id`` was
     # passed; an explicit task always wins.
-    if not task_id:
+    if task_id is None:
         if event == "workflow_approved":
             _finalizing = (
                 submission.approval_tasks.filter(status="approved")
@@ -1716,14 +1720,21 @@ def send_notification_rules(
 
     # Resolve the task (if any) to scope rules to its workflow
     task = None
-    if task_id:
+    if task_id is not None:
         try:
             task = ApprovalTask.objects.select_related("workflow_stage").get(
                 id=task_id,
                 submission_id=submission_id,
             )
         except ApprovalTask.DoesNotExist:
-            # A concurrently deleted or mismatched task simply leaves notification context unscoped.
+            if explicit_task:
+                logger.warning(
+                    "Skipping notification dispatch: explicit task_id=%s could not be resolved for submission_id=%s.",
+                    task_id,
+                    submission_id,
+                )
+                return
+            # A concurrently deleted inferred task simply leaves notification context unscoped.
             pass
 
     submission_url, approval_url = _build_form_field_notification_context(
@@ -1750,7 +1761,9 @@ def send_notification_rules(
         for _t in _comments_qs:
             _actor = ""
             if _t.completed_by:
-                _actor = _t.completed_by.get_full_name() or _t.completed_by.username
+                _actor = (
+                    _t.completed_by.get_full_name() or _t.completed_by.get_username()
+                )
             _public_comments.append(
                 {
                     "stage_name": (

@@ -2088,8 +2088,9 @@ def send_notification_rules(
 
         user_model = get_user_model()
         _users_by_email: dict = {}
-        if recipients:
-            for u in user_model.objects.filter(email__in=recipients):
+        all_recipient_emails = list(dict.fromkeys(list(recipients) + list(cc_recipients)))
+        if all_recipient_emails:
+            for u in user_model.objects.filter(email__in=all_recipient_emails):
                 _users_by_email[u.email] = u
 
         # Check cadence — batch or send immediately

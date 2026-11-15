@@ -1267,14 +1267,15 @@ def form_builder_preview(request):
             except ValidationError:
                 transaction.set_rollback(True)
                 return JsonResponse(
-                    {"error": "Invalid preview field data"},
+                    {"success": False, "error": "Invalid preview field data"},
                     status=400,
                 )
             except IntegrityError:
                 transaction.set_rollback(True)
                 return JsonResponse(
                     {
-                        "error": "Invalid preview field data: duplicate or conflicting values"
+                        "success": False,
+                        "error": "Invalid preview field data: duplicate or conflicting values",
                     },
                     status=400,
                 )

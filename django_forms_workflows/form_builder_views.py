@@ -846,6 +846,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
     # Create or update fields
     seen_non_null_field_ids = set()
+    pending_existing_updates = []
+    pending_new_fields = []
     for field_data in fields_data:
         candidate_field_id = field_data.get("id")
         if candidate_field_id is not None:
@@ -1001,30 +1003,43 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             isinstance(field_id, str)
             and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", field_id)
         ):
-            # Create new field (validate model-level constraints before persisting)
-            new_field = FormField(**field_props)
-            try:
-                new_field.full_clean()
-            except ValidationError as exc:
-                raise FormBuilderPayloadError(
-                    f"Invalid field payload for '{field_data.get('field_name', '')}': "
-                    f"{_form_validation_message(exc)}"
-                ) from exc
-            new_field.save()
-            updated_field_ids.add(new_field.id)
-            if old_id is not None:
-                field_id_mapping[str(old_id)] = new_field.id
+            pending_new_fields.append((field_props, field_data, old_id))
         elif isinstance(field_id, int):
-            # Update existing field, scoped to current form_definition
-            try:
-                existing_field = FormField.objects.get(
-                    id=field_id, form_definition=form_definition
-                )
-            except FormField.DoesNotExist as exc:
+            # Defer existing-field updates to avoid transient uniqueness conflicts
+            # (for example, swapping two existing field names).
+            pending_existing_updates.append((field_id, field_props, field_data, old_id))
+        else:
+            raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
+
+    # Apply existing-field updates in two phases:
+    # 1) temporary unique names for renamed fields
+    # 2) final values with model validation
+    if pending_existing_updates:
+        existing_fields_by_id = {
+            f.id: f
+            for f in FormField.objects.filter(
+                form_definition=form_definition,
+                id__in=[item[0] for item in pending_existing_updates],
+            )
+        }
+
+        for field_id, _, _, _ in pending_existing_updates:
+            if field_id not in existing_fields_by_id:
                 raise FormBuilderPayloadError(
                     f"Invalid field id {field_id} for this form"
-                ) from exc
+                )
 
+        for field_id, field_props, _, _ in pending_existing_updates:
+            existing_field = existing_fields_by_id[field_id]
+            if (
+                "field_name" in field_props
+                and field_props["field_name"] != existing_field.field_name
+            ):
+                existing_field.field_name = f"__tmp__{uuid.uuid4().hex}"
+                existing_field.save(update_fields=["field_name"])
+
+        for field_id, field_props, field_data, old_id in pending_existing_updates:
+            existing_field = existing_fields_by_id[field_id]
             for prop_name, prop_value in field_props.items():
                 setattr(existing_field, prop_name, prop_value)
             try:
@@ -1038,8 +1053,20 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             updated_field_ids.add(field_id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id
-        else:
-            raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
+
+    for field_props, field_data, old_id in pending_new_fields:
+        new_field = FormField(**field_props)
+        try:
+            new_field.full_clean()
+        except ValidationError as exc:
+            raise FormBuilderPayloadError(
+                f"Invalid field payload for '{field_data.get('field_name', '')}': "
+                f"{_form_validation_message(exc)}"
+            ) from exc
+        new_field.save()
+        updated_field_ids.add(new_field.id)
+        if old_id is not None:
+            field_id_mapping[str(old_id)] = new_field.id
 
     # Delete fields that were removed
     fields_to_delete = existing_field_ids - updated_field_ids
@@ -1332,6 +1359,27 @@ def document_template_save(request, form_id):
         is_default = data.get("is_default", False)
         is_active = data.get("is_active", True)
 
+        if not isinstance(html_content, str):
+            return JsonResponse(
+                {"success": False, "error": "Template html_content must be a string"},
+                status=400,
+            )
+        if not isinstance(page_size, str):
+            return JsonResponse(
+                {"success": False, "error": "Template page_size must be a string"},
+                status=400,
+            )
+        if not isinstance(is_default, bool):
+            return JsonResponse(
+                {"success": False, "error": "Template is_default must be a boolean"},
+                status=400,
+            )
+        if not isinstance(is_active, bool):
+            return JsonResponse(
+                {"success": False, "error": "Template is_active must be a boolean"},
+                status=400,
+            )
+
         if not name:
             return JsonResponse(
                 {"success": False, "error": "Template name is required"}, status=400
@@ -1341,11 +1389,6 @@ def document_template_save(request, form_id):
             form_def = get_object_or_404(
                 FormDefinition.objects.select_for_update(), id=form_id
             )
-            # If marking as default, clear other defaults for this form
-            if is_default:
-                DocumentTemplate.objects.filter(
-                    form_definition=form_def, is_default=True
-                ).update(is_default=False)
 
             if validated_template_id is not None:
                 tpl = get_object_or_404(
@@ -1356,9 +1399,8 @@ def document_template_save(request, form_id):
                 tpl.page_size = page_size
                 tpl.is_default = is_default
                 tpl.is_active = is_active
-                tpl.save()
             else:
-                tpl = DocumentTemplate.objects.create(
+                tpl = DocumentTemplate(
                     form_definition=form_def,
                     name=name,
                     html_content=html_content,
@@ -1366,6 +1408,26 @@ def document_template_save(request, form_id):
                     is_default=is_default,
                     is_active=is_active,
                 )
+
+            try:
+                tpl.full_clean()
+            except ValidationError as exc:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Validation failed",
+                        "details": exc.message_dict,
+                    },
+                    status=400,
+                )
+
+            # If marking as default, clear other defaults for this form
+            if is_default:
+                DocumentTemplate.objects.filter(
+                    form_definition=form_def, is_default=True
+                ).exclude(id=tpl.id).update(is_default=False)
+
+            tpl.save()
 
         return JsonResponse(
             {"success": True, "id": tpl.id, "message": "Template saved successfully"}

@@ -1925,6 +1925,68 @@ class TestSaveFormDefinitionFromBuilderData:
         field.refresh_from_db()
         assert field.field_label == "Renamed Label"
 
+    def test_swaps_existing_field_names(self, user, form_with_fields):
+        first = form_with_fields.fields.get(field_name="full_name")
+        second = form_with_fields.fields.get(field_name="email")
+        data = {
+            "name": form_with_fields.name,
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": first.id,
+                    "field_name": "email",
+                    "field_label": first.field_label,
+                    "field_type": first.field_type,
+                },
+                {
+                    "id": second.id,
+                    "field_name": "full_name",
+                    "field_label": second.field_label,
+                    "field_type": second.field_type,
+                },
+            ],
+        }
+
+        save_form_definition_from_builder_data(
+            data, user, form_definition=form_with_fields
+        )
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        assert first.field_name == "email"
+        assert second.field_name == "full_name"
+
+    def test_new_field_can_use_renamed_existing_field_name(
+        self, user, form_with_fields
+    ):
+        existing = form_with_fields.fields.get(field_name="full_name")
+        data = {
+            "name": form_with_fields.name,
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": "new_1",
+                    "field_name": "full_name",
+                    "field_label": "Replacement",
+                    "field_type": "text",
+                },
+                {
+                    "id": existing.id,
+                    "field_name": "renamed_name",
+                    "field_label": existing.field_label,
+                    "field_type": existing.field_type,
+                },
+            ],
+        }
+
+        result, mapping = save_form_definition_from_builder_data(
+            data, user, form_definition=form_with_fields
+        )
+
+        existing.refresh_from_db()
+        assert existing.field_name == "renamed_name"
+        assert result.fields.get(field_name="full_name").id == mapping["new_1"]
+
     def test_direct_save_rolls_back_form_and_fields_on_invalid_id(
         self, user, form_with_fields
     ):

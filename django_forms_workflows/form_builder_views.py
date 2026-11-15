@@ -35,6 +35,9 @@ from .security import builder_permission_required
 
 logger = logging.getLogger(__name__)
 
+# Signed 64-bit integer max, compatible with Django BigAutoField/SQLite INTEGER PK range.
+MAX_DB_PRIMARY_KEY = 2**63 - 1
+
 
 def _clone_document_templates(*, original_form, cloned_form):
     """
@@ -692,7 +695,7 @@ def _positive_integer_id(value):
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return value if value > 0 else None
+        return value if 0 < value <= MAX_DB_PRIMARY_KEY else None
     if isinstance(value, str):
         digits = value.strip()
         if digits.isascii() and digits.isdigit():
@@ -700,7 +703,7 @@ def _positive_integer_id(value):
                 parsed = int(digits)
             except ValueError:
                 return None
-            return parsed if parsed > 0 else None
+            return parsed if 0 < parsed <= MAX_DB_PRIMARY_KEY else None
     return None
 
 

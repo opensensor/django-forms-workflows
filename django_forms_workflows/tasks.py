@@ -1825,8 +1825,8 @@ def send_notification_rules(
                     submission_id,
                 )
                 return
-            # A concurrently deleted inferred task simply leaves notification context unscoped.
-            pass
+            # A concurrently deleted inferred task leaves notification context unscoped.
+            task = None
 
     # Actionable approval notifications must only be sent for tasks that are
     # still pending at dispatch time (queue delay / race-safe recheck).
@@ -2240,10 +2240,11 @@ def send_notification_rules(
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
                 if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **dispatch_identity, sent=False, scheduled_for=scheduled_for
+                        **dispatch_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

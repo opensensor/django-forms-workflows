@@ -61,7 +61,13 @@ def _copy_model_fields(instance, excluded):
 
 
 def _clone_workflow_notifications(original_form, cloned_workflows, cloned_stages):
-    for original_workflow in original_form.workflows.all():
+    source_workflows = original_form.workflows.prefetch_related(
+        Prefetch(
+            "notification_rules",
+            queryset=NotificationRule.objects.prefetch_related("notify_groups"),
+        )
+    )
+    for original_workflow in source_workflows.all():
         cloned_workflow = cloned_workflows[original_workflow.pk]
         for rule in original_workflow.notification_rules.all():
             data = _copy_model_fields(rule, {"id", "workflow", "stage"})
@@ -767,6 +773,10 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
     # Create or update form definition
     if form_definition is not None:
+        # Reload with row lock to prevent lost updates/version races.
+        form_definition = FormDefinition.objects.select_for_update().get(
+            pk=form_definition.pk
+        )
         form_definition.name = form_name
         form_definition.slug = form_slug
         form_definition.description = form_description
@@ -1173,7 +1183,18 @@ def form_builder_preview(request):
             form_definition.allow_withdrawal = data.get("allow_withdrawal", True)
             form_definition.enable_multi_step = data.get("enable_multi_step", False)
             form_definition.form_steps = data.get("form_steps", [])
-            form_definition.save()
+            try:
+                # Preview permits an empty description while a form is being drafted.
+                form_definition.full_clean(exclude={"description"})
+                form_definition.save()
+            except ValidationError:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Invalid preview payload for form-level values",
+                    },
+                    status=400,
+                )
 
             # Create temporary fields
             try:

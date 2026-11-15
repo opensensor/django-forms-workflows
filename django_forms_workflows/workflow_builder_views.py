@@ -1606,10 +1606,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             ),
         }
 
-        if stage_id and stage_id in existing_stage_ids:
-            WorkflowStage.objects.filter(id=stage_id).update(**stage_fields)
-            stage = WorkflowStage.objects.get(id=stage_id)
-            kept_stage_ids.add(stage_id)
+        if stage_id:
+            if stage_id in existing_stage_ids:
+                WorkflowStage.objects.filter(id=stage_id).update(**stage_fields)
+                stage = WorkflowStage.objects.get(id=stage_id)
+                kept_stage_ids.add(stage_id)
+            else:
+                raise ValidationError(
+                    f"Invalid stage_id '{stage_id}' for this workflow."
+                )
         else:
             stage = WorkflowStage.objects.create(workflow=workflow, **stage_fields)
             kept_stage_ids.add(stage.id)

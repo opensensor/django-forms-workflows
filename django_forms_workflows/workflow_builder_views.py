@@ -294,28 +294,53 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     def normalize_stage_field_refs(raw_entries):
         resolved_keys = []
         invalid_refs = []
+
+        def is_valid_ref_id(value):
+            return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+        def is_valid_field_name(value):
+            return isinstance(value, str)
+
         if raw_entries is None:
             raw_entries = []
         elif not isinstance(raw_entries, list):
             raise ValidationError("approval_fields must be a list.")
         for entry in raw_entries:
             if isinstance(entry, dict):
+                has_id = "id" in entry
+                has_field_name = "field_name" in entry
                 entry_id = entry.get("id")
                 entry_field_name = entry.get("field_name")
-                if entry_id:
+
+                if has_id:
+                    if not is_valid_ref_id(entry_id):
+                        raise ValidationError(
+                            "approval_fields id values must be positive integers."
+                        )
                     if entry_id in field_ids:
                         resolved_keys.append(
                             ("id", entry_id, entry_field_name or str(entry_id))
                         )
                     else:
                         invalid_refs.append(entry_id)
-                elif entry_field_name in field_names:
-                    resolved_keys.append(
-                        ("field_name", entry_field_name, entry_field_name)
-                    )
+                elif has_field_name:
+                    if not is_valid_field_name(entry_field_name):
+                        raise ValidationError(
+                            "approval_fields field_name values must be strings."
+                        )
+                    if entry_field_name in field_names:
+                        resolved_keys.append(
+                            ("field_name", entry_field_name, entry_field_name)
+                        )
+                    else:
+                        invalid_refs.append(entry_field_name)
                 else:
-                    invalid_refs.append(entry_field_name or entry)
-            elif isinstance(entry, int):
+                    invalid_refs.append(entry)
+            elif isinstance(entry, int) and not isinstance(entry, bool):
+                if entry <= 0:
+                    raise ValidationError(
+                        "approval_fields id values must be positive integers."
+                    )
                 if entry in field_ids:
                     resolved_keys.append(("id", entry, str(entry)))
                 else:

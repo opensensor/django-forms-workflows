@@ -1849,15 +1849,16 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    if normalized_deleted_ids - previous_action_ids:
+    loaded_graph_action_ids = set(actions_to_keep)
+    if normalized_deleted_ids - loaded_graph_action_ids:
         raise ValidationError(
-            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
+            {"deleted_action_ids": "Actions must belong to the loaded workflow graph."}
         )
     if normalized_deleted_ids & other_workflow_action_ids:
         raise ValidationError(
             {"deleted_action_ids": "An action is still used by another workflow."}
         )
-    if normalized_deleted_ids & set(actions_to_keep):
+    if normalized_deleted_ids & loaded_graph_action_ids:
         raise ValidationError(
             {"deleted_action_ids": "An action cannot be kept and deleted together."}
         )

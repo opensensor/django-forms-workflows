@@ -253,24 +253,38 @@ def _send_html_email_from_string(
     """
     from django.template import Context, Template
 
+    to_list = [e for e in to if e]
+    cc_list = [e for e in (cc or []) if e and e not in to_list]
+    bcc_list = [e for e in (bcc or []) if e and e not in to_list and e not in cc_list]
+    if not to_list:
+        logger.info("Skipping email '%s' (no recipients)", subject)
+        _write_notification_log(
+            notification_type=notification_type,
+            submission_id=submission_id,
+            recipient_email="(none)",
+            subject=subject,
+            status="skipped",
+            cc_emails=", ".join(cc_list),
+            bcc_emails=", ".join(bcc_list),
+        )
+        return True
+
     context.setdefault("site_name", _site_name())
 
     tpl = Template(body_template_string)
     html_body = tpl.render(Context(context))
     text_body = strip_tags(html_body)
+    from_addr = from_email or getattr(
+        settings, "DEFAULT_FROM_EMAIL", "no-reply@localhost"
+    )
 
-    return _send_rendered_email(
+    msg = EmailMultiAlternatives(
         subject=subject,
-        to=to,
-        html_body=html_body,
-        text_body=text_body,
-        from_email=from_email,
-        notification_type=notification_type,
-        submission_id=submission_id,
-        cc=cc,
-        bcc=bcc,
-        approval_task_id=approval_task_id,
-        notification_rule_id=notification_rule_id,
+        body=text_body,
+        from_email=from_addr,
+        to=to_list,
+        cc=cc_list or None,
+        bcc=bcc_list or None,
     )
     msg.attach_alternative(html_body, "text/html")
     # Stamp a Message-ID we control so delivery can be reconciled against the
@@ -2238,12 +2252,12 @@ def send_notification_rules(
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
-                _, created = PendingNotification.objects.get_or_create(
-                    **dispatch_identity,
-                    defaults={"scheduled_for": scheduled_for, "sent": False},
-                )
-                if created:
+                if not PendingNotification.objects.filter(**dispatch_identity).exists():
+                    PendingNotification.objects.create(
+                        **dispatch_identity, scheduled_for=scheduled_for
+                    )
                     created_count += 1
             logger.info(
                 "Queued %d/%d %s notification(s) for submission %s (due %s)",

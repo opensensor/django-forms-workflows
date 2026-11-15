@@ -885,6 +885,10 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     Reads WorkflowStage records to build stage nodes.
     """
+    stages = list(workflow.stages.all())
+    serialized_stage_approval_fields = {
+        stage.id: _serialize_stage_approval_fields(stage) for stage in stages
+    }
     stage_defaults = {
         stage.id: {
             "allow_send_back": stage.allow_send_back,
@@ -894,9 +898,9 @@ def convert_workflow_to_visual(workflow, form_definition):
             "assignee_lookup_type": stage.assignee_lookup_type,
             "validate_assignee_group": stage.validate_assignee_group,
             "trigger_conditions": stage.trigger_conditions,
-            "approval_fields": _serialize_stage_approval_fields(stage),
+            "approval_fields": serialized_stage_approval_fields.get(stage.id, []),
         }
-        for stage in workflow.stages.all()
+        for stage in stages
     }
     settings_defaults = {
         "name_label": workflow.name_label,

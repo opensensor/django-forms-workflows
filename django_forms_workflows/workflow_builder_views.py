@@ -1727,6 +1727,29 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             sdata.get("approval_fields", []),
         )
 
+    selected_field_ids = {
+        field_id
+        for field_ids in stage_field_map.values()
+        for field_id in field_ids
+    }
+    if selected_field_ids:
+        conflicting_field_ids = list(
+            form_definition.fields.filter(
+                id__in=selected_field_ids,
+                workflow_stage__isnull=False,
+            )
+            .exclude(workflow_stage__workflow=workflow)
+            .values_list("id", flat=True)
+        )
+        if conflicting_field_ids:
+            conflicting_ids_display = ", ".join(
+                str(fid) for fid in sorted(conflicting_field_ids)
+            )
+            raise ValidationError(
+                "Approval fields already assigned to another workflow track "
+                f"cannot be reused here: {conflicting_ids_display}."
+            )
+
     workflow.visual_workflow_data = workflow_data
     workflow.save(update_fields=["visual_workflow_data"])
 

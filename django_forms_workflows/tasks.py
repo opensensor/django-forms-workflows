@@ -69,7 +69,7 @@ def _base_url() -> str:
     Checks, in order:
     1. ``settings.FORMS_WORKFLOWS_BASE_URL``
     2. ``settings.SITE_BASE_URL``
-    3. First entry in ``settings.CSRF_TRUSTED_ORIGINS``
+    3. First concrete (non-wildcard) entry in ``settings.CSRF_TRUSTED_ORIGINS``
     """
     url = getattr(settings, "FORMS_WORKFLOWS_BASE_URL", None) or getattr(
         settings, "SITE_BASE_URL", None
@@ -78,7 +78,13 @@ def _base_url() -> str:
         return url
     origins = getattr(settings, "CSRF_TRUSTED_ORIGINS", None)
     if origins:
-        return origins[0]
+        for origin in origins:
+            if (
+                isinstance(origin, str)
+                and origin.startswith(("http://", "https://"))
+                and "*" not in origin
+            ):
+                return origin
     return ""
 
 
@@ -692,12 +698,31 @@ def deliver_workflow_webhook(
             headers=request_headers,
             timeout=endpoint.timeout_seconds,
             allow_redirects=False,
+            stream=True,
         )
+        try:
+            max_response_bytes = 5000
+            response_bytes = bytearray()
+            for chunk in response.iter_content(chunk_size=1024):
+                if not chunk:
+                    continue
+                remaining = max_response_bytes - len(response_bytes)
+                if remaining <= 0:
+                    break
+                response_bytes.extend(chunk[:remaining])
+                if len(response_bytes) >= max_response_bytes:
+                    break
+            response_text = response_bytes.decode(
+                response.encoding or "utf-8", errors="replace"
+            )
+        finally:
+            response.close()
+
         success = 200 <= response.status_code < 300
         WebhookDeliveryLog.objects.create(
             success=success,
             status_code=response.status_code,
-            response_body=(response.text or "")[:5000],
+            response_body=response_text,
             error_message="" if success else f"HTTP {response.status_code}",
             **log_data,
         )
@@ -813,6 +838,17 @@ def send_approval_request(task_id: int) -> None:
         "workflow_stage",
         "workflow_stage__workflow",
     ).get(id=task_id)
+
+    # Task state may have changed while this job was queued.
+    # Only send requests for still-pending approval tasks.
+    if str(getattr(task, "status", "")).lower() != "pending":
+        logger.info(
+            "Skipping approval request for task %s because status is %r",
+            task.id,
+            getattr(task, "status", None),
+        )
+        return
+
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
     subject = f"Approval Request: {task.submission.form_definition.name} (ID {task.submission.id})"
     template = "emails/approval_request.html"
@@ -2178,7 +2214,7 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                pending_identity = {
+                dispatch_identity = {
                     "workflow": workflow,
                     "notification_type": event,
                     "submission": submission,
@@ -2186,9 +2222,9 @@ def send_notification_rules(
                     "recipient_email": recipient,
                     "sent": False,
                 }
-                if not PendingNotification.objects.filter(**pending_identity).exists():
+                if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **pending_identity, scheduled_for=scheduled_for
+                        **dispatch_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

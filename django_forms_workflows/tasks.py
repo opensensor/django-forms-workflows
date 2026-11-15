@@ -1954,7 +1954,7 @@ def send_notification_rules(
             locked_task = None
             if task is not None:
                 locked_task = (
-                    ApprovalTask.objects.select_for_update()
+                    ApprovalTask.objects.select_for_update(of=("self",))
                     .select_related("workflow_stage")
                     .filter(pk=task.pk)
                     .first()
@@ -1973,7 +1973,7 @@ def send_notification_rules(
             ):
                 rule_task = locked_task
             else:
-                rule_task = None
+                return
         elif event in ("workflow_approved", "workflow_denied"):
             if workflow.pk not in inferred_tasks_by_workflow:
                 final_status = (

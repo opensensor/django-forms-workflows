@@ -179,9 +179,18 @@ def form_builder_clone(request, form_id):
             cloned_form_data = _copy_model_fields(original_form, excluded_fields)
 
             # Intentional overrides for cloned forms
+            copy_suffix = " (Copy)"
+            name_max_length = FormDefinition._meta.get_field("name").max_length
+            if name_max_length:
+                available = max(name_max_length - len(copy_suffix), 0)
+                base_name = original_form.name[:available].rstrip()
+                cloned_name = f"{base_name}{copy_suffix}"
+            else:
+                cloned_name = f"{original_form.name}{copy_suffix}"
+
             cloned_form_data.update(
                 {
-                    "name": f"{original_form.name} (Copy)",
+                    "name": cloned_name,
                     "slug": slug,
                     "is_active": False,  # Start as inactive
                     "version": 1,

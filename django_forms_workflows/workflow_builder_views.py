@@ -252,7 +252,21 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         if workflow is not None
         else set()
     )
-    stage_node_ids = {node.get("id") for node in stage_nodes if node.get("id")}
+    errors = []
+    stage_node_ids = set()
+    for node in stage_nodes:
+        raw_node_id = node.get("id")
+        if raw_node_id in (None, ""):
+            continue
+        if isinstance(raw_node_id, int) and not isinstance(raw_node_id, bool):
+            stage_node_ids.add(raw_node_id)
+            continue
+        if isinstance(raw_node_id, str):
+            normalized_node_id = raw_node_id.strip()
+            if normalized_node_id:
+                stage_node_ids.add(normalized_node_id)
+                continue
+        errors.append("Each stage node must include a valid scalar 'id'.")
     stage_ids_in_payload = set()
     for node in stage_nodes:
         raw_stage_id = node.get("data", {}).get("stage_id")
@@ -267,7 +281,6 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     stage_ids_in_payload.add(int(normalized_stage_id))
                 except ValueError:
                     pass  # The converter reports malformed stage IDs.
-    errors = []
     field_assignments = {}
 
     def add_error(message):

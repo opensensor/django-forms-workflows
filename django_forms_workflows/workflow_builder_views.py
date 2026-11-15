@@ -259,11 +259,14 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         if raw_node_id in (None, ""):
             continue
         if isinstance(raw_node_id, int) and not isinstance(raw_node_id, bool):
-            stage_node_ids.add(raw_node_id)
+            normalized_node_id = raw_node_id
+            node["id"] = normalized_node_id
+            stage_node_ids.add(normalized_node_id)
             continue
         if isinstance(raw_node_id, str):
             normalized_node_id = raw_node_id.strip()
             if normalized_node_id:
+                node["id"] = normalized_node_id
                 stage_node_ids.add(normalized_node_id)
                 continue
         errors.append("Each stage node must include a valid scalar 'id'.")

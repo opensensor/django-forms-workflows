@@ -741,8 +741,9 @@ def deliver_workflow_webhook(
             response_text = response_bytes.decode(
                 response.encoding or "utf-8", errors="replace"
             )
-        except Exception as body_exc:  # pragma: no cover
-            response_text = f"[response body capture failed: {body_exc}]"
+        except Exception:  # pragma: no cover
+            logger.exception("Failed to capture webhook response body")
+            response_text = "[response body capture failed]"
         finally:
             response.close()
     except Exception as exc:  # pragma: no cover
@@ -2255,10 +2256,11 @@ def send_notification_rules(
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
                 if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **dispatch_identity, scheduled_for=scheduled_for, sent=False
+                        **dispatch_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

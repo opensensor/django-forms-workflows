@@ -845,6 +845,28 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 )
             seen_non_null_field_ids.add(candidate_field_id)
 
+    # Pre-delete omitted existing fields before create/update validation.
+    # This avoids uniqueness conflicts when a field is removed and recreated
+    # in the same payload with the same unique field_name.
+    incoming_existing_field_ids = set()
+    for _field_data in fields_data:
+        _field_id = _field_data.get("id")
+        if isinstance(_field_id, bool):
+            raise FormBuilderPayloadError(f"Invalid field id {_field_id} for this form")
+        if isinstance(_field_id, int):
+            incoming_existing_field_ids.add(_field_id)
+        elif _field_id is None or (
+            isinstance(_field_id, str)
+            and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", _field_id)
+        ):
+            continue
+        else:
+            raise FormBuilderPayloadError(f"Invalid field id {_field_id} for this form")
+
+    FormField.objects.filter(form_definition=form_definition).exclude(
+        id__in=incoming_existing_field_ids
+    ).delete()
+
     for field_data in fields_data:
         field_id = field_data.get("id")
         old_id = field_id  # Store original ID for mapping

@@ -1379,7 +1379,57 @@ def shared_option_list_save(request):
                 {"success": False, "error": "Request body must be a JSON object"},
                 status=400,
             )
-        list_id = data.get("id")
+        has_list_id = "id" in data
+        list_id = None
+        if has_list_id:
+            list_id_raw = data.get("id")
+            if isinstance(list_id_raw, bool):
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "id must be a positive integer",
+                    },
+                    status=400,
+                )
+            if isinstance(list_id_raw, int):
+                list_id = list_id_raw
+            elif isinstance(list_id_raw, float):
+                if not list_id_raw.is_integer():
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "id must be a positive integer",
+                        },
+                        status=400,
+                    )
+                list_id = int(list_id_raw)
+            elif isinstance(list_id_raw, str):
+                list_id_str = list_id_raw.strip()
+                if not list_id_str or not list_id_str.isdigit():
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "id must be a positive integer",
+                        },
+                        status=400,
+                    )
+                list_id = int(list_id_str)
+            else:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "id must be a positive integer",
+                    },
+                    status=400,
+                )
+            if list_id <= 0:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "id must be a positive integer",
+                    },
+                    status=400,
+                )
         name_raw = data.get("name", "")
         slug_raw = data.get("slug", "")
         if not isinstance(name_raw, str) or not isinstance(slug_raw, str):
@@ -1453,7 +1503,7 @@ def shared_option_list_save(request):
                     status=400,
                 )
 
-        if list_id:
+        if has_list_id:
             ol = get_object_or_404(SharedOptionList, id=list_id)
             ol.name = name
             ol.slug = slug

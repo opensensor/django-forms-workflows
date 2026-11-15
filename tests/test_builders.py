@@ -578,6 +578,30 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Duplicate stage_id"):
             convert_visual_to_workflow(visual, form_definition, staged_workflow)
 
+    def test_rejects_duplicate_stage_node_ids_without_approval_fields(
+        self, form_definition
+    ):
+        visual = {
+            "nodes": [
+                {"type": "start", "data": {}},
+                {
+                    "id": "stage_1",
+                    "type": "stage",
+                    "data": {"name": "First", "requires_manager_approval": True},
+                },
+                {
+                    "id": "stage_1",
+                    "type": "stage",
+                    "data": {"name": "Second", "requires_manager_approval": True},
+                },
+                {"type": "end", "data": {}},
+            ],
+            "connections": [],
+        }
+
+        with pytest.raises(ValidationError, match="duplicate node ID"):
+            convert_visual_to_workflow(visual, form_definition)
+
     @pytest.mark.parametrize("stage_id", [True, [], "²", "9" * 5000])
     def test_rejects_invalid_stage_id(self, form_definition, stage_id):
         visual = self._make_visual(
@@ -1150,13 +1174,14 @@ class TestConvertVisualToWorkflow:
             == target_workflow.id
         )
 
-    def test_sub_workflow_rejects_malformed_target_id(self, form_definition):
+    @pytest.mark.parametrize("target_id", ["not-an-id", "²", "9" * 5000, 1.0, True])
+    def test_sub_workflow_rejects_malformed_target_id(self, form_definition, target_id):
         visual = self._make_visual()
         visual["nodes"].insert(
             1,
             {
                 "type": "sub_workflow",
-                "data": {"sub_workflow_id": "not-an-id"},
+                "data": {"sub_workflow_id": target_id},
             },
         )
 

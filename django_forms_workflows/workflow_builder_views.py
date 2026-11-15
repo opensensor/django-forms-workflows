@@ -315,6 +315,14 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_data = stage_node.get("data", {})
         stage_label = stage_data.get("name") or f"Stage {index}"
         stage_identity = stage_node.get("id") or f"stage-index-{index}"
+        node_id = stage_node.get("id")
+        if node_id:
+            if node_id in seen_stage_node_ids:
+                add_error(
+                    f"{stage_label} uses a duplicate node ID '{node_id}'. Stage node IDs must be unique."
+                )
+            else:
+                seen_stage_node_ids.add(node_id)
         raw_group_entries = stage_data.get("approval_groups", [])
         if not isinstance(raw_group_entries, list):
             add_error(f"{stage_label} approval groups must be a list.")
@@ -409,14 +417,6 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
 
             if not canonical_field_id:
                 continue
-
-            if stage_identity:
-                if stage_identity in seen_stage_node_ids:
-                    add_error(
-                        f"{stage_label} uses a duplicate node ID '{stage_identity}'. Stage node IDs must be unique."
-                    )
-                else:
-                    seen_stage_node_ids.add(stage_identity)
 
             previous_assignment = field_assignments.get(canonical_field_id)
             if (
@@ -885,9 +885,19 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     Reads WorkflowStage records to build stage nodes.
     """
-    # Build stage defaults lazily only when needed to avoid duplicate per-stage
-    # approval-field serialization work on saved-layout paths.
-    stage_defaults = None
+    stage_defaults = {
+        stage.id: {
+            "allow_send_back": stage.allow_send_back,
+            "allow_reassign": stage.allow_reassign,
+            "allow_edit_form_data": stage.allow_edit_form_data,
+            "assignee_form_field": stage.assignee_form_field,
+            "assignee_lookup_type": stage.assignee_lookup_type,
+            "validate_assignee_group": stage.validate_assignee_group,
+            "trigger_conditions": stage.trigger_conditions,
+            "approval_fields": _serialize_stage_approval_fields(stage),
+        }
+        for stage in workflow.stages.all()
+    }
     settings_defaults = {
         "name_label": workflow.name_label,
         "start_trigger": workflow.start_trigger,
@@ -1848,16 +1858,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    loaded_graph_action_ids = set(actions_to_keep)
-    if normalized_deleted_ids - loaded_graph_action_ids:
+    if normalized_deleted_ids - previous_action_ids:
         raise ValidationError(
-            {"deleted_action_ids": "Actions must belong to the loaded workflow graph."}
+            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
         )
     if normalized_deleted_ids & other_workflow_action_ids:
         raise ValidationError(
             {"deleted_action_ids": "An action is still used by another workflow."}
         )
-    if normalized_deleted_ids & loaded_graph_action_ids:
+    if normalized_deleted_ids & set(actions_to_keep):
         raise ValidationError(
             {"deleted_action_ids": "An action cannot be kept and deleted together."}
         )
@@ -1892,13 +1901,24 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 raise ValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )
-            try:
-                target_workflow_pk = int(str(target_workflow_id))
-            except (TypeError, ValueError):
+            if isinstance(target_workflow_id, int):
+                target_workflow_pk = target_workflow_id
+            elif (
+                isinstance(target_workflow_id, str)
+                and target_workflow_id.isascii()
+                and target_workflow_id.isdigit()
+            ):
+                try:
+                    target_workflow_pk = int(target_workflow_id)
+                except ValueError as exc:
+                    raise ValidationError(
+                        {"sub_workflow_id": "Target ID must be a positive integer."}
+                    ) from exc
+            else:
                 raise ValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )
-            if target_workflow_pk <= 0 or target_workflow_pk > 2147483647:
+            if target_workflow_pk <= 0 or target_workflow_pk > 9223372036854775807:
                 raise ValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )

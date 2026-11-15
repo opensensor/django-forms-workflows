@@ -235,6 +235,7 @@ def form_builder_clone(request, form_id):
             # Clone workflows, stages, and stage approval groups
             cloned_stages_by_original_id = {}
             cloned_workflows_by_original_id = {}
+            pending_subworkflow_configs = []
             for wf in original_form.workflows.all():
                 original_stages = list(
                     wf.stages.prefetch_related(
@@ -289,22 +290,27 @@ def form_builder_clone(request, form_id):
                             position=sag.position,
                             role=sag.role,
                         )
-                # Clone SubWorkflowDefinition if present
+                # Capture SubWorkflowDefinition for remapped creation after all workflows are cloned
                 try:
                     swc = wf.sub_workflow_config
-                    SubWorkflowDefinition.objects.create(
-                        parent_workflow=cloned_wf,
-                        sub_workflow=swc.sub_workflow,
-                        count_field=swc.count_field,
-                        section_label=swc.section_label,
-                        label_template=swc.label_template,
-                        trigger=swc.trigger,
-                        data_prefix=swc.data_prefix,
-                    )
+                    pending_subworkflow_configs.append((cloned_wf, swc))
                 except SubWorkflowDefinition.DoesNotExist:
                     logger.debug(
                         "SubWorkflowDefinition not found during clone; skipping component"
                     )
+
+            for cloned_wf, swc in pending_subworkflow_configs:
+                SubWorkflowDefinition.objects.create(
+                    parent_workflow=cloned_wf,
+                    sub_workflow=cloned_workflows_by_original_id.get(
+                        swc.sub_workflow_id, swc.sub_workflow
+                    ),
+                    count_field=swc.count_field,
+                    section_label=swc.section_label,
+                    label_template=swc.label_template,
+                    trigger=swc.trigger,
+                    data_prefix=swc.data_prefix,
+                )
 
             # Clone workflow notification rules (including stage-scoped rules) and
             # form post-submission actions so cloned forms preserve automation.

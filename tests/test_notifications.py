@@ -2516,12 +2516,15 @@ class TestNotificationLogCcBccConsolidation:
         )
         assert cc_prefixed.count() == 0
 
-    def test_cc_dedup_uses_cc_emails_field(self, form_definition, user, mailoutbox):
+    @pytest.mark.parametrize("link_log_to_rule", [False, True])
+    def test_cc_dedup_uses_cc_emails_field(
+        self, form_definition, user, mailoutbox, link_log_to_rule
+    ):
         """A successful send's cc_emails entry should prevent re-CC on retry."""
         wf = WorkflowDefinition.objects.create(
             form_definition=form_definition, requires_approval=False
         )
-        NotificationRule.objects.create(
+        rule = NotificationRule.objects.create(
             workflow=wf,
             event="submission_received",
             notify_submitter=True,
@@ -2535,7 +2538,7 @@ class TestNotificationLogCcBccConsolidation:
             status="approved",
         )
         # Simulate a prior successful send that delivered user.email and CC'd cc@example.com.
-        NotificationLog.objects.create(
+        log_kwargs = dict(
             notification_type="submission_received",
             submission_id=sub.id,
             recipient_email=user.email,
@@ -2543,6 +2546,9 @@ class TestNotificationLogCcBccConsolidation:
             subject="prior",
             status="sent",
         )
+        if link_log_to_rule:
+            log_kwargs["notification_rule"] = rule
+        NotificationLog.objects.create(**log_kwargs)
 
         send_notification_rules(sub.id, "submission_received")
         # The remaining unsent To recipient should be delivered, but previously

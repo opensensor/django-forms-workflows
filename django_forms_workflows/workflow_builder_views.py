@@ -1665,6 +1665,10 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 is_active=node_data.get("is_active", True),
                 **action_data,
             )
+
+        # Persist linkage between graph node and DB action so future loads
+        # can resolve this node without creating duplicate actions.
+        node_data["action_id"] = action.id
         actions_to_keep.append(action.id)
 
     ordered_nodes = [

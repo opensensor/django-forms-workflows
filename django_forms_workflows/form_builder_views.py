@@ -1332,6 +1332,27 @@ def document_template_save(request, form_id):
         is_default = data.get("is_default", False)
         is_active = data.get("is_active", True)
 
+        if not isinstance(html_content, str):
+            return JsonResponse(
+                {"success": False, "error": "Template html_content must be a string"},
+                status=400,
+            )
+        if not isinstance(page_size, str):
+            return JsonResponse(
+                {"success": False, "error": "Template page_size must be a string"},
+                status=400,
+            )
+        if not isinstance(is_default, bool):
+            return JsonResponse(
+                {"success": False, "error": "Template is_default must be a boolean"},
+                status=400,
+            )
+        if not isinstance(is_active, bool):
+            return JsonResponse(
+                {"success": False, "error": "Template is_active must be a boolean"},
+                status=400,
+            )
+
         if not name:
             return JsonResponse(
                 {"success": False, "error": "Template name is required"}, status=400
@@ -1341,11 +1362,6 @@ def document_template_save(request, form_id):
             form_def = get_object_or_404(
                 FormDefinition.objects.select_for_update(), id=form_id
             )
-            # If marking as default, clear other defaults for this form
-            if is_default:
-                DocumentTemplate.objects.filter(
-                    form_definition=form_def, is_default=True
-                ).update(is_default=False)
 
             if validated_template_id is not None:
                 tpl = get_object_or_404(
@@ -1356,9 +1372,8 @@ def document_template_save(request, form_id):
                 tpl.page_size = page_size
                 tpl.is_default = is_default
                 tpl.is_active = is_active
-                tpl.save()
             else:
-                tpl = DocumentTemplate.objects.create(
+                tpl = DocumentTemplate(
                     form_definition=form_def,
                     name=name,
                     html_content=html_content,
@@ -1366,6 +1381,26 @@ def document_template_save(request, form_id):
                     is_default=is_default,
                     is_active=is_active,
                 )
+
+            try:
+                tpl.full_clean()
+            except ValidationError as exc:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Validation failed",
+                        "details": exc.message_dict,
+                    },
+                    status=400,
+                )
+
+            # If marking as default, clear other defaults for this form
+            if is_default:
+                DocumentTemplate.objects.filter(
+                    form_definition=form_def, is_default=True
+                ).exclude(id=tpl.id).update(is_default=False)
+
+            tpl.save()
 
         return JsonResponse(
             {"success": True, "id": tpl.id, "message": "Template saved successfully"}

@@ -910,23 +910,36 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     Reads WorkflowStage records to build stage nodes.
     """
-    stages = list(workflow.stages.all())
-    serialized_stage_approval_fields = {
-        stage.id: _serialize_stage_approval_fields(stage) for stage in stages
-    }
-    stage_defaults = {
-        stage.id: {
-            "allow_send_back": stage.allow_send_back,
-            "allow_reassign": stage.allow_reassign,
-            "allow_edit_form_data": stage.allow_edit_form_data,
-            "assignee_form_field": stage.assignee_form_field,
-            "assignee_lookup_type": stage.assignee_lookup_type,
-            "validate_assignee_group": stage.validate_assignee_group,
-            "trigger_conditions": stage.trigger_conditions,
-            "approval_fields": serialized_stage_approval_fields.get(stage.id, []),
+    _stages_cache = None
+    _serialized_stage_approval_fields_cache = None
+    _stage_defaults_cache = None
+
+    def _get_stage_defaults():
+        nonlocal _stages_cache, _serialized_stage_approval_fields_cache, _stage_defaults_cache
+        if _stage_defaults_cache is not None:
+            return _stage_defaults_cache
+
+        # Load once in deterministic order and reuse in all layout paths.
+        _stages_cache = list(workflow.stages.all().order_by("order"))
+        _serialized_stage_approval_fields_cache = {
+            stage.id: _serialize_stage_approval_fields(stage) for stage in _stages_cache
         }
-        for stage in stages
-    }
+        _stage_defaults_cache = {
+            stage.id: {
+                "allow_send_back": stage.allow_send_back,
+                "allow_reassign": stage.allow_reassign,
+                "allow_edit_form_data": stage.allow_edit_form_data,
+                "assignee_form_field": stage.assignee_form_field,
+                "assignee_lookup_type": stage.assignee_lookup_type,
+                "validate_assignee_group": stage.validate_assignee_group,
+                "trigger_conditions": stage.trigger_conditions,
+                "approval_fields": _serialized_stage_approval_fields_cache.get(stage.id, []),
+            }
+            for stage in _stages_cache
+        }
+        return _stage_defaults_cache
+
+    stage_defaults = _get_stage_defaults()
     settings_defaults = {
         "name_label": workflow.name_label,
         "start_trigger": workflow.start_trigger,

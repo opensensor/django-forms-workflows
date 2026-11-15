@@ -667,6 +667,22 @@ def _form_validation_message(exc):
     return "; ".join(exc.messages)
 
 
+def _positive_integer_id(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str):
+        digits = value.strip()
+        if digits.isascii() and digits.isdigit():
+            try:
+                parsed = int(digits)
+            except ValueError:
+                return None
+            return parsed if parsed > 0 else None
+    return None
+
+
 @transaction.atomic
 def save_form_definition_from_builder_data(data, user, form_definition=None):
     """
@@ -844,6 +860,28 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                     f"Duplicate field id {candidate_field_id} in payload"
                 )
             seen_non_null_field_ids.add(candidate_field_id)
+
+    # Pre-delete omitted existing fields before create/update validation.
+    # This avoids uniqueness conflicts when a field is removed and recreated
+    # in the same payload with the same unique field_name.
+    incoming_existing_field_ids = set()
+    for _field_data in fields_data:
+        _field_id = _field_data.get("id")
+        if isinstance(_field_id, bool):
+            raise FormBuilderPayloadError(f"Invalid field id {_field_id} for this form")
+        if isinstance(_field_id, int):
+            incoming_existing_field_ids.add(_field_id)
+        elif _field_id is None or (
+            isinstance(_field_id, str)
+            and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", _field_id)
+        ):
+            continue
+        else:
+            raise FormBuilderPayloadError(f"Invalid field id {_field_id} for this form")
+
+    FormField.objects.filter(form_definition=form_definition).exclude(
+        id__in=incoming_existing_field_ids
+    ).delete()
 
     for field_data in fields_data:
         field_id = field_data.get("id")
@@ -1270,6 +1308,18 @@ def document_template_save(request, form_id):
             )
 
         template_id = data.get("id")
+        validated_template_id = None
+        if template_id is not None:
+            validated_template_id = _positive_integer_id(template_id)
+            if validated_template_id is None:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Template id must be a positive integer",
+                    },
+                    status=400,
+                )
+
         raw_name = data.get("name", "")
         if not isinstance(raw_name, str):
             return JsonResponse(
@@ -1297,9 +1347,9 @@ def document_template_save(request, form_id):
                     form_definition=form_def, is_default=True
                 ).update(is_default=False)
 
-            if template_id:
+            if validated_template_id is not None:
                 tpl = get_object_or_404(
-                    DocumentTemplate, id=template_id, form_definition=form_def
+                    DocumentTemplate, id=validated_template_id, form_definition=form_def
                 )
                 tpl.name = name
                 tpl.html_content = html_content
@@ -1379,7 +1429,18 @@ def shared_option_list_save(request):
                 {"success": False, "error": "Request body must be a JSON object"},
                 status=400,
             )
-        list_id = data.get("id")
+        has_list_id = "id" in data
+        list_id = None
+        if has_list_id:
+            list_id = _positive_integer_id(data["id"])
+            if list_id is None:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "id must be a positive integer",
+                    },
+                    status=400,
+                )
         name_raw = data.get("name", "")
         slug_raw = data.get("slug", "")
         if not isinstance(name_raw, str) or not isinstance(slug_raw, str):
@@ -1453,7 +1514,7 @@ def shared_option_list_save(request):
                     status=400,
                 )
 
-        if list_id:
+        if has_list_id:
             ol = get_object_or_404(SharedOptionList, id=list_id)
             ol.name = name
             ol.slug = slug

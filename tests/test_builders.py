@@ -2872,6 +2872,23 @@ class TestFormBuilderViews:
         assert response.json()["error"] == "Invalid preview field data"
         assert FormDefinition.objects.count() == form_count_before
 
+    def test_preview_rejects_invalid_form_values_without_saving(
+        self, client, superuser
+    ):
+        client.force_login(superuser)
+        form_count_before = FormDefinition.objects.count()
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps({"name": "x" * 201, "fields": [{"field_name": "answer"}]}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert (
+            response.json()["error"] == "Invalid preview payload for form-level values"
+        )
+        assert FormDefinition.objects.count() == form_count_before
+
     @pytest.mark.parametrize(
         "payload",
         [

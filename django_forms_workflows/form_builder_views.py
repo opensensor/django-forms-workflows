@@ -1184,14 +1184,14 @@ def form_builder_preview(request):
             form_definition.enable_multi_step = data.get("enable_multi_step", False)
             form_definition.form_steps = data.get("form_steps", [])
             try:
-                form_definition.full_clean()
+                # Preview permits an empty description while a form is being drafted.
+                form_definition.full_clean(exclude={"description"})
                 form_definition.save()
-            except ValidationError as e:
+            except ValidationError:
                 return JsonResponse(
                     {
                         "success": False,
                         "error": "Invalid preview payload for form-level values",
-                        "details": e.message_dict if hasattr(e, "message_dict") else e.messages,
                     },
                     status=400,
                 )

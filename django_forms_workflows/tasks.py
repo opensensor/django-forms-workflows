@@ -718,6 +718,14 @@ def deliver_workflow_webhook(
             allow_redirects=False,
             stream=True,
         )
+
+        status_code = response.status_code
+        success = 200 <= status_code < 300
+        error_message = "" if success else f"HTTP {status_code}"
+        should_retry = (
+            (not success) and endpoint.retry_on_failure and attempt < max_attempts
+        )
+
         try:
             max_response_bytes = 5000
             response_bytes = bytearray()
@@ -733,15 +741,11 @@ def deliver_workflow_webhook(
             response_text = response_bytes.decode(
                 response.encoding or "utf-8", errors="replace"
             )
+        except Exception:  # pragma: no cover
+            logger.exception("Failed to capture webhook response body")
+            response_text = "[response body capture failed]"
         finally:
             response.close()
-
-        status_code = response.status_code
-        success = 200 <= status_code < 300
-        error_message = "" if success else f"HTTP {status_code}"
-        should_retry = (
-            (not success) and endpoint.retry_on_failure and attempt < max_attempts
-        )
     except Exception as exc:  # pragma: no cover
         success = False
         error_message = str(exc)

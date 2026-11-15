@@ -692,12 +692,31 @@ def deliver_workflow_webhook(
             headers=request_headers,
             timeout=endpoint.timeout_seconds,
             allow_redirects=False,
+            stream=True,
         )
+        try:
+            max_response_bytes = 5000
+            response_bytes = bytearray()
+            for chunk in response.iter_content(chunk_size=1024):
+                if not chunk:
+                    continue
+                remaining = max_response_bytes - len(response_bytes)
+                if remaining <= 0:
+                    break
+                response_bytes.extend(chunk[:remaining])
+                if len(response_bytes) >= max_response_bytes:
+                    break
+            response_text = response_bytes.decode(
+                response.encoding or "utf-8", errors="replace"
+            )
+        finally:
+            response.close()
+
         success = 200 <= response.status_code < 300
         WebhookDeliveryLog.objects.create(
             success=success,
             status_code=response.status_code,
-            response_body=(response.text or "")[:5000],
+            response_body=response_text,
             error_message="" if success else f"HTTP {response.status_code}",
             **log_data,
         )

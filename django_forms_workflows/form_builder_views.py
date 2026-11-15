@@ -1201,7 +1201,9 @@ def form_builder_preview(request):
                         "max_file_size_mb": field_data.get("max_file_size_mb"),
                         "default_value": field_data.get("default_value", ""),
                         "regex_validation": validation.get("regex_validation", ""),
-                        "regex_error_message": validation.get("regex_error_message", ""),
+                        "regex_error_message": validation.get(
+                            "regex_error_message", ""
+                        ),
                         "validation_rules": validation.get(
                             "validation_rules", field_data.get("validation_rules")
                         ),
@@ -1241,17 +1243,18 @@ def form_builder_preview(request):
                     preview_field = FormField(**field_kwargs)
                     preview_field.full_clean()
                     preview_field.save()
-            except ValidationError as e:
+            except ValidationError:
+                transaction.set_rollback(True)
                 return JsonResponse(
-                    {
-                        "error": "Invalid preview field data",
-                        "details": getattr(e, "message_dict", {"__all__": e.messages}),
-                    },
+                    {"error": "Invalid preview field data"},
                     status=400,
                 )
             except IntegrityError:
+                transaction.set_rollback(True)
                 return JsonResponse(
-                    {"error": "Invalid preview field data: duplicate or conflicting values"},
+                    {
+                        "error": "Invalid preview field data: duplicate or conflicting values"
+                    },
                     status=400,
                 )
 

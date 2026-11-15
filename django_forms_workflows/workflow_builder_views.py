@@ -1748,9 +1748,28 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         }
         save_action(data, action_name, action_data)
 
-    # Do not delete form-level actions that are absent from the current graph payload.
-    # A form can be edited via separate workflow tracks/graphs, and removing actions here
-    # would unintentionally delete actions owned by another track.
+    # Explicit deletion only: preserve cross-track actions unless the client
+    # requests specific action IDs to remove.
+    deleted_action_ids = workflow_data.get("deleted_action_ids", [])
+    if deleted_action_ids is None:
+        deleted_action_ids = []
+    if not isinstance(deleted_action_ids, list):
+        raise ValidationError(
+            {"deleted_action_ids": "Must be a list of action IDs to delete."}
+        )
+
+    normalized_deleted_ids = []
+    for action_id in deleted_action_ids:
+        try:
+            normalized_deleted_ids.append(int(action_id))
+        except (TypeError, ValueError):
+            continue
+
+    if normalized_deleted_ids:
+        PostSubmissionAction.objects.filter(
+            form_definition=form_definition,
+            id__in=normalized_deleted_ids,
+        ).delete()
 
     # ── Sub-workflow definitions ────────────────────────────────────────
     if len(sub_workflow_nodes) > 1:

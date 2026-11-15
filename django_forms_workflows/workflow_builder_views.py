@@ -1888,22 +1888,28 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         target_id_type = sw_data.get("sub_workflow_id_type", "workflow")
 
         if target_workflow_id:
-            if (
-                isinstance(target_workflow_id, bool)
-                or not str(target_workflow_id).isascii()
-                or not str(target_workflow_id).isdigit()
-            ):
+            if isinstance(target_workflow_id, bool):
+                raise ValidationError(
+                    {"sub_workflow_id": "Target ID must be a positive integer."}
+                )
+            try:
+                target_workflow_pk = int(str(target_workflow_id))
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    {"sub_workflow_id": "Target ID must be a positive integer."}
+                )
+            if target_workflow_pk <= 0 or target_workflow_pk > 2147483647:
                 raise ValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )
             if target_id_type == "workflow":
                 target_workflow = WorkflowDefinition.objects.filter(
-                    id=target_workflow_id
+                    id=target_workflow_pk
                 ).first()
             elif target_id_type == "form":
                 target_workflow = (
                     WorkflowDefinition.objects.filter(
-                        form_definition_id=target_workflow_id
+                        form_definition_id=target_workflow_pk
                     )
                     .order_by("id")
                     .first()

@@ -2178,17 +2178,16 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                pending_identity = {
+                dispatch_identity = {
                     "workflow": workflow,
                     "notification_type": event,
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
-                    "sent": False,
                 }
-                if not PendingNotification.objects.filter(**pending_identity).exists():
+                if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **pending_identity, scheduled_for=scheduled_for
+                        **dispatch_identity, sent=False, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

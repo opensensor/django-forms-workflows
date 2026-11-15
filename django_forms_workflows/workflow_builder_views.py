@@ -310,6 +310,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     invalid_refs.append(entry)
         return resolved_keys, invalid_refs
 
+    seen_stage_node_ids = set()
     for index, stage_node in enumerate(stage_nodes, start=1):
         stage_data = stage_node.get("data", {})
         stage_label = stage_data.get("name") or f"Stage {index}"
@@ -408,6 +409,14 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
 
             if not canonical_field_id:
                 continue
+
+            if stage_identity:
+                if stage_identity in seen_stage_node_ids:
+                    add_error(
+                        f"{stage_label} uses a duplicate node ID '{stage_identity}'. Stage node IDs must be unique."
+                    )
+                else:
+                    seen_stage_node_ids.add(stage_identity)
 
             previous_assignment = field_assignments.get(canonical_field_id)
             if (

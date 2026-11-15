@@ -61,7 +61,13 @@ def _copy_model_fields(instance, excluded):
 
 
 def _clone_workflow_notifications(original_form, cloned_workflows, cloned_stages):
-    for original_workflow in original_form.workflows.all():
+    source_workflows = original_form.workflows.prefetch_related(
+        Prefetch(
+            "notification_rules",
+            queryset=NotificationRule.objects.prefetch_related("notify_groups"),
+        )
+    )
+    for original_workflow in source_workflows.all():
         cloned_workflow = cloned_workflows[original_workflow.pk]
         for rule in original_workflow.notification_rules.all():
             data = _copy_model_fields(rule, {"id", "workflow", "stage"})

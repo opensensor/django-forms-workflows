@@ -767,6 +767,10 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
     # Create or update form definition
     if form_definition is not None:
+        # Reload with row lock to prevent lost updates/version races.
+        form_definition = FormDefinition.objects.select_for_update().get(
+            pk=form_definition.pk
+        )
         form_definition.name = form_name
         form_definition.slug = form_slug
         form_definition.description = form_description

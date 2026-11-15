@@ -315,17 +315,37 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_label = stage_data.get("name") or f"Stage {index}"
         stage_identity = stage_node.get("id") or f"stage-index-{index}"
         raw_group_entries = stage_data.get("approval_groups", [])
+        if not isinstance(raw_group_entries, list):
+            add_error(f"{stage_label} approval groups must be a list.")
+            raw_group_entries = []
         group_entries = []
         malformed_group_ids = []
         for g in raw_group_entries:
+            if not isinstance(g, dict):
+                malformed_group_ids.append(g)
+                continue
             group_id_raw = g.get("id")
             if group_id_raw in (None, ""):
                 continue
-            try:
-                group_id = int(group_id_raw)
-                if group_id <= 0:
-                    raise ValueError
-            except (TypeError, ValueError):
+            if isinstance(group_id_raw, bool):
+                malformed_group_ids.append(group_id_raw)
+                continue
+            if isinstance(group_id_raw, int):
+                group_id = group_id_raw
+            elif (
+                isinstance(group_id_raw, str)
+                and group_id_raw.isascii()
+                and group_id_raw.isdigit()
+            ):
+                try:
+                    group_id = int(group_id_raw)
+                except ValueError:
+                    malformed_group_ids.append(group_id_raw)
+                    continue
+            else:
+                malformed_group_ids.append(group_id_raw)
+                continue
+            if group_id <= 0:
                 malformed_group_ids.append(group_id_raw)
                 continue
 
@@ -1384,6 +1404,35 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         workflow_data, form_definition, workflow=resolved_workflow
     )
 
+    def graph_action_ids(graph):
+        if not isinstance(graph, dict) or not isinstance(graph.get("nodes"), list):
+            return set()
+        result = set()
+        for graph_node in graph["nodes"]:
+            if not isinstance(graph_node, dict) or graph_node.get("type") not in {
+                "action",
+                "email",
+            }:
+                continue
+            raw_id = (graph_node.get("data") or {}).get("action_id")
+            if isinstance(raw_id, int) and not isinstance(raw_id, bool) and raw_id > 0:
+                result.add(raw_id)
+            elif isinstance(raw_id, str) and raw_id.isascii() and raw_id.isdigit():
+                try:
+                    result.add(int(raw_id))
+                except ValueError:
+                    pass
+        return result
+
+    previous_action_ids = graph_action_ids(
+        resolved_workflow.visual_workflow_data if resolved_workflow else None
+    )
+    other_workflow_action_ids = set()
+    for other_graph in form_definition.workflows.exclude(
+        pk=resolved_workflow.pk if resolved_workflow else None
+    ).values_list("visual_workflow_data", flat=True):
+        other_workflow_action_ids.update(graph_action_ids(other_graph))
+
     nodes = workflow_data.get("nodes", [])
 
     # ── Classify nodes ──────────────────────────────────────────────────
@@ -1781,18 +1830,45 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             {"deleted_action_ids": "Must be a list of action IDs to delete."}
         )
 
-    normalized_deleted_ids = []
-    for action_id in deleted_action_ids:
-        try:
-            normalized_deleted_ids.append(int(action_id))
-        except (TypeError, ValueError):
-            continue
+    normalized_deleted_ids = set()
+    for raw_id in deleted_action_ids:
+        if isinstance(raw_id, bool):
+            raise ValidationError({"deleted_action_ids": "Invalid action ID."})
+        if isinstance(raw_id, int):
+            action_id = raw_id
+        elif isinstance(raw_id, str) and raw_id.isascii() and raw_id.isdigit():
+            try:
+                action_id = int(raw_id)
+            except ValueError as exc:
+                raise ValidationError(
+                    {"deleted_action_ids": "Invalid action ID."}
+                ) from exc
+        else:
+            raise ValidationError({"deleted_action_ids": "Invalid action ID."})
+        if action_id <= 0:
+            raise ValidationError({"deleted_action_ids": "Invalid action ID."})
+        normalized_deleted_ids.add(action_id)
 
+    if normalized_deleted_ids - previous_action_ids:
+        raise ValidationError(
+            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
+        )
+    if normalized_deleted_ids & other_workflow_action_ids:
+        raise ValidationError(
+            {"deleted_action_ids": "An action is still used by another workflow."}
+        )
+    if normalized_deleted_ids & set(actions_to_keep):
+        raise ValidationError(
+            {"deleted_action_ids": "An action cannot be kept and deleted together."}
+        )
     if normalized_deleted_ids:
         PostSubmissionAction.objects.filter(
             form_definition=form_definition,
             id__in=normalized_deleted_ids,
         ).delete()
+    workflow_data.pop("deleted_action_ids", None)
+    workflow.visual_workflow_data = workflow_data
+    workflow.save(update_fields=["visual_workflow_data"])
 
     # ── Sub-workflow definitions ────────────────────────────────────────
     if len(sub_workflow_nodes) > 1:

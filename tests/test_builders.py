@@ -938,6 +938,23 @@ class TestConvertVisualToWorkflow:
 
         assert "approver source" in str(exc.value)
 
+    @pytest.mark.parametrize("approval_groups", [[{"id": True}], [{"id": "²"}], None])
+    def test_rejects_malformed_approval_group_ids(
+        self, form_definition, approval_groups
+    ):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "requires_manager_approval": True,
+                    "approval_groups": approval_groups,
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="approval group"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()
         wf = convert_visual_to_workflow(visual, form_definition)
@@ -959,6 +976,51 @@ class TestConvertVisualToWorkflow:
         assert len(actions) == 1
         assert actions[0].name == "Update DB"
         assert actions[0].action_type == "database"
+        assert (
+            form_definition.workflows.get().visual_workflow_data["nodes"][1]["data"][
+                "action_id"
+            ]
+            == actions[0].id
+        )
+
+    def test_explicit_action_deletion_respects_other_workflow_graphs(
+        self, form_definition
+    ):
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition, name="Shared", action_type="database"
+        )
+        first = WorkflowDefinition.objects.create(form_definition=form_definition)
+        second = WorkflowDefinition.objects.create(form_definition=form_definition)
+        previous_graph = {
+            "nodes": [
+                {"type": "start", "data": {}},
+                {
+                    "type": "action",
+                    "data": {"action_id": action.id, "name": "Shared"},
+                },
+                {"type": "end", "data": {}},
+            ],
+            "connections": [],
+        }
+        first.visual_workflow_data = previous_graph
+        first.save(update_fields=["visual_workflow_data"])
+        second.visual_workflow_data = previous_graph
+        second.save(update_fields=["visual_workflow_data"])
+        request_graph = self._make_visual()
+        request_graph["deleted_action_ids"] = [action.id]
+
+        with pytest.raises(ValidationError, match="another workflow"):
+            convert_visual_to_workflow(request_graph, form_definition, first)
+        assert PostSubmissionAction.objects.filter(pk=action.id).exists()
+
+        first.refresh_from_db()
+        second.visual_workflow_data = None
+        second.save(update_fields=["visual_workflow_data"])
+        convert_visual_to_workflow(request_graph, form_definition, first)
+
+        assert not PostSubmissionAction.objects.filter(pk=action.id).exists()
+        first.refresh_from_db()
+        assert "deleted_action_ids" not in first.visual_workflow_data
 
     def test_preserves_mixed_email_and_action_order(self, form_definition):
         visual = {

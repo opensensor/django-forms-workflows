@@ -2836,6 +2836,21 @@ class TestFormBuilderViews:
         assert FormDefinition.objects.count() == form_count_before
         assert FormField.objects.count() == field_count_before
 
+    def test_preview_invalid_field_rolls_back_temporary_form(self, client, superuser):
+        client.force_login(superuser)
+        form_count_before = FormDefinition.objects.count()
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps(
+                {"fields": [{"field_name": "not a slug", "field_type": "text"}]}
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"] == "Invalid preview field data"
+        assert FormDefinition.objects.count() == form_count_before
+
     @pytest.mark.parametrize(
         "payload",
         [

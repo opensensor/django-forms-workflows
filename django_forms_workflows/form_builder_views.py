@@ -179,9 +179,18 @@ def form_builder_clone(request, form_id):
             cloned_form_data = _copy_model_fields(original_form, excluded_fields)
 
             # Intentional overrides for cloned forms
+            copy_suffix = " (Copy)"
+            name_max_length = FormDefinition._meta.get_field("name").max_length
+            if name_max_length:
+                available = max(name_max_length - len(copy_suffix), 0)
+                base_name = original_form.name[:available].rstrip()
+                cloned_name = f"{base_name}{copy_suffix}"
+            else:
+                cloned_name = f"{original_form.name}{copy_suffix}"
+
             cloned_form_data.update(
                 {
-                    "name": f"{original_form.name} (Copy)",
+                    "name": cloned_name,
                     "slug": slug,
                     "is_active": False,  # Start as inactive
                     "version": 1,
@@ -235,6 +244,7 @@ def form_builder_clone(request, form_id):
             # Clone workflows, stages, and stage approval groups
             cloned_stages_by_original_id = {}
             cloned_workflows_by_original_id = {}
+            pending_subworkflow_configs = []
             for wf in original_form.workflows.all():
                 original_stages = list(
                     wf.stages.prefetch_related(
@@ -289,22 +299,27 @@ def form_builder_clone(request, form_id):
                             position=sag.position,
                             role=sag.role,
                         )
-                # Clone SubWorkflowDefinition if present
+                # Capture SubWorkflowDefinition for remapped creation after all workflows are cloned
                 try:
                     swc = wf.sub_workflow_config
-                    SubWorkflowDefinition.objects.create(
-                        parent_workflow=cloned_wf,
-                        sub_workflow=swc.sub_workflow,
-                        count_field=swc.count_field,
-                        section_label=swc.section_label,
-                        label_template=swc.label_template,
-                        trigger=swc.trigger,
-                        data_prefix=swc.data_prefix,
-                    )
+                    pending_subworkflow_configs.append((cloned_wf, swc))
                 except SubWorkflowDefinition.DoesNotExist:
                     logger.debug(
                         "SubWorkflowDefinition not found during clone; skipping component"
                     )
+
+            for cloned_wf, swc in pending_subworkflow_configs:
+                SubWorkflowDefinition.objects.create(
+                    parent_workflow=cloned_wf,
+                    sub_workflow=cloned_workflows_by_original_id.get(
+                        swc.sub_workflow_id, swc.sub_workflow
+                    ),
+                    count_field=swc.count_field,
+                    section_label=swc.section_label,
+                    label_template=swc.label_template,
+                    trigger=swc.trigger,
+                    data_prefix=swc.data_prefix,
+                )
 
             # Clone workflow notification rules (including stage-scoped rules) and
             # form post-submission actions so cloned forms preserve automation.
@@ -1161,68 +1176,87 @@ def form_builder_preview(request):
             form_definition.save()
 
             # Create temporary fields
-            for field_data in fields:
-                validation = field_data.get("validation") or {}
-                conditional = field_data.get("conditional") or {}
+            try:
+                for field_data in fields:
+                    validation = field_data.get("validation") or {}
+                    conditional = field_data.get("conditional") or {}
 
-                # Build field kwargs
-                field_kwargs = {
-                    "form_definition": form_definition,
-                    "order": field_data.get("order", 0),
-                    "field_name": field_data.get("field_name", "field"),
-                    "field_label": field_data.get("field_label", "Field"),
-                    "field_type": field_data.get("field_type", "text"),
-                    "required": field_data.get("required", False),
-                    "help_text": field_data.get("help_text", ""),
-                    "show_help_text_in_detail": field_data.get(
-                        "show_help_text_in_detail", False
-                    ),
-                    "placeholder": field_data.get("placeholder", ""),
-                    "width": field_data.get("width", "full"),
-                    "css_class": field_data.get("css_class", ""),
-                    "choices": field_data.get("choices", ""),
-                    "allowed_extensions": field_data.get("allowed_extensions", ""),
-                    "max_file_size_mb": field_data.get("max_file_size_mb"),
-                    "default_value": field_data.get("default_value", ""),
-                    "regex_validation": validation.get("regex_validation", ""),
-                    "regex_error_message": validation.get("regex_error_message", ""),
-                    "validation_rules": validation.get(
-                        "validation_rules", field_data.get("validation_rules")
-                    ),
-                    "field_dependencies": conditional.get(
-                        "field_dependencies", field_data.get("field_dependencies")
-                    ),
-                    "step_number": field_data.get("step_number", 1),
-                }
+                    # Build field kwargs
+                    field_kwargs = {
+                        "form_definition": form_definition,
+                        "order": field_data.get("order", 0),
+                        "field_name": field_data.get("field_name", "field"),
+                        "field_label": field_data.get("field_label", "Field"),
+                        "field_type": field_data.get("field_type", "text"),
+                        "required": field_data.get("required", False),
+                        "help_text": field_data.get("help_text", ""),
+                        "show_help_text_in_detail": field_data.get(
+                            "show_help_text_in_detail", False
+                        ),
+                        "placeholder": field_data.get("placeholder", ""),
+                        "width": field_data.get("width", "full"),
+                        "css_class": field_data.get("css_class", ""),
+                        "choices": field_data.get("choices", ""),
+                        "allowed_extensions": field_data.get("allowed_extensions", ""),
+                        "max_file_size_mb": field_data.get("max_file_size_mb"),
+                        "default_value": field_data.get("default_value", ""),
+                        "regex_validation": validation.get("regex_validation", ""),
+                        "regex_error_message": validation.get(
+                            "regex_error_message", ""
+                        ),
+                        "validation_rules": validation.get(
+                            "validation_rules", field_data.get("validation_rules")
+                        ),
+                        "field_dependencies": conditional.get(
+                            "field_dependencies", field_data.get("field_dependencies")
+                        ),
+                        "step_number": field_data.get("step_number", 1),
+                    }
 
-                # Add optional fields only if they have values
-                if field_data.get("prefill_source_id"):
-                    field_kwargs["prefill_source_config_id"] = field_data.get(
-                        "prefill_source_id"
+                    # Add optional fields only if they have values
+                    if field_data.get("prefill_source_id"):
+                        field_kwargs["prefill_source_config_id"] = field_data.get(
+                            "prefill_source_id"
+                        )
+
+                    if field_data.get("shared_option_list_id"):
+                        field_kwargs["shared_option_list_id"] = field_data.get(
+                            "shared_option_list_id"
+                        )
+
+                    if validation.get("min_value") is not None:
+                        field_kwargs["min_value"] = validation.get("min_value")
+                    if validation.get("max_value") is not None:
+                        field_kwargs["max_value"] = validation.get("max_value")
+                    if validation.get("min_length") is not None:
+                        field_kwargs["min_length"] = validation.get("min_length")
+                    if validation.get("max_length") is not None:
+                        field_kwargs["max_length"] = validation.get("max_length")
+
+                    # Conditional rules
+                    cond_rules = conditional.get(
+                        "conditional_rules", field_data.get("conditional_rules")
                     )
+                    if cond_rules:
+                        field_kwargs["conditional_rules"] = cond_rules
 
-                if field_data.get("shared_option_list_id"):
-                    field_kwargs["shared_option_list_id"] = field_data.get(
-                        "shared_option_list_id"
-                    )
-
-                if validation.get("min_value") is not None:
-                    field_kwargs["min_value"] = validation.get("min_value")
-                if validation.get("max_value") is not None:
-                    field_kwargs["max_value"] = validation.get("max_value")
-                if validation.get("min_length") is not None:
-                    field_kwargs["min_length"] = validation.get("min_length")
-                if validation.get("max_length") is not None:
-                    field_kwargs["max_length"] = validation.get("max_length")
-
-                # Conditional rules
-                cond_rules = conditional.get(
-                    "conditional_rules", field_data.get("conditional_rules")
+                    preview_field = FormField(**field_kwargs)
+                    preview_field.full_clean()
+                    preview_field.save()
+            except ValidationError:
+                transaction.set_rollback(True)
+                return JsonResponse(
+                    {"error": "Invalid preview field data"},
+                    status=400,
                 )
-                if cond_rules:
-                    field_kwargs["conditional_rules"] = cond_rules
-
-                FormField.objects.create(**field_kwargs)
+            except IntegrityError:
+                transaction.set_rollback(True)
+                return JsonResponse(
+                    {
+                        "error": "Invalid preview field data: duplicate or conflicting values"
+                    },
+                    status=400,
+                )
 
             # Generate the form using DynamicForm
             dynamic_form = DynamicForm(form_definition)

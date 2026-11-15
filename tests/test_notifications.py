@@ -2538,14 +2538,14 @@ class TestNotificationLogCcBccConsolidation:
             status="approved",
         )
         # Simulate a prior successful send that delivered user.email and CC'd cc@example.com.
-        log_kwargs = dict(
-            notification_type="submission_received",
-            submission_id=sub.id,
-            recipient_email=user.email,
-            cc_emails="cc@example.com",
-            subject="prior",
-            status="sent",
-        )
+        log_kwargs = {
+            "notification_type": "submission_received",
+            "submission_id": sub.id,
+            "recipient_email": user.email,
+            "cc_emails": "cc@example.com",
+            "subject": "prior",
+            "status": "sent",
+        }
         if link_log_to_rule:
             log_kwargs["notification_rule"] = rule
         NotificationLog.objects.create(**log_kwargs)

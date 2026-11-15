@@ -329,6 +329,13 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_label = stage_data.get("name") or f"Stage {index}"
         stage_identity = stage_node.get("id") or f"stage-index-{index}"
         node_id = stage_node.get("id")
+        if node_id not in (None, "") and (
+            isinstance(node_id, bool) or not isinstance(node_id, (str, int))
+        ):
+            add_error(
+                f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
+            )
+            node_id = None
         if node_id:
             if node_id in seen_stage_node_ids:
                 add_error(

@@ -846,6 +846,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
 
     # Create or update fields
     seen_non_null_field_ids = set()
+    pending_existing_updates = []
+    pending_new_fields = []
     for field_data in fields_data:
         candidate_field_id = field_data.get("id")
         if candidate_field_id is not None:
@@ -1001,24 +1003,10 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             isinstance(field_id, str)
             and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", field_id)
         ):
-            # Create new field (validate model-level constraints before persisting)
-            new_field = FormField(**field_props)
-            try:
-                new_field.full_clean()
-            except ValidationError as exc:
-                raise FormBuilderPayloadError(
-                    f"Invalid field payload for '{field_data.get('field_name', '')}': "
-                    f"{_form_validation_message(exc)}"
-                ) from exc
-            new_field.save()
-            updated_field_ids.add(new_field.id)
-            if old_id is not None:
-                field_id_mapping[str(old_id)] = new_field.id
+            pending_new_fields.append((field_props, field_data, old_id))
         elif isinstance(field_id, int):
             # Defer existing-field updates to avoid transient uniqueness conflicts
             # (for example, swapping two existing field names).
-            if "pending_existing_updates" not in locals():
-                pending_existing_updates = []
             pending_existing_updates.append((field_id, field_props, field_data, old_id))
         else:
             raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
@@ -1026,7 +1014,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     # Apply existing-field updates in two phases:
     # 1) temporary unique names for renamed fields
     # 2) final values with model validation
-    if "pending_existing_updates" in locals():
+    if pending_existing_updates:
         existing_fields_by_id = {
             f.id: f
             for f in FormField.objects.filter(
@@ -1041,7 +1029,6 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                     f"Invalid field id {field_id} for this form"
                 )
 
-        renamed_ids = []
         for field_id, field_props, _, _ in pending_existing_updates:
             existing_field = existing_fields_by_id[field_id]
             if (
@@ -1050,7 +1037,6 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             ):
                 existing_field.field_name = f"__tmp__{uuid.uuid4().hex}"
                 existing_field.save(update_fields=["field_name"])
-                renamed_ids.append(field_id)
 
         for field_id, field_props, field_data, old_id in pending_existing_updates:
             existing_field = existing_fields_by_id[field_id]
@@ -1067,6 +1053,20 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             updated_field_ids.add(field_id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id
+
+    for field_props, field_data, old_id in pending_new_fields:
+        new_field = FormField(**field_props)
+        try:
+            new_field.full_clean()
+        except ValidationError as exc:
+            raise FormBuilderPayloadError(
+                f"Invalid field payload for '{field_data.get('field_name', '')}': "
+                f"{_form_validation_message(exc)}"
+            ) from exc
+        new_field.save()
+        updated_field_ids.add(new_field.id)
+        if old_id is not None:
+            field_id_mapping[str(old_id)] = new_field.id
 
     # Delete fields that were removed
     fields_to_delete = existing_field_ids - updated_field_ids

@@ -294,28 +294,53 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     def normalize_stage_field_refs(raw_entries):
         resolved_keys = []
         invalid_refs = []
+
+        def is_valid_ref_id(value):
+            return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+        def is_valid_field_name(value):
+            return isinstance(value, str)
+
         if raw_entries is None:
             raw_entries = []
         elif not isinstance(raw_entries, list):
             raise ValidationError("approval_fields must be a list.")
         for entry in raw_entries:
             if isinstance(entry, dict):
+                has_id = "id" in entry
+                has_field_name = "field_name" in entry
                 entry_id = entry.get("id")
                 entry_field_name = entry.get("field_name")
-                if entry_id:
+
+                if has_id:
+                    if not is_valid_ref_id(entry_id):
+                        raise ValidationError(
+                            "approval_fields id values must be positive integers."
+                        )
                     if entry_id in field_ids:
                         resolved_keys.append(
                             ("id", entry_id, entry_field_name or str(entry_id))
                         )
                     else:
                         invalid_refs.append(entry_id)
-                elif entry_field_name in field_names:
-                    resolved_keys.append(
-                        ("field_name", entry_field_name, entry_field_name)
-                    )
+                elif has_field_name:
+                    if not is_valid_field_name(entry_field_name):
+                        raise ValidationError(
+                            "approval_fields field_name values must be strings."
+                        )
+                    if entry_field_name in field_names:
+                        resolved_keys.append(
+                            ("field_name", entry_field_name, entry_field_name)
+                        )
+                    else:
+                        invalid_refs.append(entry_field_name)
                 else:
-                    invalid_refs.append(entry_field_name or entry)
-            elif isinstance(entry, int):
+                    invalid_refs.append(entry)
+            elif isinstance(entry, int) and not isinstance(entry, bool):
+                if entry <= 0:
+                    raise ValidationError(
+                        "approval_fields id values must be positive integers."
+                    )
                 if entry in field_ids:
                     resolved_keys.append(("id", entry, str(entry)))
                 else:
@@ -910,23 +935,41 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     Reads WorkflowStage records to build stage nodes.
     """
-    stages = list(workflow.stages.all())
-    serialized_stage_approval_fields = {
-        stage.id: _serialize_stage_approval_fields(stage) for stage in stages
-    }
-    stage_defaults = {
-        stage.id: {
-            "allow_send_back": stage.allow_send_back,
-            "allow_reassign": stage.allow_reassign,
-            "allow_edit_form_data": stage.allow_edit_form_data,
-            "assignee_form_field": stage.assignee_form_field,
-            "assignee_lookup_type": stage.assignee_lookup_type,
-            "validate_assignee_group": stage.validate_assignee_group,
-            "trigger_conditions": stage.trigger_conditions,
-            "approval_fields": serialized_stage_approval_fields.get(stage.id, []),
+    _stages_cache = None
+    _serialized_stage_approval_fields_cache = None
+    _stage_defaults_cache = None
+
+    def _get_stage_defaults():
+        nonlocal \
+            _stages_cache, \
+            _serialized_stage_approval_fields_cache, \
+            _stage_defaults_cache
+        if _stage_defaults_cache is not None:
+            return _stage_defaults_cache
+
+        # Load once in deterministic order and reuse in all layout paths.
+        _stages_cache = list(workflow.stages.all().order_by("order"))
+        _serialized_stage_approval_fields_cache = {
+            stage.id: _serialize_stage_approval_fields(stage) for stage in _stages_cache
         }
-        for stage in stages
-    }
+        _stage_defaults_cache = {
+            stage.id: {
+                "allow_send_back": stage.allow_send_back,
+                "allow_reassign": stage.allow_reassign,
+                "allow_edit_form_data": stage.allow_edit_form_data,
+                "assignee_form_field": stage.assignee_form_field,
+                "assignee_lookup_type": stage.assignee_lookup_type,
+                "validate_assignee_group": stage.validate_assignee_group,
+                "trigger_conditions": stage.trigger_conditions,
+                "approval_fields": _serialized_stage_approval_fields_cache.get(
+                    stage.id, []
+                ),
+            }
+            for stage in _stages_cache
+        }
+        return _stage_defaults_cache
+
+    stage_defaults = _get_stage_defaults()
     settings_defaults = {
         "name_label": workflow.name_label,
         "start_trigger": workflow.start_trigger,
@@ -1726,6 +1769,27 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             form_definition,
             sdata.get("approval_fields", []),
         )
+
+    selected_field_ids = {
+        field_id for field_ids in stage_field_map.values() for field_id in field_ids
+    }
+    if selected_field_ids:
+        conflicting_field_ids = list(
+            form_definition.fields.filter(
+                id__in=selected_field_ids,
+                workflow_stage__isnull=False,
+            )
+            .exclude(workflow_stage__workflow=workflow)
+            .values_list("id", flat=True)
+        )
+        if conflicting_field_ids:
+            conflicting_ids_display = ", ".join(
+                str(fid) for fid in sorted(conflicting_field_ids)
+            )
+            raise ValidationError(
+                "Approval fields already assigned to another workflow track "
+                f"cannot be reused here: {conflicting_ids_display}."
+            )
 
     workflow.visual_workflow_data = workflow_data
     workflow.save(update_fields=["visual_workflow_data"])

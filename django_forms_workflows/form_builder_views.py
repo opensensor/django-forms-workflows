@@ -667,6 +667,22 @@ def _form_validation_message(exc):
     return "; ".join(exc.messages)
 
 
+def _positive_integer_id(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str):
+        digits = value.strip()
+        if digits.isascii() and digits.isdigit():
+            try:
+                parsed = int(digits)
+            except ValueError:
+                return None
+            return parsed if parsed > 0 else None
+    return None
+
+
 @transaction.atomic
 def save_form_definition_from_builder_data(data, user, form_definition=None):
     """
@@ -1294,29 +1310,13 @@ def document_template_save(request, form_id):
         template_id = data.get("id")
         validated_template_id = None
         if template_id is not None:
-            if isinstance(template_id, bool):
+            validated_template_id = _positive_integer_id(template_id)
+            if validated_template_id is None:
                 return JsonResponse(
-                    {"success": False, "error": "Template id must be a positive integer"},
-                    status=400,
-                )
-            if isinstance(template_id, int):
-                validated_template_id = template_id
-            elif isinstance(template_id, str):
-                if not template_id.strip().isdigit():
-                    return JsonResponse(
-                        {"success": False, "error": "Template id must be a positive integer"},
-                        status=400,
-                    )
-                validated_template_id = int(template_id.strip())
-            else:
-                return JsonResponse(
-                    {"success": False, "error": "Template id must be a positive integer"},
-                    status=400,
-                )
-
-            if validated_template_id <= 0:
-                return JsonResponse(
-                    {"success": False, "error": "Template id must be a positive integer"},
+                    {
+                        "success": False,
+                        "error": "Template id must be a positive integer",
+                    },
                     status=400,
                 )
 
@@ -1432,47 +1432,8 @@ def shared_option_list_save(request):
         has_list_id = "id" in data
         list_id = None
         if has_list_id:
-            list_id_raw = data.get("id")
-            if isinstance(list_id_raw, bool):
-                return JsonResponse(
-                    {
-                        "success": False,
-                        "error": "id must be a positive integer",
-                    },
-                    status=400,
-                )
-            if isinstance(list_id_raw, int):
-                list_id = list_id_raw
-            elif isinstance(list_id_raw, float):
-                if not list_id_raw.is_integer():
-                    return JsonResponse(
-                        {
-                            "success": False,
-                            "error": "id must be a positive integer",
-                        },
-                        status=400,
-                    )
-                list_id = int(list_id_raw)
-            elif isinstance(list_id_raw, str):
-                list_id_str = list_id_raw.strip()
-                if not list_id_str or not list_id_str.isdigit():
-                    return JsonResponse(
-                        {
-                            "success": False,
-                            "error": "id must be a positive integer",
-                        },
-                        status=400,
-                    )
-                list_id = int(list_id_str)
-            else:
-                return JsonResponse(
-                    {
-                        "success": False,
-                        "error": "id must be a positive integer",
-                    },
-                    status=400,
-                )
-            if list_id <= 0:
+            list_id = _positive_integer_id(data["id"])
+            if list_id is None:
                 return JsonResponse(
                     {
                         "success": False,

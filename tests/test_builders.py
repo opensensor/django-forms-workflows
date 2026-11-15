@@ -1792,6 +1792,30 @@ class TestSaveFormDefinitionFromBuilderData:
 
         assert mapping == {"new_1": result.fields.get(field_name="new_field").id}
 
+    def test_replaces_omitted_field_with_same_name(self, user, form_with_fields):
+        old_field = form_with_fields.fields.get(field_name="full_name")
+        data = {
+            "name": form_with_fields.name,
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": "new_1",
+                    "field_name": "full_name",
+                    "field_label": "Replacement",
+                    "field_type": "text",
+                }
+            ],
+        }
+
+        result, mapping = save_form_definition_from_builder_data(
+            data, user, form_definition=form_with_fields
+        )
+
+        replacement = result.fields.get(field_name="full_name")
+        assert replacement.id == mapping["new_1"]
+        assert replacement.id != old_field.id
+        assert replacement.field_label == "Replacement"
+
     def test_updates_an_existing_field(self, user, form_with_fields):
         field = form_with_fields.fields.get(field_name="full_name")
         data = {
@@ -2728,6 +2752,24 @@ class TestFormBuilderViews:
 class TestDocumentTemplateAPI:
     """Tests for the document template CRUD API endpoints."""
 
+    @pytest.mark.parametrize("template_id", [True, 1.0, "²", "9" * 5000])
+    def test_save_rejects_invalid_template_id(
+        self, client, superuser, form_definition, template_id
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/"),
+            data=json.dumps(
+                {"id": template_id, "name": "Certificate", "html_content": "<p>Hi</p>"}
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not DocumentTemplate.objects.filter(
+            form_definition=form_definition
+        ).exists()
+
     def test_list_templates_empty(self, client, superuser, form_definition):
         client.force_login(superuser)
         url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
@@ -2961,6 +3003,25 @@ class TestFormBuilderTemplateAPI:
 
 class TestSharedOptionListAPI:
     """Tests for the centrally managed shared option list CRUD API endpoints."""
+
+    @pytest.mark.parametrize("list_id", [True, 1.0, "²", "9" * 5000])
+    def test_save_rejects_invalid_list_id(self, client, superuser, list_id):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/shared-lists/save/"),
+            data=json.dumps(
+                {
+                    "id": list_id,
+                    "name": "Departments",
+                    "slug": "departments",
+                    "items": ["HR"],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not SharedOptionList.objects.filter(slug="departments").exists()
 
     def test_save_rejects_invalid_slug(self, client, superuser):
         client.force_login(superuser)

@@ -675,6 +675,19 @@ def deliver_workflow_webhook(
         payload_text,
     )
 
+    sensitive_header_names = {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "x-auth-token",
+    }
+    logged_request_headers = {
+        key: ("[REDACTED]" if key.lower() in sensitive_header_names else value)
+        for key, value in request_headers.items()
+    }
+
     log_data = {
         "endpoint": endpoint,
         "workflow": endpoint.workflow,
@@ -684,7 +697,7 @@ def deliver_workflow_webhook(
         "endpoint_name": endpoint.name,
         "delivery_url": endpoint.url,
         "attempt_number": attempt,
-        "request_headers": request_headers,
+        "request_headers": logged_request_headers,
         "payload": payload,
     }
     max_attempts = 1 + max(0, endpoint.max_retries)
@@ -931,6 +944,13 @@ def send_approval_reminder(task_id: int) -> None:
     task = ApprovalTask.objects.select_related(
         "submission__form_definition", "assigned_to"
     ).get(id=task_id)
+    if task.status != "pending":
+        logger.info(
+            "Skipping approval reminder for task %s because status is %s",
+            task.id,
+            task.status,
+        )
+        return
     if not task.assigned_to or not getattr(task.assigned_to, "email", None):
         return
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
@@ -1805,8 +1825,8 @@ def send_notification_rules(
                     submission_id,
                 )
                 return
-            # A concurrently deleted inferred task simply leaves notification context unscoped.
-            pass
+            # A concurrently deleted inferred task leaves notification context unscoped.
+            task = None
 
     # Actionable approval notifications must only be sent for tasks that are
     # still pending at dispatch time (queue delay / race-safe recheck).

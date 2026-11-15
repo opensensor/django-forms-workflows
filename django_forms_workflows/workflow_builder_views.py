@@ -940,7 +940,10 @@ def convert_workflow_to_visual(workflow, form_definition):
     _stage_defaults_cache = None
 
     def _get_stage_defaults():
-        nonlocal _stages_cache, _serialized_stage_approval_fields_cache, _stage_defaults_cache
+        nonlocal \
+            _stages_cache, \
+            _serialized_stage_approval_fields_cache, \
+            _stage_defaults_cache
         if _stage_defaults_cache is not None:
             return _stage_defaults_cache
 
@@ -958,7 +961,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 "assignee_lookup_type": stage.assignee_lookup_type,
                 "validate_assignee_group": stage.validate_assignee_group,
                 "trigger_conditions": stage.trigger_conditions,
-                "approval_fields": _serialized_stage_approval_fields_cache.get(stage.id, []),
+                "approval_fields": _serialized_stage_approval_fields_cache.get(
+                    stage.id, []
+                ),
             }
             for stage in _stages_cache
         }
@@ -1113,13 +1118,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            existing_node_ids = {node.get("id") for node in existing_nodes}
-            missing_email_nodes = [
-                node
-                for node in email_nodes_in_order
-                if node.get("id") not in existing_node_ids
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
             ]
-            visual_data["nodes"] = existing_nodes + missing_email_nodes
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1769,9 +1771,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         )
 
     selected_field_ids = {
-        field_id
-        for field_ids in stage_field_map.values()
-        for field_id in field_ids
+        field_id for field_ids in stage_field_map.values() for field_id in field_ids
     }
     if selected_field_ids:
         conflicting_field_ids = list(

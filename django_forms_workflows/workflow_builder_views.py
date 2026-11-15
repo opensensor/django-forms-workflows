@@ -294,7 +294,11 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     def normalize_stage_field_refs(raw_entries):
         resolved_keys = []
         invalid_refs = []
-        for entry in raw_entries or []:
+        if raw_entries is None:
+            raw_entries = []
+        elif not isinstance(raw_entries, list):
+            raise ValidationError("approval_fields must be a list.")
+        for entry in raw_entries:
             if isinstance(entry, dict):
                 entry_id = entry.get("id")
                 entry_field_name = entry.get("field_name")
@@ -321,6 +325,8 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     resolved_keys.append(("field_name", entry, entry))
                 else:
                     invalid_refs.append(entry)
+            else:
+                invalid_refs.append(entry)
         return resolved_keys, invalid_refs
 
     seen_stage_node_ids = set()

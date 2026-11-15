@@ -310,10 +310,19 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     invalid_refs.append(entry)
         return resolved_keys, invalid_refs
 
+    seen_stage_node_ids = set()
     for index, stage_node in enumerate(stage_nodes, start=1):
         stage_data = stage_node.get("data", {})
         stage_label = stage_data.get("name") or f"Stage {index}"
         stage_identity = stage_node.get("id") or f"stage-index-{index}"
+        node_id = stage_node.get("id")
+        if node_id:
+            if node_id in seen_stage_node_ids:
+                add_error(
+                    f"{stage_label} uses a duplicate node ID '{node_id}'. Stage node IDs must be unique."
+                )
+            else:
+                seen_stage_node_ids.add(node_id)
         raw_group_entries = stage_data.get("approval_groups", [])
         if not isinstance(raw_group_entries, list):
             add_error(f"{stage_label} approval groups must be a list.")
@@ -1888,22 +1897,39 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         target_id_type = sw_data.get("sub_workflow_id_type", "workflow")
 
         if target_workflow_id:
-            if (
-                isinstance(target_workflow_id, bool)
-                or not str(target_workflow_id).isascii()
-                or not str(target_workflow_id).isdigit()
+            if isinstance(target_workflow_id, bool):
+                raise ValidationError(
+                    {"sub_workflow_id": "Target ID must be a positive integer."}
+                )
+            if isinstance(target_workflow_id, int):
+                target_workflow_pk = target_workflow_id
+            elif (
+                isinstance(target_workflow_id, str)
+                and target_workflow_id.isascii()
+                and target_workflow_id.isdigit()
             ):
+                try:
+                    target_workflow_pk = int(target_workflow_id)
+                except ValueError as exc:
+                    raise ValidationError(
+                        {"sub_workflow_id": "Target ID must be a positive integer."}
+                    ) from exc
+            else:
+                raise ValidationError(
+                    {"sub_workflow_id": "Target ID must be a positive integer."}
+                )
+            if target_workflow_pk <= 0 or target_workflow_pk > 9223372036854775807:
                 raise ValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )
             if target_id_type == "workflow":
                 target_workflow = WorkflowDefinition.objects.filter(
-                    id=target_workflow_id
+                    id=target_workflow_pk
                 ).first()
             elif target_id_type == "form":
                 target_workflow = (
                     WorkflowDefinition.objects.filter(
-                        form_definition_id=target_workflow_id
+                        form_definition_id=target_workflow_pk
                     )
                     .order_by("id")
                     .first()

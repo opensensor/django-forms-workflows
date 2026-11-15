@@ -675,6 +675,19 @@ def deliver_workflow_webhook(
         payload_text,
     )
 
+    sensitive_header_names = {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "x-auth-token",
+    }
+    logged_request_headers = {
+        key: ("[REDACTED]" if key.lower() in sensitive_header_names else value)
+        for key, value in request_headers.items()
+    }
+
     log_data = {
         "endpoint": endpoint,
         "workflow": endpoint.workflow,
@@ -684,7 +697,7 @@ def deliver_workflow_webhook(
         "endpoint_name": endpoint.name,
         "delivery_url": endpoint.url,
         "attempt_number": attempt,
-        "request_headers": request_headers,
+        "request_headers": logged_request_headers,
         "payload": payload,
     }
     max_attempts = 1 + max(0, endpoint.max_retries)

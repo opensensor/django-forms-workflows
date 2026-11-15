@@ -314,9 +314,24 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_data = stage_node.get("data", {})
         stage_label = stage_data.get("name") or f"Stage {index}"
         stage_identity = stage_node.get("id") or f"stage-index-{index}"
-        group_entries = [
-            g for g in stage_data.get("approval_groups", []) if g.get("id")
-        ]
+        raw_group_entries = stage_data.get("approval_groups", [])
+        group_entries = []
+        malformed_group_ids = []
+        for g in raw_group_entries:
+            group_id_raw = g.get("id")
+            if group_id_raw in (None, ""):
+                continue
+            try:
+                group_id = int(group_id_raw)
+                if group_id <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                malformed_group_ids.append(group_id_raw)
+                continue
+
+            normalized_group = dict(g)
+            normalized_group["id"] = group_id
+            group_entries.append(normalized_group)
         has_approver_source = bool(
             group_entries
             or stage_data.get("requires_manager_approval")
@@ -325,6 +340,10 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
 
         if not str(stage_data.get("name", "")).strip():
             add_error(f"Stage {index} is missing a name.")
+        if malformed_group_ids:
+            add_error(
+                f"{stage_label} contains invalid approval group IDs (must be positive integers): {', '.join(str(gid) for gid in malformed_group_ids)}."
+            )
         if not has_approver_source:
             add_error(
                 f"{stage_label} must define at least one approver source: approval groups, manager approval, or a dynamic assignee field."

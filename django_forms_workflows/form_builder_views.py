@@ -1015,16 +1015,45 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             if old_id is not None:
                 field_id_mapping[str(old_id)] = new_field.id
         elif isinstance(field_id, int):
-            # Update existing field, scoped to current form_definition
-            try:
-                existing_field = FormField.objects.get(
-                    id=field_id, form_definition=form_definition
-                )
-            except FormField.DoesNotExist as exc:
+            # Defer existing-field updates to avoid transient uniqueness conflicts
+            # (for example, swapping two existing field names).
+            if "pending_existing_updates" not in locals():
+                pending_existing_updates = []
+            pending_existing_updates.append((field_id, field_props, field_data, old_id))
+        else:
+            raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
+
+    # Apply existing-field updates in two phases:
+    # 1) temporary unique names for renamed fields
+    # 2) final values with model validation
+    if "pending_existing_updates" in locals():
+        existing_fields_by_id = {
+            f.id: f
+            for f in FormField.objects.filter(
+                form_definition=form_definition,
+                id__in=[item[0] for item in pending_existing_updates],
+            )
+        }
+
+        for field_id, _, _, _ in pending_existing_updates:
+            if field_id not in existing_fields_by_id:
                 raise FormBuilderPayloadError(
                     f"Invalid field id {field_id} for this form"
-                ) from exc
+                )
 
+        renamed_ids = []
+        for field_id, field_props, _, _ in pending_existing_updates:
+            existing_field = existing_fields_by_id[field_id]
+            if (
+                "field_name" in field_props
+                and field_props["field_name"] != existing_field.field_name
+            ):
+                existing_field.field_name = f"__tmp__{uuid.uuid4().hex}"
+                existing_field.save(update_fields=["field_name"])
+                renamed_ids.append(field_id)
+
+        for field_id, field_props, field_data, old_id in pending_existing_updates:
+            existing_field = existing_fields_by_id[field_id]
             for prop_name, prop_value in field_props.items():
                 setattr(existing_field, prop_name, prop_value)
             try:
@@ -1038,8 +1067,6 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             updated_field_ids.add(field_id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id
-        else:
-            raise FormBuilderPayloadError(f"Invalid field id {field_id} for this form")
 
     # Delete fields that were removed
     fields_to_delete = existing_field_ids - updated_field_ids

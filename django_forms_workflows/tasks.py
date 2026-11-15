@@ -931,6 +931,13 @@ def send_approval_reminder(task_id: int) -> None:
     task = ApprovalTask.objects.select_related(
         "submission__form_definition", "assigned_to"
     ).get(id=task_id)
+    if task.status != "pending":
+        logger.info(
+            "Skipping approval reminder for task %s because status is %s",
+            task.id,
+            task.status,
+        )
+        return
     if not task.assigned_to or not getattr(task.assigned_to, "email", None):
         return
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))

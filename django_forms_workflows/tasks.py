@@ -69,7 +69,7 @@ def _base_url() -> str:
     Checks, in order:
     1. ``settings.FORMS_WORKFLOWS_BASE_URL``
     2. ``settings.SITE_BASE_URL``
-    3. First entry in ``settings.CSRF_TRUSTED_ORIGINS``
+    3. First concrete (non-wildcard) entry in ``settings.CSRF_TRUSTED_ORIGINS``
     """
     url = getattr(settings, "FORMS_WORKFLOWS_BASE_URL", None) or getattr(
         settings, "SITE_BASE_URL", None
@@ -78,7 +78,13 @@ def _base_url() -> str:
         return url
     origins = getattr(settings, "CSRF_TRUSTED_ORIGINS", None)
     if origins:
-        return origins[0]
+        for origin in origins:
+            if (
+                isinstance(origin, str)
+                and origin.startswith(("http://", "https://"))
+                and "*" not in origin
+            ):
+                return origin
     return ""
 
 

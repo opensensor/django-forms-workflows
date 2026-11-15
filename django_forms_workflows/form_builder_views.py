@@ -1173,7 +1173,18 @@ def form_builder_preview(request):
             form_definition.allow_withdrawal = data.get("allow_withdrawal", True)
             form_definition.enable_multi_step = data.get("enable_multi_step", False)
             form_definition.form_steps = data.get("form_steps", [])
-            form_definition.save()
+            try:
+                form_definition.full_clean()
+                form_definition.save()
+            except ValidationError as e:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Invalid preview payload for form-level values",
+                        "details": e.message_dict if hasattr(e, "message_dict") else e.messages,
+                    },
+                    status=400,
+                )
 
             # Create temporary fields
             try:

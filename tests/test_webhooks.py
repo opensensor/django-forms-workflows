@@ -28,6 +28,12 @@ def _make_submission(workflow, user):
     )
 
 
+def _mock_response(status_code, body):
+    response = Mock(status_code=status_code, encoding="utf-8")
+    response.iter_content.return_value = [body.encode("utf-8")]
+    return response
+
+
 @pytest.mark.django_db
 def test_webhook_endpoint_generates_secret_and_validates_events(workflow):
     endpoint = WebhookEndpoint(
@@ -218,7 +224,7 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
     }
 
     with patch("django_forms_workflows.tasks.requests.request") as mock_request:
-        mock_request.return_value = Mock(status_code=202, text="accepted")
+        mock_request.return_value = _mock_response(202, "accepted")
         deliver_workflow_webhook(
             endpoint.id, "submission.created", payload, submission.id
         )
@@ -228,6 +234,8 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
     request_kwargs = mock_request.call_args.kwargs
     assert url == endpoint.url
     assert method.upper() == "POST"
+    assert request_kwargs["stream"] is True
+    mock_request.return_value.close.assert_called_once()
     headers = request_kwargs["headers"]
     assert headers["Authorization"] == "Bearer abc"
     if "data" in request_kwargs and request_kwargs["data"] is not None:
@@ -253,6 +261,7 @@ def test_deliver_workflow_webhook_signs_request_and_logs_success(workflow, user)
     log = WebhookDeliveryLog.objects.get()
     assert log.success is True
     assert log.status_code == 202
+    assert log.response_body == "accepted"
     assert log.endpoint_name == "ERP"
 
 
@@ -272,7 +281,7 @@ def test_deliver_workflow_webhook_retries_failed_delivery(workflow, user):
         patch("django_forms_workflows.tasks.requests.request") as mock_request,
         patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
     ):
-        mock_request.return_value = Mock(status_code=500, text="server error")
+        mock_request.return_value = _mock_response(500, "server error")
         deliver_workflow_webhook(
             endpoint.id, "submission.created", payload, submission.id
         )
@@ -371,7 +380,7 @@ def test_deliver_workflow_webhook_retries_failed_delivery_at_max_retry_boundary(
         patch("django_forms_workflows.tasks.requests.request") as mock_request,
         patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
     ):
-        mock_request.return_value = Mock(status_code=500, text="server error")
+        mock_request.return_value = _mock_response(500, "server error")
         deliver_workflow_webhook(
             endpoint.id, "submission.created", payload, submission.id, attempt=2
         )
@@ -405,7 +414,7 @@ def test_deliver_workflow_webhook_does_not_retry_when_retries_exhausted(workflow
         patch("django_forms_workflows.tasks.requests.request") as mock_request,
         patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
     ):
-        mock_request.return_value = Mock(status_code=500, text="server error")
+        mock_request.return_value = _mock_response(500, "server error")
         deliver_workflow_webhook(
             endpoint.id, "submission.created", payload, submission.id, attempt=3
         )
@@ -432,7 +441,7 @@ def test_deliver_workflow_webhook_with_zero_max_retries_does_not_retry(workflow,
         patch("django_forms_workflows.tasks.requests.request") as mock_request,
         patch("django_forms_workflows.tasks._schedule_webhook_retry") as mock_retry,
     ):
-        mock_request.return_value = Mock(status_code=500, text="server error")
+        mock_request.return_value = _mock_response(500, "server error")
         deliver_workflow_webhook(
             endpoint.id, "submission.created", payload, submission.id
         )

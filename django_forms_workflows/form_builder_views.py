@@ -1270,6 +1270,34 @@ def document_template_save(request, form_id):
             )
 
         template_id = data.get("id")
+        validated_template_id = None
+        if template_id is not None:
+            if isinstance(template_id, bool):
+                return JsonResponse(
+                    {"success": False, "error": "Template id must be a positive integer"},
+                    status=400,
+                )
+            if isinstance(template_id, int):
+                validated_template_id = template_id
+            elif isinstance(template_id, str):
+                if not template_id.strip().isdigit():
+                    return JsonResponse(
+                        {"success": False, "error": "Template id must be a positive integer"},
+                        status=400,
+                    )
+                validated_template_id = int(template_id.strip())
+            else:
+                return JsonResponse(
+                    {"success": False, "error": "Template id must be a positive integer"},
+                    status=400,
+                )
+
+            if validated_template_id <= 0:
+                return JsonResponse(
+                    {"success": False, "error": "Template id must be a positive integer"},
+                    status=400,
+                )
+
         raw_name = data.get("name", "")
         if not isinstance(raw_name, str):
             return JsonResponse(
@@ -1297,9 +1325,9 @@ def document_template_save(request, form_id):
                     form_definition=form_def, is_default=True
                 ).update(is_default=False)
 
-            if template_id:
+            if validated_template_id is not None:
                 tpl = get_object_or_404(
-                    DocumentTemplate, id=template_id, form_definition=form_def
+                    DocumentTemplate, id=validated_template_id, form_definition=form_def
                 )
                 tpl.name = name
                 tpl.html_content = html_content

@@ -1016,17 +1016,23 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data.setdefault(key, value)
 
-            existing_email_action_ids = {
-                node.get("data", {}).get("action_id")
+            existing_email_nodes_by_action_id = {
+                node.get("data", {}).get("action_id"): node
                 for node in visual_data.get("nodes", [])
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
+            email_nodes_in_order = []
             for index, (action_id, defaults) in enumerate(
                 email_action_defaults.items()
             ):
-                if action_id in existing_email_action_ids:
+                existing_node = existing_email_nodes_by_action_id.get(action_id)
+                if existing_node:
+                    existing_node_data = existing_node.setdefault("data", {})
+                    for key, value in defaults.items():
+                        existing_node_data.setdefault(key, value)
+                    email_nodes_in_order.append(existing_node)
                     continue
-                visual_data.setdefault("nodes", []).append(
+                email_nodes_in_order.append(
                     {
                         "id": f"email-action-{action_id}",
                         "type": "email",
@@ -1038,6 +1044,33 @@ def convert_workflow_to_visual(workflow, form_definition):
                         },
                     }
                 )
+
+            existing_nodes = visual_data.get("nodes", [])
+            non_email_nodes = [node for node in existing_nodes if node.get("type") != "email"]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+
+            email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            existing_connections = visual_data.get("connections", [])
+            non_email_connections = [
+                connection
+                for connection in existing_connections
+                if not (
+                    connection.get("source") in email_node_ids
+                    and connection.get("target") in email_node_ids
+                )
+            ]
+            ordered_email_connections = []
+            for i in range(len(email_nodes_in_order) - 1):
+                source_id = email_nodes_in_order[i].get("id")
+                target_id = email_nodes_in_order[i + 1].get("id")
+                if source_id and target_id:
+                    ordered_email_connections.append(
+                        {
+                            "source": source_id,
+                            "target": target_id,
+                        }
+                    )
+            visual_data["connections"] = non_email_connections + ordered_email_connections
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data

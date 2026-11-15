@@ -352,6 +352,34 @@ class TestConvertWorkflowToVisual:
         assert action.is_active is False
         assert action.email_to == "owner@example.com"
 
+    def test_saved_email_connections_use_builder_endpoints(self, form_definition):
+        first = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="First email",
+            action_type="email",
+            trigger="on_submit",
+        )
+        second = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Second email",
+            action_type="email",
+            trigger="on_submit",
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": "first", "type": "email", "data": {"action_id": first.id}},
+                    {"id": "second", "type": "email", "data": {"action_id": second.id}},
+                ],
+                "connections": [{"source": "first", "target": "second"}],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert visual["connections"] == [{"from": "first", "to": "second"}]
+
     def test_loads_notification_rules_into_workflow_settings(
         self, staged_workflow, approval_group, second_approval_group, form_definition
     ):

@@ -259,14 +259,11 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         if raw_node_id in (None, ""):
             continue
         if isinstance(raw_node_id, int) and not isinstance(raw_node_id, bool):
-            normalized_node_id = raw_node_id
-            node["id"] = normalized_node_id
-            stage_node_ids.add(normalized_node_id)
+            stage_node_ids.add(raw_node_id)
             continue
         if isinstance(raw_node_id, str):
             normalized_node_id = raw_node_id.strip()
             if normalized_node_id:
-                node["id"] = normalized_node_id
                 stage_node_ids.add(normalized_node_id)
                 continue
         errors.append("Each stage node must include a valid scalar 'id'.")
@@ -339,7 +336,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_identity = stage_node.get("id") or f"stage-index-{index}"
         node_id = stage_node.get("id")
         if node_id not in (None, "") and (
-            isinstance(node_id, bool) or not isinstance(node_id, (str, int))
+            isinstance(node_id, bool) or not isinstance(node_id, str | int)
         ):
             add_error(
                 f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."

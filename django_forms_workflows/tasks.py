@@ -703,6 +703,11 @@ def deliver_workflow_webhook(
     max_attempts = 1 + max(0, endpoint.max_retries)
 
     should_retry = False
+    success = False
+    status_code = None
+    response_text = ""
+    error_message = ""
+
     try:
         response = requests.request(
             "POST",
@@ -731,24 +736,31 @@ def deliver_workflow_webhook(
         finally:
             response.close()
 
-        success = 200 <= response.status_code < 300
-        WebhookDeliveryLog.objects.create(
-            success=success,
-            status_code=response.status_code,
-            response_body=response_text,
-            error_message="" if success else f"HTTP {response.status_code}",
-            **log_data,
-        )
+        status_code = response.status_code
+        success = 200 <= status_code < 300
+        error_message = "" if success else f"HTTP {status_code}"
         should_retry = (
             (not success) and endpoint.retry_on_failure and attempt < max_attempts
         )
     except Exception as exc:  # pragma: no cover
+        success = False
+        error_message = str(exc)
+        should_retry = endpoint.retry_on_failure and attempt < max_attempts
+
+    try:
         WebhookDeliveryLog.objects.create(
-            success=False,
-            error_message=str(exc),
+            success=success,
+            status_code=status_code,
+            response_body=response_text,
+            error_message=error_message,
             **log_data,
         )
-        should_retry = endpoint.retry_on_failure and attempt < max_attempts
+    except Exception:  # pragma: no cover
+        logger.exception(
+            "Failed to persist webhook delivery log for endpoint %s on attempt %s",
+            endpoint.id,
+            attempt,
+        )
 
     if should_retry:
         try:

@@ -876,19 +876,9 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     Reads WorkflowStage records to build stage nodes.
     """
-    stage_defaults = {
-        stage.id: {
-            "allow_send_back": stage.allow_send_back,
-            "allow_reassign": stage.allow_reassign,
-            "allow_edit_form_data": stage.allow_edit_form_data,
-            "assignee_form_field": stage.assignee_form_field,
-            "assignee_lookup_type": stage.assignee_lookup_type,
-            "validate_assignee_group": stage.validate_assignee_group,
-            "trigger_conditions": stage.trigger_conditions,
-            "approval_fields": _serialize_stage_approval_fields(stage),
-        }
-        for stage in workflow.stages.all()
-    }
+    # Build stage defaults lazily only when needed to avoid duplicate per-stage
+    # approval-field serialization work on saved-layout paths.
+    stage_defaults = None
     settings_defaults = {
         "name_label": workflow.name_label,
         "start_trigger": workflow.start_trigger,

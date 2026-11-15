@@ -252,7 +252,21 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         if workflow is not None
         else set()
     )
-    stage_node_ids = {node.get("id") for node in stage_nodes if node.get("id")}
+    errors = []
+    stage_node_ids = set()
+    for node in stage_nodes:
+        raw_node_id = node.get("id")
+        if raw_node_id in (None, ""):
+            continue
+        if isinstance(raw_node_id, int) and not isinstance(raw_node_id, bool):
+            stage_node_ids.add(raw_node_id)
+            continue
+        if isinstance(raw_node_id, str):
+            normalized_node_id = raw_node_id.strip()
+            if normalized_node_id:
+                stage_node_ids.add(normalized_node_id)
+                continue
+        errors.append("Each stage node must include a valid scalar 'id'.")
     stage_ids_in_payload = set()
     for node in stage_nodes:
         raw_stage_id = node.get("data", {}).get("stage_id")
@@ -267,7 +281,6 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     stage_ids_in_payload.add(int(normalized_stage_id))
                 except ValueError:
                     pass  # The converter reports malformed stage IDs.
-    errors = []
     field_assignments = {}
 
     def add_error(message):
@@ -494,7 +507,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     try:
                         normalized_stage_id = int(value)
                     except ValueError:
-                        pass
+                        normalized_stage_id = None
             if normalized_stage_id is None or normalized_stage_id <= 0:
                 add_error(f"Notification rule {rule_index} has an invalid stage ID.")
 
@@ -861,12 +874,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        errors = exc.messages if getattr(exc, "messages", None) else [str(exc)]
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": errors,
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -885,6 +897,10 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     Reads WorkflowStage records to build stage nodes.
     """
+    stages = list(workflow.stages.all())
+    serialized_stage_approval_fields = {
+        stage.id: _serialize_stage_approval_fields(stage) for stage in stages
+    }
     stage_defaults = {
         stage.id: {
             "allow_send_back": stage.allow_send_back,
@@ -894,9 +910,9 @@ def convert_workflow_to_visual(workflow, form_definition):
             "assignee_lookup_type": stage.assignee_lookup_type,
             "validate_assignee_group": stage.validate_assignee_group,
             "trigger_conditions": stage.trigger_conditions,
-            "approval_fields": _serialize_stage_approval_fields(stage),
+            "approval_fields": serialized_stage_approval_fields.get(stage.id, []),
         }
-        for stage in workflow.stages.all()
+        for stage in stages
     }
     settings_defaults = {
         "name_label": workflow.name_label,
@@ -1016,17 +1032,23 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data.setdefault(key, value)
 
-            existing_email_action_ids = {
-                node.get("data", {}).get("action_id")
+            existing_email_nodes_by_action_id = {
+                node.get("data", {}).get("action_id"): node
                 for node in visual_data.get("nodes", [])
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
+            email_nodes_in_order = []
             for index, (action_id, defaults) in enumerate(
                 email_action_defaults.items()
             ):
-                if action_id in existing_email_action_ids:
+                existing_node = existing_email_nodes_by_action_id.get(action_id)
+                if existing_node:
+                    existing_node_data = existing_node.setdefault("data", {})
+                    for key, value in defaults.items():
+                        existing_node_data.setdefault(key, value)
+                    email_nodes_in_order.append(existing_node)
                     continue
-                visual_data.setdefault("nodes", []).append(
+                email_nodes_in_order.append(
                     {
                         "id": f"email-action-{action_id}",
                         "type": "email",
@@ -1038,6 +1060,37 @@ def convert_workflow_to_visual(workflow, form_definition):
                         },
                     }
                 )
+
+            existing_nodes = visual_data.get("nodes", [])
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+
+            email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            existing_connections = visual_data.get("connections", [])
+            non_email_connections = [
+                connection
+                for connection in existing_connections
+                if not (
+                    connection.get("source") in email_node_ids
+                    and connection.get("target") in email_node_ids
+                )
+            ]
+            ordered_email_connections = []
+            for i in range(len(email_nodes_in_order) - 1):
+                source_id = email_nodes_in_order[i].get("id")
+                target_id = email_nodes_in_order[i + 1].get("id")
+                if source_id and target_id:
+                    ordered_email_connections.append(
+                        {
+                            "source": source_id,
+                            "target": target_id,
+                        }
+                    )
+            visual_data["connections"] = (
+                non_email_connections + ordered_email_connections
+            )
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
@@ -1430,7 +1483,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 try:
                     result.add(int(raw_id))
                 except ValueError:
-                    pass
+                    continue
         return result
 
     previous_action_ids = graph_action_ids(
@@ -1606,10 +1659,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             ),
         }
 
-        if stage_id and stage_id in existing_stage_ids:
-            WorkflowStage.objects.filter(id=stage_id).update(**stage_fields)
-            stage = WorkflowStage.objects.get(id=stage_id)
-            kept_stage_ids.add(stage_id)
+        if stage_id:
+            if stage_id in existing_stage_ids:
+                WorkflowStage.objects.filter(id=stage_id).update(**stage_fields)
+                stage = WorkflowStage.objects.get(id=stage_id)
+                kept_stage_ids.add(stage_id)
+            else:
+                raise ValidationError(
+                    f"Invalid stage_id '{stage_id}' for this workflow."
+                )
         else:
             stage = WorkflowStage.objects.create(workflow=workflow, **stage_fields)
             kept_stage_ids.add(stage.id)

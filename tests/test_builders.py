@@ -1415,6 +1415,27 @@ class TestWorkflowBuilderViews:
             form_definition=form_definition
         ).exists()
 
+    def test_save_does_not_expose_validation_exception_details(
+        self, client, superuser, form_definition, monkeypatch
+    ):
+        def fail_validation(*args, **kwargs):
+            raise ValidationError("Traceback: private server detail")
+
+        monkeypatch.setattr(
+            "django_forms_workflows.workflow_builder_views.convert_visual_to_workflow",
+            fail_validation,
+        )
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps({"form_id": form_definition.id, "workflow": {"nodes": []}}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert "private server detail" not in response.content.decode()
+        assert response.json()["errors"] == ["Invalid workflow configuration."]
+
     def test_save_assigns_stage_approval_fields(
         self, client, superuser, form_with_fields, approval_group
     ):

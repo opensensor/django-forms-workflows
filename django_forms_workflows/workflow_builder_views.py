@@ -507,7 +507,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     try:
                         normalized_stage_id = int(value)
                     except ValueError:
-                        pass
+                        normalized_stage_id = None
             if normalized_stage_id is None or normalized_stage_id <= 0:
                 add_error(f"Notification rule {rule_index} has an invalid stage ID.")
 
@@ -874,12 +874,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        errors = exc.messages if getattr(exc, "messages", None) else [str(exc)]
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": errors,
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -1063,7 +1062,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            non_email_nodes = [node for node in existing_nodes if node.get("type") != "email"]
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
             visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
@@ -1087,7 +1088,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                             "target": target_id,
                         }
                     )
-            visual_data["connections"] = non_email_connections + ordered_email_connections
+            visual_data["connections"] = (
+                non_email_connections + ordered_email_connections
+            )
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
@@ -1480,7 +1483,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 try:
                     result.add(int(raw_id))
                 except ValueError:
-                    pass
+                    continue
         return result
 
     previous_action_ids = graph_action_ids(
@@ -1913,9 +1916,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    if normalized_deleted_ids - builder_graph_action_ids:
+    if normalized_deleted_ids - previous_action_ids:
         raise ValidationError(
-            {"deleted_action_ids": "Actions must belong to the current workflow graph."}
+            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
         )
     if normalized_deleted_ids & other_workflow_action_ids:
         raise ValidationError(

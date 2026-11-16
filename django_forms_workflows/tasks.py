@@ -1179,6 +1179,14 @@ def check_approval_deadlines() -> str:
                     if not updated:
                         continue
 
+                    # Persist an outbox entry in the same transaction so notification
+                    # intent survives broker outages.
+                    PendingNotification.objects.get_or_create(
+                        submission=locked_submission,
+                        notification_type="workflow_approved",
+                        defaults={"scheduled_for": now},
+                    )
+
                     # cancel remaining tasks
                     locked_submission.approval_tasks.filter(status="pending").update(
                         status="skipped"
@@ -1198,6 +1206,12 @@ def check_approval_deadlines() -> str:
                             submission_id,
                             exc_info=True,
                         )
+                        return
+
+                    PendingNotification.objects.filter(
+                        submission_id=submission_id,
+                        notification_type="workflow_approved",
+                    ).delete()
 
                 transaction.on_commit(_enqueue_workflow_approved_notification)
                 auto_approved_count += 1

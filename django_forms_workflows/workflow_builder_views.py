@@ -948,30 +948,14 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        field_errors = None
-        errors = []
-
-        if hasattr(exc, "message_dict"):
-            field_errors = exc.message_dict
-            for messages in field_errors.values():
-                if isinstance(messages, (list, tuple)):
-                    errors.extend(str(message) for message in messages)
-                else:
-                    errors.append(str(messages))
-        elif hasattr(exc, "messages"):
-            errors = [str(message) for message in exc.messages]
-        else:
-            errors = [str(exc)]
-
-        response_payload = {
-            "success": False,
-            "error": "Workflow validation failed.",
-            "errors": errors,
-        }
-        if field_errors is not None:
-            response_payload["field_errors"] = field_errors
-
-        return JsonResponse(response_payload, status=400)
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Workflow validation failed.",
+                "errors": ["Invalid workflow configuration."],
+            },
+            status=400,
+        )
     except Http404:
         raise
     except Exception:
@@ -1173,18 +1157,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            existing_email_action_ids = {
-                node.get("data", {}).get("action_id")
-                for node in existing_nodes
-                if node.get("type") == "email" and node.get("data", {}).get("action_id")
-            }
-            missing_email_nodes = [
-                node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id")
-                not in existing_email_action_ids
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
             ]
-            visual_data["nodes"] = existing_nodes + missing_email_nodes
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1883,10 +1859,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         if stage is None and stage_id:
             stage = workflow.stages.filter(id=stage_id).first()
         if stage is None and explicit_stage_reference:
-            raise ValidationError(
-                f"Invalid stage reference in notification rule: "
-                f"stage_node_id={raw_stage_node_id!r}, stage_id={stage_id!r}"
-            )
+            raise ValidationError("Invalid stage reference in notification rule.")
 
         notify_groups = rule_data.get("notify_groups", []) or []
         normalized_group_ids = []

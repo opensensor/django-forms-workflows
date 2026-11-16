@@ -760,6 +760,7 @@ class TestConvertVisualToWorkflow:
             }
         )
         wf = convert_visual_to_workflow(visual, form_with_fields)
+        wf.refresh_from_db()
         assert wf.name_label == "Finance Approval"
         assert wf.approval_deadline_days == 14
         assert wf.send_reminder_after_days == 3
@@ -2591,6 +2592,8 @@ class TestFormBuilderViews:
     def test_save_preserves_zero_payment_amount(
         self, client, superuser, form_definition
     ):
+        form_definition.payment_fixed_amount = 12.34
+        form_definition.save(update_fields=["payment_fixed_amount"])
         client.force_login(superuser)
         response = client.post(
             _fb_url("builder/api/save/"),

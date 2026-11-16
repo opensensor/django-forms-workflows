@@ -2591,6 +2591,8 @@ class TestFormBuilderViews:
     def test_save_preserves_zero_payment_amount(
         self, client, superuser, form_definition
     ):
+        form_definition.payment_fixed_amount = 12.34
+        form_definition.save(update_fields=["payment_fixed_amount"])
         client.force_login(superuser)
         response = client.post(
             _fb_url("builder/api/save/"),

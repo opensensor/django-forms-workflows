@@ -558,13 +558,9 @@ def form_builder_save(request):
         elif isinstance(raw_form_id, str) and not raw_form_id.strip():
             form_id = None
         else:
-            form_id = _positive_integer_id(raw_form_id)
-            if form_id is None:
-                return JsonResponse(
-                    {
-                        "success": False,
-                        "error": "Invalid payload: 'id' must be a positive integer",
-                    },
+            try:
+                form_id = _positive_integer_id(raw_form_id, "id")
+            except ValueError:
                     status=400,
                 )
 
@@ -572,46 +568,6 @@ def form_builder_save(request):
         raw_slug = data.get("slug", "")
         if not isinstance(raw_name, str) or not isinstance(raw_slug, str):
             return JsonResponse(
-                {"success": False, "error": "Form name and slug must be strings"},
-                status=400,
-            )
-        form_name = raw_name.strip()
-        form_slug = raw_slug.strip()
-
-        # Validate required fields
-        if not form_name:
-            return JsonResponse(
-                {"success": False, "error": "Form name is required"}, status=400
-            )
-        if not form_slug:
-            return JsonResponse(
-                {"success": False, "error": "Form slug is required"}, status=400
-            )
-
-        # Use transaction to ensure atomicity
-        with transaction.atomic():
-            form_definition = (
-                get_object_or_404(
-                    FormDefinition.objects.select_for_update(), id=form_id
-                )
-                if form_id
-                else None
-            )
-            form_definition, field_id_mapping = save_form_definition_from_builder_data(
-                data, request.user, form_definition=form_definition
-            )
-
-        return JsonResponse(
-            {
-                "success": True,
-                "form_id": form_definition.id,
-                "message": "Form saved successfully",
-                "field_id_mapping": field_id_mapping,
-            }
-        )
-
-    except FormBuilderPayloadError as exc:
-        # Raised inside the atomic block above, so the partial save is rolled back.
         return JsonResponse({"success": False, "error": exc.client_message}, status=400)
     except json.JSONDecodeError:
         return JsonResponse(

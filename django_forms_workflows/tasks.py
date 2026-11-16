@@ -1282,10 +1282,25 @@ def send_batched_notifications() -> str:
                         "submission__form_definition",
                         "submission__submitter",
                         "approval_task",
+                        "rule",
                     )
                 )
                 if not current:
                     continue
+
+                # Recheck mute preferences at send time for queued digest items.
+                # Items from rules now muted are suppressed and marked handled.
+                suppressed_ids = [
+                    n.id for n in current if getattr(getattr(n, "rule", None), "is_muted", False)
+                ]
+                if suppressed_ids:
+                    PendingNotification.objects.filter(id__in=suppressed_ids, sent=False).update(
+                        sent=True
+                    )
+                current = [n for n in current if n.id not in set(suppressed_ids)]
+                if not current:
+                    continue
+
                 delivered = False
                 if notification_type == "submission_received":
                     delivered = _dispatch_submission_digest(recipient_email, current)

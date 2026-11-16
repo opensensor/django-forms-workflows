@@ -1256,29 +1256,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            ordered_nodes = []
-            included_email_node_ids = set()
-            email_nodes_by_id = {
-                node.get("id"): node for node in email_nodes_in_order if node.get("id")
-            }
-
-            for node in existing_nodes:
-                if node.get("type") == "email":
-                    replacement_node = email_nodes_by_id.get(node.get("id"))
-                    if replacement_node:
-                        ordered_nodes.append(replacement_node)
-                        included_email_node_ids.add(node.get("id"))
-                    else:
-                        ordered_nodes.append(node)
-                else:
-                    ordered_nodes.append(node)
-
-            for email_node in email_nodes_in_order:
-                email_node_id = email_node.get("id")
-                if email_node_id not in included_email_node_ids:
-                    ordered_nodes.append(email_node)
-
-            visual_data["nodes"] = ordered_nodes
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1983,7 +1964,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         if has_stage_node_id:
             if isinstance(stage_node_id, bool) or not isinstance(
-                stage_node_id, (str, int)
+                stage_node_id, str | int
             ):
                 raise ValidationError("Invalid stage reference in notification rule.")
             stage = stage_node_map.get(stage_node_id)
@@ -2213,15 +2194,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    exposed_action_ids = set(previous_action_ids)
-    exposed_action_ids.update(
-        PostSubmissionAction.objects.filter(
-            form_definition=form_definition
-        ).values_list("id", flat=True)
-    )
-    if normalized_deleted_ids - exposed_action_ids:
+    if normalized_deleted_ids - previous_action_ids:
         raise ValidationError(
-            {"deleted_action_ids": "Actions must belong to the workflow graph."}
+            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
         )
     if normalized_deleted_ids & other_workflow_action_ids:
         raise ValidationError(

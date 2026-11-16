@@ -826,9 +826,12 @@ class TestConvertVisualToWorkflow:
         assert first.name_label == "Track A"
         assert second.name_label == "Updated Track B"
 
-    @pytest.mark.parametrize("stage_node_id", ["stage_1", " stage_1 "])
+    @pytest.mark.parametrize(
+        ("stage_node_id", "rule_stage_node_id"),
+        [("stage_1", "stage_1"), (" stage_1 ", "stage_1"), (7, 7)],
+    )
     def test_creates_stage_scoped_notification_rule(
-        self, form_definition, approval_group, stage_node_id
+        self, form_definition, approval_group, stage_node_id, rule_stage_node_id
     ):
         visual = {
             "nodes": [
@@ -839,7 +842,7 @@ class TestConvertVisualToWorkflow:
                     "data": {
                         "notification_rules": [
                             {
-                                "stage_node_id": "stage_1",
+                                "stage_node_id": rule_stage_node_id,
                                 "event": "approval_request",
                                 "subject_template": "Stage approval needed",
                                 "notify_stage_assignees": True,

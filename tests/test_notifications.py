@@ -2858,6 +2858,49 @@ def test_auto_approve_enqueues_each_submission_after_commit(
 
 
 @pytest.mark.django_db
+def test_auto_approve_logs_broker_failure_without_creating_invalid_digest(
+    form_definition,
+    user,
+    approver_user,
+    django_capture_on_commit_callbacks,
+    caplog,
+):
+    WorkflowDefinition.objects.create(
+        form_definition=form_definition, auto_approve_after_days=2
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Review",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=task.pk).update(
+        created_at=timezone.now() - timedelta(days=3)
+    )
+
+    with (
+        patch.object(
+            tasks_module.send_notification_rules,
+            "delay",
+            side_effect=ConnectionError("broker unavailable"),
+        ),
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        assert "auto_approved=1" in check_approval_deadlines()
+
+    submission.refresh_from_db()
+    assert submission.status == "approved"
+    assert "Could not enqueue approval notification" in caplog.text
+    assert not PendingNotification.objects.filter(submission=submission).exists()
+
+
+@pytest.mark.django_db
 def test_expired_task_is_not_reminded(form_definition, user, approver_user):
     WorkflowDefinition.objects.create(
         form_definition=form_definition,

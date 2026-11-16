@@ -2456,6 +2456,21 @@ class TestFormBuilderSavePayloadValidation:
 class TestFormBuilderViews:
     """Integration tests for the form builder HTTP endpoints."""
 
+    @pytest.mark.parametrize("close_date", [True, 123, ["2026-12-01"]])
+    def test_save_rejects_non_string_close_date(self, client, superuser, close_date):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {"name": "New", "slug": "new", "fields": [], "close_date": close_date}
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert '"close_date" must be a string.' in response.json()["error"]
+        assert not FormDefinition.objects.filter(slug="new").exists()
+
     def test_save_rejects_duplicate_slug_as_text(self, client, superuser):
         FormDefinition.objects.create(name="Existing", slug="taken")
         client.force_login(superuser)

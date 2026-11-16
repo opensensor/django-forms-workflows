@@ -1193,7 +1193,7 @@ def check_approval_deadlines() -> str:
                             submission_id, "workflow_approved"
                         )
                     except Exception:
-                        logger.debug(
+                        logger.warning(
                             "Could not enqueue approval notification for submission %s",
                             submission_id,
                             exc_info=True,

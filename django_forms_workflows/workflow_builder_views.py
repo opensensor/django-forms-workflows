@@ -615,10 +615,35 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             )
 
         invalid_notify_group_ids = []
-        for group in rule_data.get("notify_groups", []) or []:
+        notify_groups = rule_data.get("notify_groups", [])
+        if notify_groups not in (None, "") and not isinstance(notify_groups, list):
+            add_error(
+                f"Notification rule {rule_index} has invalid notify_groups; expected a list."
+            )
+            notify_groups = []
+
+        for group in notify_groups or []:
             group_id = group.get("id") if isinstance(group, dict) else group
-            if group_id and group_id not in group_ids:
-                invalid_notify_group_ids.append(group_id)
+            normalized_group_id = None
+
+            if isinstance(group_id, int) and not isinstance(group_id, bool):
+                normalized_group_id = group_id
+            elif isinstance(group_id, str):
+                value = group_id.strip()
+                if value.isascii() and value.isdigit():
+                    try:
+                        normalized_group_id = int(value)
+                    except ValueError:
+                        normalized_group_id = None
+
+            if normalized_group_id is None or normalized_group_id <= 0:
+                add_error(
+                    f"Notification rule {rule_index} has an invalid notify-group ID."
+                )
+                continue
+
+            if normalized_group_id not in group_ids:
+                invalid_notify_group_ids.append(normalized_group_id)
         if invalid_notify_group_ids:
             add_error(
                 f"Notification rule {rule_index} references unknown notify-group IDs: {', '.join(str(gid) for gid in invalid_notify_group_ids)}."

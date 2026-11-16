@@ -2186,9 +2186,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    if normalized_deleted_ids - previous_action_ids:
+    exposed_action_ids = set(previous_action_ids)
+    exposed_action_ids.update(
+        PostSubmissionAction.objects.filter(
+            form_definition=form_definition
+        ).values_list("id", flat=True)
+    )
+    if normalized_deleted_ids - exposed_action_ids:
         raise ValidationError(
-            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
+            {"deleted_action_ids": "Actions must belong to the workflow graph."}
         )
     if normalized_deleted_ids & other_workflow_action_ids:
         raise ValidationError(

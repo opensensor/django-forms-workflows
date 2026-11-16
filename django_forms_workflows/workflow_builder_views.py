@@ -310,6 +310,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     def field_reference_exists(value):
         if value in (None, ""):
             return True
+        if not isinstance(value, str):
+            add_error("Field references must be strings.")
+            return False
         return value in field_names
 
     def normalize_stage_field_refs(raw_entries):

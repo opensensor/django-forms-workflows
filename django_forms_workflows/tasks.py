@@ -1667,7 +1667,7 @@ def _collect_notification_recipients(
             from django.contrib.auth import get_user_model
 
             user_model = get_user_model()
-            group_ids = list(notif.notify_groups.values_list("id", flat=True))
+            group_ids = [group.id for group in notif.notify_groups.all() if group.id is not None]
             if group_ids:
                 for email in (
                     user_model.objects.filter(groups__id__in=group_ids)

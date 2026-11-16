@@ -1571,7 +1571,10 @@ def _collect_notification_recipients(
             .exclude(workflow_stage__assignee_form_field="")
         )
         if getattr(notif, "event", None) in {"approval_request", "approval_reminder"}:
-            qs = qs.filter(status="pending")
+            if task is not None:
+                qs = qs.filter(pk=task.pk)
+            else:
+                qs = qs.filter(status="pending")
         if notif_workflow_id:
             qs = qs.filter(workflow_stage__workflow_id=notif_workflow_id)
         eff_stage = _effective_stage_id()

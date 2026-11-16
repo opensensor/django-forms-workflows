@@ -1127,6 +1127,14 @@ def form_builder_preview(request):
                     validation = field_data.get("validation") or {}
                     conditional = field_data.get("conditional") or {}
 
+                    validation_rules = validation.get("validation_rules")
+                    if validation_rules is None:
+                        validation_rules = field_data.get("validation_rules")
+
+                    field_dependencies = conditional.get("field_dependencies")
+                    if field_dependencies is None:
+                        field_dependencies = field_data.get("field_dependencies")
+
                     # Build field kwargs
                     field_kwargs = {
                         "form_definition": form_definition,
@@ -1150,12 +1158,8 @@ def form_builder_preview(request):
                         "regex_error_message": validation.get(
                             "regex_error_message", ""
                         ),
-                        "validation_rules": validation.get(
-                            "validation_rules", field_data.get("validation_rules")
-                        ),
-                        "field_dependencies": conditional.get(
-                            "field_dependencies", field_data.get("field_dependencies")
-                        ),
+                        "validation_rules": validation_rules,
+                        "field_dependencies": field_dependencies,
                         "step_number": field_data.get("step_number", 1),
                     }
 

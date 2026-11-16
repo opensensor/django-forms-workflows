@@ -1900,10 +1900,21 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         notify_groups = rule_data.get("notify_groups", []) or []
         normalized_group_ids = []
         for group in notify_groups:
-            if isinstance(group, dict) and group.get("id"):
-                normalized_group_ids.append(group["id"])
-            elif isinstance(group, int):
-                normalized_group_ids.append(group)
+            candidate_id = None
+            if isinstance(group, dict):
+                candidate_id = group.get("id")
+            else:
+                candidate_id = group
+
+            if isinstance(candidate_id, str):
+                candidate_id = candidate_id.strip()
+
+            try:
+                normalized_group_id = int(candidate_id)
+            except (TypeError, ValueError):
+                continue
+
+            normalized_group_ids.append(normalized_group_id)
 
         rule = NotificationRule.objects.create(
             workflow=workflow,

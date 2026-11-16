@@ -905,6 +905,27 @@ def workflow_builder_save(request):
         workflow_id = data.get("workflow_id")
         workflow_data = data.get("workflow", {})
 
+        def _parse_positive_pk(value, field_name, *, allow_empty=False):
+            if allow_empty and value in (None, ""):
+                return None
+            if isinstance(value, bool):
+                raise ValidationError(
+                    f"Malformed payload: '{field_name}' must be a positive integer."
+                )
+            if isinstance(value, int):
+                parsed = value
+            elif isinstance(value, str) and value.isdigit():
+                parsed = int(value)
+            else:
+                raise ValidationError(
+                    f"Malformed payload: '{field_name}' must be a positive integer."
+                )
+            if parsed <= 0 or parsed > 2147483647:
+                raise ValidationError(
+                    f"Malformed payload: '{field_name}' must be a positive integer."
+                )
+            return parsed
+
         if not isinstance(workflow_data, dict):
             raise ValidationError("Malformed payload: 'workflow' must be an object.")
 
@@ -946,14 +967,17 @@ def workflow_builder_save(request):
             edge_count,
         )
 
-        if not form_id:
+        if form_id in (None, ""):
             return JsonResponse(
                 {"success": False, "error": "Form ID is required"}, status=400
             )
 
+        form_id = _parse_positive_pk(form_id, "form_id")
+        workflow_id = _parse_positive_pk(workflow_id, "workflow_id", allow_empty=True)
+
         form_definition = get_object_or_404(FormDefinition, id=form_id)
         workflow = None
-        if workflow_id not in (None, ""):
+        if workflow_id is not None:
             workflow = get_object_or_404(
                 WorkflowDefinition, id=workflow_id, form_definition=form_definition
             )

@@ -2266,12 +2266,9 @@ def send_notification_rules(
                     "recipient_email": recipient,
                     "sent": False,
                 }
-                pending_defaults = {
-                    "scheduled_for": scheduled_for,
-                }
                 if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **dispatch_identity, **pending_defaults
+                        **dispatch_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

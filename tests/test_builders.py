@@ -631,8 +631,9 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Duplicate stage_id"):
             convert_visual_to_workflow(visual, form_definition, staged_workflow)
 
+    @pytest.mark.parametrize("second_node_id", ["stage_1", " stage_1 "])
     def test_rejects_duplicate_stage_node_ids_without_approval_fields(
-        self, form_definition
+        self, form_definition, second_node_id
     ):
         visual = {
             "nodes": [
@@ -643,7 +644,7 @@ class TestConvertVisualToWorkflow:
                     "data": {"name": "First", "requires_manager_approval": True},
                 },
                 {
-                    "id": "stage_1",
+                    "id": second_node_id,
                     "type": "stage",
                     "data": {"name": "Second", "requires_manager_approval": True},
                 },
@@ -653,6 +654,18 @@ class TestConvertVisualToWorkflow:
         }
 
         with pytest.raises(ValidationError, match="duplicate node ID"):
+            convert_visual_to_workflow(visual, form_definition)
+
+    def test_rejects_non_list_notification_groups(self, form_definition):
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {"event": "workflow_approved", "notify_groups": {"id": 1}}
+                ]
+            }
+        )
+
+        with pytest.raises(ValidationError, match="invalid notify_groups"):
             convert_visual_to_workflow(visual, form_definition)
 
     @pytest.mark.parametrize("stage_id", [True, [], "²", "9" * 5000])

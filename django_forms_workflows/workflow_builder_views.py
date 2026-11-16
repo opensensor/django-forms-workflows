@@ -618,34 +618,40 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
 
         invalid_notify_group_ids = []
         notify_groups = rule_data.get("notify_groups", [])
-        if notify_groups not in (None, "") and not isinstance(notify_groups, list):
+        if notify_groups is None:
+            notify_groups = []
+        if not isinstance(notify_groups, list):
             add_error(
                 f"Notification rule {rule_index} has invalid notify_groups; expected a list."
             )
             notify_groups = []
-
-        for group in notify_groups or []:
+        for group in notify_groups:
             group_id = group.get("id") if isinstance(group, dict) else group
-            normalized_group_id = None
-
-            if isinstance(group_id, int) and not isinstance(group_id, bool):
-                normalized_group_id = group_id
-            elif isinstance(group_id, str):
-                value = group_id.strip()
-                if value.isascii() and value.isdigit():
-                    try:
-                        normalized_group_id = int(value)
-                    except ValueError:
-                        normalized_group_id = None
-
-            if normalized_group_id is None or normalized_group_id <= 0:
+            if isinstance(group_id, bool):
                 add_error(
                     f"Notification rule {rule_index} has an invalid notify-group ID."
                 )
                 continue
-
-            if normalized_group_id not in group_ids:
-                invalid_notify_group_ids.append(normalized_group_id)
+            if isinstance(group_id, str):
+                value = group_id.strip()
+                if not value.isascii() or not value.isdigit():
+                    add_error(
+                        f"Notification rule {rule_index} has an invalid notify-group ID."
+                    )
+                    continue
+                try:
+                    group_id = int(value)
+                except ValueError:
+                    add_error(
+                        f"Notification rule {rule_index} has an invalid notify-group ID."
+                    )
+                    continue
+            if not isinstance(group_id, int) or group_id <= 0:
+                add_error(
+                    f"Notification rule {rule_index} has an invalid notify-group ID."
+                )
+            elif group_id not in group_ids:
+                invalid_notify_group_ids.append(group_id)
         if invalid_notify_group_ids:
             add_error(
                 f"Notification rule {rule_index} references unknown notify-group IDs: {', '.join(str(gid) for gid in invalid_notify_group_ids)}."
@@ -899,35 +905,6 @@ def workflow_builder_save(request):
         workflow_id = data.get("workflow_id")
         workflow_data = data.get("workflow", {})
 
-        def _parse_positive_int(value, field_name, *, allow_empty=False):
-            if allow_empty and value in (None, ""):
-                return None
-            if isinstance(value, bool):
-                raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
-            if isinstance(value, int):
-                parsed = value
-            elif isinstance(value, str):
-                stripped = value.strip()
-                if not stripped:
-                    if allow_empty:
-                        return None
-                    raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
-                try:
-                    parsed = int(stripped)
-                except ValueError as exc:
-                    raise ValidationError(
-                        f"Malformed payload: '{field_name}' must be a positive integer."
-                    ) from exc
-            else:
-                raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
-
-            if parsed <= 0:
-                raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
-            return parsed
-
-        form_id = _parse_positive_int(form_id, "form_id")
-        workflow_id = _parse_positive_int(workflow_id, "workflow_id", allow_empty=True)
-
         if not isinstance(workflow_data, dict):
             raise ValidationError("Malformed payload: 'workflow' must be an object.")
 
@@ -976,7 +953,7 @@ def workflow_builder_save(request):
 
         form_definition = get_object_or_404(FormDefinition, id=form_id)
         workflow = None
-        if workflow_id is not None:
+        if workflow_id not in (None, ""):
             workflow = get_object_or_404(
                 WorkflowDefinition, id=workflow_id, form_definition=form_definition
             )
@@ -1188,7 +1165,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in visual_data.get("nodes", [])
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
-            resolved_email_nodes_by_action_id = {}
+            email_nodes_in_order = []
             for index, (action_id, defaults) in enumerate(
                 email_action_defaults.items()
             ):
@@ -1197,46 +1174,28 @@ def convert_workflow_to_visual(workflow, form_definition):
                     existing_node_data = existing_node.setdefault("data", {})
                     for key, value in defaults.items():
                         existing_node_data.setdefault(key, value)
-                    resolved_email_nodes_by_action_id[action_id] = existing_node
+                    email_nodes_in_order.append(existing_node)
                     continue
-                resolved_email_nodes_by_action_id[action_id] = {
-                    "id": f"email-action-{action_id}",
-                    "type": "email",
-                    "x": 0,
-                    "y": index * 120,
-                    "data": {
-                        "action_id": action_id,
-                        **defaults,
-                    },
-                }
+                email_nodes_in_order.append(
+                    {
+                        "id": f"email-action-{action_id}",
+                        "type": "email",
+                        "x": 0,
+                        "y": index * 120,
+                        "data": {
+                            "action_id": action_id,
+                            **defaults,
+                        },
+                    }
+                )
 
             existing_nodes = visual_data.get("nodes", [])
-            merged_nodes = []
-            placed_email_action_ids = set()
-            for node in existing_nodes:
-                if node.get("type") != "email":
-                    merged_nodes.append(node)
-                    continue
-                action_id = node.get("data", {}).get("action_id")
-                if action_id in resolved_email_nodes_by_action_id:
-                    if action_id in placed_email_action_ids:
-                        continue
-                    merged_nodes.append(resolved_email_nodes_by_action_id[action_id])
-                    placed_email_action_ids.add(action_id)
-                else:
-                    merged_nodes.append(node)
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
-            for action_id, node in resolved_email_nodes_by_action_id.items():
-                if action_id not in placed_email_action_ids:
-                    merged_nodes.append(node)
-
-            visual_data["nodes"] = merged_nodes
-
-            email_node_ids = {
-                node.get("id")
-                for node in visual_data.get("nodes", [])
-                if node.get("type") == "email"
-            }
+            email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:
@@ -1384,12 +1343,7 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    stage_defaults = _get_stage_defaults(workflow)
-    stage_defaults_map = {item["stage"].id: item for item in stage_defaults}
-    stages = sorted(
-        (item["stage"] for item in stage_defaults),
-        key=lambda s: (s.order, s.id),
-    )
+    stages = list(workflow.stages.order_by("order", "id"))
     stage_node_map = {}
 
     if stages:
@@ -1423,9 +1377,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "assignee_lookup_type": stage.assignee_lookup_type,
                         "validate_assignee_group": stage.validate_assignee_group,
                         "trigger_conditions": stage.trigger_conditions,
-                        "approval_fields": stage_defaults_map.get(stage.id, {}).get(
-                            "approval_fields", []
-                        ),
+                        "approval_fields": _serialize_stage_approval_fields(stage),
                         "approval_groups": stage_groups,
                     },
                 }

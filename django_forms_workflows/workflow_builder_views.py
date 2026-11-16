@@ -1160,12 +1160,14 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data.setdefault(key, value)
 
+            existing_nodes = visual_data.get("nodes", [])
             existing_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
-                for node in visual_data.get("nodes", [])
+                for node in existing_nodes
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
-            email_nodes_in_order = []
+            missing_email_nodes = []
+            email_nodes_for_connections = []
             for index, (action_id, defaults) in enumerate(
                 email_action_defaults.items()
             ):
@@ -1174,28 +1176,24 @@ def convert_workflow_to_visual(workflow, form_definition):
                     existing_node_data = existing_node.setdefault("data", {})
                     for key, value in defaults.items():
                         existing_node_data.setdefault(key, value)
-                    email_nodes_in_order.append(existing_node)
+                    email_nodes_for_connections.append(existing_node)
                     continue
-                email_nodes_in_order.append(
-                    {
-                        "id": f"email-action-{action_id}",
-                        "type": "email",
-                        "x": 0,
-                        "y": index * 120,
-                        "data": {
-                            "action_id": action_id,
-                            **defaults,
-                        },
-                    }
-                )
+                new_node = {
+                    "id": f"email-action-{action_id}",
+                    "type": "email",
+                    "x": 0,
+                    "y": index * 120,
+                    "data": {
+                        "action_id": action_id,
+                        **defaults,
+                    },
+                }
+                missing_email_nodes.append(new_node)
+                email_nodes_for_connections.append(new_node)
 
-            existing_nodes = visual_data.get("nodes", [])
-            non_email_nodes = [
-                node for node in existing_nodes if node.get("type") != "email"
-            ]
-            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+            visual_data["nodes"] = existing_nodes + missing_email_nodes
 
-            email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            email_node_ids = {node.get("id") for node in email_nodes_for_connections}
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:

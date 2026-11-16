@@ -1572,7 +1572,7 @@ def _collect_notification_recipients(
         )
         if getattr(notif, "event", None) in {"approval_request", "approval_reminder"}:
             if task is not None:
-                qs = qs.filter(pk=task.pk)
+                qs = qs.filter(pk=task.pk, status="pending")
             else:
                 qs = qs.filter(status="pending")
         if notif_workflow_id:
@@ -2278,22 +2278,18 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                # Build a durable dispatch identity and dedupe across both pending and sent
-                # rows so replaying the same event does not enqueue duplicates.
-                dispatch_identity_core = {
+                # Only an unsent row blocks a retry; sent rows may be queued again.
+                dispatch_identity = {
                     "workflow": workflow,
                     "notification_type": event,
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
-                # Preserve existing unsent-row semantics for creation payload.
-                unsent_dispatch_identity = {**dispatch_identity_core, "sent": False}
-                if PendingNotification.objects.filter(**dispatch_identity_core).exists():
-                    continue
-                if not PendingNotification.objects.filter(**unsent_dispatch_identity).exists():
+                if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **unsent_dispatch_identity, scheduled_for=scheduled_for
+                        **dispatch_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

@@ -1086,13 +1086,16 @@ def convert_workflow_to_visual(workflow, form_definition):
 
         # Load once in deterministic order and reuse in all layout paths.
         # Prefetch approval-fields relation to avoid per-stage queries during serialization.
-        # Prefetch approval groups (and related auth group) to avoid N+1 queries.
         _stages_cache = list(
-            workflow.stages.all().order_by("order").prefetch_related(
+            workflow.stages.all()
+            .order_by("order")
+            .prefetch_related(
                 "approval_fields",
                 Prefetch(
                     "stageapprovalgroup_set",
-                    queryset=StageApprovalGroup.objects.select_related("group"),
+                    queryset=StageApprovalGroup.objects.select_related(
+                        "group"
+                    ).order_by("role", "position", "group__name"),
                     to_attr="prefetched_approval_groups",
                 ),
             )
@@ -1203,7 +1206,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         if not node_data.get("approval_groups"):
                             node_data["approval_groups"] = (
                                 _serialize_stage_approval_groups(
-                                    workflow.stages.get(id=stage_id)
+                                    _stages_by_id_cache[stage_id]
                                 )
                             )
                 elif node_type == "workflow_settings":
@@ -1267,23 +1270,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            existing_email_action_ids = {
-                node.get("data", {}).get("action_id")
-                for node in existing_nodes
-                if node.get("type") == "email" and node.get("data", {}).get("action_id")
-            }
-            missing_email_nodes = [
-                node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id") not in existing_email_action_ids
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
             ]
-            visual_data["nodes"] = existing_nodes + missing_email_nodes
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
-            email_node_ids = {
-                node.get("id")
-                for node in visual_data.get("nodes", [])
-                if node.get("type") == "email"
-            }
+            email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:

@@ -1661,7 +1661,15 @@ def _collect_notification_recipients(
             assigned_to_id__isnull=True,
         )
         if getattr(notif, "event", None) in {"approval_request", "approval_reminder"}:
-            group_tasks = group_tasks.filter(status="pending")
+            if task is not None:
+                # Task-specific actionable notification: only notify the group
+                # for the triggering task (avoid cross-notifying other pending
+                # groups in the same stage with this task's approval URL).
+                group_tasks = group_tasks.filter(pk=task.pk)
+            else:
+                # Workflow-level actionable notification: include all pending
+                # eligible group fallback tasks in scope.
+                group_tasks = group_tasks.filter(status="pending")
         group_ids = list(
             group_tasks.values_list("assigned_group_id", flat=True).distinct()
         )

@@ -1010,7 +1010,6 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                     f"{_form_validation_message(exc)}"
                 ) from exc
             existing_field.save()
-            updated_field_ids.add(field_id)
             if old_id is not None:
                 field_id_mapping[str(old_id)] = field_id
 
@@ -1024,14 +1023,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 f"{_form_validation_message(exc)}"
             ) from exc
         new_field.save()
-        updated_field_ids.add(new_field.id)
         if old_id is not None:
             field_id_mapping[str(old_id)] = new_field.id
-
-    # Delete fields that were removed
-    fields_to_delete = existing_field_ids - updated_field_ids
-    if fields_to_delete:
-        FormField.objects.filter(id__in=fields_to_delete).delete()
 
     return form_definition, field_id_mapping
 

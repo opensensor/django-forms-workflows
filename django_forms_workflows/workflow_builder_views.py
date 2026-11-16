@@ -510,7 +510,24 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         add_error("Only one workflow settings node is allowed.")
 
     settings_data = settings_nodes[0].get("data", {}) if settings_nodes else {}
-    cadence = settings_data.get("notification_cadence") or "immediate"
+    supported_cadences = {
+        "immediate",
+        "weekly",
+        "monthly",
+        "form_field_date",
+    }
+    cadence_raw = settings_data.get("notification_cadence")
+    if cadence_raw in (None, ""):
+        cadence = "immediate"
+    elif not isinstance(cadence_raw, str):
+        add_error("Notification cadence must be a string value.")
+        cadence = "immediate"
+    elif cadence_raw not in supported_cadences:
+        add_error(f"Unsupported notification cadence: {cadence_raw}.")
+        cadence = "immediate"
+    else:
+        cadence = cadence_raw
+
     cadence_day_raw = settings_data.get("notification_cadence_day")
     cadence_field = settings_data.get("notification_cadence_form_field")
 
@@ -533,6 +550,10 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         if not cadence_field:
             add_error(
                 "Notification cadence 'On Date From Form Field' requires selecting a date field."
+            )
+        elif not isinstance(cadence_field, str):
+            add_error(
+                "Notification cadence form field reference must be a string value."
             )
         elif cadence_field not in field_names:
             add_error(
@@ -743,7 +764,7 @@ def _serialize_notification_rule(rule, stage_node_id=None):
         "notify_stage_groups": rule.notify_stage_groups,
         "notify_groups": [
             {"id": group.id, "name": group.name}
-            for group in rule.notify_groups.order_by("name")
+            for group in sorted(rule.notify_groups.all(), key=lambda group: group.name)
         ],
     }
 

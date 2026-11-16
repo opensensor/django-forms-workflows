@@ -24,8 +24,10 @@ from email.utils import make_msgid
 
 import requests
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.mail import EmailMultiAlternatives
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.template.loader import render_to_string
@@ -1498,9 +1500,18 @@ def _get_form_field_emails(form_data: dict, email_field: str) -> list[str]:
     raw = form_data.get(email_field, "")
     if isinstance(raw, list | tuple):
         raw = ",".join(str(part) for part in raw)
-    return [
-        addr for addr in (part.strip() for part in str(raw).split(",")) if "@" in addr
-    ]
+
+    emails: list[str] = []
+    for addr in (part.strip() for part in str(raw).split(",")):
+        if not addr:
+            continue
+        try:
+            validate_email(addr)
+        except ValidationError:
+            continue
+        emails.append(addr)
+
+    return emails
 
 
 def _collect_notification_recipients(

@@ -26,6 +26,15 @@ from django_forms_workflows.tasks import (
 )
 
 
+def test_form_field_email_extraction_rejects_malformed_addresses():
+    data = {"contact": "valid@example.com, invalid@@example.com, second@example.org"}
+
+    assert tasks_module._get_form_field_emails(data, "contact") == [
+        "valid@example.com",
+        "second@example.org",
+    ]
+
+
 def test_daily_digest_uses_active_timezone():
     workflow = SimpleNamespace(
         notification_cadence="daily", notification_cadence_time=None

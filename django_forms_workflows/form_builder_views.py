@@ -825,10 +825,9 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             and re.fullmatch(r"(?:new_[0-9]+|temp-[0-9]+)", _field_id)
         ):
             continue
-        try:
-            incoming_existing_field_ids.add(_positive_integer_id(_field_id, "id"))
-        except ValidationError:
+        if not isinstance(_field_id, int) or not 0 < _field_id <= MAX_DB_PRIMARY_KEY:
             raise FormBuilderPayloadError(f"Invalid field id {_field_id} for this form")
+        incoming_existing_field_ids.add(_field_id)
 
     FormField.objects.filter(form_definition=form_definition).exclude(
         id__in=incoming_existing_field_ids

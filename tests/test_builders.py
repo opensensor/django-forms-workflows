@@ -3290,6 +3290,20 @@ class TestFormBuilderTemplateAPI:
 class TestSharedOptionListAPI:
     """Tests for the centrally managed shared option list CRUD API endpoints."""
 
+    def test_save_generates_valid_slug_from_name(self, client, superuser):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/shared-lists/save/"),
+            data=json.dumps({"name": "Benefits & Wellness", "items": ["Medical"]}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        assert (
+            SharedOptionList.objects.get(name="Benefits & Wellness").slug
+            == "benefits-wellness"
+        )
+
     @pytest.mark.parametrize("list_id", [True, 1.0, "²", "9" * 5000])
     def test_save_rejects_invalid_list_id(self, client, superuser, list_id):
         client.force_login(superuser)

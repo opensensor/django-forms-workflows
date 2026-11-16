@@ -3086,6 +3086,19 @@ class TestNotifyStageGroupsOnlyTaskHolders:
         assert "first@example.com" in recipients
         assert "second@example.com" not in recipients
 
+    def test_completed_task_does_not_notify_its_group(self, setup):
+        _, submission, task, _ = setup
+        task.status = "approved"
+        task.save(update_fields=["status"])
+        rule = NotificationRule.objects.get(workflow=task.workflow_stage.workflow)
+
+        assert (
+            tasks_module._collect_notification_recipients(
+                rule, submission.form_data, submission, task
+            )
+            == []
+        )
+
 
 @pytest.mark.django_db
 def test_send_notification_rules_skips_deleted_explicit_task(form_definition, user):
@@ -3230,6 +3243,50 @@ def test_digest_retries_reuse_pending_row_but_can_requeue_after_send(
     send_notification_rules(submission.pk, "workflow_approved")
     assert rows.count() == 2
     assert rows.filter(sent=False).count() == 1
+
+
+@pytest.mark.django_db
+def test_actionable_notification_only_targets_triggering_assignee(
+    form_definition, user
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    stage = WorkflowStage.objects.create(
+        workflow=workflow,
+        name="Review",
+        order=1,
+        assignee_form_field="reviewer_email",
+    )
+    rule = NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_request",
+        notify_stage_assignees=True,
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    first = User.objects.create_user("first_reviewer", email="first@example.com")
+    second = User.objects.create_user("second_reviewer", email="second@example.com")
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="First",
+        status="pending",
+        assigned_to=first,
+    )
+    ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="Second",
+        status="pending",
+        assigned_to=second,
+    )
+
+    assert tasks_module._collect_notification_recipients(
+        rule, submission.form_data, submission, task
+    ) == ["first@example.com"]
 
 
 @pytest.mark.django_db

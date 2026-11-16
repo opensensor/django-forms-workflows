@@ -2258,6 +2258,7 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
+                # Only an unsent row blocks a retry; sent rows may be queued again.
                 dispatch_identity = {
                     "workflow": workflow,
                     "notification_type": event,

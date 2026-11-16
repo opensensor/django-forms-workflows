@@ -60,8 +60,16 @@ def _resolve_builder_workflow(
     selected_workflow = None
 
     if workflow_id not in (None, ""):
+        try:
+            workflow_id_int = int(workflow_id)
+        except (TypeError, ValueError):
+            raise Http404("Invalid workflow id.")
+
+        if workflow_id_int <= 0:
+            raise Http404("Invalid workflow id.")
+
         selected_workflow = get_object_or_404(
-            WorkflowDefinition, id=workflow_id, form_definition=form_definition
+            WorkflowDefinition, id=workflow_id_int, form_definition=form_definition
         )
     elif workflows:
         selected_workflow = workflows[0]

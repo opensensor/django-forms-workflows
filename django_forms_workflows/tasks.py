@@ -1249,29 +1249,23 @@ def send_batched_notifications() -> str:
     promptly once their scheduled_for time has passed.
     """
     now = timezone.now()
-    due_qs = (
+    due_rows = (
         PendingNotification.objects.filter(sent=False, scheduled_for__lte=now)
-        .select_related(
-            "workflow__form_definition",
-            "submission__form_definition",
-            "submission__submitter",
-            "approval_task",
-        )
         .order_by("recipient_email", "notification_type", "workflow_id")
+        .values_list("id", "recipient_email", "notification_type", "workflow_id")
     )
 
-    groups: dict[tuple, list] = defaultdict(list)
-    for pn in due_qs:
-        key = (pn.recipient_email, pn.notification_type, pn.workflow_id)
-        groups[key].append(pn)
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    for pn_id, recipient_email, notification_type, workflow_id in due_rows:
+        key = (recipient_email, notification_type, workflow_id)
+        groups[key].append(pn_id)
 
     sent_count = 0
     for (
         recipient_email,
         notification_type,
         _workflow_id,
-    ), notifications in groups.items():
-        ids = [n.id for n in notifications]
+    ), ids in groups.items():
         try:
             # Hold the row locks through delivery and marking the batch sent.
             # A worker crash rolls back the transaction, leaving the rows retryable.

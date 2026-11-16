@@ -939,14 +939,30 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        return JsonResponse(
-            {
-                "success": False,
-                "error": "Workflow validation failed.",
-                "errors": ["Invalid workflow configuration."],
-            },
-            status=400,
-        )
+        field_errors = None
+        errors = []
+
+        if hasattr(exc, "message_dict"):
+            field_errors = exc.message_dict
+            for messages in field_errors.values():
+                if isinstance(messages, (list, tuple)):
+                    errors.extend(str(message) for message in messages)
+                else:
+                    errors.append(str(messages))
+        elif hasattr(exc, "messages"):
+            errors = [str(message) for message in exc.messages]
+        else:
+            errors = [str(exc)]
+
+        response_payload = {
+            "success": False,
+            "error": "Workflow validation failed.",
+            "errors": errors,
+        }
+        if field_errors is not None:
+            response_payload["field_errors"] = field_errors
+
+        return JsonResponse(response_payload, status=400)
     except Http404:
         raise
     except Exception:

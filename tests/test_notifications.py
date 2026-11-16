@@ -3168,12 +3168,12 @@ class TestNotifyStageGroupsOnlyTaskHolders:
         assert "second@example.com" not in recipients
 
     def test_non_approval_role_task_does_not_notify_its_group(self, setup):
-        stage, submission, task, validation_group = setup
+        stage, submission, _, validation_group = setup
         StageApprovalGroup.objects.create(
             stage=stage, group=validation_group, role="validation"
         )
         # A leftover task from before the 0.74.6 engine fix.
-        ApprovalTask.objects.create(
+        validation_task = ApprovalTask.objects.create(
             submission=submission,
             step_name="Sequence",
             status="pending",
@@ -3182,10 +3182,9 @@ class TestNotifyStageGroupsOnlyTaskHolders:
             assigned_group=validation_group,
         )
 
-        recipients = self._recipients(submission, task)
+        recipients = self._recipients(submission, validation_task)
 
-        assert "first@example.com" in recipients
-        assert "second@example.com" not in recipients
+        assert recipients == []
 
     def test_completed_task_does_not_notify_its_group(self, setup):
         _, submission, task, _ = setup

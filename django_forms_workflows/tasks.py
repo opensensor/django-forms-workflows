@@ -2275,18 +2275,22 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                # Only an unsent row blocks a retry; sent rows may be queued again.
-                dispatch_identity = {
+                # Build a durable dispatch identity and dedupe across both pending and sent
+                # rows so replaying the same event does not enqueue duplicates.
+                dispatch_identity_core = {
                     "workflow": workflow,
                     "notification_type": event,
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
-                    "sent": False,
                 }
-                if not PendingNotification.objects.filter(**dispatch_identity).exists():
+                # Preserve existing unsent-row semantics for creation payload.
+                unsent_dispatch_identity = {**dispatch_identity_core, "sent": False}
+                if PendingNotification.objects.filter(**dispatch_identity_core).exists():
+                    continue
+                if not PendingNotification.objects.filter(**unsent_dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **dispatch_identity, scheduled_for=scheduled_for
+                        **unsent_dispatch_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

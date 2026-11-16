@@ -2194,10 +2194,12 @@ def send_notification_rules(
         subject_tpl = rule.subject_template or default_subject_tpl
         try:
             subject = subject_tpl.format_map(defaultdict(str, _pipe_vars))
+            subject = subject.replace("\r", " ").replace("\n", " ").strip()
         except Exception:
             subject = default_subject_tpl.format(
                 form_name=form_name, submission_id=submission.id
             )
+            subject = subject.replace("\r", " ").replace("\n", " ").strip()
 
         base_context = {
             "submission": submission,

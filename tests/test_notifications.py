@@ -2814,8 +2814,13 @@ def test_auto_approve_uses_task_workflow_track(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("other_age_days", [1, 4])
 def test_auto_approve_keeps_other_workflow_track_pending(
-    form_definition, user, approver_user, django_capture_on_commit_callbacks
+    form_definition,
+    user,
+    approver_user,
+    django_capture_on_commit_callbacks,
+    other_age_days,
 ):
     other = WorkflowDefinition.objects.create(
         form_definition=form_definition, name_label="Other"
@@ -2850,7 +2855,7 @@ def test_auto_approve_keeps_other_workflow_track_pending(
         status="pending",
     )
     ApprovalTask.objects.filter(pk=other_task.pk).update(
-        created_at=timezone.now() - timedelta(days=4)
+        created_at=timezone.now() - timedelta(days=other_age_days)
     )
     ApprovalTask.objects.filter(pk=expiring_task.pk).update(
         created_at=timezone.now() - timedelta(days=3)

@@ -29,7 +29,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import F, OuterRef, Prefetch, Subquery
+from django.db.models import F, Prefetch
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -1103,37 +1103,41 @@ def check_approval_deadlines() -> str:
             )
         )
         submission_ids = list(submissions.values_list("id", flat=True))
-        latest_task_by_submission_id = {}
+        pending_tasks_by_submission_id = defaultdict(list)
         if submission_ids:
-            latest_task_id_per_submission = (
-                ApprovalTask.objects.filter(submission_id=OuterRef("submission_id"))
-                .order_by("-created_at", "-pk")
-                .values("pk")[:1]
-            )
-            latest_tasks = (
-                ApprovalTask.objects.filter(submission_id__in=submission_ids)
-                .filter(pk=Subquery(latest_task_id_per_submission))
-                .select_related("workflow_stage__workflow")
-            )
-            for task in latest_tasks:
-                latest_task_by_submission_id[task.submission_id] = task
+            for task in ApprovalTask.objects.filter(
+                submission_id__in=submission_ids, status="pending"
+            ).select_related("workflow_stage__workflow"):
+                pending_tasks_by_submission_id[task.submission_id].append(task)
 
         for submission in submissions:
-            latest_task = latest_task_by_submission_id.get(submission.id)
-            if not latest_task:
-                continue
-            workflow = (
-                latest_task.workflow_stage.workflow
-                if latest_task.workflow_stage_id
-                else getattr(submission.form_definition, "workflow", None)
-            )
-            if not workflow or not workflow.auto_approve_after_days:
-                continue
+            latest_by_track = {}
+            for task in pending_tasks_by_submission_id[submission.id]:
+                track_key = (
+                    task.workflow_stage.workflow_id if task.workflow_stage_id else None
+                )
+                latest = latest_by_track.get(track_key)
+                if latest is None or (task.created_at, task.pk) > (
+                    latest.created_at,
+                    latest.pk,
+                ):
+                    latest_by_track[track_key] = task
 
-            auto_deadline = latest_task.created_at + timedelta(
-                days=workflow.auto_approve_after_days
-            )
-            if now > auto_deadline:
+            due_track_exists = False
+            for latest_task in latest_by_track.values():
+                workflow = (
+                    latest_task.workflow_stage.workflow
+                    if latest_task.workflow_stage_id
+                    else getattr(submission.form_definition, "workflow", None)
+                )
+                if workflow and workflow.auto_approve_after_days:
+                    deadline = latest_task.created_at + timedelta(
+                        days=workflow.auto_approve_after_days
+                    )
+                    if now > deadline:
+                        due_track_exists = True
+                        break
+            if due_track_exists:
                 with transaction.atomic():
                     locked_submission = (
                         FormSubmission.objects.select_for_update(of=("self",))
@@ -1144,46 +1148,58 @@ def check_approval_deadlines() -> str:
                     if not locked_submission:
                         continue
 
-                    latest_locked_task = (
+                    pending_locked_tasks = list(
                         locked_submission.approval_tasks.select_related(
                             "workflow_stage__workflow"
-                        )
-                        .order_by("-created_at", "-pk")
-                        .first()
+                        ).filter(status="pending")
                     )
-                    if not latest_locked_task:
-                        continue
-                    locked_workflow = (
-                        latest_locked_task.workflow_stage.workflow
-                        if latest_locked_task.workflow_stage_id
-                        else getattr(
-                            locked_submission.form_definition, "workflow", None
-                        )
-                    )
-                    if (
-                        not locked_workflow
-                        or not locked_workflow.auto_approve_after_days
-                    ):
+                    if not pending_locked_tasks:
                         continue
 
-                    locked_auto_deadline = latest_locked_task.created_at + timedelta(
-                        days=locked_workflow.auto_approve_after_days
+                    tracks: dict[tuple[str, int | None], list[ApprovalTask]] = (
+                        defaultdict(list)
                     )
-                    if now <= locked_auto_deadline:
-                        continue
+                    for task in pending_locked_tasks:
+                        if task.workflow_stage_id:
+                            key = ("workflow", task.workflow_stage.workflow_id)
+                        else:
+                            # Legacy tasks without a stage belong to the fallback track.
+                            key = ("legacy", None)
+                        tracks[key].append(task)
 
-                    # Cancel only pending tasks in the same workflow track that is eligible.
-                    track_tasks = locked_submission.approval_tasks.filter(
-                        status="pending"
-                    )
-                    if latest_locked_task.workflow_stage_id:
-                        track_tasks = track_tasks.filter(
-                            workflow_stage__workflow=locked_workflow
+                    for track_key, track_pending_tasks in tracks.items():
+                        latest_track_task = max(
+                            track_pending_tasks, key=lambda t: (t.created_at, t.pk)
                         )
-                    else:
-                        # Legacy tasks without a stage belong to the fallback track.
-                        track_tasks = track_tasks.filter(workflow_stage__isnull=True)
-                    track_tasks.update(status="skipped")
+                        if latest_track_task.workflow_stage_id:
+                            locked_workflow = latest_track_task.workflow_stage.workflow
+                        else:
+                            locked_workflow = getattr(
+                                locked_submission.form_definition, "workflow", None
+                            )
+
+                        if (
+                            not locked_workflow
+                            or not locked_workflow.auto_approve_after_days
+                        ):
+                            continue
+
+                        locked_auto_deadline = latest_track_task.created_at + timedelta(
+                            days=locked_workflow.auto_approve_after_days
+                        )
+                        if now <= locked_auto_deadline:
+                            continue
+
+                        if track_key[0] == "workflow":
+                            locked_submission.approval_tasks.filter(
+                                status="pending",
+                                workflow_stage__workflow_id=track_key[1],
+                            ).update(status="skipped")
+                        else:
+                            locked_submission.approval_tasks.filter(
+                                status="pending",
+                                workflow_stage__isnull=True,
+                            ).update(status="skipped")
 
                     # Only approve once no pending tasks remain on the submission.
                     if locked_submission.approval_tasks.filter(

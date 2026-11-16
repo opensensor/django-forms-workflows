@@ -60,16 +60,20 @@ def _resolve_builder_workflow(
     selected_workflow = None
 
     if workflow_id not in (None, ""):
-        try:
-            workflow_id_int = int(workflow_id)
-        except (TypeError, ValueError):
+        if isinstance(workflow_id, bool):
             raise Http404("Invalid workflow id.")
-
-        if workflow_id_int <= 0:
+        if isinstance(workflow_id, str):
+            workflow_id = workflow_id.strip()
+            if not workflow_id.isascii() or not workflow_id.isdigit():
+                raise Http404("Invalid workflow id.")
+            try:
+                workflow_id = int(workflow_id)
+            except ValueError as exc:
+                raise Http404("Invalid workflow id.") from exc
+        if not isinstance(workflow_id, int) or not 0 < workflow_id <= 2**63 - 1:
             raise Http404("Invalid workflow id.")
-
         selected_workflow = get_object_or_404(
-            WorkflowDefinition, id=workflow_id_int, form_definition=form_definition
+            WorkflowDefinition, id=workflow_id, form_definition=form_definition
         )
     elif workflows:
         selected_workflow = workflows[0]
@@ -1222,17 +1226,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            existing_email_action_ids = {
-                node.get("data", {}).get("action_id")
-                for node in existing_nodes
-                if node.get("type") == "email" and node.get("data", {}).get("action_id")
-            }
-            missing_email_nodes = [
-                node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id") not in existing_email_action_ids
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
             ]
-            visual_data["nodes"] = existing_nodes + missing_email_nodes
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1382,20 +1379,7 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    prefetched_stages = []
-    serialized_approval_fields_by_stage_id = {}
-    if "stage_defaults" in locals():
-        prefetched_stages = list(stage_defaults.get("stages", []) or [])
-        serialized_approval_fields_by_stage_id = dict(
-            stage_defaults.get("serialized_approval_fields_by_stage_id", {}) or {}
-        )
-
-    if prefetched_stages:
-        # Reuse already-loaded stages and keep deterministic ordering.
-        stages = sorted(prefetched_stages, key=lambda s: (s.order, s.id))
-    else:
-        stages = list(workflow.stages.order_by("order", "id"))
-
+    stages = sorted(_stages_cache, key=lambda stage: (stage.order, stage.id))
     stage_node_map = {}
 
     if stages:
@@ -1429,9 +1413,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "assignee_lookup_type": stage.assignee_lookup_type,
                         "validate_assignee_group": stage.validate_assignee_group,
                         "trigger_conditions": stage.trigger_conditions,
-                        "approval_fields": serialized_approval_fields_by_stage_id.get(
-                            stage.id, _serialize_stage_approval_fields(stage)
-                        ),
+                        "approval_fields": _serialized_stage_approval_fields_cache[
+                            stage.id
+                        ],
                         "approval_groups": stage_groups,
                     },
                 }
@@ -1469,7 +1453,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                             "assignee_lookup_type": stage.assignee_lookup_type,
                             "validate_assignee_group": stage.validate_assignee_group,
                             "trigger_conditions": stage.trigger_conditions,
-                            "approval_fields": _serialize_stage_approval_fields(stage),
+                            "approval_fields": _serialized_stage_approval_fields_cache[
+                                stage.id
+                            ],
                             "approval_groups": stage_groups,
                         },
                     }
@@ -1960,8 +1946,13 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 normalized_group_ids.append(group)
             elif isinstance(group, str):
                 group_id = group.strip()
-                if group_id.isdigit():
-                    normalized_group_ids.append(int(group_id))
+                if group_id.isascii() and group_id.isdigit():
+                    try:
+                        parsed_group_id = int(group_id)
+                    except ValueError:
+                        continue
+                    if 0 < parsed_group_id <= 2**63 - 1:
+                        normalized_group_ids.append(parsed_group_id)
 
         rule = NotificationRule.objects.create(
             workflow=workflow,

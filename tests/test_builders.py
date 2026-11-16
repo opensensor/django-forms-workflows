@@ -889,6 +889,26 @@ class TestConvertVisualToWorkflow:
             "conditions": [{"field": "amount", "operator": "gt", "value": "500"}],
         }
 
+    def test_accepts_numeric_string_notification_group_id(
+        self, form_definition, approval_group
+    ):
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {
+                        "event": "approval_request",
+                        "notify_groups": [str(approval_group.id)],
+                    }
+                ]
+            }
+        )
+
+        workflow = convert_visual_to_workflow(visual, form_definition)
+
+        assert list(workflow.notification_rules.get().notify_groups.all()) == [
+            approval_group
+        ]
+
     def test_accepts_numeric_string_stage_reference_in_notification_rule(
         self, staged_workflow, form_definition
     ):
@@ -1348,6 +1368,19 @@ class TestWorkflowBuilderViews:
         assert any(
             track["id"] == second.id for track in resp.context["workflow_tracks"]
         )
+
+    @pytest.mark.parametrize("workflow_id", ["²", "9" * 5000, str(2**63), "-1"])
+    def test_load_rejects_invalid_workflow_id(
+        self, client, superuser, form_definition, workflow_id
+    ):
+        client.force_login(superuser)
+        response = client.get(
+            _wf_url(
+                f"workflow/api/load/{form_definition.id}/?workflow_id={workflow_id}"
+            )
+        )
+
+        assert response.status_code == 404
 
     def test_load_returns_json(self, client, superuser, staged_workflow):
         client.login(username="admin", password="testpass123")

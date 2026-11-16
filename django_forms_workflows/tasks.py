@@ -1173,13 +1173,22 @@ def check_approval_deadlines() -> str:
                         continue
 
                     # Cancel only pending tasks in the same workflow track that is eligible.
-                    locked_submission.approval_tasks.filter(
-                        status="pending",
-                        workflow_stage__workflow=locked_workflow,
-                    ).update(status="skipped")
+                    track_tasks = locked_submission.approval_tasks.filter(
+                        status="pending"
+                    )
+                    if latest_locked_task.workflow_stage_id:
+                        track_tasks = track_tasks.filter(
+                            workflow_stage__workflow=locked_workflow
+                        )
+                    else:
+                        # Legacy tasks without a stage belong to the fallback track.
+                        track_tasks = track_tasks.filter(workflow_stage__isnull=True)
+                    track_tasks.update(status="skipped")
 
                     # Only approve once no pending tasks remain on the submission.
-                    if locked_submission.approval_tasks.filter(status="pending").exists():
+                    if locked_submission.approval_tasks.filter(
+                        status="pending"
+                    ).exists():
                         continue
 
                     updated = FormSubmission.objects.filter(

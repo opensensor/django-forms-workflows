@@ -957,6 +957,25 @@ class TestConvertVisualToWorkflow:
 
         assert staged_workflow.notification_rules.get().stage_id == stage.id
 
+    @pytest.mark.parametrize("stage_id", [0, False, [], "²"])
+    def test_rejects_invalid_notification_stage_reference(
+        self, form_definition, stage_id
+    ):
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {
+                        "event": "approval_request",
+                        "stage_id": stage_id,
+                        "notify_submitter": True,
+                    }
+                ]
+            }
+        )
+
+        with pytest.raises(ValidationError, match="invalid stage ID"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_creates_stage_approval_fields(self, form_with_fields, approval_group):
         field_email = form_with_fields.fields.get(field_name="email")
         field_notes = form_with_fields.fields.get(field_name="notes")

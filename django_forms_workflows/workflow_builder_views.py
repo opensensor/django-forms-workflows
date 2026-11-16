@@ -310,6 +310,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     def field_reference_exists(value):
         if value in (None, ""):
             return True
+        if not isinstance(value, str):
+            add_error("Field references must be strings.")
+            return False
         return value in field_names
 
     def normalize_stage_field_refs(raw_entries):
@@ -1949,11 +1952,31 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             else raw_stage_node_id
         )
         stage_id = rule_data.get("stage_id")
-        explicit_stage_reference = bool(stage_node_id) or bool(stage_id)
+        has_stage_node_id = stage_node_id is not None and stage_node_id != ""
+        has_stage_id = stage_id is not None and stage_id != ""
+        explicit_stage_reference = has_stage_node_id or has_stage_id
 
-        if stage_node_id:
+        if has_stage_node_id:
+            if not isinstance(stage_node_id, str):
+                raise ValidationError("Invalid stage reference in notification rule.")
             stage = stage_node_map.get(stage_node_id)
-        if stage is None and stage_id:
+        if stage is None and has_stage_id:
+            if isinstance(stage_id, bool):
+                raise ValidationError("Invalid stage reference in notification rule.")
+            if isinstance(stage_id, str):
+                stage_id = stage_id.strip()
+                if not stage_id.isascii() or not stage_id.isdigit():
+                    raise ValidationError(
+                        "Invalid stage reference in notification rule."
+                    )
+                try:
+                    stage_id = int(stage_id)
+                except ValueError as exc:
+                    raise ValidationError(
+                        "Invalid stage reference in notification rule."
+                    ) from exc
+            if not isinstance(stage_id, int) or not 0 < stage_id <= 2**63 - 1:
+                raise ValidationError("Invalid stage reference in notification rule.")
             stage = workflow.stages.filter(id=stage_id).first()
         if stage is None and explicit_stage_reference:
             raise ValidationError("Invalid stage reference in notification rule.")

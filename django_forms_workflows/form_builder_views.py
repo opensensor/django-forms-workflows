@@ -318,11 +318,12 @@ def form_builder_clone(request, form_id):
                     )
 
             for cloned_wf, swc in pending_subworkflow_configs:
+                sub_workflow = cloned_workflows_by_original_id.get(swc.sub_workflow_id)
+                if sub_workflow is None:
+                    sub_workflow = swc.sub_workflow
                 SubWorkflowDefinition.objects.create(
                     parent_workflow=cloned_wf,
-                    sub_workflow=cloned_workflows_by_original_id.get(
-                        swc.sub_workflow_id, swc.sub_workflow
-                    ),
+                    sub_workflow=sub_workflow,
                     count_field=swc.count_field,
                     section_label=swc.section_label,
                     label_template=swc.label_template,

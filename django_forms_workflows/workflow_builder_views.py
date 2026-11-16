@@ -1247,10 +1247,37 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            non_email_nodes = [
-                node for node in existing_nodes if node.get("type") != "email"
-            ]
-            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+            existing_node_ids = {node.get("id") for node in existing_nodes}
+            ordered_nodes = []
+            email_insert_index = 0
+
+            for node in existing_nodes:
+                node_id = node.get("id")
+                if node.get("type") == "email" and node_id in {
+                    email_node.get("id") for email_node in email_nodes_in_order
+                }:
+                    while (
+                        email_insert_index < len(email_nodes_in_order)
+                        and email_nodes_in_order[email_insert_index].get("id") != node_id
+                    ):
+                        missing_node = email_nodes_in_order[email_insert_index]
+                        if missing_node.get("id") not in existing_node_ids:
+                            ordered_nodes.append(missing_node)
+                        email_insert_index += 1
+                    if (
+                        email_insert_index < len(email_nodes_in_order)
+                        and email_nodes_in_order[email_insert_index].get("id") == node_id
+                    ):
+                        email_insert_index += 1
+                ordered_nodes.append(node)
+
+            while email_insert_index < len(email_nodes_in_order):
+                missing_node = email_nodes_in_order[email_insert_index]
+                if missing_node.get("id") not in existing_node_ids:
+                    ordered_nodes.append(missing_node)
+                email_insert_index += 1
+
+            visual_data["nodes"] = ordered_nodes
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])

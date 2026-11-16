@@ -690,6 +690,17 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             raise FormBuilderPayloadError(f'"{field_name}" must be a string.')
         return value.strip()
 
+    def _optional_date_text(field_name):
+        if field_name not in data:
+            return None
+        value = data.get(field_name)
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str):
+            raise FormBuilderPayloadError(f'"{field_name}" must be a string.')
+        value = value.strip()
+        return value or None
+
     form_name = data.get("name", "").strip()
     form_slug = data.get("slug", "").strip()
     form_description = _optional_text("description")
@@ -701,7 +712,7 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     success_message = _optional_text("success_message")
     success_redirect_url = _optional_text("success_redirect_url")
     success_redirect_rules = data.get("success_redirect_rules") or None
-    close_date = data.get("close_date") or None
+    close_date = _optional_date_text("close_date")
     max_submissions = data.get("max_submissions") or None
     one_per_user = data.get("one_per_user", False)
     payment_enabled = data.get("payment_enabled", False)

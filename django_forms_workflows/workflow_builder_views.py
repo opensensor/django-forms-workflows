@@ -1745,6 +1745,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             settings_data = node.get("data", {})
 
     requires_approval = len(stage_nodes) > 0
+    normalized_notification_cadence = (
+        settings_data.get("notification_cadence") or "immediate"
+    )
 
     # ── Workflow-level settings ──────────────────────────────────────────
     wf_defaults = {
@@ -1752,7 +1755,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         "start_trigger": settings_data.get("start_trigger", "on_submission"),
         "requires_approval": settings_data.get("requires_approval", requires_approval),
         "visual_workflow_data": workflow_data,
-        "notification_cadence": settings_data.get("notification_cadence", "immediate"),
+        "notification_cadence": normalized_notification_cadence,
         "notification_cadence_form_field": settings_data.get(
             "notification_cadence_form_field", ""
         ),

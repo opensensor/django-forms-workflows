@@ -1659,7 +1659,7 @@ def _collect_notification_recipients(
                 # Task-specific actionable notification: only notify the group
                 # for the triggering task (avoid cross-notifying other pending
                 # groups in the same stage with this task's approval URL).
-                group_tasks = group_tasks.filter(pk=task.pk)
+                group_tasks = group_tasks.filter(pk=task.pk, status="pending")
             else:
                 # Workflow-level actionable notification: include all pending
                 # eligible group fallback tasks in scope.

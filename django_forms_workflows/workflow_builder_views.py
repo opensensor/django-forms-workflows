@@ -1798,7 +1798,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 role=group_entry.get("role", "approval"),
             )
 
-        stage_node_map[snode.get("id")] = stage
+        raw_node_id = snode.get("id")
+        normalized_node_id = (
+            raw_node_id.strip() if isinstance(raw_node_id, str) else raw_node_id
+        )
+        stage_node_map[normalized_node_id] = stage
         stage_field_map[stage.id] = _resolve_form_field_ids(
             form_definition,
             sdata.get("approval_fields", []),

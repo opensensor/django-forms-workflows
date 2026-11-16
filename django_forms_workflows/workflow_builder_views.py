@@ -173,6 +173,15 @@ def _serialize_stage_approval_groups(stage):
 
 
 def _serialize_stage_approval_fields(stage):
+    prefetched_fields = getattr(stage, "prefetched_approval_fields", None)
+    if prefetched_fields is None:
+        prefetched_fields = list(stage.approval_fields.all())
+
+    ordered_fields = sorted(
+        prefetched_fields,
+        key=lambda field: ((field.order if field.order is not None else 0), field.id),
+    )
+
     return [
         {
             "id": field.id,
@@ -181,7 +190,7 @@ def _serialize_stage_approval_fields(stage):
             "field_type": field.field_type,
             "order": field.order,
         }
-        for field in stage.approval_fields.order_by("order", "id")
+        for field in ordered_fields
     ]
 
 

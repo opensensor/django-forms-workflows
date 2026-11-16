@@ -3173,7 +3173,7 @@ class TestNotifyStageGroupsOnlyTaskHolders:
             stage=stage, group=validation_group, role="validation"
         )
         # A leftover task from before the 0.74.6 engine fix.
-        ApprovalTask.objects.create(
+        validation_task = ApprovalTask.objects.create(
             submission=submission,
             step_name="Sequence",
             status="pending",
@@ -3182,7 +3182,7 @@ class TestNotifyStageGroupsOnlyTaskHolders:
             assigned_group=validation_group,
         )
 
-        recipients = self._recipients(submission, task)
+        recipients = self._recipients(submission, validation_task)
 
         assert "first@example.com" in recipients
         assert "second@example.com" not in recipients

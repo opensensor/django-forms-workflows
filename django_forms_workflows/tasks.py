@@ -1136,7 +1136,7 @@ def check_approval_deadlines() -> str:
             if now > auto_deadline:
                 with transaction.atomic():
                     locked_submission = (
-                        FormSubmission.objects.select_for_update()
+                        FormSubmission.objects.select_for_update(of=("self",))
                         .select_related("form_definition")
                         .filter(id=submission.id, status="pending_approval")
                         .first()

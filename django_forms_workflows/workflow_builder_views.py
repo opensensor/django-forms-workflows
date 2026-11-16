@@ -905,25 +905,25 @@ def workflow_builder_save(request):
         workflow_id = data.get("workflow_id")
         workflow_data = data.get("workflow", {})
 
-        def _parse_positive_pk(value, field_name, *, allow_empty=False):
+        def parse_positive_pk(value, field_name, *, allow_empty=False):
             if allow_empty and value in (None, ""):
                 return None
             if isinstance(value, bool):
-                raise ValidationError(
-                    f"Malformed payload: '{field_name}' must be a positive integer."
-                )
+                raise ValidationError(f"Invalid {field_name}.")
             if isinstance(value, int):
                 parsed = value
-            elif isinstance(value, str) and value.isdigit():
-                parsed = int(value)
+            elif isinstance(value, str):
+                digits = value.strip()
+                if not digits.isascii() or not digits.isdigit():
+                    raise ValidationError(f"Invalid {field_name}.")
+                try:
+                    parsed = int(digits)
+                except ValueError as exc:
+                    raise ValidationError(f"Invalid {field_name}.") from exc
             else:
-                raise ValidationError(
-                    f"Malformed payload: '{field_name}' must be a positive integer."
-                )
-            if parsed <= 0 or parsed > 2147483647:
-                raise ValidationError(
-                    f"Malformed payload: '{field_name}' must be a positive integer."
-                )
+                raise ValidationError(f"Invalid {field_name}.")
+            if not 0 < parsed <= 2**63 - 1:
+                raise ValidationError(f"Invalid {field_name}.")
             return parsed
 
         if not isinstance(workflow_data, dict):
@@ -967,17 +967,17 @@ def workflow_builder_save(request):
             edge_count,
         )
 
-        if form_id in (None, ""):
+        if not form_id:
             return JsonResponse(
                 {"success": False, "error": "Form ID is required"}, status=400
             )
 
-        form_id = _parse_positive_pk(form_id, "form_id")
-        workflow_id = _parse_positive_pk(workflow_id, "workflow_id", allow_empty=True)
+        form_id = parse_positive_pk(form_id, "form_id")
+        workflow_id = parse_positive_pk(workflow_id, "workflow_id", allow_empty=True)
 
         form_definition = get_object_or_404(FormDefinition, id=form_id)
         workflow = None
-        if workflow_id is not None:
+        if workflow_id not in (None, ""):
             workflow = get_object_or_404(
                 WorkflowDefinition, id=workflow_id, form_definition=form_definition
             )
@@ -1184,14 +1184,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data.setdefault(key, value)
 
-            existing_nodes = visual_data.get("nodes", [])
             existing_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
-                for node in existing_nodes
+                for node in visual_data.get("nodes", [])
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
-            missing_email_nodes = []
-            email_nodes_for_connections = []
+            email_nodes_in_order = []
             for index, (action_id, defaults) in enumerate(
                 email_action_defaults.items()
             ):
@@ -1200,24 +1198,28 @@ def convert_workflow_to_visual(workflow, form_definition):
                     existing_node_data = existing_node.setdefault("data", {})
                     for key, value in defaults.items():
                         existing_node_data.setdefault(key, value)
-                    email_nodes_for_connections.append(existing_node)
+                    email_nodes_in_order.append(existing_node)
                     continue
-                new_node = {
-                    "id": f"email-action-{action_id}",
-                    "type": "email",
-                    "x": 0,
-                    "y": index * 120,
-                    "data": {
-                        "action_id": action_id,
-                        **defaults,
-                    },
-                }
-                missing_email_nodes.append(new_node)
-                email_nodes_for_connections.append(new_node)
+                email_nodes_in_order.append(
+                    {
+                        "id": f"email-action-{action_id}",
+                        "type": "email",
+                        "x": 0,
+                        "y": index * 120,
+                        "data": {
+                            "action_id": action_id,
+                            **defaults,
+                        },
+                    }
+                )
 
-            visual_data["nodes"] = existing_nodes + missing_email_nodes
+            existing_nodes = visual_data.get("nodes", [])
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
-            email_node_ids = {node.get("id") for node in email_nodes_for_connections}
+            email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:
@@ -1365,11 +1367,7 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    prefetched_stages = getattr(workflow, "_prefetched_objects_cache", {}).get("stages")
-    if prefetched_stages is not None:
-        stages = sorted(prefetched_stages, key=lambda s: (s.order, s.id))
-    else:
-        stages = sorted(workflow.stages.all(), key=lambda s: (s.order, s.id))
+    stages = list(workflow.stages.order_by("order", "id"))
     stage_node_map = {}
 
     if stages:
@@ -1926,21 +1924,10 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         notify_groups = rule_data.get("notify_groups", []) or []
         normalized_group_ids = []
         for group in notify_groups:
-            candidate_id = None
-            if isinstance(group, dict):
-                candidate_id = group.get("id")
-            else:
-                candidate_id = group
-
-            if isinstance(candidate_id, str):
-                candidate_id = candidate_id.strip()
-
-            try:
-                normalized_group_id = int(candidate_id)
-            except (TypeError, ValueError):
-                continue
-
-            normalized_group_ids.append(normalized_group_id)
+            if isinstance(group, dict) and group.get("id"):
+                normalized_group_ids.append(group["id"])
+            elif isinstance(group, int):
+                normalized_group_ids.append(group)
 
         rule = NotificationRule.objects.create(
             workflow=workflow,

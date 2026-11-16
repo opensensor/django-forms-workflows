@@ -57,9 +57,15 @@ def builder_permission_required(*permissions):
                         from .models import WorkflowDefinition
 
                         # Legacy saves without workflow_id update the form's existing track.
-                        if WorkflowDefinition.objects.filter(
-                            form_definition_id=data.get("form_id")
-                        ).exists():
+                        form_id = data.get("form_id")
+                        try:
+                            existing_workflow = WorkflowDefinition.objects.filter(
+                                form_definition_id=form_id
+                            ).exists()
+                        except (TypeError, ValueError, OverflowError):
+                            # Leave invalid IDs for the view's payload validation.
+                            existing_workflow = False
+                        if existing_workflow:
                             action = "change"
                     permission = f"{action}_{model}"
                 resolved.append(permission)

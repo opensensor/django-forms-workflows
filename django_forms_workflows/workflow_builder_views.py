@@ -1928,6 +1928,10 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 normalized_group_ids.append(group["id"])
             elif isinstance(group, int):
                 normalized_group_ids.append(group)
+            elif isinstance(group, str):
+                group_id = group.strip()
+                if group_id.isdigit():
+                    normalized_group_ids.append(int(group_id))
 
         rule = NotificationRule.objects.create(
             workflow=workflow,

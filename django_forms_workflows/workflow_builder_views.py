@@ -173,6 +173,15 @@ def _serialize_stage_approval_groups(stage):
 
 
 def _serialize_stage_approval_fields(stage):
+    prefetched_fields = getattr(stage, "prefetched_approval_fields", None)
+    if prefetched_fields is None:
+        prefetched_fields = list(stage.approval_fields.all())
+
+    ordered_fields = sorted(
+        prefetched_fields,
+        key=lambda field: ((field.order if field.order is not None else 0), field.id),
+    )
+
     return [
         {
             "id": field.id,
@@ -181,7 +190,7 @@ def _serialize_stage_approval_fields(stage):
             "field_type": field.field_type,
             "order": field.order,
         }
-        for field in stage.approval_fields.order_by("order", "id")
+        for field in ordered_fields
     ]
 
 
@@ -1836,11 +1845,21 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     workflow.notification_rules.all().delete()
     for rule_data in settings_data.get("notification_rules", []) or []:
         stage = None
-        stage_node_id = rule_data.get("stage_node_id")
+        raw_stage_node_id = rule_data.get("stage_node_id")
+        stage_node_id = (
+            raw_stage_node_id.strip()
+            if isinstance(raw_stage_node_id, str)
+            else raw_stage_node_id
+        )
+        stage_id = rule_data.get("stage_id")
+        explicit_stage_reference = bool(stage_node_id) or bool(stage_id)
+
         if stage_node_id:
             stage = stage_node_map.get(stage_node_id)
-        if stage is None and rule_data.get("stage_id"):
-            stage = workflow.stages.filter(id=rule_data.get("stage_id")).first()
+        if stage is None and stage_id:
+            stage = workflow.stages.filter(id=stage_id).first()
+        if stage is None and explicit_stage_reference:
+            raise ValidationError("Invalid stage reference in notification rule.")
 
         notify_groups = rule_data.get("notify_groups", []) or []
         normalized_group_ids = []

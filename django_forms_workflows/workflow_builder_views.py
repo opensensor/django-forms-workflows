@@ -369,20 +369,22 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_label = stage_data.get("name") or f"Stage {index}"
         stage_identity = stage_node.get("id") or f"stage-index-{index}"
         node_id = stage_node.get("id")
-        if node_id not in (None, "") and (
-            isinstance(node_id, bool) or not isinstance(node_id, str | int)
+        normalized_node_id = node_id.strip() if isinstance(node_id, str) else node_id
+        if normalized_node_id not in (None, "") and (
+            isinstance(normalized_node_id, bool)
+            or not isinstance(normalized_node_id, str | int)
         ):
             add_error(
                 f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
             )
-            node_id = None
-        if node_id:
-            if node_id in seen_stage_node_ids:
+            normalized_node_id = None
+        if normalized_node_id:
+            if normalized_node_id in seen_stage_node_ids:
                 add_error(
                     f"{stage_label} uses a duplicate node ID '{node_id}'. Stage node IDs must be unique."
                 )
             else:
-                seen_stage_node_ids.add(node_id)
+                seen_stage_node_ids.add(normalized_node_id)
         raw_group_entries = stage_data.get("approval_groups", [])
         if not isinstance(raw_group_entries, list):
             add_error(f"{stage_label} approval groups must be a list.")
@@ -615,9 +617,40 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             )
 
         invalid_notify_group_ids = []
-        for group in rule_data.get("notify_groups", []) or []:
+        notify_groups = rule_data.get("notify_groups", [])
+        if notify_groups is None:
+            notify_groups = []
+        if not isinstance(notify_groups, list):
+            add_error(
+                f"Notification rule {rule_index} has invalid notify_groups; expected a list."
+            )
+            notify_groups = []
+        for group in notify_groups:
             group_id = group.get("id") if isinstance(group, dict) else group
-            if group_id and group_id not in group_ids:
+            if isinstance(group_id, bool):
+                add_error(
+                    f"Notification rule {rule_index} has an invalid notify-group ID."
+                )
+                continue
+            if isinstance(group_id, str):
+                value = group_id.strip()
+                if not value.isascii() or not value.isdigit():
+                    add_error(
+                        f"Notification rule {rule_index} has an invalid notify-group ID."
+                    )
+                    continue
+                try:
+                    group_id = int(value)
+                except ValueError:
+                    add_error(
+                        f"Notification rule {rule_index} has an invalid notify-group ID."
+                    )
+                    continue
+            if not isinstance(group_id, int) or group_id <= 0:
+                add_error(
+                    f"Notification rule {rule_index} has an invalid notify-group ID."
+                )
+            elif group_id not in group_ids:
                 invalid_notify_group_ids.append(group_id)
         if invalid_notify_group_ids:
             add_error(

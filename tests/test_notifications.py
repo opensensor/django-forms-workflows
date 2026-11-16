@@ -2814,6 +2814,64 @@ def test_auto_approve_uses_task_workflow_track(
 
 
 @pytest.mark.django_db
+def test_auto_approve_keeps_other_workflow_track_pending(
+    form_definition, user, approver_user, django_capture_on_commit_callbacks
+):
+    other = WorkflowDefinition.objects.create(
+        form_definition=form_definition, name_label="Other"
+    )
+    expiring = WorkflowDefinition.objects.create(
+        form_definition=form_definition,
+        name_label="Expiring",
+        auto_approve_after_days=2,
+    )
+    other_stage = WorkflowStage.objects.create(workflow=other, name="Other", order=1)
+    expiring_stage = WorkflowStage.objects.create(
+        workflow=expiring, name="Expiring", order=1
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    other_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=other_stage,
+        step_name="Other",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    expiring_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=expiring_stage,
+        step_name="Expiring",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=other_task.pk).update(
+        created_at=timezone.now() - timedelta(days=4)
+    )
+    ApprovalTask.objects.filter(pk=expiring_task.pk).update(
+        created_at=timezone.now() - timedelta(days=3)
+    )
+
+    with (
+        patch.object(tasks_module.send_notification_rules, "delay") as notify,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        assert "auto_approved=0" in check_approval_deadlines()
+
+    submission.refresh_from_db()
+    other_task.refresh_from_db()
+    expiring_task.refresh_from_db()
+    assert submission.status == "pending_approval"
+    assert other_task.status == "pending"
+    assert expiring_task.status == "skipped"
+    notify.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_auto_approve_enqueues_each_submission_after_commit(
     form_definition,
     user,

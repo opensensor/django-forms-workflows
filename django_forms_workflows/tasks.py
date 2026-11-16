@@ -1136,7 +1136,7 @@ def check_approval_deadlines() -> str:
             if now > auto_deadline:
                 with transaction.atomic():
                     locked_submission = (
-                        FormSubmission.objects.select_for_update()
+                        FormSubmission.objects.select_for_update(of=("self",))
                         .select_related("form_definition")
                         .filter(id=submission.id, status="pending_approval")
                         .first()
@@ -1172,17 +1172,31 @@ def check_approval_deadlines() -> str:
                     if now <= locked_auto_deadline:
                         continue
 
+                    # Cancel only pending tasks in the same workflow track that is eligible.
+                    track_tasks = locked_submission.approval_tasks.filter(
+                        status="pending"
+                    )
+                    if latest_locked_task.workflow_stage_id:
+                        track_tasks = track_tasks.filter(
+                            workflow_stage__workflow=locked_workflow
+                        )
+                    else:
+                        # Legacy tasks without a stage belong to the fallback track.
+                        track_tasks = track_tasks.filter(workflow_stage__isnull=True)
+                    track_tasks.update(status="skipped")
+
+                    # Only approve once no pending tasks remain on the submission.
+                    if locked_submission.approval_tasks.filter(
+                        status="pending"
+                    ).exists():
+                        continue
+
                     updated = FormSubmission.objects.filter(
                         id=locked_submission.id,
                         status="pending_approval",
                     ).update(status="approved", completed_at=now)
                     if not updated:
                         continue
-
-                    # cancel remaining tasks
-                    locked_submission.approval_tasks.filter(status="pending").update(
-                        status="skipped"
-                    )
 
                 # Dispatch after the outermost commit so a worker sees the approved state.
                 def _enqueue_workflow_approved_notification(

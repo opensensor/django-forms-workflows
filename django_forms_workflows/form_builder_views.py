@@ -553,9 +553,9 @@ def form_builder_save(request):
             )
 
         raw_form_id = data.get("id")
-        if raw_form_id in (None, ""):
-            form_id = None
-        elif isinstance(raw_form_id, str) and not raw_form_id.strip():
+        if raw_form_id is None or (
+            isinstance(raw_form_id, str) and not raw_form_id.strip()
+        ):
             form_id = None
         else:
             form_id = _positive_integer_id(raw_form_id)

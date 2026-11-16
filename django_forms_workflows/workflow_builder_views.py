@@ -1226,10 +1226,32 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            non_email_nodes = [
-                node for node in existing_nodes if node.get("type") != "email"
+            email_nodes_by_action_id = {
+                node.get("data", {}).get("action_id"): node
+                for node in email_nodes_in_order
+                if node.get("data", {}).get("action_id")
+            }
+            placed_email_action_ids = set()
+            ordered_nodes = []
+            for node in existing_nodes:
+                if node.get("type") == "email":
+                    action_id = node.get("data", {}).get("action_id")
+                    replacement_node = email_nodes_by_action_id.get(action_id)
+                    if replacement_node and action_id not in placed_email_action_ids:
+                        ordered_nodes.append(replacement_node)
+                        placed_email_action_ids.add(action_id)
+                    elif not replacement_node:
+                        ordered_nodes.append(node)
+                    # Duplicate email nodes for the same action_id are dropped.
+                else:
+                    ordered_nodes.append(node)
+
+            missing_email_nodes = [
+                node
+                for node in email_nodes_in_order
+                if node.get("data", {}).get("action_id") not in placed_email_action_ids
             ]
-            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+            visual_data["nodes"] = ordered_nodes + missing_email_nodes
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])

@@ -555,63 +555,18 @@ def form_builder_save(request):
         raw_form_id = data.get("id")
         if raw_form_id in (None, ""):
             form_id = None
-        elif isinstance(raw_form_id, bool):
-            return JsonResponse(
-                {
-                    "success": False,
-                    "error": "Invalid payload: 'id' must be a positive integer",
-                },
-                status=400,
-            )
-        elif isinstance(raw_form_id, int):
-            if raw_form_id <= 0:
-                return JsonResponse(
-                    {
-                        "success": False,
-                        "error": "Invalid payload: 'id' must be a positive integer",
-                    },
-                    status=400,
-                )
-            form_id = raw_form_id
-        elif isinstance(raw_form_id, str):
-            raw_form_id = raw_form_id.strip()
-            if not raw_form_id:
-                form_id = None
-            elif not raw_form_id.isascii() or not raw_form_id.isdigit():
-                return JsonResponse(
-                    {
-                        "success": False,
-                        "error": "Invalid payload: 'id' must be a positive integer",
-                    },
-                    status=400,
-                )
-            else:
-                try:
-                    form_id = int(raw_form_id)
-                except ValueError:
-                    return JsonResponse(
-                        {
-                            "success": False,
-                            "error": "Invalid payload: 'id' must be a positive integer",
-                        },
-                        status=400,
-                    )
-                if form_id <= 0:
-                    return JsonResponse(
-                        {
-                            "success": False,
-                            "error": "Invalid payload: 'id' must be a positive integer",
-                        },
-                        status=400,
-                    )
+        elif isinstance(raw_form_id, str) and not raw_form_id.strip():
+            form_id = None
         else:
-            return JsonResponse(
-                {
-                    "success": False,
-                    "error": "Invalid payload: 'id' must be a positive integer",
-                },
-                status=400,
-            )
+            form_id = _positive_integer_id(raw_form_id)
+            if form_id is None:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Invalid payload: 'id' must be a positive integer",
+                    },
+                    status=400,
+                )
 
         raw_name = data.get("name", "")
         raw_slug = data.get("slug", "")

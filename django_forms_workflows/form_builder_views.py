@@ -255,9 +255,12 @@ def form_builder_clone(request, form_id):
             cloned_stages_by_original_id = {}
             cloned_workflows_by_original_id = {}
             pending_subworkflow_configs = []
-            for wf in original_form.workflows.all():
-                original_stages = list(
-                    wf.stages.prefetch_related(
+            original_workflows = original_form.workflows.select_related(
+                "sub_workflow_config"
+            ).prefetch_related(
+                Prefetch(
+                    "stages",
+                    queryset=WorkflowStage.objects.order_by("order").prefetch_related(
                         Prefetch(
                             "stageapprovalgroup_set",
                             queryset=StageApprovalGroup.objects.order_by(
@@ -265,8 +268,11 @@ def form_builder_clone(request, form_id):
                             ),
                             to_attr="prefetched_approval_groups",
                         )
-                    ).order_by("order")
+                    ),
+                    to_attr="prefetched_stages",
                 )
+            )
+            for wf in original_workflows:
                 cloned_wf = WorkflowDefinition.objects.create(
                     form_definition=cloned_form,
                     name_label=wf.name_label,
@@ -285,7 +291,7 @@ def form_builder_clone(request, form_id):
                     allow_bulk_pdf_export=wf.allow_bulk_pdf_export,
                 )
                 cloned_workflows_by_original_id[wf.pk] = cloned_wf
-                for stage in original_stages:
+                for stage in wf.prefetched_stages:
                     cloned_stage = WorkflowStage.objects.create(
                         workflow=cloned_wf,
                         name=stage.name,
@@ -1127,6 +1133,14 @@ def form_builder_preview(request):
                     validation = field_data.get("validation") or {}
                     conditional = field_data.get("conditional") or {}
 
+                    validation_rules = validation.get("validation_rules")
+                    if validation_rules is None:
+                        validation_rules = field_data.get("validation_rules")
+
+                    field_dependencies = conditional.get("field_dependencies")
+                    if field_dependencies is None:
+                        field_dependencies = field_data.get("field_dependencies")
+
                     # Build field kwargs
                     field_kwargs = {
                         "form_definition": form_definition,
@@ -1150,12 +1164,8 @@ def form_builder_preview(request):
                         "regex_error_message": validation.get(
                             "regex_error_message", ""
                         ),
-                        "validation_rules": validation.get(
-                            "validation_rules", field_data.get("validation_rules")
-                        ),
-                        "field_dependencies": conditional.get(
-                            "field_dependencies", field_data.get("field_dependencies")
-                        ),
+                        "validation_rules": validation_rules,
+                        "field_dependencies": field_dependencies,
                         "step_number": field_data.get("step_number", 1),
                     }
 

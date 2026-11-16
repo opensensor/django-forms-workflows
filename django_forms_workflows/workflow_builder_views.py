@@ -948,7 +948,12 @@ def convert_workflow_to_visual(workflow, form_definition):
             return _stage_defaults_cache
 
         # Load once in deterministic order and reuse in all layout paths.
-        _stages_cache = list(workflow.stages.all().order_by("order"))
+        # Prefetch approval-fields relation to avoid per-stage queries during serialization.
+        _stages_cache = list(
+            workflow.stages.all()
+            .order_by("order")
+            .prefetch_related("approval_fields")
+        )
         _serialized_stage_approval_fields_cache = {
             stage.id: _serialize_stage_approval_fields(stage) for stage in _stages_cache
         }

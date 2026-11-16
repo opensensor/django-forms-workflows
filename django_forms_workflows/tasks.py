@@ -2262,9 +2262,9 @@ def send_notification_rules(
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
                 pending_defaults = {
-                    "sent": False,
                     "scheduled_for": scheduled_for,
                 }
                 if not PendingNotification.objects.filter(**dispatch_identity).exists():

@@ -60,6 +60,18 @@ def _resolve_builder_workflow(
     selected_workflow = None
 
     if workflow_id not in (None, ""):
+        if isinstance(workflow_id, bool):
+            raise Http404("Invalid workflow id.")
+        if isinstance(workflow_id, str):
+            workflow_id = workflow_id.strip()
+            if not workflow_id.isascii() or not workflow_id.isdigit():
+                raise Http404("Invalid workflow id.")
+            try:
+                workflow_id = int(workflow_id)
+            except ValueError as exc:
+                raise Http404("Invalid workflow id.") from exc
+        if not isinstance(workflow_id, int) or not 0 < workflow_id <= 2**63 - 1:
+            raise Http404("Invalid workflow id.")
         selected_workflow = get_object_or_404(
             WorkflowDefinition, id=workflow_id, form_definition=form_definition
         )
@@ -1367,7 +1379,7 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    stages = list(workflow.stages.order_by("order", "id"))
+    stages = sorted(_stages_cache, key=lambda stage: (stage.order, stage.id))
     stage_node_map = {}
 
     if stages:
@@ -1401,7 +1413,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "assignee_lookup_type": stage.assignee_lookup_type,
                         "validate_assignee_group": stage.validate_assignee_group,
                         "trigger_conditions": stage.trigger_conditions,
-                        "approval_fields": _serialize_stage_approval_fields(stage),
+                        "approval_fields": _serialized_stage_approval_fields_cache[
+                            stage.id
+                        ],
                         "approval_groups": stage_groups,
                     },
                 }
@@ -1439,7 +1453,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                             "assignee_lookup_type": stage.assignee_lookup_type,
                             "validate_assignee_group": stage.validate_assignee_group,
                             "trigger_conditions": stage.trigger_conditions,
-                            "approval_fields": _serialize_stage_approval_fields(stage),
+                            "approval_fields": _serialized_stage_approval_fields_cache[
+                                stage.id
+                            ],
                             "approval_groups": stage_groups,
                         },
                     }
@@ -1928,6 +1944,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 normalized_group_ids.append(group["id"])
             elif isinstance(group, int):
                 normalized_group_ids.append(group)
+            elif isinstance(group, str):
+                group_id = group.strip()
+                if group_id.isascii() and group_id.isdigit():
+                    try:
+                        parsed_group_id = int(group_id)
+                    except ValueError:
+                        continue
+                    if 0 < parsed_group_id <= 2**63 - 1:
+                        normalized_group_ids.append(parsed_group_id)
 
         rule = NotificationRule.objects.create(
             workflow=workflow,

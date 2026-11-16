@@ -25,6 +25,7 @@ from email.utils import make_msgid
 import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.template.loader import render_to_string
@@ -669,7 +670,12 @@ def deliver_workflow_webhook(
             {str(k): str(v) for k, v in endpoint.custom_headers.items()}
         )
 
-    payload_text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    payload_text = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        cls=DjangoJSONEncoder,
+    )
     request_headers["X-Forms-Workflows-Signature"] = _sign_webhook_payload(
         endpoint.secret,
         payload_text,
@@ -2258,9 +2264,12 @@ def send_notification_rules(
                     "recipient_email": recipient,
                     "sent": False,
                 }
+                pending_defaults = {
+                    "scheduled_for": scheduled_for,
+                }
                 if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **dispatch_identity, scheduled_for=scheduled_for
+                        **dispatch_identity, **pending_defaults
                     )
                     created_count += 1
             logger.info(

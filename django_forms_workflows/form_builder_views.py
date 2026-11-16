@@ -1248,6 +1248,11 @@ def form_builder_preview(request):
                             "shared_option_list_id"
                         )
 
+                    if field_data.get("workflow_stage_id"):
+                        field_kwargs["workflow_stage_id"] = field_data.get(
+                            "workflow_stage_id"
+                        )
+
                     if validation.get("min_value") is not None:
                         field_kwargs["min_value"] = validation.get("min_value")
                     if validation.get("max_value") is not None:

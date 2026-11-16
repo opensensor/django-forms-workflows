@@ -760,6 +760,7 @@ class TestConvertVisualToWorkflow:
             }
         )
         wf = convert_visual_to_workflow(visual, form_with_fields)
+        wf.refresh_from_db()
         assert wf.name_label == "Finance Approval"
         assert wf.approval_deadline_days == 14
         assert wf.send_reminder_after_days == 3

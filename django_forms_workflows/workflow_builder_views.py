@@ -945,7 +945,13 @@ def workflow_builder_save(request):
 
         form_id = data.get("form_id")
         workflow_id = data.get("workflow_id")
-        workflow_data = data.get("workflow", {})
+        if "workflow" not in data:
+            raise ValidationError("Missing workflow payload.")
+        workflow_data = data["workflow"]
+        if not isinstance(workflow_data, dict) or not isinstance(
+            workflow_data.get("nodes"), list
+        ):
+            raise ValidationError("Malformed workflow payload: nodes must be a list.")
 
         def parse_positive_pk(value, field_name, *, allow_empty=False):
             if allow_empty and value in (None, ""):
@@ -1906,9 +1912,33 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         snode["data"] = sdata
 
         StageApprovalGroup.objects.filter(stage=stage).delete()
+        normalized_group_entries = []
+        for group_entry in group_entries:
+            if not group_entry.get("id"):
+                continue
+            raw_position = group_entry.get("position", 0)
+            if isinstance(raw_position, bool):
+                raise ValidationError("Approval group position must be an integer.")
+            if isinstance(raw_position, int):
+                position = raw_position
+            elif isinstance(raw_position, str):
+                digits = raw_position.strip()
+                if not digits.isascii() or not digits.isdigit():
+                    raise ValidationError("Approval group position must be an integer.")
+                try:
+                    position = int(digits)
+                except ValueError as exc:
+                    raise ValidationError(
+                        "Approval group position must be an integer."
+                    ) from exc
+            else:
+                raise ValidationError("Approval group position must be an integer.")
+            if not 0 <= position <= 2**63 - 1:
+                raise ValidationError("Approval group position must be an integer.")
+            normalized_group_entries.append({**group_entry, "position": position})
         sorted_group_entries = sorted(
-            [g for g in group_entries if g.get("id")],
-            key=lambda g: g.get("position", 0),
+            normalized_group_entries,
+            key=lambda g: g["position"],
         )
         for pos, group_entry in enumerate(sorted_group_entries):
             StageApprovalGroup.objects.create(

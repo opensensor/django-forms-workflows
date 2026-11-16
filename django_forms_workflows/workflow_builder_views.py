@@ -1148,10 +1148,18 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            non_email_nodes = [
-                node for node in existing_nodes if node.get("type") != "email"
+            existing_email_action_ids = {
+                node.get("data", {}).get("action_id")
+                for node in existing_nodes
+                if node.get("type") == "email" and node.get("data", {}).get("action_id")
+            }
+            missing_email_nodes = [
+                node
+                for node in email_nodes_in_order
+                if node.get("data", {}).get("action_id")
+                not in existing_email_action_ids
             ]
-            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+            visual_data["nodes"] = existing_nodes + missing_email_nodes
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])

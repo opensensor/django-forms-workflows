@@ -698,6 +698,13 @@ class TestConvertVisualToWorkflow:
 
         assert workflow.notification_cadence_day == int(day)
 
+    @pytest.mark.parametrize("cadence", [True, ["weekly"], "fortnightly"])
+    def test_rejects_invalid_notification_cadence(self, form_definition, cadence):
+        visual = self._make_visual(settings={"notification_cadence": cadence})
+
+        with pytest.raises(ValidationError, match="[Nn]otification cadence"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_rejects_non_integer_notification_cadence_day(self, form_definition):
         visual = self._make_visual(
             settings={"notification_cadence": "weekly", "notification_cadence_day": "x"}

@@ -1247,32 +1247,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            email_nodes_by_action_id = {
-                node.get("data", {}).get("action_id"): node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id")
-            }
-            placed_email_action_ids = set()
-            ordered_nodes = []
-            for node in existing_nodes:
-                if node.get("type") == "email":
-                    action_id = node.get("data", {}).get("action_id")
-                    replacement_node = email_nodes_by_action_id.get(action_id)
-                    if replacement_node and action_id not in placed_email_action_ids:
-                        ordered_nodes.append(replacement_node)
-                        placed_email_action_ids.add(action_id)
-                    elif not replacement_node:
-                        ordered_nodes.append(node)
-                    # Duplicate email nodes for the same action_id are dropped.
-                else:
-                    ordered_nodes.append(node)
-
-            missing_email_nodes = [
-                node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id") not in placed_email_action_ids
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
             ]
-            visual_data["nodes"] = ordered_nodes + missing_email_nodes
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1303,9 +1281,16 @@ def convert_workflow_to_visual(workflow, form_definition):
                     and connection.get("to") in email_node_ids
                 )
             ]
-            visual_data["connections"] = (
-                non_email_connections + existing_email_connections
-            )
+            if existing_email_connections:
+                email_connections = existing_email_connections
+            else:
+                email_connections = []
+                for i in range(len(email_nodes_in_order) - 1):
+                    source_id = email_nodes_in_order[i].get("id")
+                    target_id = email_nodes_in_order[i + 1].get("id")
+                    if source_id and target_id:
+                        email_connections.append({"from": source_id, "to": target_id})
+            visual_data["connections"] = non_email_connections + email_connections
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data

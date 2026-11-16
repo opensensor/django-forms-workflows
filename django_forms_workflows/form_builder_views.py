@@ -15,6 +15,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import (
@@ -1504,7 +1505,15 @@ def shared_option_list_save(request):
                 {"success": False, "error": "Name is required"}, status=400
             )
         if not slug:
-            slug = name.lower().replace(" ", "-")
+            slug = slugify(name)
+            if not slug:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Slug is required. Provide a valid slug or use a name that can generate one.",
+                    },
+                    status=400,
+                )
 
         if not isinstance(items, list):
             return JsonResponse(

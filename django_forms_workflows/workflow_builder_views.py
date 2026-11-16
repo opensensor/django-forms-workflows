@@ -743,7 +743,7 @@ def _serialize_notification_rule(rule, stage_node_id=None):
         "notify_stage_groups": rule.notify_stage_groups,
         "notify_groups": [
             {"id": group.id, "name": group.name}
-            for group in rule.notify_groups.order_by("name")
+            for group in sorted(rule.notify_groups.all(), key=lambda group: group.name)
         ],
     }
 

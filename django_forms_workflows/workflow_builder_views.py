@@ -1906,9 +1906,24 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         snode["data"] = sdata
 
         StageApprovalGroup.objects.filter(stage=stage).delete()
+        normalized_group_entries = []
+        for group_entry in group_entries:
+            if not group_entry.get("id"):
+                continue
+            raw_position = group_entry.get("position", 0)
+            try:
+                normalized_position = int(raw_position)
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    f"Invalid approval group position '{raw_position}'. Position must be an integer."
+                )
+            normalized_entry = dict(group_entry)
+            normalized_entry["position"] = normalized_position
+            normalized_group_entries.append(normalized_entry)
+
         sorted_group_entries = sorted(
-            [g for g in group_entries if g.get("id")],
-            key=lambda g: g.get("position", 0),
+            normalized_group_entries,
+            key=lambda g: g["position"],
         )
         for pos, group_entry in enumerate(sorted_group_entries):
             StageApprovalGroup.objects.create(

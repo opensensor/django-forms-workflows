@@ -541,6 +541,10 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 value = stage_node_id.strip()
                 if value:
                     normalized_stage_node_id = value
+                else:
+                    add_error(
+                        f"Notification rule {rule_index} has an invalid stage node reference."
+                    )
             else:
                 add_error(
                     f"Notification rule {rule_index} has an invalid stage node reference."
@@ -973,9 +977,7 @@ def convert_workflow_to_visual(workflow, form_definition):
         # Load once in deterministic order and reuse in all layout paths.
         # Prefetch approval-fields relation to avoid per-stage queries during serialization.
         _stages_cache = list(
-            workflow.stages.all()
-            .order_by("order")
-            .prefetch_related("approval_fields")
+            workflow.stages.all().order_by("order").prefetch_related("approval_fields")
         )
         _serialized_stage_approval_fields_cache = {
             stage.id: _serialize_stage_approval_fields(stage) for stage in _stages_cache
@@ -1146,29 +1148,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            desired_email_nodes_by_action_id = {
-                node.get("data", {}).get("action_id"): node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id")
-            }
-            seen_email_action_ids = set()
-            merged_nodes = []
-            for node in existing_nodes:
-                if node.get("type") != "email":
-                    merged_nodes.append(node)
-                    continue
-                action_id = node.get("data", {}).get("action_id")
-                if action_id in desired_email_nodes_by_action_id:
-                    merged_nodes.append(desired_email_nodes_by_action_id[action_id])
-                    seen_email_action_ids.add(action_id)
-                else:
-                    merged_nodes.append(node)
-
-            for action_id, email_node in desired_email_nodes_by_action_id.items():
-                if action_id not in seen_email_action_ids:
-                    merged_nodes.append(email_node)
-
-            visual_data["nodes"] = merged_nodes
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1199,7 +1182,15 @@ def convert_workflow_to_visual(workflow, form_definition):
                     and connection.get("to") in email_node_ids
                 )
             ]
-            email_connections = existing_email_connections
+            if existing_email_connections:
+                email_connections = existing_email_connections
+            else:
+                email_connections = []
+                for i in range(len(email_nodes_in_order) - 1):
+                    source_id = email_nodes_in_order[i].get("id")
+                    target_id = email_nodes_in_order[i + 1].get("id")
+                    if source_id and target_id:
+                        email_connections.append({"from": source_id, "to": target_id})
             visual_data["connections"] = non_email_connections + email_connections
 
             logger.info("Loading saved visual workflow data (new format)")

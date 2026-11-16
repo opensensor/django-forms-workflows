@@ -1310,7 +1310,12 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    stages = list(workflow.stages.order_by("order", "id"))
+    stage_defaults = _get_stage_defaults(workflow)
+    stage_defaults_map = {item["stage"].id: item for item in stage_defaults}
+    stages = sorted(
+        (item["stage"] for item in stage_defaults),
+        key=lambda s: (s.order, s.id),
+    )
     stage_node_map = {}
 
     if stages:
@@ -1344,7 +1349,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "assignee_lookup_type": stage.assignee_lookup_type,
                         "validate_assignee_group": stage.validate_assignee_group,
                         "trigger_conditions": stage.trigger_conditions,
-                        "approval_fields": _serialize_stage_approval_fields(stage),
+                        "approval_fields": stage_defaults_map.get(stage.id, {}).get(
+                            "approval_fields", []
+                        ),
                         "approval_groups": stage_groups,
                     },
                 }

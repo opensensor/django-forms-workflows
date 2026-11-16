@@ -2273,29 +2273,18 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                # Use a durable dispatch identity so retries/replays do not enqueue duplicates
-                # after a digest has already been sent.
+                # Only an unsent row blocks a retry; sent rows may be queued again.
                 dispatch_identity = {
                     "workflow": workflow,
                     "notification_type": event,
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
+                    "sent": False,
                 }
-                already_pending = PendingNotification.objects.filter(
-                    **dispatch_identity
-                ).exists()
-                already_delivered = NotificationLog.objects.filter(
-                    workflow=workflow,
-                    notification_type=event,
-                    submission=submission,
-                    approval_task_id=rule_task_id,
-                    recipient_email=recipient,
-                    status__in=["sent", "delivered"],
-                ).exists()
-                if not already_pending and not already_delivered:
+                if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(
-                        **dispatch_identity, sent=False, scheduled_for=scheduled_for
+                        **dispatch_identity, scheduled_for=scheduled_for
                     )
                     created_count += 1
             logger.info(

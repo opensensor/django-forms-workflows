@@ -948,15 +948,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        if hasattr(exc, "message_dict"):
-            validation_errors = exc.message_dict
-        else:
-            validation_errors = exc.messages
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": validation_errors,
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -1161,29 +1157,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            updated_email_nodes_by_action_id = {
-                node.get("data", {}).get("action_id"): node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id")
-            }
-            merged_nodes = []
-            seen_email_action_ids = set()
-            for node in existing_nodes:
-                if node.get("type") == "email":
-                    action_id = node.get("data", {}).get("action_id")
-                    replacement_node = updated_email_nodes_by_action_id.get(action_id)
-                    if replacement_node:
-                        merged_nodes.append(replacement_node)
-                        seen_email_action_ids.add(action_id)
-                    else:
-                        merged_nodes.append(node)
-                else:
-                    merged_nodes.append(node)
-            for node in email_nodes_in_order:
-                action_id = node.get("data", {}).get("action_id")
-                if action_id not in seen_email_action_ids:
-                    merged_nodes.append(node)
-            visual_data["nodes"] = merged_nodes
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1333,12 +1310,7 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    stage_defaults = _get_stage_defaults(workflow)
-    cached_stage_approval_fields = {
-        default["stage_id"]: default.get("approval_fields", [])
-        for default in stage_defaults
-    }
-    stages = sorted(list(workflow.stages.all()), key=lambda s: (s.order, s.id))
+    stages = list(workflow.stages.order_by("order", "id"))
     stage_node_map = {}
 
     if stages:
@@ -1372,9 +1344,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "assignee_lookup_type": stage.assignee_lookup_type,
                         "validate_assignee_group": stage.validate_assignee_group,
                         "trigger_conditions": stage.trigger_conditions,
-                        "approval_fields": cached_stage_approval_fields.get(
-                            stage.id, _serialize_stage_approval_fields(stage)
-                        ),
+                        "approval_fields": _serialize_stage_approval_fields(stage),
                         "approval_groups": stage_groups,
                     },
                 }
@@ -1829,10 +1799,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
 
         raw_node_id = snode.get("id")
-        normalized_node_id = (
+        stage_node_map[
             raw_node_id.strip() if isinstance(raw_node_id, str) else raw_node_id
-        )
-        stage_node_map[normalized_node_id] = stage
+        ] = stage
         stage_field_map[stage.id] = _resolve_form_field_ids(
             form_definition,
             sdata.get("approval_fields", []),

@@ -171,6 +171,14 @@ def _parse_optional_int_setting(field_name, raw_value):
 
 
 def _serialize_stage_approval_groups(stage):
+    prefetched_groups = getattr(stage, "prefetched_approval_groups", None)
+    if prefetched_groups is None:
+        prefetched_groups = list(
+            stage.stageapprovalgroup_set.select_related("group").order_by(
+                "role", "position", "group__name"
+            )
+        )
+
     return [
         {
             "id": sag.group_id,
@@ -178,9 +186,7 @@ def _serialize_stage_approval_groups(stage):
             "position": sag.position,
             "role": sag.role,
         }
-        for sag in stage.stageapprovalgroup_set.select_related("group").order_by(
-            "role", "position", "group__name"
-        )
+        for sag in prefetched_groups
     ]
 
 
@@ -1957,7 +1963,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         explicit_stage_reference = has_stage_node_id or has_stage_id
 
         if has_stage_node_id:
-            if not isinstance(stage_node_id, str):
+            if isinstance(stage_node_id, bool) or not isinstance(
+                stage_node_id, str | int
+            ):
                 raise ValidationError("Invalid stage reference in notification rule.")
             stage = stage_node_map.get(stage_node_id)
         if stage is None and has_stage_id:

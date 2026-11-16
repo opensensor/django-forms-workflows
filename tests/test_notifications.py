@@ -134,6 +134,26 @@ def test_notification_subject_pipes_form_data_field(form_definition, user):
     assert "Alice Smith" in subject
 
 
+def test_notification_subject_removes_line_breaks(form_definition, user):
+    _make_workflow_with_rule(
+        form_definition,
+        subject_template="Application from {full_name} received",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"full_name": "Alice\r\nBcc: outsider@example.com"},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as mock_send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    subject = mock_send.call_args[0][0]
+    assert "\r" not in subject
+    assert "\n" not in subject
+
+
 def test_notification_subject_unknown_field_becomes_empty(form_definition, user):
     """An unrecognised {token} is replaced with an empty string (defaultdict)."""
     _make_workflow_with_rule(

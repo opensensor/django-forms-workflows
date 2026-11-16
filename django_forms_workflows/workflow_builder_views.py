@@ -11,7 +11,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_time
@@ -1071,12 +1071,14 @@ def convert_workflow_to_visual(workflow, form_definition):
     Reads WorkflowStage records to build stage nodes.
     """
     _stages_cache = None
+    _stages_by_id_cache = None
     _serialized_stage_approval_fields_cache = None
     _stage_defaults_cache = None
 
     def _get_stage_defaults():
         nonlocal \
             _stages_cache, \
+            _stages_by_id_cache, \
             _serialized_stage_approval_fields_cache, \
             _stage_defaults_cache
         if _stage_defaults_cache is not None:
@@ -1084,9 +1086,18 @@ def convert_workflow_to_visual(workflow, form_definition):
 
         # Load once in deterministic order and reuse in all layout paths.
         # Prefetch approval-fields relation to avoid per-stage queries during serialization.
+        # Prefetch approval groups (and related auth group) to avoid N+1 queries.
         _stages_cache = list(
-            workflow.stages.all().order_by("order").prefetch_related("approval_fields")
+            workflow.stages.all().order_by("order").prefetch_related(
+                "approval_fields",
+                Prefetch(
+                    "stageapprovalgroup_set",
+                    queryset=StageApprovalGroup.objects.select_related("group"),
+                    to_attr="prefetched_approval_groups",
+                ),
+            )
         )
+        _stages_by_id_cache = {stage.id: stage for stage in _stages_cache}
         _serialized_stage_approval_fields_cache = {
             stage.id: _serialize_stage_approval_fields(stage) for stage in _stages_cache
         }

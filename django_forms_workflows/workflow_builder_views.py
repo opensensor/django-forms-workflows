@@ -1836,11 +1836,24 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     workflow.notification_rules.all().delete()
     for rule_data in settings_data.get("notification_rules", []) or []:
         stage = None
-        stage_node_id = rule_data.get("stage_node_id")
+        raw_stage_node_id = rule_data.get("stage_node_id")
+        stage_node_id = (
+            raw_stage_node_id.strip()
+            if isinstance(raw_stage_node_id, str)
+            else raw_stage_node_id
+        )
+        stage_id = rule_data.get("stage_id")
+        explicit_stage_reference = bool(stage_node_id) or bool(stage_id)
+
         if stage_node_id:
             stage = stage_node_map.get(stage_node_id)
-        if stage is None and rule_data.get("stage_id"):
-            stage = workflow.stages.filter(id=rule_data.get("stage_id")).first()
+        if stage is None and stage_id:
+            stage = workflow.stages.filter(id=stage_id).first()
+        if stage is None and explicit_stage_reference:
+            raise ValidationError(
+                f"Invalid stage reference in notification rule: "
+                f"stage_node_id={raw_stage_node_id!r}, stage_id={stage_id!r}"
+            )
 
         notify_groups = rule_data.get("notify_groups", []) or []
         normalized_group_ids = []

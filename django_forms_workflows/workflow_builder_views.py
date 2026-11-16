@@ -1047,24 +1047,14 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        error_payload = {
-            "success": False,
-            "error": "Workflow validation failed.",
-        }
-
-        if hasattr(exc, "message_dict"):
-            error_payload["field_errors"] = exc.message_dict
-            error_payload["errors"] = [
-                message
-                for messages in exc.message_dict.values()
-                for message in (messages if isinstance(messages, list) else [messages])
-            ]
-        elif getattr(exc, "messages", None):
-            error_payload["errors"] = exc.messages
-        else:
-            error_payload["errors"] = [str(exc)]
-
-        return JsonResponse(error_payload, status=400)
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Workflow validation failed.",
+                "errors": ["Invalid workflow configuration."],
+            },
+            status=400,
+        )
     except Http404:
         raise
     except Exception:
@@ -1262,9 +1252,8 @@ def convert_workflow_to_visual(workflow, form_definition):
                 existing_node = existing_email_nodes_by_action_id.get(action_id)
                 if existing_node:
                     existing_node_data = existing_node.setdefault("data", {})
-                    existing_node_data["action_id"] = action_id
                     for key, value in defaults.items():
-                        existing_node_data[key] = value
+                        existing_node_data.setdefault(key, value)
                     email_nodes_in_order.append(existing_node)
                     continue
                 email_nodes_in_order.append(
@@ -1281,18 +1270,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            existing_email_action_ids = {
-                node.get("data", {}).get("action_id")
-                for node in existing_nodes
-                if node.get("type") == "email" and node.get("data", {}).get("action_id")
-            }
-            missing_email_nodes = [
-                node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id")
-                not in existing_email_action_ids
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
             ]
-            visual_data["nodes"] = existing_nodes + missing_email_nodes
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])

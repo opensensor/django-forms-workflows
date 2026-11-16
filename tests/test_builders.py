@@ -933,6 +933,24 @@ class TestConvertVisualToWorkflow:
             approval_group
         ]
 
+    @pytest.mark.parametrize("position", [True, 1.5, "²"])
+    def test_rejects_invalid_approval_group_position(
+        self, form_definition, approval_group, position
+    ):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "approval_groups": [
+                        {"id": approval_group.id, "position": position}
+                    ],
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="Approval group position"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_accepts_numeric_string_stage_reference_in_notification_rule(
         self, staged_workflow, form_definition
     ):
@@ -1533,6 +1551,24 @@ class TestWorkflowBuilderViews:
         assert stages[0].name == "Sign Off"
         assert stages[0].allow_send_back is True
         assert wf.visual_workflow_data["nodes"][1]["data"]["stage_id"] == stages[0].id
+
+    @pytest.mark.parametrize("workflow_payload", [None, {}])
+    def test_save_requires_workflow_nodes(
+        self, client, superuser, form_definition, workflow_payload
+    ):
+        client.force_login(superuser)
+        payload = {"form_id": form_definition.id}
+        if workflow_payload is not None:
+            payload["workflow"] = workflow_payload
+
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not form_definition.workflows.exists()
 
     @pytest.mark.parametrize("form_id", [True, "²", "9" * 5000, 2**63])
     def test_save_rejects_invalid_form_id(self, client, superuser, form_id):

@@ -947,13 +947,11 @@ def workflow_builder_save(request):
         workflow_id = data.get("workflow_id")
         if "workflow" not in data:
             raise ValidationError("Missing workflow payload.")
-        workflow_data = data.get("workflow")
-        if not isinstance(workflow_data, dict):
-            raise ValidationError("Malformed payload: workflow must be an object.")
-        if "nodes" not in workflow_data or not isinstance(workflow_data.get("nodes"), list):
-            raise ValidationError(
-                "Malformed payload: workflow must include a nodes list."
-            )
+        workflow_data = data["workflow"]
+        if not isinstance(workflow_data, dict) or not isinstance(
+            workflow_data.get("nodes"), list
+        ):
+            raise ValidationError("Malformed workflow payload: nodes must be a list.")
 
         def parse_positive_pk(value, field_name, *, allow_empty=False):
             if allow_empty and value in (None, ""):
@@ -1055,29 +1053,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        validation_messages = []
-
-        if hasattr(exc, "message_dict"):
-            for field, messages in exc.message_dict.items():
-                for message in messages:
-                    if field == "__all__":
-                        validation_messages.append(str(message))
-                    else:
-                        validation_messages.append(f"{field}: {message}")
-        elif hasattr(exc, "messages"):
-            validation_messages = [str(message) for message in exc.messages]
-        elif str(exc):
-            validation_messages = [str(exc)]
-
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": (
-                    validation_messages
-                    if validation_messages
-                    else ["Invalid workflow configuration."]
-                ),
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -1296,18 +1276,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            existing_email_action_ids = {
-                node.get("data", {}).get("action_id")
-                for node in existing_nodes
-                if node.get("type") == "email" and node.get("data", {}).get("action_id")
-            }
-            missing_email_nodes = [
-                node
-                for node in email_nodes_in_order
-                if node.get("data", {}).get("action_id")
-                not in existing_email_action_ids
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
             ]
-            visual_data["nodes"] = existing_nodes + missing_email_nodes
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1338,9 +1310,15 @@ def convert_workflow_to_visual(workflow, form_definition):
                     and connection.get("to") in email_node_ids
                 )
             ]
-            # Preserve saved topology: do not synthesize direct email-to-email edges
-            # when none exist in persisted connections.
-            email_connections = existing_email_connections
+            if existing_email_connections:
+                email_connections = existing_email_connections
+            else:
+                email_connections = []
+                for i in range(len(email_nodes_in_order) - 1):
+                    source_id = email_nodes_in_order[i].get("id")
+                    target_id = email_nodes_in_order[i + 1].get("id")
+                    if source_id and target_id:
+                        email_connections.append({"from": source_id, "to": target_id})
             visual_data["connections"] = non_email_connections + email_connections
 
             logger.info("Loading saved visual workflow data (new format)")
@@ -1939,16 +1917,25 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             if not group_entry.get("id"):
                 continue
             raw_position = group_entry.get("position", 0)
-            try:
-                normalized_position = int(raw_position)
-            except (TypeError, ValueError):
-                raise ValidationError(
-                    f"Invalid approval group position '{raw_position}'. Position must be an integer."
-                )
-            normalized_entry = dict(group_entry)
-            normalized_entry["position"] = normalized_position
-            normalized_group_entries.append(normalized_entry)
-
+            if isinstance(raw_position, bool):
+                raise ValidationError("Approval group position must be an integer.")
+            if isinstance(raw_position, int):
+                position = raw_position
+            elif isinstance(raw_position, str):
+                digits = raw_position.strip()
+                if not digits.isascii() or not digits.isdigit():
+                    raise ValidationError("Approval group position must be an integer.")
+                try:
+                    position = int(digits)
+                except ValueError as exc:
+                    raise ValidationError(
+                        "Approval group position must be an integer."
+                    ) from exc
+            else:
+                raise ValidationError("Approval group position must be an integer.")
+            if not 0 <= position <= 2**63 - 1:
+                raise ValidationError("Approval group position must be an integer.")
+            normalized_group_entries.append({**group_entry, "position": position})
         sorted_group_entries = sorted(
             normalized_group_entries,
             key=lambda g: g["position"],

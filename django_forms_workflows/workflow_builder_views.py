@@ -1041,26 +1041,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-
-        validation_errors = []
-        if hasattr(exc, "message_dict"):
-            for field, messages in exc.message_dict.items():
-                for message in messages:
-                    validation_errors.append({"field": field, "message": str(message)})
-        elif hasattr(exc, "messages"):
-            for message in exc.messages:
-                validation_errors.append({"field": None, "message": str(message)})
-
-        if not validation_errors:
-            validation_errors = [
-                {"field": None, "message": "Invalid workflow configuration."}
-            ]
-
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": validation_errors,
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -1265,37 +1250,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            existing_node_ids = {node.get("id") for node in existing_nodes}
-            ordered_nodes = []
-            email_insert_index = 0
-
-            for node in existing_nodes:
-                node_id = node.get("id")
-                if node.get("type") == "email" and node_id in {
-                    email_node.get("id") for email_node in email_nodes_in_order
-                }:
-                    while (
-                        email_insert_index < len(email_nodes_in_order)
-                        and email_nodes_in_order[email_insert_index].get("id") != node_id
-                    ):
-                        missing_node = email_nodes_in_order[email_insert_index]
-                        if missing_node.get("id") not in existing_node_ids:
-                            ordered_nodes.append(missing_node)
-                        email_insert_index += 1
-                    if (
-                        email_insert_index < len(email_nodes_in_order)
-                        and email_nodes_in_order[email_insert_index].get("id") == node_id
-                    ):
-                        email_insert_index += 1
-                ordered_nodes.append(node)
-
-            while email_insert_index < len(email_nodes_in_order):
-                missing_node = email_nodes_in_order[email_insert_index]
-                if missing_node.get("id") not in existing_node_ids:
-                    ordered_nodes.append(missing_node)
-                email_insert_index += 1
-
-            visual_data["nodes"] = ordered_nodes
+            non_email_nodes = [
+                node for node in existing_nodes if node.get("type") != "email"
+            ]
+            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             existing_connections = visual_data.get("connections", [])
@@ -1999,8 +1957,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         explicit_stage_reference = has_stage_node_id or has_stage_id
 
         if has_stage_node_id:
+            if not isinstance(stage_node_id, str):
+                raise ValidationError("Invalid stage reference in notification rule.")
             stage = stage_node_map.get(stage_node_id)
         if stage is None and has_stage_id:
+            if isinstance(stage_id, bool):
+                raise ValidationError("Invalid stage reference in notification rule.")
+            if isinstance(stage_id, str):
+                stage_id = stage_id.strip()
+                if not stage_id.isascii() or not stage_id.isdigit():
+                    raise ValidationError(
+                        "Invalid stage reference in notification rule."
+                    )
+                try:
+                    stage_id = int(stage_id)
+                except ValueError as exc:
+                    raise ValidationError(
+                        "Invalid stage reference in notification rule."
+                    ) from exc
+            if not isinstance(stage_id, int) or not 0 < stage_id <= 2**63 - 1:
+                raise ValidationError("Invalid stage reference in notification rule.")
             stage = workflow.stages.filter(id=stage_id).first()
         if stage is None and explicit_stage_reference:
             raise ValidationError("Invalid stage reference in notification rule.")

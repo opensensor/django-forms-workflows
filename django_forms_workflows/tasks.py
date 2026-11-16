@@ -1522,9 +1522,11 @@ def _collect_notification_recipients(
     instead of ``notif.stage``.
     """
     recipients: list[str] = []
+    seen: set[str] = set()
 
     def _add(email: str | None) -> None:
-        if email and email not in recipients:
+        if email and email not in seen:
+            seen.add(email)
             recipients.append(email)
 
     # 1. Submitter

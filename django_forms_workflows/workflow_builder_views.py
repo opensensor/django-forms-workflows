@@ -905,6 +905,27 @@ def workflow_builder_save(request):
         workflow_id = data.get("workflow_id")
         workflow_data = data.get("workflow", {})
 
+        def parse_positive_pk(value, field_name, *, allow_empty=False):
+            if allow_empty and value in (None, ""):
+                return None
+            if isinstance(value, bool):
+                raise ValidationError(f"Invalid {field_name}.")
+            if isinstance(value, int):
+                parsed = value
+            elif isinstance(value, str):
+                digits = value.strip()
+                if not digits.isascii() or not digits.isdigit():
+                    raise ValidationError(f"Invalid {field_name}.")
+                try:
+                    parsed = int(digits)
+                except ValueError as exc:
+                    raise ValidationError(f"Invalid {field_name}.") from exc
+            else:
+                raise ValidationError(f"Invalid {field_name}.")
+            if not 0 < parsed <= 2**63 - 1:
+                raise ValidationError(f"Invalid {field_name}.")
+            return parsed
+
         if not isinstance(workflow_data, dict):
             raise ValidationError("Malformed payload: 'workflow' must be an object.")
 
@@ -950,6 +971,9 @@ def workflow_builder_save(request):
             return JsonResponse(
                 {"success": False, "error": "Form ID is required"}, status=400
             )
+
+        form_id = parse_positive_pk(form_id, "form_id")
+        workflow_id = parse_positive_pk(workflow_id, "workflow_id", allow_empty=True)
 
         form_definition = get_object_or_404(FormDefinition, id=form_id)
         workflow = None

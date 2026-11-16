@@ -1458,6 +1458,17 @@ class TestWorkflowBuilderViews:
         assert stages[0].allow_send_back is True
         assert wf.visual_workflow_data["nodes"][1]["data"]["stage_id"] == stages[0].id
 
+    @pytest.mark.parametrize("form_id", [True, "²", "9" * 5000, 2**63])
+    def test_save_rejects_invalid_form_id(self, client, superuser, form_id):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps({"form_id": form_id, "workflow": {"nodes": []}}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+
     @pytest.mark.parametrize(
         "workflow_data",
         [

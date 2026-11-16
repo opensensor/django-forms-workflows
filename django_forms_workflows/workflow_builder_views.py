@@ -1132,7 +1132,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in visual_data.get("nodes", [])
                 if node.get("type") == "email" and node.get("data", {}).get("action_id")
             }
-            email_nodes_in_order = []
+            resolved_email_nodes_by_action_id = {}
             for index, (action_id, defaults) in enumerate(
                 email_action_defaults.items()
             ):
@@ -1141,28 +1141,46 @@ def convert_workflow_to_visual(workflow, form_definition):
                     existing_node_data = existing_node.setdefault("data", {})
                     for key, value in defaults.items():
                         existing_node_data.setdefault(key, value)
-                    email_nodes_in_order.append(existing_node)
+                    resolved_email_nodes_by_action_id[action_id] = existing_node
                     continue
-                email_nodes_in_order.append(
-                    {
-                        "id": f"email-action-{action_id}",
-                        "type": "email",
-                        "x": 0,
-                        "y": index * 120,
-                        "data": {
-                            "action_id": action_id,
-                            **defaults,
-                        },
-                    }
-                )
+                resolved_email_nodes_by_action_id[action_id] = {
+                    "id": f"email-action-{action_id}",
+                    "type": "email",
+                    "x": 0,
+                    "y": index * 120,
+                    "data": {
+                        "action_id": action_id,
+                        **defaults,
+                    },
+                }
 
             existing_nodes = visual_data.get("nodes", [])
-            non_email_nodes = [
-                node for node in existing_nodes if node.get("type") != "email"
-            ]
-            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+            merged_nodes = []
+            placed_email_action_ids = set()
+            for node in existing_nodes:
+                if node.get("type") != "email":
+                    merged_nodes.append(node)
+                    continue
+                action_id = node.get("data", {}).get("action_id")
+                if action_id in resolved_email_nodes_by_action_id:
+                    if action_id in placed_email_action_ids:
+                        continue
+                    merged_nodes.append(resolved_email_nodes_by_action_id[action_id])
+                    placed_email_action_ids.add(action_id)
+                else:
+                    merged_nodes.append(node)
 
-            email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            for action_id, node in resolved_email_nodes_by_action_id.items():
+                if action_id not in placed_email_action_ids:
+                    merged_nodes.append(node)
+
+            visual_data["nodes"] = merged_nodes
+
+            email_node_ids = {
+                node.get("id")
+                for node in visual_data.get("nodes", [])
+                if node.get("type") == "email"
+            }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:

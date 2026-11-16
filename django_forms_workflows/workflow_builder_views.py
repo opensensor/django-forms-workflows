@@ -1343,7 +1343,11 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    stages = list(workflow.stages.order_by("order", "id"))
+    prefetched_stages = getattr(workflow, "_prefetched_objects_cache", {}).get("stages")
+    if prefetched_stages is not None:
+        stages = sorted(prefetched_stages, key=lambda s: (s.order, s.id))
+    else:
+        stages = sorted(workflow.stages.all(), key=lambda s: (s.order, s.id))
     stage_node_map = {}
 
     if stages:

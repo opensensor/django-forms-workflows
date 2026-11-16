@@ -945,7 +945,15 @@ def workflow_builder_save(request):
 
         form_id = data.get("form_id")
         workflow_id = data.get("workflow_id")
-        workflow_data = data.get("workflow", {})
+        if "workflow" not in data:
+            raise ValidationError("Missing workflow payload.")
+        workflow_data = data.get("workflow")
+        if not isinstance(workflow_data, dict):
+            raise ValidationError("Malformed payload: workflow must be an object.")
+        if "nodes" not in workflow_data or not isinstance(workflow_data.get("nodes"), list):
+            raise ValidationError(
+                "Malformed payload: workflow must include a nodes list."
+            )
 
         def parse_positive_pk(value, field_name, *, allow_empty=False):
             if allow_empty and value in (None, ""):

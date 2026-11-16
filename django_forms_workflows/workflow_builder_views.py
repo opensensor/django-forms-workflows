@@ -872,6 +872,35 @@ def workflow_builder_save(request):
         workflow_id = data.get("workflow_id")
         workflow_data = data.get("workflow", {})
 
+        def _parse_positive_int(value, field_name, *, allow_empty=False):
+            if allow_empty and value in (None, ""):
+                return None
+            if isinstance(value, bool):
+                raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
+            if isinstance(value, int):
+                parsed = value
+            elif isinstance(value, str):
+                stripped = value.strip()
+                if not stripped:
+                    if allow_empty:
+                        return None
+                    raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
+                try:
+                    parsed = int(stripped)
+                except ValueError as exc:
+                    raise ValidationError(
+                        f"Malformed payload: '{field_name}' must be a positive integer."
+                    ) from exc
+            else:
+                raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
+
+            if parsed <= 0:
+                raise ValidationError(f"Malformed payload: '{field_name}' must be a positive integer.")
+            return parsed
+
+        form_id = _parse_positive_int(form_id, "form_id")
+        workflow_id = _parse_positive_int(workflow_id, "workflow_id", allow_empty=True)
+
         if not isinstance(workflow_data, dict):
             raise ValidationError("Malformed payload: 'workflow' must be an object.")
 
@@ -920,7 +949,7 @@ def workflow_builder_save(request):
 
         form_definition = get_object_or_404(FormDefinition, id=form_id)
         workflow = None
-        if workflow_id not in (None, ""):
+        if workflow_id is not None:
             workflow = get_object_or_404(
                 WorkflowDefinition, id=workflow_id, form_definition=form_definition
             )

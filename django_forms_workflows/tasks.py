@@ -1249,29 +1249,23 @@ def send_batched_notifications() -> str:
     promptly once their scheduled_for time has passed.
     """
     now = timezone.now()
-    due_qs = (
+    due_rows = (
         PendingNotification.objects.filter(sent=False, scheduled_for__lte=now)
-        .select_related(
-            "workflow__form_definition",
-            "submission__form_definition",
-            "submission__submitter",
-            "approval_task",
-        )
         .order_by("recipient_email", "notification_type", "workflow_id")
+        .values_list("id", "recipient_email", "notification_type", "workflow_id")
     )
 
-    groups: dict[tuple, list] = defaultdict(list)
-    for pn in due_qs:
-        key = (pn.recipient_email, pn.notification_type, pn.workflow_id)
-        groups[key].append(pn)
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    for pn_id, recipient_email, notification_type, workflow_id in due_rows:
+        key = (recipient_email, notification_type, workflow_id)
+        groups[key].append(pn_id)
 
     sent_count = 0
     for (
         recipient_email,
         notification_type,
         _workflow_id,
-    ), notifications in groups.items():
-        ids = [n.id for n in notifications]
+    ), ids in groups.items():
         try:
             # Hold the row locks through delivery and marking the batch sent.
             # A worker crash rolls back the transaction, leaving the rows retryable.
@@ -1661,7 +1655,15 @@ def _collect_notification_recipients(
             assigned_to_id__isnull=True,
         )
         if getattr(notif, "event", None) in {"approval_request", "approval_reminder"}:
-            group_tasks = group_tasks.filter(status="pending")
+            if task is not None:
+                # Task-specific actionable notification: only notify the group
+                # for the triggering task (avoid cross-notifying other pending
+                # groups in the same stage with this task's approval URL).
+                group_tasks = group_tasks.filter(pk=task.pk, status="pending")
+            else:
+                # Workflow-level actionable notification: include all pending
+                # eligible group fallback tasks in scope.
+                group_tasks = group_tasks.filter(status="pending")
         group_ids = list(
             group_tasks.values_list("assigned_group_id", flat=True).distinct()
         )

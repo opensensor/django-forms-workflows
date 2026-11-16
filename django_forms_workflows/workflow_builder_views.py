@@ -529,8 +529,32 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             continue
 
         stage_node_id = rule_data.get("stage_node_id")
+        normalized_stage_node_id = None
+        if stage_node_id not in (None, ""):
+            if isinstance(stage_node_id, bool):
+                add_error(
+                    f"Notification rule {rule_index} has an invalid stage node reference."
+                )
+            elif isinstance(stage_node_id, int):
+                normalized_stage_node_id = stage_node_id
+            elif isinstance(stage_node_id, str):
+                value = stage_node_id.strip()
+                if value:
+                    normalized_stage_node_id = value
+                else:
+                    add_error(
+                        f"Notification rule {rule_index} has an invalid stage node reference."
+                    )
+            else:
+                add_error(
+                    f"Notification rule {rule_index} has an invalid stage node reference."
+                )
+
         stage_id = rule_data.get("stage_id")
-        if stage_node_id and stage_node_id not in stage_node_ids:
+        if (
+            normalized_stage_node_id is not None
+            and normalized_stage_node_id not in stage_node_ids
+        ):
             add_error(
                 f"Notification rule {rule_index} references a stage that is not present in the builder graph."
             )
@@ -554,7 +578,10 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 add_error(
                     f"Notification rule {rule_index} references an unknown workflow stage ID: {stage_id}."
                 )
-            elif normalized_stage_id not in stage_ids_in_payload and not stage_node_id:
+            elif (
+                normalized_stage_id not in stage_ids_in_payload
+                and normalized_stage_node_id is None
+            ):
                 add_error(
                     f"Notification rule {rule_index} references workflow stage ID {stage_id}, but that stage is not present in the submitted builder graph."
                 )
@@ -948,7 +975,10 @@ def convert_workflow_to_visual(workflow, form_definition):
             return _stage_defaults_cache
 
         # Load once in deterministic order and reuse in all layout paths.
-        _stages_cache = list(workflow.stages.all().order_by("order"))
+        # Prefetch approval-fields relation to avoid per-stage queries during serialization.
+        _stages_cache = list(
+            workflow.stages.all().order_by("order").prefetch_related("approval_fields")
+        )
         _serialized_stage_approval_fields_cache = {
             stage.id: _serialize_stage_approval_fields(stage) for stage in _stages_cache
         }
@@ -1160,12 +1190,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     source_id = email_nodes_in_order[i].get("id")
                     target_id = email_nodes_in_order[i + 1].get("id")
                     if source_id and target_id:
-                        email_connections.append(
-                            {
-                                "from": source_id,
-                                "to": target_id,
-                            }
-                        )
+                        email_connections.append({"from": source_id, "to": target_id})
             visual_data["connections"] = non_email_connections + email_connections
 
             logger.info("Loading saved visual workflow data (new format)")

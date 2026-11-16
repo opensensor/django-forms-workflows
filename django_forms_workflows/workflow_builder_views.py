@@ -1367,7 +1367,20 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # ── Stage nodes ──────────────────────────────────────────────────────
     # Group stages by order — stages sharing the same order run in parallel.
-    stages = list(workflow.stages.order_by("order", "id"))
+    prefetched_stages = []
+    serialized_approval_fields_by_stage_id = {}
+    if "stage_defaults" in locals():
+        prefetched_stages = list(stage_defaults.get("stages", []) or [])
+        serialized_approval_fields_by_stage_id = dict(
+            stage_defaults.get("serialized_approval_fields_by_stage_id", {}) or {}
+        )
+
+    if prefetched_stages:
+        # Reuse already-loaded stages and keep deterministic ordering.
+        stages = sorted(prefetched_stages, key=lambda s: (s.order, s.id))
+    else:
+        stages = list(workflow.stages.order_by("order", "id"))
+
     stage_node_map = {}
 
     if stages:
@@ -1401,7 +1414,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "assignee_lookup_type": stage.assignee_lookup_type,
                         "validate_assignee_group": stage.validate_assignee_group,
                         "trigger_conditions": stage.trigger_conditions,
-                        "approval_fields": _serialize_stage_approval_fields(stage),
+                        "approval_fields": serialized_approval_fields_by_stage_id.get(
+                            stage.id, _serialize_stage_approval_fields(stage)
+                        ),
                         "approval_groups": stage_groups,
                     },
                 }

@@ -793,9 +793,6 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     except IntegrityError as exc:
         raise FormBuilderPayloadError("A form with this slug already exists.") from exc
 
-    # Track existing field IDs to determine which to delete
-    existing_field_ids = set(form_definition.fields.values_list("id", flat=True))
-    updated_field_ids = set()
     field_id_mapping = {}  # Map old IDs to new IDs for frontend update
 
     # Stages a field on this form may be attached to

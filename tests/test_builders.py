@@ -2580,6 +2580,23 @@ class TestFormBuilderViews:
         )
         assert response.status_code == 404
 
+    @pytest.mark.parametrize("form_id", [True, -1, "abc", "9" * 5000])
+    def test_save_rejects_invalid_form_id(self, client, superuser, form_id):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {"id": form_id, "name": "Invalid", "slug": "invalid", "fields": []}
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert (
+            response.json()["error"]
+            == "Invalid payload: 'id' must be a positive integer"
+        )
+
     def test_load_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)
         url = _fb_url(f"builder/api/load/{form_with_fields.id}/")

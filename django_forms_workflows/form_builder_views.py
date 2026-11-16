@@ -558,9 +558,8 @@ def form_builder_save(request):
         elif isinstance(raw_form_id, str) and not raw_form_id.strip():
             form_id = None
         else:
-            try:
-                form_id = _positive_integer_id(raw_form_id, "id")
-            except ValueError:
+            form_id = _positive_integer_id(raw_form_id)
+            if form_id is None:
                 return JsonResponse(
                     {
                         "success": False,

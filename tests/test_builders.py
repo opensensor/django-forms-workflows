@@ -2,6 +2,7 @@
 Tests for the form builder and workflow builder admin views.
 """
 
+import copy
 import json
 from pathlib import Path
 
@@ -54,13 +55,15 @@ class TestConvertWorkflowToVisual:
     """Tests for converting WorkflowDefinition → visual node graph."""
 
     def test_returns_saved_visual_data_if_present(self, workflow, form_definition):
-        """When visual_workflow_data already has nodes, return it as-is."""
+        """Saved nodes are returned with the builder's default data fields."""
         saved = {"nodes": [{"id": "n1", "type": "start"}], "connections": []}
+        expected = copy.deepcopy(saved)
+        expected["nodes"][0]["data"] = {}
         workflow.visual_workflow_data = saved
         workflow.save()
 
         result = convert_workflow_to_visual(workflow, form_definition)
-        assert result == saved
+        assert result == expected
 
     def test_generates_layout_with_stages(
         self, staged_workflow, form_definition, approval_group, second_approval_group

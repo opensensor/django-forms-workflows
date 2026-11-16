@@ -1172,17 +1172,22 @@ def check_approval_deadlines() -> str:
                     if now <= locked_auto_deadline:
                         continue
 
+                    # Cancel only pending tasks in the same workflow track that is eligible.
+                    locked_submission.approval_tasks.filter(
+                        status="pending",
+                        workflow_stage__workflow=locked_workflow,
+                    ).update(status="skipped")
+
+                    # Only approve once no pending tasks remain on the submission.
+                    if locked_submission.approval_tasks.filter(status="pending").exists():
+                        continue
+
                     updated = FormSubmission.objects.filter(
                         id=locked_submission.id,
                         status="pending_approval",
                     ).update(status="approved", completed_at=now)
                     if not updated:
                         continue
-
-                    # cancel remaining tasks
-                    locked_submission.approval_tasks.filter(status="pending").update(
-                        status="skipped"
-                    )
 
                 # Dispatch after the outermost commit so a worker sees the approved state.
                 def _enqueue_workflow_approved_notification(

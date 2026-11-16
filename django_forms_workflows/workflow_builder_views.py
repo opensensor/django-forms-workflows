@@ -1252,8 +1252,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 existing_node = existing_email_nodes_by_action_id.get(action_id)
                 if existing_node:
                     existing_node_data = existing_node.setdefault("data", {})
+                    existing_node_data["action_id"] = action_id
                     for key, value in defaults.items():
-                        existing_node_data.setdefault(key, value)
+                        existing_node_data[key] = value
                     email_nodes_in_order.append(existing_node)
                     continue
                 email_nodes_in_order.append(

@@ -1080,11 +1080,56 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
+
+        raw_messages = []
+        if hasattr(exc, "message_dict") and exc.message_dict:
+            for field_errors in exc.message_dict.values():
+                raw_messages.extend([str(msg) for msg in field_errors])
+        elif getattr(exc, "messages", None):
+            raw_messages.extend([str(msg) for msg in exc.messages])
+        else:
+            raw_messages.append(str(exc))
+
+        classified_errors = []
+        for message in raw_messages:
+            lower_message = message.lower()
+            if "approver" in lower_message and "missing" in lower_message:
+                classified_errors.append(
+                    {
+                        "code": "missing_approvers",
+                        "message": "One or more workflow stages are missing approvers.",
+                    }
+                )
+            elif "cadence" in lower_message and "day" in lower_message:
+                classified_errors.append(
+                    {
+                        "code": "invalid_cadence_days",
+                        "message": "Cadence day configuration is invalid.",
+                    }
+                )
+            elif (
+                "conflict" in lower_message
+                or ("field" in lower_message and "assignment" in lower_message)
+            ):
+                classified_errors.append(
+                    {
+                        "code": "conflicting_field_assignments",
+                        "message": "Conflicting field assignments were detected.",
+                    }
+                )
+            else:
+                classified_errors.append(
+                    {
+                        "code": "invalid_workflow_configuration",
+                        "message": "Invalid workflow configuration.",
+                    }
+                )
+
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": ["Invalid workflow configuration."],
+                "errors": classified_errors,
             },
             status=400,
         )

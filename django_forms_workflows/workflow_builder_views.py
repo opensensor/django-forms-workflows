@@ -1302,24 +1302,19 @@ def convert_workflow_to_visual(workflow, form_definition):
                     and connection.get("to") in email_node_ids
                 )
             ]
-            existing_email_connections = [
-                connection
-                for connection in normalized_connections
-                if (
-                    connection.get("from") in email_node_ids
-                    and connection.get("to") in email_node_ids
-                )
-            ]
-            if existing_email_connections:
-                email_connections = existing_email_connections
+            if normalized_connections:
+                # Preserve submitted topology for new-format visual data.
+                # The absence of direct email->email edges does not imply they are missing.
+                visual_data["connections"] = normalized_connections
             else:
+                # Fallback only when there are no saved connections at all.
                 email_connections = []
                 for i in range(len(email_nodes_in_order) - 1):
                     source_id = email_nodes_in_order[i].get("id")
                     target_id = email_nodes_in_order[i + 1].get("id")
                     if source_id and target_id:
                         email_connections.append({"from": source_id, "to": target_id})
-            visual_data["connections"] = non_email_connections + email_connections
+                visual_data["connections"] = non_email_connections + email_connections
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data

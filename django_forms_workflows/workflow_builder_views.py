@@ -961,13 +961,17 @@ def workflow_builder_save(request):
                 raise ValidationError(
                     f"Malformed workflow payload: connection at index {idx} must be an object."
                 )
-            for endpoint_key in ("source", "target"):
-                endpoint_value = connection.get(endpoint_key)
+            for endpoint_key, legacy_key in (("from", "source"), ("to", "target")):
+                endpoint_value = connection.get(
+                    endpoint_key, connection.get(legacy_key)
+                )
                 if endpoint_value is None:
                     raise ValidationError(
                         f"Malformed workflow payload: connection at index {idx} is missing '{endpoint_key}'."
                     )
-                if isinstance(endpoint_value, (dict, list, tuple, set, bool)):
+                if isinstance(endpoint_value, bool) or not isinstance(
+                    endpoint_value, str | int
+                ):
                     raise ValidationError(
                         f"Malformed workflow payload: connection at index {idx} has invalid '{endpoint_key}'."
                     )

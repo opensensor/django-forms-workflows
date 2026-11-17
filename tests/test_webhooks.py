@@ -120,6 +120,26 @@ def test_synchronous_webhook_retries_with_backoff(workflow, user):
 
 
 @pytest.mark.django_db
+def test_webhook_attempt_explicitly_finishes_when_endpoint_is_unavailable(workflow):
+    assert (
+        tasks_module._deliver_workflow_webhook_attempt(999999, "submission.created", {})
+        is None
+    )
+    endpoint = WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="ERP",
+        url="https://example.com/hooks/erp",
+        events=["task.created"],
+    )
+    assert (
+        tasks_module._deliver_workflow_webhook_attempt(
+            endpoint.id, "submission.created", {}
+        )
+        is None
+    )
+
+
+@pytest.mark.django_db
 def test_webhook_endpoint_generates_secret_and_validates_events(workflow):
     endpoint = WebhookEndpoint(
         workflow=workflow,

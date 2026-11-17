@@ -667,10 +667,10 @@ def _deliver_workflow_webhook_attempt(
         logger.warning(
             "Webhook endpoint %s no longer exists; skipping delivery", endpoint_id
         )
-        return
+        return None
 
     if not endpoint.subscribes_to(event):
-        return
+        return None
 
     request_headers = {
         "Content-Type": "application/json",
@@ -1234,6 +1234,13 @@ def check_approval_deadlines() -> str:
                     # Only approve once no pending tasks remain on the submission.
                     if locked_submission.approval_tasks.filter(
                         status="pending"
+                    ).exists():
+                        continue
+
+                    # A different track may have failed already. Auto-skipped
+                    # tasks are valid here, but a failed decision is not.
+                    if locked_submission.approval_tasks.filter(
+                        status__in=("expired", "rejected", "returned")
                     ).exists():
                         continue
 

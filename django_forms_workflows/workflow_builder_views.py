@@ -1878,10 +1878,39 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         stage_id = sdata.get("stage_id")
         group_entries = list(sdata.get("approval_groups", []))
 
+        raw_order = sdata.get("order", idx)
+        if isinstance(raw_order, bool):
+            raise ValidationError("Invalid stage order.")
+        if isinstance(raw_order, int):
+            stage_order = raw_order
+        elif isinstance(raw_order, str):
+            order_text = raw_order.strip()
+            if not order_text.isascii() or not order_text.isdigit():
+                raise ValidationError("Invalid stage order.")
+            try:
+                stage_order = int(order_text)
+            except ValueError as exc:
+                raise ValidationError("Invalid stage order.") from exc
+        else:
+            raise ValidationError("Invalid stage order.")
+        if not 0 <= stage_order <= 2**31 - 1:
+            raise ValidationError("Invalid stage order.")
+
+        raw_approval_logic = sdata.get("approval_logic", "all")
+        if not isinstance(raw_approval_logic, str):
+            raise ValidationError("Invalid approval logic.")
+        approval_logic = raw_approval_logic.strip()
+        allowed_approval_logic = {
+            value
+            for value, _ in WorkflowStage._meta.get_field("approval_logic").choices
+        }
+        if approval_logic not in allowed_approval_logic:
+            raise ValidationError("Invalid approval logic.")
+
         stage_fields = {
             "name": sdata.get("name", f"Stage {idx}"),
-            "order": sdata.get("order", idx),
-            "approval_logic": sdata.get("approval_logic", "all"),
+            "order": stage_order,
+            "approval_logic": approval_logic,
             "requires_manager_approval": sdata.get("requires_manager_approval", False),
             "allow_send_back": sdata.get("allow_send_back", False),
             "allow_reassign": sdata.get("allow_reassign", False),

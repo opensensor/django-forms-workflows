@@ -686,6 +686,44 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Invalid stage_id"):
             convert_visual_to_workflow(visual, form_definition)
 
+    @pytest.mark.parametrize("order", [True, 1.5, "²", -1, 2**31])
+    def test_rejects_invalid_stage_order(self, form_definition, order):
+        visual = self._make_visual(
+            stages=[
+                {"name": "Review", "order": order, "requires_manager_approval": True}
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="Invalid stage order"):
+            convert_visual_to_workflow(visual, form_definition)
+
+    @pytest.mark.parametrize("approval_logic", [True, "unsupported"])
+    def test_rejects_invalid_approval_logic(self, form_definition, approval_logic):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "approval_logic": approval_logic,
+                    "requires_manager_approval": True,
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="Invalid approval logic"):
+            convert_visual_to_workflow(visual, form_definition)
+
+    @pytest.mark.parametrize("order", [0, "2"])
+    def test_accepts_valid_stage_order(self, form_definition, order):
+        visual = self._make_visual(
+            stages=[
+                {"name": "Review", "order": order, "requires_manager_approval": True}
+            ]
+        )
+
+        workflow = convert_visual_to_workflow(visual, form_definition)
+
+        assert workflow.stages.get().order == int(order)
+
     @pytest.mark.parametrize(("cadence", "day"), [("weekly", "3"), ("monthly", "15")])
     def test_accepts_string_notification_cadence_day(
         self, form_definition, cadence, day

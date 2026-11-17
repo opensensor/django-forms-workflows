@@ -1009,11 +1009,16 @@ def workflow_builder_save(request):
             raise ValidationError("Malformed payload: 'workflow.nodes' must be a list.")
         allowed_node_types = {
             "start",
-            "approval",
             "form",
-            "notification",
-            "subworkflow",
+            "workflow_settings",
+            "stage",
+            "approval",
+            "approval_config",
             "condition",
+            "action",
+            "email",
+            "sub_workflow",
+            "join",
             "end",
         }
         if nodes:
@@ -1102,56 +1107,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-
-        raw_messages = []
-        if hasattr(exc, "message_dict") and exc.message_dict:
-            for field_errors in exc.message_dict.values():
-                raw_messages.extend([str(msg) for msg in field_errors])
-        elif getattr(exc, "messages", None):
-            raw_messages.extend([str(msg) for msg in exc.messages])
-        else:
-            raw_messages.append(str(exc))
-
-        classified_errors = []
-        for message in raw_messages:
-            lower_message = message.lower()
-            if "approver" in lower_message and "missing" in lower_message:
-                classified_errors.append(
-                    {
-                        "code": "missing_approvers",
-                        "message": "One or more workflow stages are missing approvers.",
-                    }
-                )
-            elif "cadence" in lower_message and "day" in lower_message:
-                classified_errors.append(
-                    {
-                        "code": "invalid_cadence_days",
-                        "message": "Cadence day configuration is invalid.",
-                    }
-                )
-            elif (
-                "conflict" in lower_message
-                or ("field" in lower_message and "assignment" in lower_message)
-            ):
-                classified_errors.append(
-                    {
-                        "code": "conflicting_field_assignments",
-                        "message": "Conflicting field assignments were detected.",
-                    }
-                )
-            else:
-                classified_errors.append(
-                    {
-                        "code": "invalid_workflow_configuration",
-                        "message": "Invalid workflow configuration.",
-                    }
-                )
-
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": classified_errors,
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -1375,7 +1335,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in email_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
-            valid_action_ids = set(email_action_defaults.keys())
+            valid_action_ids = set(
+                form_definition.post_actions.values_list("id", flat=True)
+            )
             used_email_action_ids = set()
             merged_nodes = []
             for node in existing_nodes:
@@ -1387,7 +1349,11 @@ def convert_workflow_to_visual(workflow, form_definition):
                         used_email_action_ids.add(action_id)
                 else:
                     action_id = node.get("data", {}).get("action_id")
-                    if not action_id or action_id in valid_action_ids:
+                    if (
+                        node.get("type") != "action"
+                        or not action_id
+                        or action_id in valid_action_ids
+                    ):
                         merged_nodes.append(node)
 
             missing_email_nodes = [

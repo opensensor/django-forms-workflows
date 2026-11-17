@@ -792,6 +792,8 @@ def _deliver_workflow_webhook_attempt(
                 endpoint.id,
                 attempt,
             )
+            # Broker/enqueue unavailable: fall back to iterative in-process retry loop.
+            return _compute_retry_delay_seconds(attempt)
     return None
 
 

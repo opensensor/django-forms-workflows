@@ -952,6 +952,29 @@ def workflow_builder_save(request):
             workflow_data.get("nodes"), list
         ):
             raise ValidationError("Malformed workflow payload: nodes must be a list.")
+        if not isinstance(workflow_data.get("connections", []), list):
+            raise ValidationError(
+                "Malformed workflow payload: connections must be a list."
+            )
+        for idx, connection in enumerate(workflow_data.get("connections", [])):
+            if not isinstance(connection, dict):
+                raise ValidationError(
+                    f"Malformed workflow payload: connection at index {idx} must be an object."
+                )
+            for endpoint_key in ("source", "target"):
+                endpoint_value = connection.get(endpoint_key)
+                if endpoint_value is None:
+                    raise ValidationError(
+                        f"Malformed workflow payload: connection at index {idx} is missing '{endpoint_key}'."
+                    )
+                if isinstance(endpoint_value, (dict, list, tuple, set, bool)):
+                    raise ValidationError(
+                        f"Malformed workflow payload: connection at index {idx} has invalid '{endpoint_key}'."
+                    )
+                if isinstance(endpoint_value, str) and not endpoint_value.strip():
+                    raise ValidationError(
+                        f"Malformed workflow payload: connection at index {idx} has empty '{endpoint_key}'."
+                    )
 
         def parse_positive_pk(value, field_name, *, allow_empty=False):
             if allow_empty and value in (None, ""):

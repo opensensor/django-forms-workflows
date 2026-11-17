@@ -1166,9 +1166,14 @@ def convert_workflow_to_visual(workflow, form_definition):
         }
         _stage_defaults_cache = {
             stage.id: {
+                "name": stage.name,
+                "order": stage.order,
+                "approval_logic": stage.approval_logic,
+                "requires_manager_approval": stage.requires_manager_approval,
                 "allow_send_back": stage.allow_send_back,
                 "allow_reassign": stage.allow_reassign,
                 "allow_edit_form_data": stage.allow_edit_form_data,
+                "approve_label": stage.approve_label or "",
                 "assignee_form_field": stage.assignee_form_field,
                 "assignee_lookup_type": stage.assignee_lookup_type,
                 "validate_assignee_group": stage.validate_assignee_group,
@@ -1176,6 +1181,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 "approval_fields": _serialized_stage_approval_fields_cache.get(
                     stage.id, []
                 ),
+                "approval_groups": _serialize_stage_approval_groups(stage),
             }
             for stage in _stages_cache
         }
@@ -1185,6 +1191,7 @@ def convert_workflow_to_visual(workflow, form_definition):
     settings_defaults = {
         "name_label": workflow.name_label,
         "start_trigger": workflow.start_trigger,
+        "requires_approval": workflow.requires_approval,
         "approval_deadline_days": workflow.approval_deadline_days,
         "send_reminder_after_days": workflow.send_reminder_after_days,
         "auto_approve_after_days": workflow.auto_approve_after_days,
@@ -1263,20 +1270,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                     if defaults:
                         for key, value in defaults.items():
                             node_data[key] = value
-                        if not node_data.get("approval_groups"):
-                            node_data["approval_groups"] = (
-                                _serialize_stage_approval_groups(
-                                    _stages_by_id_cache[stage_id]
-                                )
-                            )
                 elif node_type == "workflow_settings":
                     for key, value in settings_defaults.items():
                         if key == "notification_rules":
                             continue
-                        node_data.setdefault(key, value)
-                    node_data.setdefault(
-                        "notification_rules", notification_rule_defaults
-                    )
+                        node_data[key] = value
+                    node_data["notification_rules"] = notification_rule_defaults
                 elif node_type == "email":
                     action_id = node_data.get("action_id")
                     defaults = email_action_defaults.get(action_id)
@@ -1335,10 +1334,41 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in email_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
+            existing_stage_nodes_by_stage_id = {
+                node.get("data", {}).get("stage_id"): node
+                for node in existing_nodes
+                if node.get("type") == "stage" and node.get("data", {}).get("stage_id")
+            }
+            valid_stage_ids = set(workflow.stages.values_list("id", flat=True))
+            stage_nodes_in_order = []
+            for index, stage_id in enumerate(
+                workflow.stages.values_list("id", flat=True)
+            ):
+                existing_stage_node = existing_stage_nodes_by_stage_id.get(stage_id)
+                if existing_stage_node:
+                    stage_node_data = existing_stage_node.setdefault("data", {})
+                    stage_node_data.setdefault("stage_id", stage_id)
+                    stage_nodes_in_order.append(existing_stage_node)
+                    continue
+                stage_nodes_in_order.append(
+                    {
+                        "id": f"stage-{stage_id}",
+                        "type": "stage",
+                        "x": 0,
+                        "y": index * 140,
+                        "data": {"stage_id": stage_id, **stage_defaults[stage_id]},
+                    }
+                )
+            updated_stage_nodes_by_stage_id = {
+                node.get("data", {}).get("stage_id"): node
+                for node in stage_nodes_in_order
+                if node.get("data", {}).get("stage_id")
+            }
             valid_action_ids = set(
                 form_definition.post_actions.values_list("id", flat=True)
             )
             used_email_action_ids = set()
+            used_stage_ids = set()
             merged_nodes = []
             for node in existing_nodes:
                 if node.get("type") == "email":
@@ -1347,6 +1377,16 @@ def convert_workflow_to_visual(workflow, form_definition):
                     if replacement_node and action_id not in used_email_action_ids:
                         merged_nodes.append(replacement_node)
                         used_email_action_ids.add(action_id)
+                elif node.get("type") == "stage":
+                    stage_id = node.get("data", {}).get("stage_id")
+                    replacement_node = updated_stage_nodes_by_stage_id.get(stage_id)
+                    if (
+                        replacement_node
+                        and stage_id in valid_stage_ids
+                        and stage_id not in used_stage_ids
+                    ):
+                        merged_nodes.append(replacement_node)
+                        used_stage_ids.add(stage_id)
                 else:
                     action_id = node.get("data", {}).get("action_id")
                     if (
@@ -1361,7 +1401,14 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for action_id, node in updated_email_nodes_by_action_id.items()
                 if action_id not in used_email_action_ids
             ]
-            visual_data["nodes"] = merged_nodes + missing_email_nodes
+            missing_stage_nodes = [
+                node
+                for stage_id, node in updated_stage_nodes_by_stage_id.items()
+                if stage_id not in used_stage_ids
+            ]
+            visual_data["nodes"] = (
+                merged_nodes + missing_email_nodes + missing_stage_nodes
+            )
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             valid_node_ids = {

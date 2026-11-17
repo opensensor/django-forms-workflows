@@ -1273,10 +1273,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in settings_defaults.items():
                         if key == "notification_rules":
                             continue
-                        node_data.setdefault(key, value)
-                    node_data.setdefault(
-                        "notification_rules", notification_rule_defaults
-                    )
+                        node_data[key] = value
+                    if "requires_approval" in settings_defaults:
+                        node_data["requires_approval"] = settings_defaults[
+                            "requires_approval"
+                        ]
+                    node_data["notification_rules"] = notification_rule_defaults
                 elif node_type == "email":
                     action_id = node_data.get("action_id")
                     defaults = email_action_defaults.get(action_id)

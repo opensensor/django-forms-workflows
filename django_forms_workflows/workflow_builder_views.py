@@ -1778,7 +1778,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         "notification_cadence_day",
     ):
         raw = settings_data.get(key)
-        wf_defaults[key] = _parse_optional_int_setting(key, raw)
+        parsed_value = _parse_optional_int_setting(key, raw)
+        if parsed_value is not None:
+            try:
+                WorkflowDefinition._meta.get_field(key).clean(parsed_value, None)
+            except ValidationError as exc:
+                raise ValidationError(
+                    {key: exc.messages or ["Must be within the allowed range."]}
+                ) from exc
+        wf_defaults[key] = parsed_value
     raw_time = settings_data.get("notification_cadence_time")
     if raw_time in (None, ""):
         wf_defaults["notification_cadence_time"] = None

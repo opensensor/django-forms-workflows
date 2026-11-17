@@ -1287,11 +1287,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 if node.get("type") == "email":
                     action_id = node.get("data", {}).get("action_id")
                     replacement_node = updated_email_nodes_by_action_id.get(action_id)
-                    if replacement_node:
+                    if replacement_node and action_id not in used_email_action_ids:
                         merged_nodes.append(replacement_node)
                         used_email_action_ids.add(action_id)
-                    else:
-                        merged_nodes.append(node)
                 else:
                     merged_nodes.append(node)
 
@@ -1303,12 +1301,15 @@ def convert_workflow_to_visual(workflow, form_definition):
             visual_data["nodes"] = merged_nodes + missing_email_nodes
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            valid_node_ids = {
+                node.get("id") for node in visual_data["nodes"] if node.get("id")
+            }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:
                 from_id = connection.get("from", connection.get("source"))
                 to_id = connection.get("to", connection.get("target"))
-                if from_id and to_id:
+                if from_id in valid_node_ids and to_id in valid_node_ids:
                     normalized_connections.append(
                         {
                             "from": from_id,
@@ -2294,19 +2295,18 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    # Use a loader-consistent membership baseline: actions explicitly present
-    # in saved graph data plus actions owned by this form (which may be shown
-    # by generated/repaired loader output even if absent from saved graph JSON).
+    # The loader adds missing email actions owned by the form to the graph.
+    # Allow the builder to delete those generated nodes as well as saved ones.
     allowed_deleted_action_ids = set(previous_action_ids) | set(
-        PostSubmissionAction.objects.filter(form_definition=form_definition).values_list(
-            "id", flat=True
-        )
+        PostSubmissionAction.objects.filter(
+            form_definition=form_definition, action_type="email"
+        ).values_list("id", flat=True)
     )
 
     if normalized_deleted_ids - allowed_deleted_action_ids:
         raise ValidationError(
             {
-                "deleted_action_ids": "Actions must belong to the workflow or form action set."
+                "deleted_action_ids": "Actions must belong to the saved workflow graph or be form email actions."
             }
         )
     if normalized_deleted_ids & other_workflow_action_ids:

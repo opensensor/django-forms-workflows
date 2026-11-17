@@ -1214,14 +1214,9 @@ def check_approval_deadlines() -> str:
                     if not updated:
                         continue
 
-                    # Persist retryable notification work in the same transaction as approval
-                    # so broker publish failures do not permanently lose the event.
-                    PendingNotification.objects.get_or_create(
-                        submission_id=locked_submission.id,
-                        trigger_event="workflow_approved",
-                    )
-
-                # Dispatch after the outermost commit so a worker sees the approved state.
+                # Dispatch after commit so a worker sees the approved state.
+                # PendingNotification is a recipient-specific digest queue, not a
+                # generic outbox for this task; broker failures are logged below.
                 def _enqueue_workflow_approved_notification(
                     submission_id: int = submission.id,
                 ) -> None:
@@ -1231,7 +1226,7 @@ def check_approval_deadlines() -> str:
                         )
                     except Exception:
                         logger.warning(
-                            "Could not enqueue approval notification for submission %s; pending outbox entry retained for retry",
+                            "Could not enqueue approval notification for submission %s",
                             submission_id,
                             exc_info=True,
                         )
@@ -2070,6 +2065,8 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    # Keep the submission lock and delivery logs in one transaction per rule.
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 

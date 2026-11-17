@@ -1235,7 +1235,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     defaults = stage_defaults.get(stage_id)
                     if defaults:
                         for key, value in defaults.items():
-                            node_data.setdefault(key, value)
+                            node_data[key] = value
                         if not node_data.get("approval_groups"):
                             node_data["approval_groups"] = (
                                 _serialize_stage_approval_groups(

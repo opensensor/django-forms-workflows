@@ -1007,11 +1007,33 @@ def workflow_builder_save(request):
         nodes = workflow_data.get("nodes", [])
         if not isinstance(nodes, list):
             raise ValidationError("Malformed payload: 'workflow.nodes' must be a list.")
+        allowed_node_types = {
+            "start",
+            "approval",
+            "form",
+            "notification",
+            "subworkflow",
+            "condition",
+            "end",
+        }
         if nodes:
             for idx, node in enumerate(nodes):
                 if not isinstance(node, dict):
                     raise ValidationError(
                         f"Malformed payload: node at index {idx} must be an object."
+                    )
+                node_type = node.get("type")
+                if isinstance(node_type, bool) or not isinstance(node_type, str):
+                    raise ValidationError(
+                        f"Malformed payload: node.type at index {idx} must be a string."
+                    )
+                if not node_type.strip():
+                    raise ValidationError(
+                        f"Malformed payload: node.type at index {idx} must not be empty."
+                    )
+                if node_type not in allowed_node_types:
+                    raise ValidationError(
+                        f"Malformed payload: node.type at index {idx} is invalid."
                     )
                 if "data" in node and not isinstance(node["data"], dict):
                     raise ValidationError(

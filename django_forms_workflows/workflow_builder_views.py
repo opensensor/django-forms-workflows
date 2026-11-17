@@ -1308,6 +1308,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in email_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
+            valid_action_ids = set(email_action_defaults.keys())
             used_email_action_ids = set()
             merged_nodes = []
             for node in existing_nodes:
@@ -1318,7 +1319,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                         merged_nodes.append(replacement_node)
                         used_email_action_ids.add(action_id)
                 else:
-                    merged_nodes.append(node)
+                    action_id = node.get("data", {}).get("action_id")
+                    if not action_id or action_id in valid_action_ids:
+                        merged_nodes.append(node)
 
             missing_email_nodes = [
                 node

@@ -383,6 +383,34 @@ class TestConvertWorkflowToVisual:
 
         assert visual["connections"] == [{"from": "first", "to": "second"}]
 
+    def test_saved_email_action_uses_current_database_values(self, form_definition):
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Notify owner",
+            action_type="email",
+            email_to="current@example.com",
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {
+                        "id": "email",
+                        "type": "email",
+                        "data": {
+                            "action_id": action.id,
+                            "email_to": "old@example.com",
+                        },
+                    }
+                ],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert visual["nodes"][0]["data"]["email_to"] == "current@example.com"
+
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
     ):
@@ -1742,6 +1770,58 @@ class TestWorkflowBuilderViews:
         assert not WorkflowDefinition.objects.filter(
             form_definition=form_definition
         ).exists()
+
+    @pytest.mark.parametrize(
+        "connections",
+        [
+            [{"from": "start", "to": "end"}],
+            [{"source": "start", "target": "end"}],
+        ],
+    )
+    def test_save_accepts_builder_connection_formats(
+        self, client, superuser, form_definition, connections
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {
+                        "nodes": [
+                            {"id": "start", "type": "start", "data": {}},
+                            {"id": "end", "type": "end", "data": {}},
+                        ],
+                        "connections": connections,
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        "connections",
+        [{"from": "start", "to": "end"}, [None], [{"from": [], "to": "end"}]],
+    )
+    def test_save_rejects_malformed_connections(
+        self, client, superuser, form_definition, connections
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {"nodes": [], "connections": connections},
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not form_definition.workflows.exists()
 
     def test_save_does_not_expose_validation_exception_details(
         self, client, superuser, form_definition, monkeypatch

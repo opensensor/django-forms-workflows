@@ -952,6 +952,33 @@ def workflow_builder_save(request):
             workflow_data.get("nodes"), list
         ):
             raise ValidationError("Malformed workflow payload: nodes must be a list.")
+        if not isinstance(workflow_data.get("connections", []), list):
+            raise ValidationError(
+                "Malformed workflow payload: connections must be a list."
+            )
+        for idx, connection in enumerate(workflow_data.get("connections", [])):
+            if not isinstance(connection, dict):
+                raise ValidationError(
+                    f"Malformed workflow payload: connection at index {idx} must be an object."
+                )
+            for endpoint_key, legacy_key in (("from", "source"), ("to", "target")):
+                endpoint_value = connection.get(
+                    endpoint_key, connection.get(legacy_key)
+                )
+                if endpoint_value is None:
+                    raise ValidationError(
+                        f"Malformed workflow payload: connection at index {idx} is missing '{endpoint_key}'."
+                    )
+                if isinstance(endpoint_value, bool) or not isinstance(
+                    endpoint_value, str | int
+                ):
+                    raise ValidationError(
+                        f"Malformed workflow payload: connection at index {idx} has invalid '{endpoint_key}'."
+                    )
+                if isinstance(endpoint_value, str) and not endpoint_value.strip():
+                    raise ValidationError(
+                        f"Malformed workflow payload: connection at index {idx} has empty '{endpoint_key}'."
+                    )
 
         def parse_positive_pk(value, field_name, *, allow_empty=False):
             if allow_empty and value in (None, ""):
@@ -1228,7 +1255,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     defaults = email_action_defaults.get(action_id)
                     if defaults:
                         for key, value in defaults.items():
-                            node_data.setdefault(key, value)
+                            node_data[key] = value
                 elif node_type == "sub_workflow" and sub_workflow_defaults:
                     if (
                         node_data.get("sub_workflow_form_id") in (None, "")

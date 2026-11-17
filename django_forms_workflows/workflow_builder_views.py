@@ -1007,11 +1007,38 @@ def workflow_builder_save(request):
         nodes = workflow_data.get("nodes", [])
         if not isinstance(nodes, list):
             raise ValidationError("Malformed payload: 'workflow.nodes' must be a list.")
+        allowed_node_types = {
+            "start",
+            "form",
+            "workflow_settings",
+            "stage",
+            "approval",
+            "approval_config",
+            "condition",
+            "action",
+            "email",
+            "sub_workflow",
+            "join",
+            "end",
+        }
         if nodes:
             for idx, node in enumerate(nodes):
                 if not isinstance(node, dict):
                     raise ValidationError(
                         f"Malformed payload: node at index {idx} must be an object."
+                    )
+                node_type = node.get("type")
+                if isinstance(node_type, bool) or not isinstance(node_type, str):
+                    raise ValidationError(
+                        f"Malformed payload: node.type at index {idx} must be a string."
+                    )
+                if not node_type.strip():
+                    raise ValidationError(
+                        f"Malformed payload: node.type at index {idx} must not be empty."
+                    )
+                if node_type not in allowed_node_types:
+                    raise ValidationError(
+                        f"Malformed payload: node.type at index {idx} is invalid."
                     )
                 if "data" in node and not isinstance(node["data"], dict):
                     raise ValidationError(
@@ -1235,7 +1262,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     defaults = stage_defaults.get(stage_id)
                     if defaults:
                         for key, value in defaults.items():
-                            node_data.setdefault(key, value)
+                            node_data[key] = value
                         if not node_data.get("approval_groups"):
                             node_data["approval_groups"] = (
                                 _serialize_stage_approval_groups(
@@ -1308,6 +1335,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in email_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
+            valid_action_ids = set(
+                form_definition.post_actions.values_list("id", flat=True)
+            )
             used_email_action_ids = set()
             merged_nodes = []
             for node in existing_nodes:
@@ -1318,7 +1348,13 @@ def convert_workflow_to_visual(workflow, form_definition):
                         merged_nodes.append(replacement_node)
                         used_email_action_ids.add(action_id)
                 else:
-                    merged_nodes.append(node)
+                    action_id = node.get("data", {}).get("action_id")
+                    if (
+                        node.get("type") != "action"
+                        or not action_id
+                        or action_id in valid_action_ids
+                    ):
+                        merged_nodes.append(node)
 
             missing_email_nodes = [
                 node

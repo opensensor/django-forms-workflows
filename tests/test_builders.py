@@ -411,6 +411,53 @@ class TestConvertWorkflowToVisual:
 
         assert visual["nodes"][0]["data"]["email_to"] == "current@example.com"
 
+    def test_saved_stage_uses_current_database_values(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        stage = workflow.stages.create(
+            name="Current review", order=1, allow_send_back=True
+        )
+        workflow.visual_workflow_data = {
+            "nodes": [
+                {
+                    "id": "stage",
+                    "type": "stage",
+                    "data": {"stage_id": stage.id, "allow_send_back": False},
+                }
+            ],
+            "connections": [],
+        }
+        workflow.save(update_fields=["visual_workflow_data"])
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert visual["nodes"][0]["data"]["allow_send_back"] is True
+
+    def test_saved_visual_keeps_live_actions_and_drops_stale_actions(
+        self, form_definition
+    ):
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition, name="Update DB", action_type="database"
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": "start", "type": "start", "data": {}},
+                    {"id": "live", "type": "action", "data": {"action_id": action.id}},
+                    {"id": "stale", "type": "action", "data": {"action_id": 999999}},
+                ],
+                "connections": [
+                    {"from": "start", "to": "live"},
+                    {"from": "live", "to": "stale"},
+                ],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert [node["id"] for node in visual["nodes"]] == ["start", "live"]
+        assert visual["connections"] == [{"from": "start", "to": "live"}]
+
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
     ):
@@ -1770,6 +1817,25 @@ class TestWorkflowBuilderViews:
         assert not WorkflowDefinition.objects.filter(
             form_definition=form_definition
         ).exists()
+
+    def test_save_rejects_unknown_node_type(self, client, superuser, form_definition):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {
+                        "nodes": [{"id": "x", "type": "unknown", "data": {}}],
+                        "connections": [],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not form_definition.workflows.exists()
 
     @pytest.mark.parametrize(
         "connections",

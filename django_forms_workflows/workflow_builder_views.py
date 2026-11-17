@@ -2278,9 +2278,20 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    if normalized_deleted_ids - previous_action_ids:
+    # Use a loader-consistent membership baseline: actions explicitly present
+    # in saved graph data plus actions owned by this form (which may be shown
+    # by generated/repaired loader output even if absent from saved graph JSON).
+    allowed_deleted_action_ids = set(previous_action_ids) | set(
+        PostSubmissionAction.objects.filter(form_definition=form_definition).values_list(
+            "id", flat=True
+        )
+    )
+
+    if normalized_deleted_ids - allowed_deleted_action_ids:
         raise ValidationError(
-            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
+            {
+                "deleted_action_ids": "Actions must belong to the workflow or form action set."
+            }
         )
     if normalized_deleted_ids & other_workflow_action_ids:
         raise ValidationError(

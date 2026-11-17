@@ -1310,16 +1310,11 @@ def convert_workflow_to_visual(workflow, form_definition):
                     and connection.get("to") in email_node_ids
                 )
             ]
-            if existing_email_connections:
-                email_connections = existing_email_connections
-            else:
-                email_connections = []
-                for i in range(len(email_nodes_in_order) - 1):
-                    source_id = email_nodes_in_order[i].get("id")
-                    target_id = email_nodes_in_order[i + 1].get("id")
-                    if source_id and target_id:
-                        email_connections.append({"from": source_id, "to": target_id})
-            visual_data["connections"] = non_email_connections + email_connections
+            # Preserve saved topology: do not synthesize a chain across email nodes
+            # when no direct email-to-email connections were saved.
+            visual_data["connections"] = (
+                non_email_connections + existing_email_connections
+            )
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data

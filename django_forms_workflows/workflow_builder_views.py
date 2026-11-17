@@ -1302,19 +1302,24 @@ def convert_workflow_to_visual(workflow, form_definition):
                     and connection.get("to") in email_node_ids
                 )
             ]
-            if normalized_connections:
-                # Preserve submitted topology for new-format visual data.
-                # The absence of direct email->email edges does not imply they are missing.
-                visual_data["connections"] = normalized_connections
+            existing_email_connections = [
+                connection
+                for connection in normalized_connections
+                if (
+                    connection.get("from") in email_node_ids
+                    and connection.get("to") in email_node_ids
+                )
+            ]
+            if existing_email_connections:
+                email_connections = existing_email_connections
             else:
-                # Fallback only when there are no saved connections at all.
                 email_connections = []
                 for i in range(len(email_nodes_in_order) - 1):
                     source_id = email_nodes_in_order[i].get("id")
                     target_id = email_nodes_in_order[i + 1].get("id")
                     if source_id and target_id:
                         email_connections.append({"from": source_id, "to": target_id})
-                visual_data["connections"] = non_email_connections + email_connections
+            visual_data["connections"] = non_email_connections + email_connections
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
@@ -1875,34 +1880,32 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         raw_order = sdata.get("order", idx)
         if isinstance(raw_order, bool):
-            raise ValidationError("Invalid order.")
+            raise ValidationError("Invalid stage order.")
         if isinstance(raw_order, int):
             stage_order = raw_order
         elif isinstance(raw_order, str):
-            order_value = raw_order.strip()
-            if not order_value.isascii() or not order_value.isdigit():
-                raise ValidationError("Invalid order.")
+            order_text = raw_order.strip()
+            if not order_text.isascii() or not order_text.isdigit():
+                raise ValidationError("Invalid stage order.")
             try:
-                stage_order = int(order_value)
+                stage_order = int(order_text)
             except ValueError as exc:
-                raise ValidationError("Invalid order.") from exc
+                raise ValidationError("Invalid stage order.") from exc
         else:
-            raise ValidationError("Invalid order.")
-        if stage_order <= 0:
-            raise ValidationError("Invalid order.")
+            raise ValidationError("Invalid stage order.")
+        if not 0 <= stage_order <= 2**31 - 1:
+            raise ValidationError("Invalid stage order.")
 
         raw_approval_logic = sdata.get("approval_logic", "all")
         if not isinstance(raw_approval_logic, str):
-            raise ValidationError("Invalid approval_logic.")
+            raise ValidationError("Invalid approval logic.")
         approval_logic = raw_approval_logic.strip()
         allowed_approval_logic = {
-            choice_value
-            for choice_value, _choice_label in WorkflowStage._meta.get_field(
-                "approval_logic"
-            ).choices
+            value
+            for value, _ in WorkflowStage._meta.get_field("approval_logic").choices
         }
         if approval_logic not in allowed_approval_logic:
-            raise ValidationError("Invalid approval_logic.")
+            raise ValidationError("Invalid approval logic.")
 
         stage_fields = {
             "name": sdata.get("name", f"Stage {idx}"),

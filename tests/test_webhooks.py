@@ -35,13 +35,13 @@ def _mock_response(status_code, body):
     return response
 
 
-def test_synchronous_webhook_retry_fallback_does_not_sleep():
+def test_synchronous_webhook_retry_fallback_returns_delay():
     fallback = Mock(spec=lambda **kwargs: None)
     with (
         patch.object(tasks_module, "deliver_workflow_webhook", fallback),
         patch("time.sleep") as sleep,
     ):
-        tasks_module._schedule_webhook_retry(
+        delay = tasks_module._schedule_webhook_retry(
             endpoint_id=7,
             event="submission.created",
             payload={"event": "submission.created"},
@@ -51,14 +51,55 @@ def test_synchronous_webhook_retry_fallback_does_not_sleep():
         )
 
     sleep.assert_not_called()
-    fallback.assert_called_once_with(
-        endpoint_id=7,
-        event="submission.created",
-        payload={"event": "submission.created"},
-        submission_id=11,
-        task_id=None,
-        attempt=3,
+    fallback.assert_not_called()
+    assert delay == 4
+
+
+def test_synchronous_webhook_retries_iteratively():
+    with (
+        patch.object(tasks_module, "deliver_workflow_webhook", Mock(spec=lambda: None)),
+        patch.object(
+            tasks_module,
+            "_deliver_workflow_webhook_attempt",
+            side_effect=[1] * 1100 + [None],
+        ) as attempt,
+        patch("django_forms_workflows.tasks.time.sleep") as sleep,
+    ):
+        deliver_workflow_webhook(7, "submission.created", {})
+
+    assert attempt.call_count == 1101
+    assert sleep.call_count == 1100
+
+
+@pytest.mark.django_db
+def test_synchronous_webhook_retries_with_backoff(workflow, user):
+    submission = _make_submission(workflow, user)
+    endpoint = WebhookEndpoint.objects.create(
+        workflow=workflow,
+        name="ERP",
+        url="https://example.com/hooks/erp",
+        events=["submission.created"],
+        max_retries=2,
     )
+    with (
+        patch.object(tasks_module, "deliver_workflow_webhook", Mock(spec=lambda: None)),
+        patch("django_forms_workflows.tasks.requests.request") as request,
+        patch("django_forms_workflows.tasks.time.sleep") as sleep,
+    ):
+        request.side_effect = [
+            _mock_response(503, "unavailable"),
+            _mock_response(503, "unavailable"),
+            _mock_response(200, "ok"),
+        ]
+        deliver_workflow_webhook(endpoint.id, "submission.created", {}, submission.id)
+
+    assert [call.args[0] for call in sleep.call_args_list] == [2, 4]
+    assert request.call_count == 3
+    assert list(
+        WebhookDeliveryLog.objects.filter(endpoint=endpoint)
+        .order_by("attempt_number")
+        .values_list("success", flat=True)
+    ) == [False, False, True]
 
 
 @pytest.mark.django_db

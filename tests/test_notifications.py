@@ -2877,6 +2877,52 @@ def test_auto_approve_keeps_other_workflow_track_pending(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("failed_status", ["expired", "rejected", "returned"])
+def test_auto_approve_does_not_override_failed_track(
+    form_definition, user, approver_user, failed_status
+):
+    failed_workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    due_workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, auto_approve_after_days=2
+    )
+    failed_stage = WorkflowStage.objects.create(
+        workflow=failed_workflow, name="Failed", order=1
+    )
+    due_stage = WorkflowStage.objects.create(workflow=due_workflow, name="Due", order=1)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=failed_stage,
+        step_name="Failed",
+        assigned_to=approver_user,
+        status=failed_status,
+    )
+    due_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=due_stage,
+        step_name="Due",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=due_task.pk).update(
+        created_at=timezone.now() - timedelta(days=3)
+    )
+
+    result = check_approval_deadlines()
+
+    submission.refresh_from_db()
+    due_task.refresh_from_db()
+    assert "auto_approved=0" in result
+    assert submission.status == "pending_approval"
+    assert due_task.status == "skipped"
+
+
+@pytest.mark.django_db
 def test_auto_approve_enqueues_each_submission_after_commit(
     form_definition,
     user,

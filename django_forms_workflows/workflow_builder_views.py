@@ -1259,16 +1259,19 @@ def convert_workflow_to_visual(workflow, form_definition):
                 node_data = node.setdefault("data", {})
                 if node_type == "stage":
                     stage_id = node_data.get("stage_id")
-                    defaults = stage_defaults.get(stage_id)
-                    if defaults:
-                        for key, value in defaults.items():
+                    stage_obj = _stages_by_id_cache.get(stage_id)
+                    if stage_obj:
+                        persisted_stage_data = _serialize_stage(stage_obj)
+                        for key, value in persisted_stage_data.items():
                             node_data[key] = value
-                        if not node_data.get("approval_groups"):
-                            node_data["approval_groups"] = (
-                                _serialize_stage_approval_groups(
-                                    _stages_by_id_cache[stage_id]
-                                )
-                            )
+                        node_data["approval_groups"] = _serialize_stage_approval_groups(
+                            stage_obj
+                        )
+                    else:
+                        defaults = stage_defaults.get(stage_id)
+                        if defaults:
+                            for key, value in defaults.items():
+                                node_data[key] = value
                 elif node_type == "workflow_settings":
                     for key, value in settings_defaults.items():
                         if key == "notification_rules":

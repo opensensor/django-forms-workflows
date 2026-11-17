@@ -1335,10 +1335,39 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in email_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
+            existing_stage_nodes_by_stage_id = {
+                node.get("data", {}).get("stage_id"): node
+                for node in existing_nodes
+                if node.get("type") == "stage" and node.get("data", {}).get("stage_id")
+            }
+            valid_stage_ids = set(workflow.stages.values_list("id", flat=True))
+            stage_nodes_in_order = []
+            for index, stage_id in enumerate(workflow.stages.values_list("id", flat=True)):
+                existing_stage_node = existing_stage_nodes_by_stage_id.get(stage_id)
+                if existing_stage_node:
+                    stage_node_data = existing_stage_node.setdefault("data", {})
+                    stage_node_data.setdefault("stage_id", stage_id)
+                    stage_nodes_in_order.append(existing_stage_node)
+                    continue
+                stage_nodes_in_order.append(
+                    {
+                        "id": f"stage-{stage_id}",
+                        "type": "stage",
+                        "x": 0,
+                        "y": index * 140,
+                        "data": {"stage_id": stage_id},
+                    }
+                )
+            updated_stage_nodes_by_stage_id = {
+                node.get("data", {}).get("stage_id"): node
+                for node in stage_nodes_in_order
+                if node.get("data", {}).get("stage_id")
+            }
             valid_action_ids = set(
                 form_definition.post_actions.values_list("id", flat=True)
             )
             used_email_action_ids = set()
+            used_stage_ids = set()
             merged_nodes = []
             for node in existing_nodes:
                 if node.get("type") == "email":
@@ -1347,6 +1376,16 @@ def convert_workflow_to_visual(workflow, form_definition):
                     if replacement_node and action_id not in used_email_action_ids:
                         merged_nodes.append(replacement_node)
                         used_email_action_ids.add(action_id)
+                elif node.get("type") == "stage":
+                    stage_id = node.get("data", {}).get("stage_id")
+                    replacement_node = updated_stage_nodes_by_stage_id.get(stage_id)
+                    if (
+                        replacement_node
+                        and stage_id in valid_stage_ids
+                        and stage_id not in used_stage_ids
+                    ):
+                        merged_nodes.append(replacement_node)
+                        used_stage_ids.add(stage_id)
                 else:
                     action_id = node.get("data", {}).get("action_id")
                     if (
@@ -1361,7 +1400,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for action_id, node in updated_email_nodes_by_action_id.items()
                 if action_id not in used_email_action_ids
             ]
-            visual_data["nodes"] = merged_nodes + missing_email_nodes
+            missing_stage_nodes = [
+                node
+                for stage_id, node in updated_stage_nodes_by_stage_id.items()
+                if stage_id not in used_stage_ids
+            ]
+            visual_data["nodes"] = merged_nodes + missing_email_nodes + missing_stage_nodes
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             valid_node_ids = {

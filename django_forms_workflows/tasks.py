@@ -2342,6 +2342,7 @@ def send_notification_rules(
                     "notification_type": event,
                     "submission": submission,
                     "approval_task_id": rule_task_id,
+                    "notification_rule": rule,
                     "recipient_email": recipient,
                 }
                 if not PendingNotification.objects.filter(**dispatch_identity).exists():

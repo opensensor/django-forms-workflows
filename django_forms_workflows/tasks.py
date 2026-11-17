@@ -2311,7 +2311,22 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                # Only an unsent row blocks a retry; sent rows may be queued again.
+                # Skip if this exact batched dispatch already completed successfully.
+                # Keep failed-delivery retries possible by only treating successful
+                # completion as blocking.
+                completed_dispatch_exists = NotificationLog.objects.filter(
+                    workflow=workflow,
+                    submission=submission,
+                    recipient_email=recipient,
+                    notification_type="batched",
+                    status__in=("sent", "delivered", "success"),
+                    metadata__event=event,
+                    metadata__approval_task_id=rule_task_id,
+                ).exists()
+                if completed_dispatch_exists:
+                    continue
+
+                # Only an unsent row blocks duplicate in-flight queue entries.
                 dispatch_identity = {
                     "workflow": workflow,
                     "notification_type": event,

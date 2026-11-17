@@ -3323,7 +3323,7 @@ def test_zero_delivery_is_failed_and_logged():
 
 
 @pytest.mark.django_db
-def test_digest_retries_reuse_pending_row_but_can_requeue_after_send(
+def test_digest_replay_does_not_requeue_after_send_but_allows_explicit_retry(
     form_definition, user
 ):
     workflow = WorkflowDefinition.objects.create(
@@ -3344,9 +3344,16 @@ def test_digest_retries_reuse_pending_row_but_can_requeue_after_send(
     rows = PendingNotification.objects.filter(submission=submission)
     assert rows.count() == 1
 
-    rows.update(sent=True)
+    rows.update(scheduled_for=timezone.now() - timedelta(minutes=1))
+    with patch("django_forms_workflows.tasks._send_html_email", return_value=True):
+        assert tasks_module.send_batched_notifications() == "sent=1"
     send_notification_rules(submission.pk, "workflow_approved")
-    assert rows.count() == 2
+    assert rows.count() == 1
+    assert rows.filter(sent=True).count() == 1
+
+    rows.update(sent=False)
+    send_notification_rules(submission.pk, "workflow_approved")
+    assert rows.count() == 1
     assert rows.filter(sent=False).count() == 1
 
 

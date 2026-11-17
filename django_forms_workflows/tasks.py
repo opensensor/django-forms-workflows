@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Iterable
@@ -496,8 +497,8 @@ def _schedule_webhook_retry(
     submission_id: int | None,
     task_id: int | None,
     attempt: int,
-) -> None:
-    countdown = min(300, 2 ** max(0, attempt - 1))
+) -> int | None:
+    countdown = min(300, 2 ** min(9, max(0, attempt - 1)))
     kwargs = {
         "endpoint_id": endpoint_id,
         "event": event,
@@ -508,12 +509,14 @@ def _schedule_webhook_retry(
     }
     if hasattr(deliver_workflow_webhook, "apply_async"):
         deliver_workflow_webhook.apply_async(kwargs=kwargs, countdown=countdown)
-    else:  # pragma: no cover
+    else:
         logger.warning(
-            "Celery apply_async unavailable; retrying webhook %s synchronously",
+            "Celery apply_async unavailable; retrying webhook %s synchronously after %ss",
             endpoint_id,
+            countdown,
         )
-        deliver_workflow_webhook(**kwargs)
+        return countdown
+    return None
 
 
 @shared_task(name="django_forms_workflows.dispatch_workflow_webhooks")
@@ -640,15 +643,14 @@ def dispatch_workflow_webhooks(
             )
 
 
-@shared_task(name="django_forms_workflows.deliver_workflow_webhook")
-def deliver_workflow_webhook(
+def _deliver_workflow_webhook_attempt(
     endpoint_id: int,
     event: str,
     payload: dict,
     submission_id: int | None = None,
     task_id: int | None = None,
     attempt: int = 1,
-) -> None:
+) -> int | None:
     try:
         endpoint = WebhookEndpoint.objects.select_related("workflow").get(
             id=endpoint_id
@@ -776,7 +778,7 @@ def deliver_workflow_webhook(
 
     if should_retry:
         try:
-            _schedule_webhook_retry(
+            return _schedule_webhook_retry(
                 endpoint_id=endpoint.id,
                 event=event,
                 payload=payload,
@@ -790,6 +792,26 @@ def deliver_workflow_webhook(
                 endpoint.id,
                 attempt,
             )
+    return None
+
+
+@shared_task(name="django_forms_workflows.deliver_workflow_webhook")
+def deliver_workflow_webhook(
+    endpoint_id: int,
+    event: str,
+    payload: dict,
+    submission_id: int | None = None,
+    task_id: int | None = None,
+    attempt: int = 1,
+) -> None:
+    while True:
+        retry_delay = _deliver_workflow_webhook_attempt(
+            endpoint_id, event, payload, submission_id, task_id, attempt
+        )
+        if not isinstance(retry_delay, int):
+            return
+        time.sleep(retry_delay)
+        attempt += 1
 
 
 # ---------------------------------------------------------------------------
@@ -2311,14 +2333,16 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
-                # Only an unsent row blocks a retry; sent rows may be queued again.
+                # The sent row is the durable identity for a completed dispatch.
+                # Failed sends stay unsent and remain available for the periodic
+                # sender to retry; resetting sent=False explicitly retries a
+                # previously completed dispatch.
                 dispatch_identity = {
                     "workflow": workflow,
                     "notification_type": event,
                     "submission": submission,
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
-                    "sent": False,
                 }
                 if not PendingNotification.objects.filter(**dispatch_identity).exists():
                     PendingNotification.objects.create(

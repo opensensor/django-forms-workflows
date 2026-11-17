@@ -399,7 +399,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
             )
             normalized_node_id = None
-        if normalized_node_id:
+        if normalized_node_id not in (None, ""):
             if normalized_node_id in seen_stage_node_ids:
                 add_error(
                     f"{stage_label} uses a duplicate node ID '{node_id}'. Stage node IDs must be unique."

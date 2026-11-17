@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Iterable
@@ -510,9 +511,11 @@ def _schedule_webhook_retry(
         deliver_workflow_webhook.apply_async(kwargs=kwargs, countdown=countdown)
     else:  # pragma: no cover
         logger.warning(
-            "Celery apply_async unavailable; retrying webhook %s synchronously",
+            "Celery apply_async unavailable; retrying webhook %s synchronously after %ss",
             endpoint_id,
+            countdown,
         )
+        time.sleep(countdown)
         deliver_workflow_webhook(**kwargs)
 
 

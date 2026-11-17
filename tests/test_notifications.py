@@ -3358,6 +3358,34 @@ def test_digest_replay_does_not_requeue_after_send_but_allows_explicit_retry(
 
 
 @pytest.mark.django_db
+def test_digest_queue_keeps_distinct_rule_dispatches(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, notification_cadence="daily"
+    )
+    rules = [
+        NotificationRule.objects.create(
+            workflow=workflow, event="workflow_approved", notify_submitter=True
+        )
+        for _ in range(2)
+    ]
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    send_notification_rules(submission.pk, "workflow_approved")
+    send_notification_rules(submission.pk, "workflow_approved")
+
+    rows = PendingNotification.objects.filter(submission=submission)
+    assert rows.count() == 2
+    assert set(rows.values_list("notification_rule_id", flat=True)) == {
+        rule.id for rule in rules
+    }
+
+
+@pytest.mark.django_db
 def test_actionable_notification_only_targets_triggering_assignee(
     form_definition, user
 ):

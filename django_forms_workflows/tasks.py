@@ -508,7 +508,15 @@ def _schedule_webhook_retry(
         "attempt": attempt,
     }
     if hasattr(deliver_workflow_webhook, "apply_async"):
-        deliver_workflow_webhook.apply_async(kwargs=kwargs, countdown=countdown)
+        try:
+            deliver_workflow_webhook.apply_async(kwargs=kwargs, countdown=countdown)
+        except Exception:
+            logger.exception(
+                "Failed to enqueue webhook retry for endpoint %s; retrying synchronously after %ss",
+                endpoint_id,
+                countdown,
+            )
+            return countdown
     else:
         logger.warning(
             "Celery apply_async unavailable; retrying webhook %s synchronously after %ss",
@@ -2344,9 +2352,14 @@ def send_notification_rules(
                     "approval_task_id": rule_task_id,
                     "recipient_email": recipient,
                 }
-                if not PendingNotification.objects.filter(**dispatch_identity).exists():
+                existing_dispatch = PendingNotification.objects.filter(
+                    **dispatch_identity
+                ).filter(Q(notification_rule=rule) | Q(notification_rule__isnull=True))
+                if not existing_dispatch.exists():
                     PendingNotification.objects.create(
-                        **dispatch_identity, scheduled_for=scheduled_for
+                        **dispatch_identity,
+                        notification_rule=rule,
+                        scheduled_for=scheduled_for,
                     )
                     created_count += 1
             logger.info(

@@ -55,6 +55,23 @@ def test_synchronous_webhook_retry_fallback_returns_delay():
     assert delay == 4
 
 
+def test_webhook_retry_uses_iterative_fallback_when_enqueue_fails():
+    task = Mock()
+    task.apply_async.side_effect = RuntimeError("broker unavailable")
+    with patch.object(tasks_module, "deliver_workflow_webhook", task):
+        delay = tasks_module._schedule_webhook_retry(
+            endpoint_id=7,
+            event="submission.created",
+            payload={},
+            submission_id=11,
+            task_id=None,
+            attempt=3,
+        )
+
+    assert delay == 4
+    task.assert_not_called()
+
+
 def test_synchronous_webhook_retries_iteratively():
     with (
         patch.object(tasks_module, "deliver_workflow_webhook", Mock(spec=lambda: None)),

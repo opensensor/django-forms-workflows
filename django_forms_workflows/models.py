@@ -1646,6 +1646,9 @@ class PendingNotification(models.Model):
         blank=True,
         related_name="pending_notifications",
     )
+    notification_rule = models.ForeignKey(
+        "NotificationRule", on_delete=models.SET_NULL, null=True, blank=True
+    )
     recipient_email = models.EmailField()
     scheduled_for = models.DateTimeField(
         help_text="When this notification should be included in a batch send.",

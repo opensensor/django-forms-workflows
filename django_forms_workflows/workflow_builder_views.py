@@ -1276,18 +1276,40 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
-            non_email_nodes = [
-                node for node in existing_nodes if node.get("type") != "email"
+            updated_email_nodes_by_action_id = {
+                node.get("data", {}).get("action_id"): node
+                for node in email_nodes_in_order
+                if node.get("data", {}).get("action_id")
+            }
+            used_email_action_ids = set()
+            merged_nodes = []
+            for node in existing_nodes:
+                if node.get("type") == "email":
+                    action_id = node.get("data", {}).get("action_id")
+                    replacement_node = updated_email_nodes_by_action_id.get(action_id)
+                    if replacement_node and action_id not in used_email_action_ids:
+                        merged_nodes.append(replacement_node)
+                        used_email_action_ids.add(action_id)
+                else:
+                    merged_nodes.append(node)
+
+            missing_email_nodes = [
+                node
+                for action_id, node in updated_email_nodes_by_action_id.items()
+                if action_id not in used_email_action_ids
             ]
-            visual_data["nodes"] = non_email_nodes + email_nodes_in_order
+            visual_data["nodes"] = merged_nodes + missing_email_nodes
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            valid_node_ids = {
+                node.get("id") for node in visual_data["nodes"] if node.get("id")
+            }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:
                 from_id = connection.get("from", connection.get("source"))
                 to_id = connection.get("to", connection.get("target"))
-                if from_id and to_id:
+                if from_id in valid_node_ids and to_id in valid_node_ids:
                     normalized_connections.append(
                         {
                             "from": from_id,
@@ -1310,16 +1332,11 @@ def convert_workflow_to_visual(workflow, form_definition):
                     and connection.get("to") in email_node_ids
                 )
             ]
-            if existing_email_connections:
-                email_connections = existing_email_connections
-            else:
-                email_connections = []
-                for i in range(len(email_nodes_in_order) - 1):
-                    source_id = email_nodes_in_order[i].get("id")
-                    target_id = email_nodes_in_order[i + 1].get("id")
-                    if source_id and target_id:
-                        email_connections.append({"from": source_id, "to": target_id})
-            visual_data["connections"] = non_email_connections + email_connections
+            # Preserve saved topology: do not synthesize a chain across email nodes
+            # when no direct email-to-email connections were saved.
+            visual_data["connections"] = (
+                non_email_connections + existing_email_connections
+            )
 
             logger.info("Loading saved visual workflow data (new format)")
             return visual_data
@@ -2278,9 +2295,19 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    if normalized_deleted_ids - previous_action_ids:
+    # The loader adds missing email actions owned by the form to the graph.
+    # Allow the builder to delete those generated nodes as well as saved ones.
+    allowed_deleted_action_ids = set(previous_action_ids) | set(
+        PostSubmissionAction.objects.filter(
+            form_definition=form_definition, action_type="email"
+        ).values_list("id", flat=True)
+    )
+
+    if normalized_deleted_ids - allowed_deleted_action_ids:
         raise ValidationError(
-            {"deleted_action_ids": "Actions must belong to the saved workflow graph."}
+            {
+                "deleted_action_ids": "Actions must belong to the saved workflow graph or be form email actions."
+            }
         )
     if normalized_deleted_ids & other_workflow_action_ids:
         raise ValidationError(

@@ -383,6 +383,61 @@ class TestConvertWorkflowToVisual:
 
         assert visual["connections"] == [{"from": "first", "to": "second"}]
 
+    def test_saved_email_nodes_keep_order_without_synthesized_connections(
+        self, form_definition
+    ):
+        first = PostSubmissionAction.objects.create(
+            form_definition=form_definition, name="First", action_type="email"
+        )
+        second = PostSubmissionAction.objects.create(
+            form_definition=form_definition, name="Second", action_type="email"
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": "start", "type": "start", "data": {}},
+                    {"id": "first", "type": "email", "data": {"action_id": first.id}},
+                    {"id": "end", "type": "end", "data": {}},
+                    {"id": "second", "type": "email", "data": {"action_id": second.id}},
+                ],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert [node["id"] for node in visual["nodes"]] == [
+            "start",
+            "first",
+            "end",
+            "second",
+        ]
+        assert visual["connections"] == []
+
+    def test_saved_visual_drops_stale_email_nodes_and_connections(
+        self, form_definition
+    ):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": "start", "type": "start", "data": {}},
+                    {"id": "stale", "type": "email", "data": {"action_id": 999999}},
+                    {"id": "end", "type": "end", "data": {}},
+                ],
+                "connections": [
+                    {"from": "start", "to": "stale"},
+                    {"from": "stale", "to": "end"},
+                ],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert [node["id"] for node in visual["nodes"]] == ["start", "end"]
+        assert visual["connections"] == []
+
     def test_loads_notification_rules_into_workflow_settings(
         self, staged_workflow, approval_group, second_approval_group, form_definition
     ):
@@ -1252,6 +1307,30 @@ class TestConvertVisualToWorkflow:
         assert not PostSubmissionAction.objects.filter(pk=action.id).exists()
         first.refresh_from_db()
         assert "deleted_action_ids" not in first.visual_workflow_data
+
+    def test_can_delete_email_action_added_by_visual_loader(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": "start", "type": "start", "data": {}},
+                    {"id": "end", "type": "end", "data": {}},
+                ],
+                "connections": [],
+            },
+        )
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Generated email",
+            action_type="email",
+        )
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        visual["nodes"] = [node for node in visual["nodes"] if node["type"] != "email"]
+        visual["deleted_action_ids"] = [action.id]
+
+        convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        assert not PostSubmissionAction.objects.filter(pk=action.id).exists()
 
     def test_preserves_mixed_email_and_action_order(self, form_definition):
         visual = {

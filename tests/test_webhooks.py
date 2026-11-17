@@ -7,6 +7,7 @@ import pytest
 import requests
 from django.core.exceptions import ValidationError
 
+from django_forms_workflows import tasks as tasks_module
 from django_forms_workflows.models import (
     ApprovalTask,
     FormSubmission,
@@ -32,6 +33,32 @@ def _mock_response(status_code, body):
     response = Mock(status_code=status_code, encoding="utf-8")
     response.iter_content.return_value = [body.encode("utf-8")]
     return response
+
+
+def test_synchronous_webhook_retry_fallback_does_not_sleep():
+    fallback = Mock(spec=lambda **kwargs: None)
+    with (
+        patch.object(tasks_module, "deliver_workflow_webhook", fallback),
+        patch("time.sleep") as sleep,
+    ):
+        tasks_module._schedule_webhook_retry(
+            endpoint_id=7,
+            event="submission.created",
+            payload={"event": "submission.created"},
+            submission_id=11,
+            task_id=None,
+            attempt=3,
+        )
+
+    sleep.assert_not_called()
+    fallback.assert_called_once_with(
+        endpoint_id=7,
+        event="submission.created",
+        payload={"event": "submission.created"},
+        submission_id=11,
+        task_id=None,
+        attempt=3,
+    )
 
 
 @pytest.mark.django_db

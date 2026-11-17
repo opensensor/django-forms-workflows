@@ -1168,6 +1168,7 @@ class TestConvertVisualToWorkflow:
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()
         wf = convert_visual_to_workflow(visual, form_definition)
+        wf.refresh_from_db()
         assert wf.visual_workflow_data == visual
 
     def test_creates_actions(self, form_definition):

@@ -1228,7 +1228,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     defaults = email_action_defaults.get(action_id)
                     if defaults:
                         for key, value in defaults.items():
-                            node_data.setdefault(key, value)
+                            node_data[key] = value
                 elif node_type == "sub_workflow" and sub_workflow_defaults:
                     if (
                         node_data.get("sub_workflow_form_id") in (None, "")

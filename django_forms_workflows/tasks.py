@@ -1214,7 +1214,9 @@ def check_approval_deadlines() -> str:
                     if not updated:
                         continue
 
-                # Dispatch after the outermost commit so a worker sees the approved state.
+                # Dispatch after commit so a worker sees the approved state.
+                # PendingNotification is a recipient-specific digest queue, not a
+                # generic outbox for this task; broker failures are logged below.
                 def _enqueue_workflow_approved_notification(
                     submission_id: int = submission.id,
                 ) -> None:
@@ -2063,6 +2065,7 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
+    # Keep the submission lock and delivery logs in one transaction per rule.
     @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.

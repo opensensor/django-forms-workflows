@@ -659,6 +659,26 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="duplicate node ID"):
             convert_visual_to_workflow(visual, form_definition)
 
+    def test_rejects_duplicate_zero_stage_node_ids(self, form_definition):
+        visual = self._make_visual(
+            stages=[
+                {"name": "First", "requires_manager_approval": True},
+                {"name": "Second", "requires_manager_approval": True},
+            ]
+        )
+        for node in visual["nodes"]:
+            if node["type"] == "stage":
+                node["id"] = 0
+
+        with pytest.raises(ValidationError, match="duplicate node ID"):
+            convert_visual_to_workflow(visual, form_definition)
+
+    def test_rejects_out_of_range_workflow_setting(self, form_definition):
+        visual = self._make_visual(settings={"approval_deadline_days": 2**63})
+
+        with pytest.raises(ValidationError, match="approval_deadline_days"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_rejects_non_list_notification_groups(self, form_definition):
         visual = self._make_visual(
             settings={

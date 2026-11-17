@@ -1214,6 +1214,13 @@ def check_approval_deadlines() -> str:
                     if not updated:
                         continue
 
+                    # Persist retryable notification work in the same transaction as approval
+                    # so broker publish failures do not permanently lose the event.
+                    PendingNotification.objects.get_or_create(
+                        submission_id=locked_submission.id,
+                        trigger_event="workflow_approved",
+                    )
+
                 # Dispatch after the outermost commit so a worker sees the approved state.
                 def _enqueue_workflow_approved_notification(
                     submission_id: int = submission.id,
@@ -1224,7 +1231,7 @@ def check_approval_deadlines() -> str:
                         )
                     except Exception:
                         logger.warning(
-                            "Could not enqueue approval notification for submission %s",
+                            "Could not enqueue approval notification for submission %s; pending outbox entry retained for retry",
                             submission_id,
                             exc_info=True,
                         )

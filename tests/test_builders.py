@@ -63,7 +63,40 @@ class TestConvertWorkflowToVisual:
         workflow.save()
 
         result = convert_workflow_to_visual(workflow, form_definition)
-        assert result == expected
+        assert result["nodes"][0] == expected["nodes"][0]
+        assert result["connections"] == []
+        assert len(result["nodes"]) == 2
+        assert result["nodes"][1]["type"] == "stage"
+        assert result["nodes"][1]["data"]["stage_id"] == workflow.stages.get().id
+        assert result["nodes"][1]["data"]["name"] == workflow.stages.get().name
+
+    def test_saved_settings_use_current_workflow_values(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            name_label="Current track",
+            requires_approval=True,
+            visual_workflow_data={
+                "nodes": [
+                    {
+                        "id": "settings",
+                        "type": "workflow_settings",
+                        "data": {
+                            "name_label": "Old track",
+                            "requires_approval": False,
+                            "notification_rules": [{"event": "stale"}],
+                        },
+                    }
+                ],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        settings = visual["nodes"][0]["data"]
+        assert settings["name_label"] == "Current track"
+        assert settings["requires_approval"] is True
+        assert settings["notification_rules"] == []
 
     def test_generates_layout_with_stages(
         self, staged_workflow, form_definition, approval_group, second_approval_group

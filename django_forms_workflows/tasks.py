@@ -1237,6 +1237,34 @@ def check_approval_deadlines() -> str:
                     ).exists():
                         continue
 
+                    # Guard against mixed-track false approvals:
+                    # every track must be successfully completed (approved) and
+                    # no track may contain an expired task.
+                    terminal_tasks = list(
+                        locked_submission.approval_tasks.select_related(
+                            "workflow_stage__workflow"
+                        ).all()
+                    )
+                    track_statuses: dict[tuple[str, int | None], set[str]] = defaultdict(set)
+                    for task in terminal_tasks:
+                        if task.workflow_stage_id:
+                            key = ("workflow", task.workflow_stage.workflow_id)
+                        else:
+                            key = ("legacy", None)
+                        track_statuses[key].add(task.status)
+
+                    invalid_track_found = False
+                    for statuses in track_statuses.values():
+                        if "expired" in statuses:
+                            invalid_track_found = True
+                            break
+                        if "approved" not in statuses:
+                            invalid_track_found = True
+                            break
+
+                    if invalid_track_found:
+                        continue
+
                     updated = FormSubmission.objects.filter(
                         id=locked_submission.id,
                         status="pending_approval",

@@ -1298,17 +1298,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         ]
                     for key, value in sub_workflow_defaults.items():
                         node_data[key] = value
-                    if (
-                        node_data.get("sub_workflow_id")
-                        == sub_workflow_defaults.get("sub_workflow_id")
-                    ):
-                        node_data["sub_workflow_id_type"] = "workflow"
-                    elif (
-                        node_data.get("sub_workflow_id")
-                        == sub_workflow_defaults.get("sub_workflow_form_id")
-                    ):
-                        node_data["sub_workflow_id_type"] = "form"
-                        node_data["sub_workflow_form_id"] = node_data["sub_workflow_id"]
+                    node_data["sub_workflow_id_type"] = "workflow"
 
             existing_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
@@ -1375,9 +1365,62 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in stage_nodes_in_order
                 if node.get("data", {}).get("stage_id")
             }
-            valid_action_ids = set(
-                form_definition.post_actions.values_list("id", flat=True)
-            )
+            existing_action_nodes_by_action_id = {
+                node.get("data", {}).get("action_id"): node
+                for node in existing_nodes
+                if node.get("type") == "action"
+                and node.get("data", {}).get("action_id")
+            }
+            action_nodes_in_order = []
+            for index, action in enumerate(
+                form_definition.post_actions.exclude(action_type="email").order_by(
+                    "order", "id"
+                )
+            ):
+                data = {
+                    "action_id": action.id,
+                    "name": action.name,
+                    "action_type": action.action_type,
+                    "trigger": action.trigger,
+                    "is_active": action.is_active,
+                }
+                if action.action_type == "database":
+                    data["config"] = {
+                        "db_alias": action.db_alias or "",
+                        "db_schema": action.db_schema or "",
+                        "db_table": action.db_table or "",
+                        "db_lookup_field": action.db_lookup_field or "ID_NUMBER",
+                        "db_user_field": action.db_user_field or "employee_id",
+                        "field_mappings": action.db_field_mappings or [],
+                    }
+                elif action.action_type == "ldap":
+                    data["config"] = {
+                        "ldap_dn_template": action.ldap_dn_template or "",
+                        "field_mappings": action.ldap_field_mappings or [],
+                    }
+                elif action.action_type == "api":
+                    data["config"] = {
+                        "endpoint": action.api_endpoint or "",
+                        "method": action.api_method or "POST",
+                        "headers": action.api_headers or {},
+                        "body_template": action.api_body_template or "",
+                    }
+                elif action.action_type == "custom":
+                    data["config"] = action.custom_handler_config or {}
+                else:
+                    data["config"] = {}
+                action_node = existing_action_nodes_by_action_id.get(action.id)
+                if action_node:
+                    action_node.setdefault("data", {}).update(data)
+                else:
+                    action_node = {
+                        "id": f"action-{action.id}",
+                        "type": "action",
+                        "x": 0,
+                        "y": index * 120,
+                        "data": data,
+                    }
+                action_nodes_in_order.append(action_node)
             updated_action_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
                 for node in action_nodes_in_order
@@ -1404,17 +1447,16 @@ def convert_workflow_to_visual(workflow, form_definition):
                     ):
                         merged_nodes.append(replacement_node)
                         used_stage_ids.add(stage_id)
-                else:
+                elif node.get("type") == "action":
                     action_id = node.get("data", {}).get("action_id")
                     replacement_node = updated_action_nodes_by_action_id.get(action_id)
                     if replacement_node and action_id not in used_action_ids:
                         merged_nodes.append(replacement_node)
                         used_action_ids.add(action_id)
-                    elif (
-                        node.get("type") != "action"
-                        and (not action_id or action_id in valid_action_ids)
-                    ):
+                    elif not action_id:
                         merged_nodes.append(node)
+                else:
+                    merged_nodes.append(node)
 
             missing_email_nodes = [
                 node
@@ -1424,7 +1466,8 @@ def convert_workflow_to_visual(workflow, form_definition):
             missing_action_nodes = [
                 node
                 for action_id, node in updated_action_nodes_by_action_id.items()
-                if action_id not in used_action_ids and action_id not in used_email_action_ids
+                if action_id not in used_action_ids
+                and action_id not in used_email_action_ids
             ]
             missing_stage_nodes = [
                 node
@@ -1432,7 +1475,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 if stage_id not in used_stage_ids
             ]
             visual_data["nodes"] = (
-                merged_nodes + missing_email_nodes + missing_action_nodes + missing_stage_nodes
+                merged_nodes
+                + missing_email_nodes
+                + missing_action_nodes
+                + missing_stage_nodes
             )
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}

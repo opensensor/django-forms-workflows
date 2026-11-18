@@ -2142,6 +2142,10 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 "Multiple workflow tracks exist for this form. Please select a workflow ID."
             )
     else:
+        if workflow.form_definition_id != form_definition.id:
+            raise ValidationError(
+                "Provided workflow does not belong to the selected form_definition."
+            )
         for key, value in wf_defaults.items():
             setattr(workflow, key, value)
         workflow.form_definition = form_definition

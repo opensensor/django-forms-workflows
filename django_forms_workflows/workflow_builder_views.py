@@ -2456,6 +2456,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     "action_type"
                 ).choices
             } - {"email"}
+            if not isinstance(action_type, str):
+                raise ValidationError(
+                    "Unsupported action_type type. "
+                    f"Expected string, got {type(action_type).__name__}. "
+                    f"Supported values are: {sorted(valid_action_types)}"
+                )
             if action_type not in valid_action_types:
                 raise ValidationError(
                     f"Unsupported action_type '{action_type}'. "

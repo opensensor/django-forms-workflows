@@ -1355,11 +1355,45 @@ def send_batched_notifications() -> str:
                 )
                 if not current:
                     continue
+                # Re-check preferences at delivery time so rows queued before a mute
+                # change are not sent. Retire muted rows without dispatching.
+                rule_ids = {
+                    n.notification_rule_id for n in current if n.notification_rule_id
+                }
+                muted_rule_ids = set()
+                if rule_ids:
+                    from django.contrib.auth import get_user_model
+
+                    muted_rule_ids = set(
+                        get_user_model()
+                        .objects.filter(
+                            email__iexact=recipient_email.strip(),
+                            notification_preferences__rule_id__in=rule_ids,
+                            notification_preferences__muted=True,
+                        )
+                        .values_list("notification_preferences__rule_id", flat=True)
+                    )
+                sendable_current = []
+                retired_ids = []
+                for n in current:
+                    if n.notification_rule_id in muted_rule_ids:
+                        retired_ids.append(n.id)
+                    else:
+                        sendable_current.append(n)
+
+                if retired_ids:
+                    PendingNotification.objects.filter(
+                        id__in=retired_ids, sent=False
+                    ).update(sent=True)
+
+                if not sendable_current:
+                    continue
+
                 # Deduplicate rows for digest rendering/delivery while keeping all
-                # locked queue rows in `current` for sent bookkeeping.
+                # sendable queue rows for sent bookkeeping.
                 seen_dispatch_keys = set()
                 render_rows = []
-                for n in current:
+                for n in sendable_current:
                     dispatch_key = (
                         n.recipient_email,
                         n.notification_type,
@@ -1379,10 +1413,14 @@ def send_batched_notifications() -> str:
                     )
                 elif notification_type == "approval_request":
                     approval_task_ids = sorted(
-                        {n.approval_task_id for n in current if n.approval_task_id}
+                        {
+                            n.approval_task_id
+                            for n in sendable_current
+                            if n.approval_task_id
+                        }
                     )
                     submission_ids = sorted(
-                        {n.submission_id for n in current if n.submission_id}
+                        {n.submission_id for n in sendable_current if n.submission_id}
                     )
 
                     locked_submissions = (
@@ -1402,7 +1440,7 @@ def send_batched_notifications() -> str:
 
                     # The select_related objects in current were loaded before
                     # these locks and can contain stale statuses.
-                    for n in current:
+                    for n in sendable_current:
                         if n.submission_id in locked_submission_status:
                             n.submission.status = locked_submission_status[
                                 n.submission_id
@@ -1414,7 +1452,7 @@ def send_batched_notifications() -> str:
 
                     actionable_ids = {
                         n.id
-                        for n in current
+                        for n in sendable_current
                         if n.submission_id
                         and n.approval_task_id
                         and locked_task_status.get(n.approval_task_id) == "pending"
@@ -1422,7 +1460,7 @@ def send_batched_notifications() -> str:
                         == "pending_approval"
                     }
                     actionable = [n for n in render_rows if n.id in actionable_ids]
-                    obsolete_ids = {n.id for n in current} - actionable_ids
+                    obsolete_ids = {n.id for n in sendable_current} - actionable_ids
                     if obsolete_ids:
                         PendingNotification.objects.filter(id__in=obsolete_ids).update(
                             sent=True
@@ -1467,7 +1505,7 @@ def send_batched_notifications() -> str:
                     continue
                 if delivered:
                     sent_count += PendingNotification.objects.filter(
-                        id__in=[n.id for n in current], sent=False
+                        id__in=[n.id for n in sendable_current], sent=False
                     ).update(sent=True)
                 else:
                     logger.warning(
@@ -2420,12 +2458,15 @@ def send_notification_rules(
             _recipient_key(e) for e in all_recipient_emails if _recipient_key(e)
         }
         if normalized_recipient_emails:
-            email_query = Q()
-            for email in normalized_recipient_emails:
-                email_query |= Q(email__iexact=email)
-            for u in user_model.objects.filter(email_query):
-                if u.email:
-                    _users_by_email[_recipient_key(u.email)] = u
+            normalized_email_list = list(normalized_recipient_emails)
+            chunk_size = 500
+            for i in range(0, len(normalized_email_list), chunk_size):
+                email_chunk = normalized_email_list[i : i + chunk_size]
+                for u in user_model.objects.annotate(email_lc=Lower("email")).filter(
+                    email_lc__in=email_chunk
+                ):
+                    if u.email:
+                        _users_by_email[_recipient_key(u.email)] = u
 
         # Check cadence — batch or send immediately
         cadence = (

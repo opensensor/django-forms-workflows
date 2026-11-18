@@ -3751,6 +3751,42 @@ def test_digest_queue_keeps_distinct_rule_dispatches(form_definition, user):
 
 
 @pytest.mark.django_db
+def test_digest_queue_reuses_recipient_across_email_case(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, notification_cadence="daily"
+    )
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        static_emails="Recipient@Example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    PendingNotification.objects.create(
+        workflow=workflow,
+        submission=submission,
+        notification_type="workflow_approved",
+        recipient_email="RECIPIENT@example.com",
+        scheduled_for=timezone.now() + timedelta(days=1),
+    )
+
+    send_notification_rules(submission.id, "workflow_approved")
+    assert PendingNotification.objects.filter(submission=submission).count() == 1
+
+    PendingNotification.objects.filter(submission=submission).delete()
+    send_notification_rules(submission.id, "workflow_approved")
+    assert list(
+        PendingNotification.objects.filter(submission=submission).values_list(
+            "recipient_email", flat=True
+        )
+    ) == ["recipient@example.com"]
+
+
+@pytest.mark.django_db
 def test_actionable_notification_only_targets_triggering_assignee(
     form_definition, user
 ):

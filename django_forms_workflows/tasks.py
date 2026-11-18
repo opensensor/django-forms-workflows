@@ -1598,9 +1598,17 @@ def _collect_notification_recipients(
     recipients: list[str] = []
     seen: set[str] = set()
 
+    def _email_compare_key(email: str) -> str:
+        # Normalize for deduplication comparisons while preserving the
+        # original address for delivery.
+        return email.strip().lower()
+
     def _add(email: str | None) -> None:
-        if email and email not in seen:
-            seen.add(email)
+        if not email:
+            return
+        key = _email_compare_key(email)
+        if key and key not in seen:
+            seen.add(key)
             recipients.append(email)
 
     # 1. Submitter

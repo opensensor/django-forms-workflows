@@ -1193,7 +1193,6 @@ def check_approval_deadlines() -> str:
                     tracks: dict[tuple[str, int | None], list[ApprovalTask]] = (
                         defaultdict(list)
                     )
-                    track_latest_created_at: dict[tuple[str, int | None], datetime] = {}
                     for task in pending_locked_tasks:
                         if task.workflow_stage_id:
                             key = ("workflow", task.workflow_stage.workflow_id)
@@ -1206,7 +1205,6 @@ def check_approval_deadlines() -> str:
                         latest_track_task = max(
                             track_pending_tasks, key=lambda t: (t.created_at, t.pk)
                         )
-                        track_latest_created_at[track_key] = latest_track_task.created_at
                         if latest_track_task.workflow_stage_id:
                             locked_workflow = latest_track_task.workflow_stage.workflow
                         else:
@@ -1243,27 +1241,11 @@ def check_approval_deadlines() -> str:
                     ).exists():
                         continue
 
-                    # A different track may have failed already in the current
-                    # execution round. Auto-skipped tasks are valid here, but a
-                    # failed decision in the same round is not.
-                    has_current_round_failure = False
-                    for track_key, latest_created_at in track_latest_created_at.items():
-                        failed_qs = locked_submission.approval_tasks.filter(
-                            status__in=("expired", "rejected", "returned"),
-                            created_at__gte=latest_created_at,
-                        )
-                        if track_key[0] == "workflow":
-                            failed_qs = failed_qs.filter(
-                                workflow_stage__workflow_id=track_key[1]
-                            )
-                        else:
-                            failed_qs = failed_qs.filter(workflow_stage__isnull=True)
-
-                        if failed_qs.exists():
-                            has_current_round_failure = True
-                            break
-
-                    if has_current_round_failure:
+                    # A different track may have failed already. Auto-skipped
+                    # tasks are valid here, but a failed decision is not.
+                    if locked_submission.approval_tasks.filter(
+                        status__in=("expired", "rejected", "returned")
+                    ).exists():
                         continue
 
                     updated = FormSubmission.objects.filter(
@@ -1369,6 +1351,7 @@ def send_batched_notifications() -> str:
                         "submission__form_definition",
                         "submission__submitter",
                         "approval_task",
+                        "notification_rule",
                     )
                 )
                 if not current:
@@ -1469,39 +1452,49 @@ def send_batched_notifications() -> str:
                                 n.approval_task_id
                             ]
 
-                    recipient_email_lc = (recipient_email or "").strip().lower()
+                    recipient_key = recipient_email.strip().casefold()
+                    eligible_recipients_by_dispatch = {}
 
-                    def _recipient_still_eligible(task: ApprovalTask) -> bool:
-                        if not recipient_email_lc:
-                            return False
-
-                        # Common assignment patterns; if none are present, keep legacy behavior.
-                        direct_email = getattr(task, "assignee_email", None) or getattr(
-                            task, "assigned_email", None
+                    def _recipient_still_eligible(
+                        n: PendingNotification,
+                        eligible_recipients_by_dispatch=eligible_recipients_by_dispatch,
+                        locked_tasks_by_id=locked_tasks_by_id,
+                        recipient_key=recipient_key,
+                    ) -> bool:
+                        if not n.notification_rule_id:
+                            return True
+                        dispatch_key = (
+                            n.notification_rule_id,
+                            n.submission_id,
+                            n.approval_task_id,
                         )
-                        if isinstance(direct_email, str) and direct_email.strip():
-                            return direct_email.strip().lower() == recipient_email_lc
-
-                        assignee = getattr(task, "assignee", None) or getattr(
-                            task, "assigned_to", None
+                        if dispatch_key not in eligible_recipients_by_dispatch:
+                            task = locked_tasks_by_id[n.approval_task_id]
+                            form_data = n.submission.form_data or {}
+                            recipients = _collect_notification_recipients(
+                                n.notification_rule,
+                                form_data,
+                                n.submission,
+                                task,
+                            )
+                            recipients += _collect_notification_cc(
+                                n.notification_rule, form_data
+                            )
+                            eligible_recipients_by_dispatch[dispatch_key] = {
+                                email.strip().casefold() for email in recipients
+                            }
+                        return (
+                            recipient_key
+                            in eligible_recipients_by_dispatch[dispatch_key]
                         )
-                        if assignee is not None:
-                            assignee_email = getattr(assignee, "email", None)
-                            if isinstance(assignee_email, str) and assignee_email.strip():
-                                return (
-                                    assignee_email.strip().lower() == recipient_email_lc
-                                )
-
-                        return True
 
                     eligible_ids = {
                         n.id
                         for n in sendable_current
-                        if n.approval_task_id
+                        if n.submission_id
+                        and n.approval_task_id
                         and n.approval_task_id in locked_tasks_by_id
-                        and _recipient_still_eligible(
-                            locked_tasks_by_id[n.approval_task_id]
-                        )
+                        and _recipient_still_eligible(n)
                     }
 
                     actionable_ids = {

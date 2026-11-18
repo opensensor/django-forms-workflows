@@ -3304,6 +3304,65 @@ def test_approval_digest_drops_obsolete_tasks_and_sends_pending_ones(
 
 
 @pytest.mark.django_db
+def test_approval_digest_drops_reassigned_assignee_but_keeps_static_recipient(
+    form_definition, user, approver_user
+):
+    replacement = User.objects.create_user(
+        username="replacement", email="replacement@example.com", password="pass"
+    )
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    stage = workflow.stages.create(
+        name="Review", order=1, assignee_form_field="reviewer"
+    )
+    assignee_rule = NotificationRule.objects.create(
+        workflow=workflow, event="approval_request", notify_stage_assignees=True
+    )
+    static_rule = NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_request",
+        static_emails="static@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="Review",
+        status="pending",
+        assigned_to=approver_user,
+    )
+    rows = [
+        PendingNotification.objects.create(
+            workflow=workflow,
+            notification_rule=rule,
+            notification_type="approval_request",
+            submission=submission,
+            approval_task=task,
+            recipient_email=email,
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+        )
+        for rule, email in (
+            (assignee_rule, approver_user.email),
+            (static_rule, "static@example.com"),
+        )
+    ]
+    task.assigned_to = replacement
+    task.save(update_fields=["assigned_to"])
+
+    with patch(
+        "django_forms_workflows.tasks._dispatch_approval_digest", return_value=True
+    ) as dispatch:
+        assert tasks_module.send_batched_notifications() == "sent=1"
+
+    assert [n.id for n in dispatch.call_args.args[1]] == [rows[1].id]
+    assert all(PendingNotification.objects.get(pk=row.pk).sent for row in rows)
+
+
+@pytest.mark.django_db
 def test_duplicate_actionable_digest_rows_remain_retryable_after_failure(
     form_definition, user
 ):

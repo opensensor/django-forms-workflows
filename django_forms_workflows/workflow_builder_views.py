@@ -2335,8 +2335,18 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 raise ValidationError("Approval group position must be an integer.")
             if not 0 <= position <= 2**63 - 1:
                 raise ValidationError("Approval group position must be an integer.")
+
+            raw_role = group_entry.get("role", "approval")
+            if not isinstance(raw_role, str):
+                raise ValidationError("Approval group role must be a string.")
+            role = raw_role.strip()
+            if not role:
+                raise ValidationError("Approval group role must be a non-empty string.")
+            if role not in {"approval"}:
+                raise ValidationError("Approval group role is invalid.")
+
             normalized_group_entries.append(
-                {**group_entry, "id": group_id, "position": position}
+                {**group_entry, "id": group_id, "position": position, "role": role}
             )
         sorted_group_entries = sorted(
             normalized_group_entries,
@@ -2344,7 +2354,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         )
         seen_group_role_pairs = set()
         for pos, group_entry in enumerate(sorted_group_entries):
-            role = group_entry.get("role", "approval")
+            role = group_entry["role"]
             assignment_key = (group_entry["id"], role)
             if assignment_key in seen_group_role_pairs:
                 raise ValidationError(

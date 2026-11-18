@@ -1483,7 +1483,9 @@ def convert_workflow_to_visual(workflow, form_definition):
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             valid_node_ids = {
-                node.get("id") for node in visual_data["nodes"] if node.get("id")
+                node_id
+                for node_id in (node.get("id") for node in visual_data["nodes"])
+                if node_id is not None and node_id != ""
             }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []

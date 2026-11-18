@@ -1948,46 +1948,51 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     Stage nodes are persisted as WorkflowStage records.
     """
 
-    resolved_workflow = workflow
-    if resolved_workflow is None:
-        form_workflows = WorkflowDefinition.objects.filter(
-            form_definition=form_definition
+    with transaction.atomic():
+        form_definition = FormDefinition.objects.select_for_update().get(
+            pk=form_definition.pk
         )
-        if form_workflows.count() == 1:
-            resolved_workflow = form_workflows.first()
 
-    _validate_visual_workflow(
-        workflow_data, form_definition, workflow=resolved_workflow
-    )
+        resolved_workflow = workflow
+        if resolved_workflow is None:
+            form_workflows = WorkflowDefinition.objects.filter(
+                form_definition=form_definition
+            )
+            if form_workflows.count() == 1:
+                resolved_workflow = form_workflows.first()
 
-    def graph_action_ids(graph):
-        if not isinstance(graph, dict) or not isinstance(graph.get("nodes"), list):
-            return set()
-        result = set()
-        for graph_node in graph["nodes"]:
-            if not isinstance(graph_node, dict) or graph_node.get("type") not in {
-                "action",
-                "email",
-            }:
-                continue
-            raw_id = (graph_node.get("data") or {}).get("action_id")
-            if isinstance(raw_id, int) and not isinstance(raw_id, bool) and raw_id > 0:
-                result.add(raw_id)
-            elif isinstance(raw_id, str) and raw_id.isascii() and raw_id.isdigit():
-                try:
-                    result.add(int(raw_id))
-                except ValueError:
+        _validate_visual_workflow(
+            workflow_data, form_definition, workflow=resolved_workflow
+        )
+
+        def graph_action_ids(graph):
+            if not isinstance(graph, dict) or not isinstance(graph.get("nodes"), list):
+                return set()
+            result = set()
+            for graph_node in graph["nodes"]:
+                if not isinstance(graph_node, dict) or graph_node.get("type") not in {
+                    "action",
+                    "email",
+                }:
                     continue
-        return result
+                raw_id = (graph_node.get("data") or {}).get("action_id")
+                if isinstance(raw_id, int) and not isinstance(raw_id, bool) and raw_id > 0:
+                    result.add(raw_id)
+                elif isinstance(raw_id, str) and raw_id.isascii() and raw_id.isdigit():
+                    try:
+                        result.add(int(raw_id))
+                    except ValueError:
+                        continue
+            return result
 
-    previous_action_ids = graph_action_ids(
-        resolved_workflow.visual_workflow_data if resolved_workflow else None
-    )
-    other_workflow_action_ids = set()
-    for other_graph in form_definition.workflows.exclude(
-        pk=resolved_workflow.pk if resolved_workflow else None
-    ).values_list("visual_workflow_data", flat=True):
-        other_workflow_action_ids.update(graph_action_ids(other_graph))
+        previous_action_ids = graph_action_ids(
+            resolved_workflow.visual_workflow_data if resolved_workflow else None
+        )
+        other_workflow_action_ids = set()
+        for other_graph in form_definition.workflows.exclude(
+            pk=resolved_workflow.pk if resolved_workflow else None
+        ).values_list("visual_workflow_data", flat=True):
+            other_workflow_action_ids.update(graph_action_ids(other_graph))
 
     nodes = workflow_data.get("nodes", [])
 

@@ -1351,26 +1351,46 @@ def send_batched_notifications() -> str:
                 )
                 if not current:
                     continue
+                # Deduplicate rows for digest rendering/delivery while keeping all
+                # locked queue rows in `current` for sent bookkeeping.
+                seen_dispatch_keys = set()
+                render_rows = []
+                for n in current:
+                    dispatch_key = (
+                        n.recipient_email,
+                        n.notification_type,
+                        n.workflow_id,
+                        n.submission_id,
+                        n.notification_rule_id,
+                        n.approval_task_id,
+                    )
+                    if dispatch_key in seen_dispatch_keys:
+                        continue
+                    seen_dispatch_keys.add(dispatch_key)
+                    render_rows.append(n)
                 delivered = False
                 if notification_type == "submission_received":
-                    delivered = _dispatch_submission_digest(recipient_email, current)
+                    delivered = _dispatch_submission_digest(
+                        recipient_email, render_rows
+                    )
                 elif notification_type == "approval_request":
-                    actionable = [
-                        n
+                    actionable_ids = {
+                        n.id
                         for n in current
                         if n.submission
                         and n.approval_task
                         and n.approval_task.status == "pending"
-                    ]
-                    obsolete_ids = {n.id for n in current} - {n.id for n in actionable}
+                    }
+                    actionable = [n for n in render_rows if n.id in actionable_ids]
+                    obsolete_ids = {n.id for n in current} - actionable_ids
                     if obsolete_ids:
                         PendingNotification.objects.filter(id__in=obsolete_ids).update(
                             sent=True
                         )
-                    current = actionable
-                    if not current:
+                    render_rows = actionable
+                    if not render_rows:
                         continue
-                    delivered = _dispatch_approval_digest(recipient_email, current)
+                    delivered = _dispatch_approval_digest(recipient_email, render_rows)
                 elif notification_type in (
                     "approval_notification",
                     "rejection_notification",
@@ -2340,9 +2360,16 @@ def send_notification_rules(
         all_recipient_emails = list(
             dict.fromkeys(list(recipients) + list(cc_recipients))
         )
-        if all_recipient_emails:
-            for u in user_model.objects.filter(email__in=all_recipient_emails):
-                _users_by_email[u.email] = u
+        normalized_recipient_emails = {
+            _recipient_key(e) for e in all_recipient_emails if _recipient_key(e)
+        }
+        if normalized_recipient_emails:
+            email_query = Q()
+            for email in normalized_recipient_emails:
+                email_query |= Q(email__iexact=email)
+            for u in user_model.objects.filter(email_query):
+                if u.email:
+                    _users_by_email[_recipient_key(u.email)] = u
 
         # Check cadence — batch or send immediately
         cadence = (
@@ -2407,7 +2434,7 @@ def send_notification_rules(
             cc_pending = list(cc_recipients)
             for recipient in recipients:
                 ctx = {**base_context}
-                recipient_user = _users_by_email.get(recipient)
+                recipient_user = _users_by_email.get(_recipient_key(recipient))
                 if recipient_user:
                     ctx["approver"] = recipient_user
                 email_cc = cc_pending
@@ -2466,7 +2493,7 @@ def send_notification_rules(
             if cc_pending:
                 for recipient in cc_pending:
                     ctx = {**base_context}
-                    recipient_user = _users_by_email.get(recipient)
+                    recipient_user = _users_by_email.get(_recipient_key(recipient))
                     if recipient_user:
                         ctx["approver"] = recipient_user
                     try:

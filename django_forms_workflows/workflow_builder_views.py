@@ -1448,9 +1448,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 existing_stage_node = existing_stage_nodes_by_stage_id.get(stage_id)
                 if existing_stage_node:
                     stage_node_data = existing_stage_node.setdefault("data", {})
-                    stage_node_data.setdefault("stage_id", stage_id)
+                    stage_node_data["stage_id"] = stage_id
                     for key, value in stage_defaults[stage_id].items():
-                        stage_node_data.setdefault(key, value)
+                        stage_node_data[key] = value
                     stage_nodes_in_order.append(existing_stage_node)
                     continue
                 generated_stage_node_id = allocate_unique_node_id(f"stage-{stage_id}")

@@ -1303,18 +1303,22 @@ def convert_workflow_to_visual(workflow, form_definition):
                     node_data["sub_workflow_id_type"] = "workflow"
 
             if not has_workflow_settings_node:
-                synthesized_settings_data = {}
-                for key, value in settings_defaults.items():
-                    if key == "notification_rules":
-                        continue
-                    synthesized_settings_data[key] = value
-                synthesized_settings_data["notification_rules"] = notification_rule_defaults
+                existing_ids = {
+                    node.get("id") for node in visual_data["nodes"] if node.get("id")
+                }
+                settings_node_id = f"workflow-settings-{workflow.id}"
+                while settings_node_id in existing_ids:
+                    settings_node_id += "-new"
                 visual_data.setdefault("nodes", []).append(
                     {
-                        "id": "workflow_settings",
+                        "id": settings_node_id,
                         "type": "workflow_settings",
-                        "position": {"x": 0, "y": 0},
-                        "data": synthesized_settings_data,
+                        "x": 0,
+                        "y": 0,
+                        "data": {
+                            **settings_defaults,
+                            "notification_rules": notification_rule_defaults,
+                        },
                     }
                 )
 
@@ -2507,7 +2511,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     if normalized_deleted_ids - allowed_deleted_action_ids:
         raise ValidationError(
             {
-                "deleted_action_ids": "Actions must belong to the saved workflow graph or be form email actions."
+                "deleted_action_ids": "Actions must belong to the saved workflow graph or be form actions."
             }
         )
     if normalized_deleted_ids & other_workflow_action_ids:

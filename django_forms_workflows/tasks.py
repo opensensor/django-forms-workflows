@@ -2217,29 +2217,30 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Do not keep a single transaction open for the whole rule while sending:
-    # outbound email side effects are irreversible, so each recipient's
-    # idempotency/logging should be committed in its own short transaction.
+    # Keep the submission lock and delivery logs in one transaction per rule.
+    # select_for_update requires this atomic block, and the lock serializes
+    # concurrent dispatches before their idempotency checks and sends.
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Lock only for short critical sections (state checks / per-recipient
-        idempotency + log writes), not across all sends for the rule.
+        Hold the submission lock through delivery and log writes so
+        concurrent dispatches cannot send the same recipient twice.
         """
         nonlocal had_dispatch_failure
-        # Lock and read current submission state in a short transaction.
-        with transaction.atomic():
-            locked_submission = FormSubmission.objects.select_for_update().get(
-                pk=submission_id
-            )
-            if (
-                event in {"approval_request", "approval_reminder"}
-                and locked_submission.status != "pending_approval"
-            ):
-                return
+        # Lock an existing row before checking delivery logs. Locking log rows
+        # cannot serialize the first send because there are no rows yet.
+        locked_submission = FormSubmission.objects.select_for_update().get(
+            pk=submission_id
+        )
+        if (
+            event in {"approval_request", "approval_reminder"}
+            and locked_submission.status != "pending_approval"
+        ):
+            return
         workflow = rule.workflow
         if explicit_task:
             locked_task = None

@@ -1572,8 +1572,9 @@ def test_cc_duplicate_of_to_is_dropped(form_definition, user):
         send_notification_rules(submission.id, "workflow_approved")
 
     cc = mock_send.call_args_list[0].kwargs.get("cc") or []
-    assert user.email.upper() not in cc
-    assert "other@example.com" in cc
+    normalized_cc = [addr.lower() for addr in cc]
+    assert user.email.lower() not in normalized_cc
+    assert normalized_cc == ["other@example.com"]
 
 
 def test_cc_passed_to_email_message(form_definition, user):

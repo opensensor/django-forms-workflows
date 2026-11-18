@@ -401,7 +401,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
                 )
             else:
-                canonical_node_id = node_id.strip() if isinstance(node_id, str) else str(node_id)
+                canonical_node_id = (
+                    node_id.strip() if isinstance(node_id, str) else str(node_id)
+                )
                 if canonical_node_id == "":
                     add_error(
                         f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
@@ -1337,18 +1339,28 @@ def convert_workflow_to_visual(workflow, form_definition):
                 if node_type == "stage":
                     raw_stage_id = node_data.get("stage_id")
                     stage_id = None
-                    if isinstance(raw_stage_id, int):
+                    if isinstance(raw_stage_id, int) and not isinstance(
+                        raw_stage_id, bool
+                    ):
                         stage_id = raw_stage_id
                     elif isinstance(raw_stage_id, str):
                         normalized_stage_id = raw_stage_id.strip()
-                        if normalized_stage_id.isdigit():
-                            stage_id = int(normalized_stage_id)
+                        if (
+                            normalized_stage_id.isascii()
+                            and normalized_stage_id.isdigit()
+                        ):
+                            try:
+                                stage_id = int(normalized_stage_id)
+                            except ValueError:
+                                stage_id = None
                     if stage_id is not None:
                         node_data["stage_id"] = stage_id
                     else:
                         node_data.pop("stage_id", None)
 
-                    defaults = stage_defaults.get(stage_id) if stage_id is not None else None
+                    defaults = (
+                        stage_defaults.get(stage_id) if stage_id is not None else None
+                    )
                     if defaults:
                         for key, value in defaults.items():
                             node_data[key] = value
@@ -1645,42 +1657,16 @@ def convert_workflow_to_visual(workflow, form_definition):
             action_order_by_id = dict(
                 form_definition.post_actions.values_list("id", "order")
             )
-            action_nodes_by_id = {}
-            for node in merged_nodes:
-                if node.get("type") in {"email", "action"}:
-                    action_id = node.get("data", {}).get("action_id")
-                    if action_id:
-                        action_nodes_by_id[action_id] = node
-            for node in missing_email_nodes + missing_action_nodes:
-                action_id = node.get("data", {}).get("action_id")
-                if action_id and action_id not in action_nodes_by_id:
-                    action_nodes_by_id[action_id] = node
-
-            ordered_action_nodes = [
-                action_nodes_by_id[action_id]
-                for action_id in sorted(
-                    action_nodes_by_id,
-                    key=lambda action_id: (
-                        action_order_by_id.get(action_id, 0),
-                        action_id,
-                    ),
-                )
-            ]
-
-            nodes_with_ordered_actions = []
-            inserted_ordered_actions = False
-            for node in merged_nodes:
-                if node.get("type") in {"email", "action"}:
-                    if not inserted_ordered_actions:
-                        nodes_with_ordered_actions.extend(ordered_action_nodes)
-                        inserted_ordered_actions = True
-                    continue
-                nodes_with_ordered_actions.append(node)
-
-            if not inserted_ordered_actions:
-                nodes_with_ordered_actions.extend(ordered_action_nodes)
-
-            visual_data["nodes"] = nodes_with_ordered_actions + missing_stage_nodes
+            missing_mixed_action_nodes = sorted(
+                missing_email_nodes + missing_action_nodes,
+                key=lambda node: (
+                    action_order_by_id.get(node.get("data", {}).get("action_id"), 0),
+                    node.get("data", {}).get("action_id", 0),
+                ),
+            )
+            visual_data["nodes"] = (
+                merged_nodes + missing_mixed_action_nodes + missing_stage_nodes
+            )
 
             def _canonical_node_id(node_id):
                 if node_id is None:
@@ -2719,13 +2705,13 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             description_value = data.get("description")
         else:
             description_value = None
-            raw_action_id = data.get("id")
+            raw_action_id = data.get("action_id")
             try:
                 action_id = int(raw_action_id)
             except (TypeError, ValueError):
                 action_id = None
             if action_id is not None:
-                existing_action = existing_actions.get(action_id)
+                existing_action = existing_actions_by_id.get(action_id)
                 if existing_action is not None:
                     description_value = existing_action.description
             if description_value is None:

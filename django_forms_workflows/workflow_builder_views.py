@@ -1027,12 +1027,10 @@ def workflow_builder_save(request):
                     raise ValidationError(
                         f"Malformed payload: node at index {idx} must be an object."
                     )
-                if "id" not in node:
-                    raise ValidationError(
-                        f"Malformed payload: node.id at index {idx} is required."
-                    )
                 node_id = node.get("id")
-                if isinstance(node_id, bool) or not isinstance(node_id, (str, int)):
+                if node_id is not None and (
+                    isinstance(node_id, bool) or not isinstance(node_id, str | int)
+                ):
                     raise ValidationError(
                         f"Malformed payload: node.id at index {idx} must be a string or integer."
                     )
@@ -1548,10 +1546,13 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for stage_id, node in updated_stage_nodes_by_stage_id.items()
                 if stage_id not in used_stage_ids
             ]
+            action_order_by_id = dict(
+                form_definition.post_actions.values_list("id", "order")
+            )
             missing_mixed_action_nodes = sorted(
                 missing_email_nodes + missing_action_nodes,
                 key=lambda node: (
-                    node.get("data", {}).get("order", 0),
+                    action_order_by_id.get(node.get("data", {}).get("action_id"), 0),
                     node.get("data", {}).get("action_id", 0),
                 ),
             )

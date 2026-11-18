@@ -692,6 +692,37 @@ class TestConvertWorkflowToVisual:
             != f"action-{database.id}"
         )
 
+    def test_restored_mixed_actions_follow_saved_order(self, form_definition):
+        email = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Second",
+            action_type="email",
+            order=2,
+        )
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="First",
+            action_type="database",
+            order=1,
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [{"id": "start", "type": "start", "data": {}}],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        restored = [
+            node for node in visual["nodes"] if node["type"] in {"action", "email"}
+        ]
+        assert [node["data"]["action_id"] for node in restored] == [
+            action.id,
+            email.id,
+        ]
+
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
     ):
@@ -1580,7 +1611,7 @@ class TestConvertVisualToWorkflow:
             == actions[0].id
         )
 
-    @pytest.mark.parametrize("action_type", ["unknown", "email"])
+    @pytest.mark.parametrize("action_type", ["unknown", "email", []])
     def test_rejects_invalid_action_node_type(self, form_definition, action_type):
         visual = self._make_visual(
             actions=[{"name": "Bad action", "action_type": action_type}]
@@ -2096,6 +2127,28 @@ class TestWorkflowBuilderViews:
                     "form_id": form_definition.id,
                     "workflow": {
                         "nodes": [{"id": "x", "type": "unknown", "data": {}}],
+                        "connections": [],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not form_definition.workflows.exists()
+
+    @pytest.mark.parametrize("node_id", [False, [], " "])
+    def test_save_rejects_invalid_supplied_node_id(
+        self, client, superuser, form_definition, node_id
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {
+                        "nodes": [{"id": node_id, "type": "start", "data": {}}],
                         "connections": [],
                     },
                 }

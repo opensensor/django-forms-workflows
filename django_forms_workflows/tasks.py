@@ -1079,10 +1079,23 @@ def check_approval_deadlines() -> str:
         if workflow.approval_deadline_days and task.created_at:
             deadline = task.created_at + timedelta(days=workflow.approval_deadline_days)
             if now > deadline:
-                updated = ApprovalTask.objects.filter(
-                    id=task.id,
-                    status="pending",
-                ).update(status="expired")
+                updated = False
+                with transaction.atomic():
+                    # Lock submission first, then task, to preserve global lock order.
+                    locked_submission = FormSubmission.objects.select_for_update().get(
+                        id=submission.id
+                    )
+                    if locked_submission.status != "pending_approval":
+                        continue
+
+                    locked_task = ApprovalTask.objects.select_for_update().get(id=task.id)
+                    if locked_task.status != "pending":
+                        continue
+
+                    locked_task.status = "expired"
+                    locked_task.save(update_fields=["status"])
+                    updated = True
+
                 if updated:
                     expired_count += 1
                     task.status = "expired"

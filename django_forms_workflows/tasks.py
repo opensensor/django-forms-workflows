@@ -1436,6 +1436,7 @@ def send_batched_notifications() -> str:
                     locked_submission_status = {
                         s.id: s.status for s in locked_submissions
                     }
+                    locked_tasks_by_id = {t.id: t for t in locked_tasks}
                     locked_task_status = {t.id: t.status for t in locked_tasks}
 
                     # The select_related objects in current were loaded before
@@ -1450,10 +1451,46 @@ def send_batched_notifications() -> str:
                                 n.approval_task_id
                             ]
 
+                    recipient_email_lc = (recipient_email or "").strip().lower()
+
+                    def _recipient_still_eligible(task: ApprovalTask) -> bool:
+                        if not recipient_email_lc:
+                            return False
+
+                        # Common assignment patterns; if none are present, keep legacy behavior.
+                        direct_email = getattr(task, "assignee_email", None) or getattr(
+                            task, "assigned_email", None
+                        )
+                        if isinstance(direct_email, str) and direct_email.strip():
+                            return direct_email.strip().lower() == recipient_email_lc
+
+                        assignee = getattr(task, "assignee", None) or getattr(
+                            task, "assigned_to", None
+                        )
+                        if assignee is not None:
+                            assignee_email = getattr(assignee, "email", None)
+                            if isinstance(assignee_email, str) and assignee_email.strip():
+                                return (
+                                    assignee_email.strip().lower() == recipient_email_lc
+                                )
+
+                        return True
+
+                    eligible_ids = {
+                        n.id
+                        for n in sendable_current
+                        if n.approval_task_id
+                        and n.approval_task_id in locked_tasks_by_id
+                        and _recipient_still_eligible(
+                            locked_tasks_by_id[n.approval_task_id]
+                        )
+                    }
+
                     actionable_ids = {
                         n.id
                         for n in sendable_current
-                        if n.submission_id
+                        if n.id in eligible_ids
+                        and n.submission_id
                         and n.approval_task_id
                         and locked_task_status.get(n.approval_task_id) == "pending"
                         and locked_submission_status.get(n.submission_id)

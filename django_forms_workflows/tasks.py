@@ -1015,11 +1015,12 @@ def send_approval_reminder(task_id: int) -> None:
     task = ApprovalTask.objects.select_related(
         "submission__form_definition", "assigned_to"
     ).get(id=task_id)
-    if task.status != "pending":
+    if task.status != "pending" or task.submission.status != "pending_approval":
         logger.info(
-            "Skipping approval reminder for task %s because status is %s",
+            "Skipping approval reminder for task %s because task status is %s and submission status is %s",
             task.id,
             task.status,
+            task.submission.status,
         )
         return
     if not task.assigned_to or not getattr(task.assigned_to, "email", None):
@@ -1363,16 +1364,22 @@ def send_batched_notifications() -> str:
     )
 
     groups: dict[tuple, list[int]] = defaultdict(list)
+    group_recipient_original: dict[tuple, str] = {}
     for pn_id, recipient_email, notification_type, workflow_id in due_rows:
-        key = (recipient_email, notification_type, workflow_id)
+        normalized_recipient = recipient_email.strip().casefold()
+        key = (normalized_recipient, notification_type, workflow_id)
         groups[key].append(pn_id)
+        group_recipient_original.setdefault(key, recipient_email.strip())
 
     sent_count = 0
     for (
-        recipient_email,
+        normalized_recipient,
         notification_type,
         _workflow_id,
     ), ids in groups.items():
+        recipient_email = group_recipient_original[
+            (normalized_recipient, notification_type, _workflow_id)
+        ]
         try:
             # Hold the row locks through delivery and marking the batch sent.
             # A worker crash rolls back the transaction, leaving the rows retryable.
@@ -1430,7 +1437,7 @@ def send_batched_notifications() -> str:
                 render_rows = []
                 for n in sendable_current:
                     dispatch_key = (
-                        n.recipient_email,
+                        n.recipient_email.strip().casefold(),
                         n.notification_type,
                         n.workflow_id,
                         n.submission_id,
@@ -1608,6 +1615,7 @@ def send_batched_notifications() -> str:
 
 def _dispatch_submission_digest(recipient_email: str, notifications: list) -> bool:
     """Send a digest of submission_received notifications to one recipient."""
+    recipient_email = recipient_email.strip()
     sample = notifications[0]
     workflow = sample.workflow
     form_name = workflow.form_definition.name

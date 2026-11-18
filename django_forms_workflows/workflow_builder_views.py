@@ -1571,17 +1571,36 @@ def convert_workflow_to_visual(workflow, form_definition):
                 merged_nodes + missing_mixed_action_nodes + missing_stage_nodes
             )
 
-            email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            def _canonical_node_id(node_id):
+                if node_id is None:
+                    return None
+                canonical = str(node_id).strip()
+                return canonical if canonical != "" else None
+
+            email_node_ids = {
+                canonical_id
+                for canonical_id in (
+                    _canonical_node_id(node.get("id")) for node in email_nodes_in_order
+                )
+                if canonical_id is not None
+            }
             valid_node_ids = {
-                node_id
-                for node_id in (node.get("id") for node in visual_data["nodes"])
-                if node_id is not None and node_id != ""
+                canonical_id
+                for canonical_id in (
+                    _canonical_node_id(node.get("id"))
+                    for node in visual_data["nodes"]
+                )
+                if canonical_id is not None
             }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:
-                from_id = connection.get("from", connection.get("source"))
-                to_id = connection.get("to", connection.get("target"))
+                from_id = _canonical_node_id(
+                    connection.get("from", connection.get("source"))
+                )
+                to_id = _canonical_node_id(
+                    connection.get("to", connection.get("target"))
+                )
                 if from_id in valid_node_ids and to_id in valid_node_ids:
                     normalized_connections.append(
                         {

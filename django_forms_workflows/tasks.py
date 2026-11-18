@@ -2141,6 +2141,8 @@ def send_notification_rules(
         return already_sent_local, already_cc_or_bcc_local
 
     # Keep the submission lock and delivery logs in one transaction per rule.
+    # select_for_update requires this atomic block, and the lock serializes
+    # concurrent dispatches before their idempotency checks and sends.
     @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.

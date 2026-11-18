@@ -1599,9 +1599,13 @@ def _collect_notification_recipients(
     seen: set[str] = set()
 
     def _add(email: str | None) -> None:
-        if email and email not in seen:
-            seen.add(email)
-            recipients.append(email)
+        if not email:
+            return
+        address = email.strip()
+        key = address.casefold()
+        if key and key not in seen:
+            seen.add(key)
+            recipients.append(address)
 
     # 1. Submitter
     if getattr(notif, "notify_submitter", False) and submission is not None:

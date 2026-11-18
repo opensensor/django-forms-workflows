@@ -599,6 +599,68 @@ class TestConvertWorkflowToVisual:
         assert data["sub_workflow_id_type"] == "workflow"
         assert data["section_label"] == "Current label"
 
+    def test_saved_visual_restores_missing_sub_workflow(self, form_definition):
+        target_form = FormDefinition.objects.create(name="Child", slug="child")
+        target = WorkflowDefinition.objects.create(form_definition=target_form)
+        parent = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [{"id": "start", "type": "start", "data": {}}],
+                "connections": [],
+            },
+        )
+        SubWorkflowDefinition.objects.create(
+            parent_workflow=parent, sub_workflow=target, count_field="count"
+        )
+
+        visual = convert_workflow_to_visual(parent, form_definition)
+
+        sub_nodes = [node for node in visual["nodes"] if node["type"] == "sub_workflow"]
+        assert len(sub_nodes) == 1
+        assert sub_nodes[0]["data"]["sub_workflow_id"] == target.id
+        assert (sub_nodes[0]["x"], sub_nodes[0]["y"]) == (0, 0)
+
+    def test_saved_visual_drops_sub_workflow_without_config(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": "start", "type": "start", "data": {}},
+                    {
+                        "id": "stale",
+                        "type": "sub_workflow",
+                        "data": {"sub_workflow_id": 999999},
+                    },
+                ],
+                "connections": [{"from": "start", "to": "stale"}],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert all(node["type"] != "sub_workflow" for node in visual["nodes"])
+        assert visual["connections"] == []
+
+    def test_generated_stage_id_avoids_saved_node_collision(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        stage = workflow.stages.create(name="Review", order=1)
+        workflow.visual_workflow_data = {
+            "nodes": [
+                {"id": f"stage-{stage.id}", "type": "start", "data": {}},
+            ],
+            "connections": [],
+        }
+        workflow.save(update_fields=["visual_workflow_data"])
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        ids = [node["id"] for node in visual["nodes"]]
+        assert len(ids) == len(set(ids))
+        assert (
+            next(node for node in visual["nodes"] if node["type"] == "stage")["id"]
+            != f"stage-{stage.id}"
+        )
+
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
     ):

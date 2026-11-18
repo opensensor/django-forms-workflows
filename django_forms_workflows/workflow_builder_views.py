@@ -394,22 +394,28 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_label = stage_data.get("name") or f"Stage {index}"
         stage_identity = index
         node_id = stage_node.get("id")
-        normalized_node_id = node_id.strip() if isinstance(node_id, str) else node_id
-        if normalized_node_id not in (None, "") and (
-            isinstance(normalized_node_id, bool)
-            or not isinstance(normalized_node_id, str | int)
-        ):
-            add_error(
-                f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
-            )
-            normalized_node_id = None
-        if normalized_node_id not in (None, ""):
-            if normalized_node_id in seen_stage_node_ids:
+        canonical_node_id = None
+        if node_id not in (None, ""):
+            if isinstance(node_id, bool) or not isinstance(node_id, str | int):
+                add_error(
+                    f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
+                )
+            else:
+                canonical_node_id = (
+                    node_id.strip() if isinstance(node_id, str) else str(node_id)
+                )
+                if canonical_node_id == "":
+                    add_error(
+                        f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
+                    )
+                    canonical_node_id = None
+        if canonical_node_id is not None:
+            if canonical_node_id in seen_stage_node_ids:
                 add_error(
                     f"{stage_label} uses a duplicate node ID '{node_id}'. Stage node IDs must be unique."
                 )
             else:
-                seen_stage_node_ids.add(normalized_node_id)
+                seen_stage_node_ids.add(canonical_node_id)
         raw_group_entries = stage_data.get("approval_groups", [])
         if not isinstance(raw_group_entries, list):
             add_error(f"{stage_label} approval groups must be a list.")
@@ -1331,8 +1337,30 @@ def convert_workflow_to_visual(workflow, form_definition):
                 node_type = node.get("type")
                 node_data = node.setdefault("data", {})
                 if node_type == "stage":
-                    stage_id = node_data.get("stage_id")
-                    defaults = stage_defaults.get(stage_id)
+                    raw_stage_id = node_data.get("stage_id")
+                    stage_id = None
+                    if isinstance(raw_stage_id, int) and not isinstance(
+                        raw_stage_id, bool
+                    ):
+                        stage_id = raw_stage_id
+                    elif isinstance(raw_stage_id, str):
+                        normalized_stage_id = raw_stage_id.strip()
+                        if (
+                            normalized_stage_id.isascii()
+                            and normalized_stage_id.isdigit()
+                        ):
+                            try:
+                                stage_id = int(normalized_stage_id)
+                            except ValueError:
+                                stage_id = None
+                    if stage_id is not None:
+                        node_data["stage_id"] = stage_id
+                    else:
+                        node_data.pop("stage_id", None)
+
+                    defaults = (
+                        stage_defaults.get(stage_id) if stage_id is not None else None
+                    )
                     if defaults:
                         for key, value in defaults.items():
                             node_data[key] = value
@@ -2669,6 +2697,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
+        generated_description = (
+            f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
+            f"Subject: {data.get('email_subject_template', '')}"
+        )
+        if "description" in data:
+            description_value = data.get("description")
+        else:
+            description_value = None
+            raw_action_id = data.get("action_id")
+            try:
+                action_id = int(raw_action_id)
+            except (TypeError, ValueError):
+                action_id = None
+            if action_id is not None:
+                existing_action = existing_actions_by_id.get(action_id)
+                if existing_action is not None:
+                    description_value = existing_action.description
+            if description_value is None:
+                description_value = generated_description
+
         action_data = {
             "action_type": "email",
             "trigger": data.get("trigger", "on_approve"),
@@ -2680,11 +2728,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             "email_subject_template": data.get("email_subject_template", ""),
             "email_body_template": data.get("email_body_template", ""),
             "email_template_name": data.get("email_template_name", ""),
-            "description": data.get(
-                "description",
-                f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
-                f"Subject: {data.get('email_subject_template', '')}",
-            ),
+            "description": description_value,
         }
         save_action(data, action_name, action_data)
 

@@ -684,7 +684,7 @@ class TestConvertWorkflowToVisual:
         assert sub_nodes[0]["data"]["sub_workflow_id"] == target.id
         assert (sub_nodes[0]["x"], sub_nodes[0]["y"]) == (0, 0)
 
-    @pytest.mark.parametrize("saved_stage_id", [True, "²", "0"])
+    @pytest.mark.parametrize("saved_stage_id", [True, "²", "0", "9" * 5000])
     def test_saved_layout_ignores_invalid_stage_id(
         self, form_definition, saved_stage_id
     ):
@@ -1164,15 +1164,18 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Duplicate stage_id"):
             convert_visual_to_workflow(visual, form_definition, staged_workflow)
 
-    @pytest.mark.parametrize("second_node_id", ["stage_1", " stage_1 "])
+    @pytest.mark.parametrize(
+        ("first_node_id", "second_node_id"),
+        [("stage_1", "stage_1"), ("stage_1", " stage_1 "), (7, "7"), ("7", 7)],
+    )
     def test_rejects_duplicate_stage_node_ids_without_approval_fields(
-        self, form_definition, second_node_id
+        self, form_definition, first_node_id, second_node_id
     ):
         visual = {
             "nodes": [
                 {"type": "start", "data": {}},
                 {
-                    "id": "stage_1",
+                    "id": first_node_id,
                     "type": "stage",
                     "data": {"name": "First", "requires_manager_approval": True},
                 },
@@ -1960,6 +1963,24 @@ class TestConvertVisualToWorkflow:
         assert list(form_definition.post_actions.values_list("id", flat=True)) == [
             action.id
         ]
+
+    def test_email_round_trip_preserves_description(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Notice",
+            action_type="email",
+            description="Custom explanation",
+            email_to="recipient@example.com",
+        )
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        email_node = next(node for node in visual["nodes"] if node["type"] == "email")
+        assert "description" not in email_node["data"]
+
+        convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        action.refresh_from_db()
+        assert action.description == "Custom explanation"
 
     def test_action_id_from_another_form_is_rejected(self, form_definition):
         other_form = FormDefinition.objects.create(name="Other", slug="other")

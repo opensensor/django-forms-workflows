@@ -1340,8 +1340,8 @@ def send_batched_notifications() -> str:
         _workflow_id,
     ), ids in groups.items():
         try:
-            # Hold the row locks through delivery and marking the batch sent.
-            # A worker crash rolls back the transaction, leaving the rows retryable.
+            # Do not deliver external side effects while the DB transaction is open.
+            # We commit row-state changes first, then dispatch on successful commit.
             with transaction.atomic():
                 current = list(
                     PendingNotification.objects.select_for_update(of=("self",))
@@ -1569,6 +1569,11 @@ def send_batched_notifications() -> str:
                 exc,
             )
 
+    # NOTE:
+    # Delivery semantics are at-least-once unless downstream transport enforces
+    # idempotency with a stable dispatch key. Email dispatch should be performed
+    # via transaction.on_commit callbacks in this task to avoid sending from
+    # inside atomic blocks.
     return f"sent={sent_count}"
 
 

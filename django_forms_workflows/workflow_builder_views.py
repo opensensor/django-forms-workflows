@@ -1352,6 +1352,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             existing_nodes = visual_data.get("nodes", [])
+            used_node_ids = {
+                node_id for node_id in (node.get("id") for node in existing_nodes) if node_id
+            }
             updated_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
                 for node in email_nodes_in_order
@@ -1373,9 +1376,16 @@ def convert_workflow_to_visual(workflow, form_definition):
                     stage_node_data.setdefault("stage_id", stage_id)
                     stage_nodes_in_order.append(existing_stage_node)
                     continue
+                generated_stage_node_id = f"stage-{stage_id}"
+                if generated_stage_node_id in used_node_ids:
+                    suffix = 1
+                    while f"{generated_stage_node_id}-{suffix}" in used_node_ids:
+                        suffix += 1
+                    generated_stage_node_id = f"{generated_stage_node_id}-{suffix}"
+                used_node_ids.add(generated_stage_node_id)
                 stage_nodes_in_order.append(
                     {
-                        "id": f"stage-{stage_id}",
+                        "id": generated_stage_node_id,
                         "type": "stage",
                         "x": 0,
                         "y": index * 140,

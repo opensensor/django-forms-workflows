@@ -2132,9 +2132,8 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Do not wrap an entire rule dispatch in one transaction: successful sends
-    # must not depend on later recipients to commit delivery logs.
-    # Use per-recipient transactional units at send/log points instead.
+    # Keep the submission lock and delivery logs in one transaction per rule.
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 

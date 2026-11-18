@@ -3599,6 +3599,35 @@ def test_digest_queue_tolerates_existing_duplicate_pending_rows(form_definition,
 
 
 @pytest.mark.django_db
+def test_conclusion_digest_renders_duplicate_dispatch_once(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    for _ in range(2):
+        PendingNotification.objects.create(
+            workflow=workflow,
+            notification_type="workflow_approved",
+            submission=submission,
+            recipient_email=user.email,
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+        )
+
+    with patch(
+        "django_forms_workflows.tasks._dispatch_conclusion_digest", return_value=True
+    ) as dispatch:
+        assert tasks_module.send_batched_notifications() == "sent=2"
+
+    assert len(dispatch.call_args.args[1]) == 1
+    assert not PendingNotification.objects.filter(
+        submission=submission, sent=False
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_taskless_final_notifications_keep_workflow_context_separate(
     form_definition, user, approver_user, mailoutbox
 ):

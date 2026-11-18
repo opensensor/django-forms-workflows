@@ -1377,7 +1377,9 @@ def send_batched_notifications() -> str:
         notification_type,
         _workflow_id,
     ), ids in groups.items():
-        recipient_email = group_recipient_original[(normalized_recipient, notification_type, _workflow_id)]
+        recipient_email = group_recipient_original[
+            (normalized_recipient, notification_type, _workflow_id)
+        ]
         try:
             # Hold the row locks through delivery and marking the batch sent.
             # A worker crash rolls back the transaction, leaving the rows retryable.
@@ -1435,7 +1437,7 @@ def send_batched_notifications() -> str:
                 render_rows = []
                 for n in sendable_current:
                     dispatch_key = (
-                        n.recipient_email,
+                        n.recipient_email.strip().casefold(),
                         n.notification_type,
                         n.workflow_id,
                         n.submission_id,
@@ -1612,9 +1614,8 @@ def send_batched_notifications() -> str:
 
 
 def _dispatch_submission_digest(recipient_email: str, notifications: list) -> bool:
-    recipient_email = recipient_email.strip()
-    recipient_email_normalized = recipient_email.casefold()
     """Send a digest of submission_received notifications to one recipient."""
+    recipient_email = recipient_email.strip()
     sample = notifications[0]
     workflow = sample.workflow
     form_name = workflow.form_definition.name

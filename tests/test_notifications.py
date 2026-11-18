@@ -58,6 +58,27 @@ def test_legacy_approval_request_skips_completed_submission(form_definition, use
 
 
 @pytest.mark.django_db
+def test_legacy_approval_reminder_skips_completed_submission(form_definition, user):
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Stale review",
+        status="pending",
+        assigned_to=user,
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as send:
+        tasks_module.send_approval_reminder(task.id)
+
+    send.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_recipient_sources_dedupe_case_and_whitespace(form_definition, user):
     workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
     rule = NotificationRule.objects.create(
@@ -3933,6 +3954,33 @@ def test_digest_queue_reuses_recipient_across_email_case(form_definition, user):
             "recipient_email", flat=True
         )
     ) == ["recipient@example.com"]
+
+
+@pytest.mark.django_db
+def test_digest_groups_duplicate_recipient_casing(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    for recipient in ("Recipient@Example.com", " recipient@example.com "):
+        PendingNotification.objects.create(
+            workflow=workflow,
+            submission=submission,
+            notification_type="submission_received",
+            recipient_email=recipient,
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+        )
+
+    with patch(
+        "django_forms_workflows.tasks._dispatch_submission_digest", return_value=True
+    ) as dispatch:
+        assert tasks_module.send_batched_notifications() == "sent=2"
+
+    dispatch.assert_called_once()
+    assert len(dispatch.call_args.args[1]) == 1
 
 
 @pytest.mark.django_db

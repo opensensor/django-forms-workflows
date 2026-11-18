@@ -1351,6 +1351,7 @@ def send_batched_notifications() -> str:
                         "submission__form_definition",
                         "submission__submitter",
                         "approval_task",
+                        "notification_rule",
                     )
                 )
                 if not current:
@@ -1436,6 +1437,7 @@ def send_batched_notifications() -> str:
                     locked_submission_status = {
                         s.id: s.status for s in locked_submissions
                     }
+                    locked_tasks_by_id = {t.id: t for t in locked_tasks}
                     locked_task_status = {t.id: t.status for t in locked_tasks}
 
                     # The select_related objects in current were loaded before
@@ -1450,10 +1452,56 @@ def send_batched_notifications() -> str:
                                 n.approval_task_id
                             ]
 
-                    actionable_ids = {
+                    recipient_key = recipient_email.strip().casefold()
+                    eligible_recipients_by_dispatch = {}
+
+                    def _recipient_still_eligible(
+                        n: PendingNotification,
+                        eligible_recipients_by_dispatch=eligible_recipients_by_dispatch,
+                        locked_tasks_by_id=locked_tasks_by_id,
+                        recipient_key=recipient_key,
+                    ) -> bool:
+                        if not n.notification_rule_id:
+                            return True
+                        dispatch_key = (
+                            n.notification_rule_id,
+                            n.submission_id,
+                            n.approval_task_id,
+                        )
+                        if dispatch_key not in eligible_recipients_by_dispatch:
+                            task = locked_tasks_by_id[n.approval_task_id]
+                            form_data = n.submission.form_data or {}
+                            recipients = _collect_notification_recipients(
+                                n.notification_rule,
+                                form_data,
+                                n.submission,
+                                task,
+                            )
+                            recipients += _collect_notification_cc(
+                                n.notification_rule, form_data
+                            )
+                            eligible_recipients_by_dispatch[dispatch_key] = {
+                                email.strip().casefold() for email in recipients
+                            }
+                        return (
+                            recipient_key
+                            in eligible_recipients_by_dispatch[dispatch_key]
+                        )
+
+                    eligible_ids = {
                         n.id
                         for n in sendable_current
                         if n.submission_id
+                        and n.approval_task_id
+                        and n.approval_task_id in locked_tasks_by_id
+                        and _recipient_still_eligible(n)
+                    }
+
+                    actionable_ids = {
+                        n.id
+                        for n in sendable_current
+                        if n.id in eligible_ids
+                        and n.submission_id
                         and n.approval_task_id
                         and locked_task_status.get(n.approval_task_id) == "pending"
                         and locked_submission_status.get(n.submission_id)

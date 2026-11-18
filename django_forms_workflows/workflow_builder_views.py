@@ -1331,8 +1331,20 @@ def convert_workflow_to_visual(workflow, form_definition):
                         for field in form_fields[:10]
                     ],
                     "has_more_fields": len(form_fields) > 10,
-                }
+                    raw_stage_id = node_data.get("stage_id")
+                    stage_id = None
+                    if isinstance(raw_stage_id, int):
+                        stage_id = raw_stage_id
+                    elif isinstance(raw_stage_id, str):
+                        normalized_stage_id = raw_stage_id.strip()
+                        if normalized_stage_id.isdigit():
+                            stage_id = int(normalized_stage_id)
+                    if stage_id is not None:
+                        node_data["stage_id"] = stage_id
+                    else:
+                        node_data.pop("stage_id", None)
 
+                    defaults = stage_defaults.get(stage_id) if stage_id is not None else None
             for node in visual_data.get("nodes", []):
                 node_type = node.get("type")
                 node_data = node.setdefault("data", {})

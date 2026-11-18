@@ -715,6 +715,29 @@ class TestConvertWorkflowToVisual:
             != f"action-{database.id}"
         )
 
+    def test_generated_email_id_avoids_trimmed_saved_collision(self, form_definition):
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition, name="Notify", action_type="email"
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {
+                        "id": f" email-action-{action.id} ",
+                        "type": "start",
+                        "data": {},
+                    }
+                ],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        ids = [str(node["id"]).strip() for node in visual["nodes"]]
+        assert len(ids) == len(set(ids))
+
     def test_restored_mixed_actions_follow_saved_order(self, form_definition):
         email = PostSubmissionAction.objects.create(
             form_definition=form_definition,
@@ -1810,6 +1833,21 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="does not belong"):
             convert_visual_to_workflow(visual, form_definition)
         assert not form_definition.post_actions.exists()
+
+    def test_workflow_from_another_form_is_rejected(self, form_definition):
+        other_form = FormDefinition.objects.create(name="Other", slug="other-workflow")
+        foreign_workflow = WorkflowDefinition.objects.create(
+            form_definition=other_form, name_label="Foreign"
+        )
+
+        with pytest.raises(ValidationError, match="does not belong"):
+            convert_visual_to_workflow(
+                self._make_visual(), form_definition, workflow=foreign_workflow
+            )
+
+        foreign_workflow.refresh_from_db()
+        assert foreign_workflow.form_definition_id == other_form.id
+        assert not form_definition.workflows.exists()
 
     def test_action_with_null_config_uses_empty_defaults(self, form_definition):
         visual = self._make_visual(

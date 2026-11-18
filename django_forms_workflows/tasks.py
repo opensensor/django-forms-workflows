@@ -136,7 +136,7 @@ def _send_html_email(
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
     bcc_list = [e for e in (bcc or []) if e and e not in to_list and e not in cc_list]
-    if not to_list:
+    if not (to_list or cc_list or bcc_list):
         logger.info("Skipping email '%s' (no recipients)", subject)
         _write_notification_log(
             notification_type=notification_type,

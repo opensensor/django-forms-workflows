@@ -2292,12 +2292,20 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             normalized_group_entries,
             key=lambda g: g["position"],
         )
+        seen_group_role_pairs = set()
         for pos, group_entry in enumerate(sorted_group_entries):
+            role = group_entry.get("role", "approval")
+            assignment_key = (group_entry["id"], role)
+            if assignment_key in seen_group_role_pairs:
+                raise ValidationError(
+                    "Duplicate approval-group assignment for the same group and role is not allowed."
+                )
+            seen_group_role_pairs.add(assignment_key)
             StageApprovalGroup.objects.create(
                 stage=stage,
                 group_id=group_entry["id"],
                 position=group_entry.get("position", pos),
-                role=group_entry.get("role", "approval"),
+                role=role,
             )
 
         raw_node_id = snode.get("id")

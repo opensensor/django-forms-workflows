@@ -2102,16 +2102,18 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Keep the submission lock and delivery logs in one transaction per rule.
-    @transaction.atomic
+    # Do not wrap an entire rule in one transaction: delivery side effects
+    # (emails/webhooks) must not be rolled back together with all logs.
+    # Each recipient attempt should commit independently in a narrower
+    # transaction at send/log-write time.
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Hold the submission lock through delivery and log writes so
-        concurrent dispatches cannot send the same recipient twice.
+        Per-recipient delivery/logging must be done in a per-recipient
+        transaction so retries preserve partial-delivery idempotency.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows

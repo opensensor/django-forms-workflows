@@ -1785,10 +1785,16 @@ def _collect_notification_cc(notif, form_data: dict) -> list[str]:
     2. ``cc_static_emails`` → comma-separated fixed addresses
     """
     cc: list[str] = []
+    seen: set[str] = set()
 
     def _add(email: str | None) -> None:
-        if email and email not in cc:
-            cc.append(email)
+        if not email:
+            return
+        address = email.strip()
+        key = address.casefold()
+        if key and key not in seen:
+            seen.add(key)
+            cc.append(address)
 
     if getattr(notif, "cc_email_field", ""):
         for addr in _get_form_field_emails(form_data, notif.cc_email_field):
@@ -2204,8 +2210,15 @@ def send_notification_rules(
             rule, form_data, submission=submission, task=rule_task
         )
         cc_recipients = _collect_notification_cc(rule, form_data)
+
+        def _recipient_key(value):
+            return (value or "").strip().casefold()
+
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
-        cc_recipients = [c for c in cc_recipients if c not in recipients]
+        recipient_keys = {_recipient_key(r) for r in recipients}
+        cc_recipients = [
+            c for c in cc_recipients if _recipient_key(c) not in recipient_keys
+        ]
 
         # Re-check delivery state while holding the lock.
         already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
@@ -2215,13 +2228,17 @@ def send_notification_rules(
         # Skip recipients successfully delivered on an earlier attempt.
         if already_sent or already_cc_or_bcc:
             before_to, before_cc = len(recipients), len(cc_recipients)
-            recipients = [r for r in recipients if r not in already_sent]
+            already_sent_keys = {_recipient_key(a) for a in already_sent}
+            already_cc_or_bcc_keys = {_recipient_key(a) for a in already_cc_or_bcc}
+            recipients = [
+                r for r in recipients if _recipient_key(r) not in already_sent_keys
+            ]
             cc_recipients = [
                 c
                 for c in cc_recipients
-                if c not in already_sent
-                and c not in already_cc_or_bcc
-                and f"cc:{c}" not in already_sent
+                if _recipient_key(c) not in already_sent_keys
+                and _recipient_key(c) not in already_cc_or_bcc_keys
+                and _recipient_key(f"cc:{c}") not in already_sent_keys
             ]
             skipped = (before_to - len(recipients)) + (before_cc - len(cc_recipients))
             if skipped:

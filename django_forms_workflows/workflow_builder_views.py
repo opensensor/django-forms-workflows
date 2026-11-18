@@ -1367,7 +1367,13 @@ def convert_workflow_to_visual(workflow, form_definition):
             valid_action_ids = set(
                 form_definition.post_actions.values_list("id", flat=True)
             )
+            updated_action_nodes_by_action_id = {
+                node.get("data", {}).get("action_id"): node
+                for node in action_nodes_in_order
+                if node.get("data", {}).get("action_id")
+            }
             used_email_action_ids = set()
+            used_action_ids = set()
             used_stage_ids = set()
             merged_nodes = []
             for node in existing_nodes:
@@ -1389,10 +1395,13 @@ def convert_workflow_to_visual(workflow, form_definition):
                         used_stage_ids.add(stage_id)
                 else:
                     action_id = node.get("data", {}).get("action_id")
-                    if (
+                    replacement_node = updated_action_nodes_by_action_id.get(action_id)
+                    if replacement_node and action_id not in used_action_ids:
+                        merged_nodes.append(replacement_node)
+                        used_action_ids.add(action_id)
+                    elif (
                         node.get("type") != "action"
-                        or not action_id
-                        or action_id in valid_action_ids
+                        and (not action_id or action_id in valid_action_ids)
                     ):
                         merged_nodes.append(node)
 
@@ -1401,13 +1410,18 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for action_id, node in updated_email_nodes_by_action_id.items()
                 if action_id not in used_email_action_ids
             ]
+            missing_action_nodes = [
+                node
+                for action_id, node in updated_action_nodes_by_action_id.items()
+                if action_id not in used_action_ids and action_id not in used_email_action_ids
+            ]
             missing_stage_nodes = [
                 node
                 for stage_id, node in updated_stage_nodes_by_stage_id.items()
                 if stage_id not in used_stage_ids
             ]
             visual_data["nodes"] = (
-                merged_nodes + missing_email_nodes + missing_stage_nodes
+                merged_nodes + missing_email_nodes + missing_action_nodes + missing_stage_nodes
             )
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}

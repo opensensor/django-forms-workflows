@@ -271,7 +271,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
     field_name_to_id = {
-        field["field_name"].strip(): field["id"] for field in field_records
+        field["field_name"].strip().lower(): field["id"] for field in field_records
     }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
@@ -1401,13 +1401,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     stage_node_data.setdefault("stage_id", stage_id)
                     stage_nodes_in_order.append(existing_stage_node)
                     continue
-                generated_stage_node_id = f"stage-{stage_id}"
-                if generated_stage_node_id in used_node_ids:
-                    suffix = 1
-                    while f"{generated_stage_node_id}-{suffix}" in used_node_ids:
-                        suffix += 1
-                    generated_stage_node_id = f"{generated_stage_node_id}-{suffix}"
-                used_node_ids.add(generated_stage_node_id)
+                generated_stage_node_id = allocate_unique_node_id(f"stage-{stage_id}")
                 stage_nodes_in_order.append(
                     {
                         "id": generated_stage_node_id,
@@ -1471,7 +1465,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     action_node.setdefault("data", {}).update(data)
                 else:
                     action_node = {
-                        "id": f"action-{action.id}",
+                        "id": allocate_unique_node_id(f"action-{action.id}"),
                         "type": "action",
                         "x": 0,
                         "y": index * 120,

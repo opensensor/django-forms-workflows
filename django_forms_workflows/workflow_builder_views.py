@@ -1329,16 +1329,18 @@ def convert_workflow_to_visual(workflow, form_definition):
 
             existing_nodes = visual_data.get("nodes", [])
             used_node_ids = {
-                node_id
+                str(node_id).strip()
                 for node_id in (node.get("id") for node in existing_nodes)
-                if node_id
+                if node_id is not None and str(node_id).strip()
             }
 
             def allocate_unique_node_id(base_node_id):
-                candidate = base_node_id
-                while candidate in used_node_ids:
+                candidate = str(base_node_id).strip()
+                canonical_candidate = candidate
+                while canonical_candidate in used_node_ids:
                     candidate += "-new"
-                used_node_ids.add(candidate)
+                    canonical_candidate = candidate.strip()
+                used_node_ids.add(canonical_candidate)
                 return candidate
 
             if sub_workflow_defaults and not has_sub_workflow_node:

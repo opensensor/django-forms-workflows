@@ -956,6 +956,36 @@ class TestConvertWorkflowToVisual:
             second_approval_group.id,
         }
 
+    def test_saved_numeric_string_stage_id_keeps_notification_rule_node(
+        self, form_definition
+    ):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        stage = workflow.stages.create(name="Review", order=1)
+        NotificationRule.objects.create(
+            workflow=workflow, stage=stage, event="approval_request"
+        )
+        workflow.visual_workflow_data = {
+            "nodes": [
+                {"id": "settings", "type": "workflow_settings", "data": {}},
+                {
+                    "id": "saved-stage",
+                    "type": "stage",
+                    "data": {"stage_id": f" {stage.id} "},
+                },
+            ],
+            "connections": [],
+        }
+        workflow.save(update_fields=["visual_workflow_data"])
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        settings = next(
+            node for node in visual["nodes"] if node["type"] == "workflow_settings"
+        )
+        assert (
+            settings["data"]["notification_rules"][0]["stage_node_id"] == "saved-stage"
+        )
+
     def test_loads_stage_approval_group_positions(
         self, staged_workflow, form_definition
     ):

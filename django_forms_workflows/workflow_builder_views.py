@@ -1290,9 +1290,27 @@ def convert_workflow_to_visual(workflow, form_definition):
             stage_node_map = {}
             for node in visual_data.get("nodes", []):
                 if node.get("type") == "stage":
-                    stage_id = node.get("data", {}).get("stage_id")
-                    if stage_id:
-                        stage_node_map[stage_id] = node.get("id")
+                    raw_stage_id = node.get("data", {}).get("stage_id")
+                    stage_id = None
+                    if isinstance(raw_stage_id, int) and not isinstance(
+                        raw_stage_id, bool
+                    ):
+                        stage_id = raw_stage_id
+                    elif isinstance(raw_stage_id, str):
+                        value = raw_stage_id.strip()
+                        if value.isascii() and value.isdigit():
+                            try:
+                                stage_id = int(value)
+                            except ValueError:
+                                stage_id = None
+                    node_id = node.get("id")
+                    if (
+                        stage_id in stage_defaults
+                        and isinstance(node_id, str | int)
+                        and not isinstance(node_id, bool)
+                        and str(node_id).strip()
+                    ):
+                        stage_node_map[stage_id] = node_id
 
             notification_rule_defaults = [
                 _serialize_notification_rule(

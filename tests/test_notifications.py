@@ -1,5 +1,5 @@
-from datetime import UTC, datetime, timedelta
 import threading
+from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -145,7 +145,6 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     first_call_entered = Event()
     release_first_call = Event()
     second_worker_at_lock = Event()
-    allow_second_worker_past_lock = Event()
 
     def record_delivery(*args, **kwargs):
         send_calls.append(1)
@@ -154,12 +153,11 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
             release_first_call.wait(timeout=5)
         return True
 
-    original_select_for_update = PendingNotification.objects.select_for_update
+    original_select_for_update = FormSubmission.objects.select_for_update
 
     def instrumented_select_for_update(*args, **kwargs):
         if threading.current_thread().name == "second-worker":
             second_worker_at_lock.set()
-            allow_second_worker_past_lock.wait(timeout=5)
         return original_select_for_update(*args, **kwargs)
 
     def worker():
@@ -171,10 +169,15 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
         finally:
             close_old_connections()
 
-    with patch(
-        "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
-    ), patch.object(
-        PendingNotification.objects, "select_for_update", side_effect=instrumented_select_for_update
+    with (
+        patch(
+            "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
+        ),
+        patch.object(
+            FormSubmission.objects,
+            "select_for_update",
+            side_effect=instrumented_select_for_update,
+        ),
     ):
         t1 = Thread(target=worker, name="first-worker")
         t2 = Thread(target=worker, name="second-worker")
@@ -185,9 +188,9 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
         assert second_worker_at_lock.wait(timeout=5)
         t2.join(timeout=0.2)
         assert t2.is_alive()
+        assert send_calls == [1]
 
         release_first_call.set()
-        allow_second_worker_past_lock.set()
         t1.join(timeout=5)
         t2.join(timeout=5)
 

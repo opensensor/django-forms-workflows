@@ -2441,6 +2441,17 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             data = node.get("data", {})
             action_name = data.get("name", "Unnamed Action")
             action_type = data.get("action_type", "database")
+            valid_action_types = {
+                choice[0]
+                for choice in PostSubmissionAction._meta.get_field(
+                    "action_type"
+                ).choices
+            }
+            if action_type not in valid_action_types:
+                raise ValidationError(
+                    f"Unsupported action_type '{action_type}'. "
+                    f"Supported values are: {sorted(valid_action_types)}"
+                )
 
             config = data.get("config") or {}
             if isinstance(config, str):

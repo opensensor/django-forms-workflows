@@ -669,6 +669,12 @@ def _deliver_workflow_webhook_attempt(
         )
         return None
 
+    if not endpoint.is_active:
+        logger.info(
+            "Webhook endpoint %s is inactive; skipping delivery", endpoint_id
+        )
+        return None
+
     if not endpoint.subscribes_to(event):
         return None
 

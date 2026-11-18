@@ -1262,6 +1262,7 @@ def convert_workflow_to_visual(workflow, form_definition):
             ]
 
             has_workflow_settings_node = False
+            has_sub_workflow_node = False
             for node in visual_data.get("nodes", []):
                 node_type = node.get("type")
                 node_data = node.setdefault("data", {})
@@ -1285,6 +1286,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         for key, value in defaults.items():
                             node_data[key] = value
                 elif node_type == "sub_workflow" and sub_workflow_defaults:
+                    has_sub_workflow_node = True
                     if (
                         node_data.get("sub_workflow_form_id") in (None, "")
                         and node_data.get("sub_workflow_id")
@@ -1301,6 +1303,18 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data[key] = value
                     node_data["sub_workflow_id_type"] = "workflow"
+
+            if sub_workflow_defaults and not has_sub_workflow_node:
+                visual_data.setdefault("nodes", []).append(
+                    {
+                        "id": "sub-workflow-node",
+                        "type": "sub_workflow",
+                        "data": {
+                            **sub_workflow_defaults,
+                            "sub_workflow_id_type": "workflow",
+                        },
+                    }
+                )
 
             if not has_workflow_settings_node:
                 existing_ids = {

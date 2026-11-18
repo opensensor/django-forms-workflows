@@ -136,7 +136,8 @@ def _send_html_email(
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
     bcc_list = [e for e in (bcc or []) if e and e not in to_list and e not in cc_list]
-    if not (to_list or cc_list or bcc_list):
+    log_recipients = to_list or cc_list + bcc_list
+    if not log_recipients:
         logger.info("Skipping email '%s' (no recipients)", subject)
         _write_notification_log(
             notification_type=notification_type,
@@ -183,7 +184,7 @@ def _send_html_email(
                 f" cc={cc_list}" if cc_list else "",
                 f" bcc={bcc_list}" if bcc_list else "",
             )
-            for recipient in to_list:
+            for recipient in log_recipients:
                 _write_notification_log(
                     notification_type=notification_type,
                     submission_id=submission_id,
@@ -205,7 +206,7 @@ def _send_html_email(
             f" cc={cc_list}" if cc_list else "",
             f" bcc={bcc_list}" if bcc_list else "",
         )
-        for recipient in to_list:
+        for recipient in log_recipients:
             _write_notification_log(
                 notification_type=notification_type,
                 submission_id=submission_id,
@@ -221,7 +222,7 @@ def _send_html_email(
         return True
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
-        for recipient in to_list:
+        for recipient in log_recipients:
             _write_notification_log(
                 notification_type=notification_type,
                 submission_id=submission_id,
@@ -260,7 +261,8 @@ def _send_html_email_from_string(
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
     bcc_list = [e for e in (bcc or []) if e and e not in to_list and e not in cc_list]
-    if not to_list:
+    log_recipients = to_list or cc_list + bcc_list
+    if not log_recipients:
         logger.info("Skipping email '%s' (no recipients)", subject)
         _write_notification_log(
             notification_type=notification_type,
@@ -300,7 +302,7 @@ def _send_html_email_from_string(
     try:
         sent_count = msg.send(fail_silently=False)
         if sent_count == 0:
-            for recipient in to_list:
+            for recipient in log_recipients:
                 _write_notification_log(
                     notification_type=notification_type,
                     submission_id=submission_id,
@@ -321,7 +323,7 @@ def _send_html_email_from_string(
             f" cc={cc_list}" if cc_list else "",
             f" bcc={bcc_list}" if bcc_list else "",
         )
-        for recipient in to_list:
+        for recipient in log_recipients:
             _write_notification_log(
                 notification_type=notification_type,
                 submission_id=submission_id,
@@ -337,7 +339,7 @@ def _send_html_email_from_string(
         return True
     except Exception as e:  # pragma: no cover
         logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
-        for recipient in to_list:
+        for recipient in log_recipients:
             _write_notification_log(
                 notification_type=notification_type,
                 submission_id=submission_id,
@@ -922,7 +924,7 @@ def send_approval_request(task_id: int) -> None:
 
     # Submission may also have transitioned while this job was queued.
     # Do not send actionable approval requests unless still pending approval.
-    if str(getattr(task.submission, "status", "")).lower() != "pending_approval":
+    if task.submission.status != "pending_approval":
         logger.info(
             "Skipping approval request for task %s because submission %s status is %r",
             task.id,
@@ -1090,22 +1092,30 @@ def check_approval_deadlines() -> str:
         if workflow.approval_deadline_days and task.created_at:
             deadline = task.created_at + timedelta(days=workflow.approval_deadline_days)
             if now > deadline:
-                updated = False
                 with transaction.atomic():
                     # Lock submission first, then task, to preserve global lock order.
-                    locked_submission = FormSubmission.objects.select_for_update().get(
-                        id=submission.id
+                    locked_submission = (
+                        FormSubmission.objects.select_for_update()
+                        .filter(id=submission.id)
+                        .first()
                     )
-                    if locked_submission.status != "pending_approval":
+                    if (
+                        not locked_submission
+                        or locked_submission.status != "pending_approval"
+                    ):
                         continue
 
-                    locked_task = ApprovalTask.objects.select_for_update().get(id=task.id)
-                    if locked_task.status != "pending":
+                    locked_task = (
+                        ApprovalTask.objects.select_for_update()
+                        .filter(id=task.id)
+                        .first()
+                    )
+                    if not locked_task or locked_task.status != "pending":
                         continue
 
-                    locked_task.status = "expired"
-                    locked_task.save(update_fields=["status"])
-                    updated = True
+                    updated = ApprovalTask.objects.filter(
+                        id=task.id, status="pending"
+                    ).update(status="expired")
 
                 if updated:
                     expired_count += 1

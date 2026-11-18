@@ -2476,11 +2476,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    # The loader adds missing email actions owned by the form to the graph.
+    # The loader can add missing form-owned actions to the graph.
     # Allow the builder to delete those generated nodes as well as saved ones.
     allowed_deleted_action_ids = set(previous_action_ids) | set(
         PostSubmissionAction.objects.filter(
-            form_definition=form_definition, action_type="email"
+            form_definition=form_definition
         ).values_list("id", flat=True)
     )
 

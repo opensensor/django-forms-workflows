@@ -1022,6 +1022,7 @@ def workflow_builder_save(request):
             "end",
         }
         if nodes:
+            seen_node_ids = {}
             for idx, node in enumerate(nodes):
                 if not isinstance(node, dict):
                     raise ValidationError(
@@ -1051,6 +1052,15 @@ def workflow_builder_save(request):
                     raise ValidationError(
                         f"Malformed payload: node.type at index {idx} is invalid."
                     )
+                if node_id is not None:
+                    normalized_node_id = str(node_id).strip()
+                    if normalized_node_id in seen_node_ids:
+                        prev_idx, prev_type = seen_node_ids[normalized_node_id]
+                        raise ValidationError(
+                            f"Malformed payload: duplicate node.id '{normalized_node_id}' found at indexes "
+                            f"{prev_idx} ({prev_type}) and {idx} ({node_type})."
+                        )
+                    seen_node_ids[normalized_node_id] = (idx, node_type)
                 if "data" in node and not isinstance(node["data"], dict):
                     raise ValidationError(
                         f"Malformed payload: node.data at index {idx} must be an object."

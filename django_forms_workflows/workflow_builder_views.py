@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.utils.dateparse import parse_time
 from django.views.decorators.http import require_GET, require_POST
 
@@ -1299,26 +1300,32 @@ def convert_workflow_to_visual(workflow, form_definition):
 
             has_workflow_settings_node = False
             has_sub_workflow_node = False
-            form_node_ids = set()
-            for node in visual_data.get("nodes", []):
-                if node.get("type") != "form":
-                    continue
-                form_node_data = node.get("data", {})
-                form_id = form_node_data.get("form_id")
-                if form_id:
-                    form_node_ids.add(form_id)
-
-            form_node_defaults = {}
-            if form_node_ids:
-                for form in FormDefinition.objects.filter(id__in=form_node_ids):
-                    form_node_defaults[form.id] = {
-                        "form_id": form.id,
-                        "form_name": form.name,
-                        "field_count": len(form.fields or []),
-                        "fields": form.fields or [],
-                        "is_multi_step": bool(getattr(form, "is_multi_step", False)),
-                        "steps": getattr(form, "steps", []) or [],
-                    }
+            form_node_defaults = None
+            if any(node.get("type") == "form" for node in visual_data.get("nodes", [])):
+                form_fields = list(form_definition.fields.all().order_by("order"))
+                form_steps = form_definition.form_steps or []
+                form_node_defaults = {
+                    "form_id": form_definition.id,
+                    "form_name": form_definition.name,
+                    "form_builder_url": reverse(
+                        "admin:form_builder_edit", args=[form_definition.id]
+                    ),
+                    "field_count": len(form_fields),
+                    "enable_multi_step": form_definition.enable_multi_step,
+                    "form_steps": form_steps,
+                    "step_count": len(form_steps),
+                    "fields": [
+                        {
+                            "name": field.field_name,
+                            "label": field.field_label,
+                            "type": field.field_type,
+                            "required": field.required,
+                            "prefill_source": field.get_prefill_source_key(),
+                        }
+                        for field in form_fields[:10]
+                    ],
+                    "has_more_fields": len(form_fields) > 10,
+                }
 
             for node in visual_data.get("nodes", []):
                 node_type = node.get("type")
@@ -1343,10 +1350,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                         for key, value in defaults.items():
                             node_data[key] = value
                 elif node_type == "form":
-                    form_id = node_data.get("form_id")
-                    defaults = form_node_defaults.get(form_id)
-                    if defaults:
-                        for key, value in defaults.items():
+                    if str(node_data.get("form_id", "")).strip() == str(
+                        form_definition.id
+                    ):
+                        for key, value in form_node_defaults.items():
                             node_data[key] = value
                 elif node_type == "sub_workflow" and sub_workflow_defaults:
                     has_sub_workflow_node = True
@@ -1721,8 +1728,6 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # Form submission node (always present - represents the actual form)
     form_fields = list(form_definition.fields.all().order_by("order"))
-
-    from django.urls import reverse
 
     form_builder_url = reverse("admin:form_builder_edit", args=[form_definition.id])
 
@@ -2405,9 +2410,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
 
         raw_node_id = snode.get("id")
-        stage_node_map[
-            raw_node_id.strip() if isinstance(raw_node_id, str) else raw_node_id
-        ] = stage
+        stage_node_map[str(raw_node_id).strip()] = stage
         stage_field_map[stage.id] = _resolve_form_field_ids(
             form_definition,
             sdata.get("approval_fields", []),
@@ -2470,7 +2473,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 stage_node_id, str | int
             ):
                 raise ValidationError("Invalid stage reference in notification rule.")
-            stage = stage_node_map.get(stage_node_id)
+            stage = stage_node_map.get(str(stage_node_id).strip())
         if stage is None and has_stage_id:
             if isinstance(stage_id, bool):
                 raise ValidationError("Invalid stage reference in notification rule.")

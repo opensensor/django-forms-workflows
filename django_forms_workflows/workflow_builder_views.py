@@ -2669,6 +2669,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             if action_type == "database":
                 action_data["db_alias"] = config.get("db_alias", "")
                 action_data["db_schema"] = config.get("db_schema", "")
+        generated_description = (
+            f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
+            f"Subject: {data.get('email_subject_template', '')}"
+        )
+        if "description" in data:
+            description_value = data.get("description")
+        else:
+            description_value = None
+            raw_action_id = data.get("id")
+            try:
+                action_id = int(raw_action_id)
+            except (TypeError, ValueError):
+                action_id = None
+            if action_id is not None:
+                existing_action = existing_actions.get(action_id)
+                if existing_action is not None:
+                    description_value = existing_action.description
+            if description_value is None:
+                description_value = generated_description
+
                 action_data["db_table"] = config.get("db_table", "")
                 action_data["db_lookup_field"] = config.get(
                     "db_lookup_field", "ID_NUMBER"
@@ -2680,11 +2700,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     "field_mappings", config if isinstance(config, list) else []
                 )
             elif action_type == "ldap":
-                action_data["ldap_dn_template"] = config.get("ldap_dn_template", "")
-                action_data["ldap_field_mappings"] = config.get(
-                    "field_mappings", config if isinstance(config, list) else []
-                )
-            elif action_type == "api":
+            "description": description_value,
                 action_data["api_endpoint"] = config.get("endpoint", "")
                 action_data["api_method"] = config.get("method", "POST")
                 action_data["api_headers"] = config.get("headers", {})

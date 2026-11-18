@@ -2420,12 +2420,13 @@ def send_notification_rules(
             _recipient_key(e) for e in all_recipient_emails if _recipient_key(e)
         }
         if normalized_recipient_emails:
-            email_query = Q()
-            for email in normalized_recipient_emails:
-                email_query |= Q(email__iexact=email)
-            for u in user_model.objects.filter(email_query):
-                if u.email:
-                    _users_by_email[_recipient_key(u.email)] = u
+            normalized_email_list = list(normalized_recipient_emails)
+            chunk_size = 500
+            for i in range(0, len(normalized_email_list), chunk_size):
+                email_chunk = normalized_email_list[i : i + chunk_size]
+                for u in user_model.objects.filter(email__in=email_chunk):
+                    if u.email:
+                        _users_by_email[_recipient_key(u.email)] = u
 
         # Check cadence — batch or send immediately
         cadence = (

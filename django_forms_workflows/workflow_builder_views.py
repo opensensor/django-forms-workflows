@@ -127,7 +127,10 @@ def _normalize_trigger_conditions(raw_conditions):
             raise ValidationError(
                 "Each trigger condition must be an object with 'field' and 'operator'."
             )
-        field_name = str(condition.get("field", "")).strip()
+        raw_field_name = condition.get("field", "")
+        if not isinstance(raw_field_name, str):
+            raise ValidationError("Trigger condition field must be a string.")
+        field_name = raw_field_name.strip()
         operator = str(condition.get("operator", "equals")).strip()
         if not field_name:
             raise ValidationError("Trigger condition field cannot be empty.")

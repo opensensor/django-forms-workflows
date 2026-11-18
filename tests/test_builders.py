@@ -1580,6 +1580,18 @@ class TestConvertVisualToWorkflow:
             == actions[0].id
         )
 
+    @pytest.mark.parametrize("action_type", ["unknown", "email"])
+    def test_rejects_invalid_action_node_type(self, form_definition, action_type):
+        visual = self._make_visual(
+            actions=[{"name": "Bad action", "action_type": action_type}]
+        )
+
+        with pytest.raises(ValidationError, match="Unsupported action_type"):
+            convert_visual_to_workflow(visual, form_definition)
+
+        assert not form_definition.post_actions.exists()
+        assert not form_definition.workflows.exists()
+
     def test_explicit_action_deletion_respects_other_workflow_graphs(
         self, form_definition
     ):

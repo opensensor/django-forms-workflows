@@ -271,7 +271,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
     field_name_to_id = {
-        field["field_name"]: field["id"] for field in field_records
+        field["field_name"].strip().lower(): field["id"] for field in field_records
     }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
@@ -1976,7 +1976,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 }:
                     continue
                 raw_id = (graph_node.get("data") or {}).get("action_id")
-                if isinstance(raw_id, int) and not isinstance(raw_id, bool) and raw_id > 0:
+                if (
+                    isinstance(raw_id, int)
+                    and not isinstance(raw_id, bool)
+                    and raw_id > 0
+                ):
                     result.add(raw_id)
                 elif isinstance(raw_id, str) and raw_id.isascii() and raw_id.isdigit():
                     try:
@@ -2451,7 +2455,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 for choice in PostSubmissionAction._meta.get_field(
                     "action_type"
                 ).choices
-            }
+            } - {"email"}
             if action_type not in valid_action_types:
                 raise ValidationError(
                     f"Unsupported action_type '{action_type}'. "

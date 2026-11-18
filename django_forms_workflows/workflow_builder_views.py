@@ -1027,6 +1027,19 @@ def workflow_builder_save(request):
                     raise ValidationError(
                         f"Malformed payload: node at index {idx} must be an object."
                     )
+                if "id" not in node:
+                    raise ValidationError(
+                        f"Malformed payload: node.id at index {idx} is required."
+                    )
+                node_id = node.get("id")
+                if isinstance(node_id, bool) or not isinstance(node_id, (str, int)):
+                    raise ValidationError(
+                        f"Malformed payload: node.id at index {idx} must be a string or integer."
+                    )
+                if isinstance(node_id, str) and not node_id.strip():
+                    raise ValidationError(
+                        f"Malformed payload: node.id at index {idx} must not be empty."
+                    )
                 node_type = node.get("type")
                 if isinstance(node_type, bool) or not isinstance(node_type, str):
                     raise ValidationError(

@@ -3210,6 +3210,37 @@ def test_approval_digest_marks_all_obsolete_items_handled(form_definition, user)
 
 
 @pytest.mark.django_db
+def test_approval_digest_drops_pending_task_after_submission_ends(
+    form_definition, user
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission, step_name="Stale review", status="pending"
+    )
+    notification = PendingNotification.objects.create(
+        workflow=workflow,
+        notification_type="approval_request",
+        submission=submission,
+        approval_task=task,
+        recipient_email=user.email,
+        scheduled_for=timezone.now() - timedelta(minutes=1),
+    )
+
+    with patch("django_forms_workflows.tasks._dispatch_approval_digest") as dispatch:
+        assert tasks_module.send_batched_notifications() == "sent=0"
+
+    dispatch.assert_not_called()
+    notification.refresh_from_db()
+    assert notification.sent is True
+
+
+@pytest.mark.django_db
 def test_daily_workflow_approved_queues_supported_digest(form_definition, user):
     workflow = WorkflowDefinition.objects.create(
         form_definition=form_definition, notification_cadence="daily"

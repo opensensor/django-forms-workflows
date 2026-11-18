@@ -491,6 +491,91 @@ class TestConvertWorkflowToVisual:
         assert [node["id"] for node in visual["nodes"]] == ["start", "live"]
         assert visual["connections"] == [{"from": "start", "to": "live"}]
 
+    def test_saved_visual_restores_missing_non_email_action(self, form_definition):
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Update DB",
+            action_type="database",
+            db_table="current_table",
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [{"id": "start", "type": "start", "data": {}}],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        action_nodes = [node for node in visual["nodes"] if node["type"] == "action"]
+        assert len(action_nodes) == 1
+        assert action_nodes[0]["data"]["action_id"] == action.id
+        assert action_nodes[0]["data"]["config"]["db_table"] == "current_table"
+
+    def test_saved_action_uses_current_database_configuration(self, form_definition):
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Update DB",
+            action_type="database",
+            db_table="current_table",
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {
+                        "id": "action",
+                        "type": "action",
+                        "data": {
+                            "action_id": action.id,
+                            "config": {"db_table": "old_table"},
+                        },
+                    }
+                ],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert visual["nodes"][0]["data"]["config"]["db_table"] == "current_table"
+
+    def test_saved_sub_workflow_uses_current_target(self, form_definition):
+        target_form = FormDefinition.objects.create(name="Child", slug="child")
+        target = WorkflowDefinition.objects.create(form_definition=target_form)
+        parent = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {
+                        "id": "sub",
+                        "type": "sub_workflow",
+                        "data": {
+                            "sub_workflow_id": 999999,
+                            "sub_workflow_id_type": "form",
+                            "section_label": "Old label",
+                        },
+                    }
+                ],
+                "connections": [],
+            },
+        )
+        SubWorkflowDefinition.objects.create(
+            parent_workflow=parent,
+            sub_workflow=target,
+            count_field="count",
+            section_label="Current label",
+        )
+
+        visual = convert_workflow_to_visual(parent, form_definition)
+
+        data = visual["nodes"][0]["data"]
+        assert data["sub_workflow_id"] == target.id
+        assert data["sub_workflow_form_id"] == target_form.id
+        assert data["sub_workflow_id_type"] == "workflow"
+        assert data["section_label"] == "Current label"
+
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
     ):

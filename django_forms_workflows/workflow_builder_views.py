@@ -1448,6 +1448,11 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in action_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
+            valid_sub_workflow_ids = {
+                node.get("data", {}).get("sub_workflow_id")
+                for node in sub_workflow_nodes_in_order
+                if node.get("data", {}).get("sub_workflow_id")
+            }
             used_email_action_ids = set()
             used_action_ids = set()
             used_stage_ids = set()
@@ -1476,6 +1481,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                         merged_nodes.append(replacement_node)
                         used_action_ids.add(action_id)
                     elif not action_id:
+                        merged_nodes.append(node)
+                elif node.get("type") == "sub_workflow":
+                    sub_workflow_id = node.get("data", {}).get("sub_workflow_id")
+                    if sub_workflow_id in valid_sub_workflow_ids:
                         merged_nodes.append(node)
                 else:
                     merged_nodes.append(node)

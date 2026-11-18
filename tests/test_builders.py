@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from django_forms_workflows.form_builder_views import (
     FormBuilderPayloadError,
@@ -437,6 +439,27 @@ class TestConvertWorkflowToVisual:
         visual = convert_workflow_to_visual(workflow, form_definition)
 
         assert visual["connections"] == [{"from": 0, "to": "end"}]
+
+    def test_saved_layout_reuses_loaded_stage_ids(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [{"id": "start", "type": "start", "data": {}}],
+                "connections": [],
+            },
+        )
+        workflow.stages.create(name="Review", order=1)
+
+        with CaptureQueriesContext(connection) as queries:
+            visual = convert_workflow_to_visual(workflow, form_definition)
+
+        stage_reads = [
+            query["sql"]
+            for query in queries
+            if 'FROM "django_forms_workflows_workflowstage"' in query["sql"]
+        ]
+        assert len(stage_reads) == 1
+        assert any(node["type"] == "stage" for node in visual["nodes"])
 
     def test_saved_email_action_uses_current_database_values(self, form_definition):
         action = PostSubmissionAction.objects.create(
@@ -2184,6 +2207,33 @@ class TestWorkflowBuilderViews:
         assert response.status_code == 400
         assert response.json()["errors"] == ["Invalid workflow configuration."]
         assert not form_definition.workflows.exists()
+
+    @pytest.mark.parametrize("node_id,endpoint", [(1, "1"), (" start ", "start")])
+    def test_connection_round_trip_matches_canonical_node_id(
+        self, client, superuser, form_definition, node_id, endpoint
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {
+                        "nodes": [
+                            {"id": node_id, "type": "start", "data": {}},
+                            {"id": "end", "type": "end", "data": {}},
+                        ],
+                        "connections": [{"from": endpoint, "to": "end"}],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        workflow = form_definition.workflows.get()
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        assert visual["connections"] == [{"from": node_id, "to": "end"}]
 
     @pytest.mark.parametrize(
         "connections",

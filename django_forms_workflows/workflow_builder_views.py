@@ -1412,15 +1412,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in existing_nodes
                 if node.get("type") == "stage" and node.get("data", {}).get("stage_id")
             }
-            cached_stages = getattr(workflow, "_stages_cache", None)
-            if cached_stages is not None:
-                stage_ids_in_order = [stage.id for stage in cached_stages]
-            else:
-                cached_stages_by_id = getattr(workflow, "_stages_by_id_cache", None)
-                if cached_stages_by_id is not None:
-                    stage_ids_in_order = list(cached_stages_by_id.keys())
-                else:
-                    stage_ids_in_order = list(workflow.stages.values_list("id", flat=True))
+            stage_ids_in_order = [stage.id for stage in _stages_cache]
             valid_stage_ids = set(stage_ids_in_order)
             stage_nodes_in_order = []
             for index, stage_id in enumerate(stage_ids_in_order):
@@ -1584,31 +1576,22 @@ def convert_workflow_to_visual(workflow, form_definition):
                 canonical = str(node_id).strip()
                 return canonical if canonical != "" else None
 
-            email_node_ids = {
-                canonical_id
-                for canonical_id in (
-                    _canonical_node_id(node.get("id")) for node in email_nodes_in_order
-                )
-                if canonical_id is not None
-            }
-            valid_node_ids = {
-                canonical_id
-                for canonical_id in (
-                    _canonical_node_id(node.get("id"))
-                    for node in visual_data["nodes"]
-                )
-                if canonical_id is not None
+            email_node_ids = {node.get("id") for node in email_nodes_in_order}
+            node_ids_by_canonical = {
+                canonical_id: node.get("id")
+                for node in visual_data["nodes"]
+                if (canonical_id := _canonical_node_id(node.get("id"))) is not None
             }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
             for connection in existing_connections:
-                from_id = _canonical_node_id(
-                    connection.get("from", connection.get("source"))
+                from_id = node_ids_by_canonical.get(
+                    _canonical_node_id(connection.get("from", connection.get("source")))
                 )
-                to_id = _canonical_node_id(
-                    connection.get("to", connection.get("target"))
+                to_id = node_ids_by_canonical.get(
+                    _canonical_node_id(connection.get("to", connection.get("target")))
                 )
-                if from_id in valid_node_ids and to_id in valid_node_ids:
+                if from_id is not None and to_id is not None:
                     normalized_connections.append(
                         {
                             "from": from_id,

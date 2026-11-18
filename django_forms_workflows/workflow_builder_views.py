@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.utils.dateparse import parse_time
 from django.views.decorators.http import require_GET, require_POST
 
@@ -127,7 +128,10 @@ def _normalize_trigger_conditions(raw_conditions):
             raise ValidationError(
                 "Each trigger condition must be an object with 'field' and 'operator'."
             )
-        field_name = str(condition.get("field", "")).strip()
+        raw_field_name = condition.get("field", "")
+        if not isinstance(raw_field_name, str):
+            raise ValidationError("Trigger condition field must be a string.")
+        field_name = raw_field_name.strip()
         operator = str(condition.get("operator", "equals")).strip()
         if not field_name:
             raise ValidationError("Trigger condition field cannot be empty.")
@@ -585,6 +589,8 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         add_error("Workflow settings 'notification_rules' must be a list.")
         notification_rules = []
 
+    canonical_stage_node_ids = {str(node_id).strip() for node_id in stage_node_ids}
+
     for rule_index, rule_data in enumerate(notification_rules, start=1):
         if not isinstance(rule_data, dict):
             add_error(f"Notification rule {rule_index} must be an object.")
@@ -598,7 +604,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     f"Notification rule {rule_index} has an invalid stage node reference."
                 )
             elif isinstance(stage_node_id, int):
-                normalized_stage_node_id = stage_node_id
+                normalized_stage_node_id = str(stage_node_id)
             elif isinstance(stage_node_id, str):
                 value = stage_node_id.strip()
                 if value:
@@ -615,7 +621,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_id = rule_data.get("stage_id")
         if (
             normalized_stage_node_id is not None
-            and normalized_stage_node_id not in stage_node_ids
+            and normalized_stage_node_id not in canonical_stage_node_ids
         ):
             add_error(
                 f"Notification rule {rule_index} references a stage that is not present in the builder graph."
@@ -1294,6 +1300,33 @@ def convert_workflow_to_visual(workflow, form_definition):
 
             has_workflow_settings_node = False
             has_sub_workflow_node = False
+            form_node_defaults = None
+            if any(node.get("type") == "form" for node in visual_data.get("nodes", [])):
+                form_fields = list(form_definition.fields.all().order_by("order"))
+                form_steps = form_definition.form_steps or []
+                form_node_defaults = {
+                    "form_id": form_definition.id,
+                    "form_name": form_definition.name,
+                    "form_builder_url": reverse(
+                        "admin:form_builder_edit", args=[form_definition.id]
+                    ),
+                    "field_count": len(form_fields),
+                    "enable_multi_step": form_definition.enable_multi_step,
+                    "form_steps": form_steps,
+                    "step_count": len(form_steps),
+                    "fields": [
+                        {
+                            "name": field.field_name,
+                            "label": field.field_label,
+                            "type": field.field_type,
+                            "required": field.required,
+                            "prefill_source": field.get_prefill_source_key(),
+                        }
+                        for field in form_fields[:10]
+                    ],
+                    "has_more_fields": len(form_fields) > 10,
+                }
+
             for node in visual_data.get("nodes", []):
                 node_type = node.get("type")
                 node_data = node.setdefault("data", {})
@@ -1315,6 +1348,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                     defaults = email_action_defaults.get(action_id)
                     if defaults:
                         for key, value in defaults.items():
+                            node_data[key] = value
+                elif node_type == "form":
+                    if str(node_data.get("form_id", "")).strip() == str(
+                        form_definition.id
+                    ):
+                        for key, value in form_node_defaults.items():
                             node_data[key] = value
                 elif node_type == "sub_workflow" and sub_workflow_defaults:
                     has_sub_workflow_node = True
@@ -1689,8 +1728,6 @@ def convert_workflow_to_visual(workflow, form_definition):
 
     # Form submission node (always present - represents the actual form)
     form_fields = list(form_definition.fields.all().order_by("order"))
-
-    from django.urls import reverse
 
     form_builder_url = reverse("admin:form_builder_edit", args=[form_definition.id])
 
@@ -2373,9 +2410,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
 
         raw_node_id = snode.get("id")
-        stage_node_map[
-            raw_node_id.strip() if isinstance(raw_node_id, str) else raw_node_id
-        ] = stage
+        stage_node_map[str(raw_node_id).strip()] = stage
         stage_field_map[stage.id] = _resolve_form_field_ids(
             form_definition,
             sdata.get("approval_fields", []),
@@ -2438,7 +2473,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 stage_node_id, str | int
             ):
                 raise ValidationError("Invalid stage reference in notification rule.")
-            stage = stage_node_map.get(stage_node_id)
+            stage = stage_node_map.get(str(stage_node_id).strip())
         if stage is None and has_stage_id:
             if isinstance(stage_id, bool):
                 raise ValidationError("Invalid stage reference in notification rule.")

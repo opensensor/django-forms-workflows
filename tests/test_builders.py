@@ -56,6 +56,47 @@ pytestmark = pytest.mark.django_db
 class TestConvertWorkflowToVisual:
     """Tests for converting WorkflowDefinition → visual node graph."""
 
+    def test_saved_form_node_refreshes_current_form_data(
+        self, form_definition, form_with_fields
+    ):
+        form_definition.enable_multi_step = True
+        form_definition.form_steps = [{"name": "Details"}]
+        form_definition.save(update_fields=["enable_multi_step", "form_steps"])
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {
+                        "id": "form",
+                        "type": "form",
+                        "data": {
+                            "form_id": str(form_definition.id),
+                            "form_name": "Stale name",
+                            "field_count": 999,
+                        },
+                    }
+                ],
+                "connections": [],
+            },
+        )
+
+        data = convert_workflow_to_visual(workflow, form_definition)["nodes"][0]["data"]
+        assert data["form_name"] == form_definition.name
+        assert data["field_count"] == form_definition.fields.count()
+        assert data["enable_multi_step"] is True
+        assert data["form_steps"] == [{"name": "Details"}]
+        assert data["step_count"] == 1
+        assert data["fields"] == [
+            {
+                "name": field.field_name,
+                "label": field.field_label,
+                "type": field.field_type,
+                "required": field.required,
+                "prefill_source": field.get_prefill_source_key(),
+            }
+            for field in form_definition.fields.order_by("order")[:10]
+        ]
+
     def test_returns_saved_visual_data_if_present(self, workflow, form_definition):
         """Saved nodes are returned with the builder's default data fields."""
         saved = {"nodes": [{"id": "n1", "type": "start"}], "connections": []}
@@ -1385,7 +1426,7 @@ class TestConvertVisualToWorkflow:
 
     @pytest.mark.parametrize(
         ("stage_node_id", "rule_stage_node_id"),
-        [("stage_1", "stage_1"), (" stage_1 ", "stage_1"), (7, 7)],
+        [("stage_1", "stage_1"), (" stage_1 ", "stage_1"), (7, 7), (7, "7"), ("7", 7)],
     )
     def test_creates_stage_scoped_notification_rule(
         self, form_definition, approval_group, stage_node_id, rule_stage_node_id

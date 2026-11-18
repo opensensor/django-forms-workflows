@@ -1003,6 +1003,37 @@ def test_notification_ignores_task_from_another_submission(form_definition, user
     assert not NotificationLog.objects.filter(submission=submission).exists()
 
 
+@pytest.mark.django_db
+def test_approval_notification_skips_finished_submission_with_pending_task(
+    form_definition, user
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_request",
+        static_emails="recipient@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="Review",
+        status="pending",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as send:
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    send.assert_not_called()
+    assert not NotificationLog.objects.filter(submission=submission).exists()
+
+
 # ── approver context in template rendering ─────────────────────────────
 
 

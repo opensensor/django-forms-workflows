@@ -2140,9 +2140,8 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Avoid one long transaction spanning all recipient processing for a rule.
-    # External email delivery is irreversible; delivery state must be persisted
-    # in shorter, independent DB transactions to survive worker failure.
+    # Keep the submission lock and delivery logs in one transaction per rule.
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
@@ -2155,7 +2154,14 @@ def send_notification_rules(
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows
         # cannot serialize the first send because there are no rows yet.
-        FormSubmission.objects.select_for_update().get(pk=submission_id)
+        locked_submission = FormSubmission.objects.select_for_update().get(
+            pk=submission_id
+        )
+        if (
+            event in {"approval_request", "approval_reminder"}
+            and locked_submission.status != "pending_approval"
+        ):
+            return
         workflow = rule.workflow
         if explicit_task:
             locked_task = None

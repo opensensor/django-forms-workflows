@@ -1598,18 +1598,14 @@ def _collect_notification_recipients(
     recipients: list[str] = []
     seen: set[str] = set()
 
-    def _email_compare_key(email: str) -> str:
-        # Normalize for deduplication comparisons while preserving the
-        # original address for delivery.
-        return email.strip().lower()
-
     def _add(email: str | None) -> None:
         if not email:
             return
-        key = _email_compare_key(email)
+        address = email.strip()
+        key = address.casefold()
         if key and key not in seen:
             seen.add(key)
-            recipients.append(email)
+            recipients.append(address)
 
     # 1. Submitter
     if getattr(notif, "notify_submitter", False) and submission is not None:
@@ -2110,18 +2106,16 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Do not wrap an entire rule in one transaction: delivery side effects
-    # (emails/webhooks) must not be rolled back together with all logs.
-    # Each recipient attempt should commit independently in a narrower
-    # transaction at send/log-write time.
+    # Keep the submission lock and delivery logs in one transaction per rule.
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Per-recipient delivery/logging must be done in a per-recipient
-        transaction so retries preserve partial-delivery idempotency.
+        Hold the submission lock through delivery and log writes so
+        concurrent dispatches cannot send the same recipient twice.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows

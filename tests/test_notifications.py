@@ -35,6 +35,27 @@ def test_form_field_email_extraction_rejects_malformed_addresses():
     ]
 
 
+@pytest.mark.django_db
+def test_recipient_sources_dedupe_case_and_whitespace(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    rule = NotificationRule.objects.create(
+        workflow=workflow,
+        event="submission_received",
+        notify_submitter=True,
+        static_emails=f" {user.email.upper()} , {user.email.lower()} ",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="submitted",
+    )
+
+    assert tasks_module._collect_notification_recipients(rule, {}, submission) == [
+        user.email
+    ]
+
+
 def test_daily_digest_uses_active_timezone():
     workflow = SimpleNamespace(
         notification_cadence="daily", notification_cadence_time=None

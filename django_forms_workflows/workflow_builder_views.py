@@ -271,7 +271,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
     field_name_to_id = {
-        field["field_name"]: field["id"] for field in field_records
+        field["field_name"].strip().lower(): field["id"] for field in field_records
     }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (

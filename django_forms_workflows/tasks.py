@@ -2133,8 +2133,9 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Keep the submission lock and delivery logs in one transaction per rule.
-    @transaction.atomic
+    # Avoid one long transaction spanning all recipient processing for a rule.
+    # External email delivery is irreversible; delivery state must be persisted
+    # in shorter, independent DB transactions to survive worker failure.
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 

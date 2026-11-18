@@ -1027,6 +1027,17 @@ def workflow_builder_save(request):
                     raise ValidationError(
                         f"Malformed payload: node at index {idx} must be an object."
                     )
+                node_id = node.get("id")
+                if node_id is not None and (
+                    isinstance(node_id, bool) or not isinstance(node_id, str | int)
+                ):
+                    raise ValidationError(
+                        f"Malformed payload: node.id at index {idx} must be a string or integer."
+                    )
+                if isinstance(node_id, str) and not node_id.strip():
+                    raise ValidationError(
+                        f"Malformed payload: node.id at index {idx} must not be empty."
+                    )
                 node_type = node.get("type")
                 if isinstance(node_type, bool) or not isinstance(node_type, str):
                     raise ValidationError(
@@ -1535,11 +1546,18 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for stage_id, node in updated_stage_nodes_by_stage_id.items()
                 if stage_id not in used_stage_ids
             ]
+            action_order_by_id = dict(
+                form_definition.post_actions.values_list("id", "order")
+            )
+            missing_mixed_action_nodes = sorted(
+                missing_email_nodes + missing_action_nodes,
+                key=lambda node: (
+                    action_order_by_id.get(node.get("data", {}).get("action_id"), 0),
+                    node.get("data", {}).get("action_id", 0),
+                ),
+            )
             visual_data["nodes"] = (
-                merged_nodes
-                + missing_email_nodes
-                + missing_action_nodes
-                + missing_stage_nodes
+                merged_nodes + missing_mixed_action_nodes + missing_stage_nodes
             )
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
@@ -2456,6 +2474,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     "action_type"
                 ).choices
             } - {"email"}
+            if not isinstance(action_type, str):
+                raise ValidationError(
+                    "Unsupported action_type type. "
+                    f"Expected string, got {type(action_type).__name__}. "
+                    f"Supported values are: {sorted(valid_action_types)}"
+                )
             if action_type not in valid_action_types:
                 raise ValidationError(
                     f"Unsupported action_type '{action_type}'. "

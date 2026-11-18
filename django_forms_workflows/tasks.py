@@ -670,9 +670,7 @@ def _deliver_workflow_webhook_attempt(
         return None
 
     if not endpoint.is_active:
-        logger.info(
-            "Webhook endpoint %s is inactive; skipping delivery", endpoint_id
-        )
+        logger.info("Webhook endpoint %s is inactive; skipping delivery", endpoint_id)
         return None
 
     if not endpoint.subscribes_to(event):
@@ -1387,17 +1385,32 @@ def send_batched_notifications() -> str:
                         {n.submission_id for n in current if n.submission_id}
                     )
 
-                    locked_tasks = ApprovalTask.objects.select_for_update().filter(
-                        id__in=approval_task_ids
-                    ).order_by("id")
-                    locked_submissions = FormSubmission.objects.select_for_update().filter(
-                        id__in=submission_ids
-                    ).order_by("id")
-
-                    locked_task_status = {t.id: t.status for t in locked_tasks}
+                    locked_submissions = (
+                        FormSubmission.objects.select_for_update()
+                        .filter(id__in=submission_ids)
+                        .order_by("id")
+                    )
+                    locked_tasks = (
+                        ApprovalTask.objects.select_for_update()
+                        .filter(id__in=approval_task_ids)
+                        .order_by("id")
+                    )
                     locked_submission_status = {
                         s.id: s.status for s in locked_submissions
                     }
+                    locked_task_status = {t.id: t.status for t in locked_tasks}
+
+                    # The select_related objects in current were loaded before
+                    # these locks and can contain stale statuses.
+                    for n in current:
+                        if n.submission_id in locked_submission_status:
+                            n.submission.status = locked_submission_status[
+                                n.submission_id
+                            ]
+                        if n.approval_task_id in locked_task_status:
+                            n.approval_task.status = locked_task_status[
+                                n.approval_task_id
+                            ]
 
                     actionable_ids = {
                         n.id

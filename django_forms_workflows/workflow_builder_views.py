@@ -445,11 +445,12 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             normalized_group["id"] = group_id
             group_entries.append(normalized_group)
         requires_manager_approval_raw = stage_data.get("requires_manager_approval")
-        if (
-            requires_manager_approval_raw is not None
-            and not isinstance(requires_manager_approval_raw, bool)
+        if requires_manager_approval_raw is not None and not isinstance(
+            requires_manager_approval_raw, bool
         ):
-            add_error(f"{stage_label} has invalid requires_manager_approval value; expected a boolean.")
+            add_error(
+                f"{stage_label} has invalid requires_manager_approval value; expected a boolean."
+            )
         requires_manager_approval_flag = requires_manager_approval_raw is True
         has_approver_source = bool(
             group_entries
@@ -1423,13 +1424,21 @@ def convert_workflow_to_visual(workflow, form_definition):
                     continue
                 node_data = node.get("data", {})
                 raw_stage_id = node_data.get("stage_id")
-                if raw_stage_id in (None, ""):
+                if isinstance(raw_stage_id, bool) or raw_stage_id in (None, ""):
                     continue
-                normalized_stage_id = raw_stage_id
-                if isinstance(raw_stage_id, str):
-                    if not raw_stage_id.isdigit():
+                if isinstance(raw_stage_id, int):
+                    normalized_stage_id = raw_stage_id
+                elif isinstance(raw_stage_id, str):
+                    if not raw_stage_id.isascii() or not raw_stage_id.isdigit():
                         continue
-                    normalized_stage_id = int(raw_stage_id)
+                    try:
+                        normalized_stage_id = int(raw_stage_id)
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                if normalized_stage_id <= 0:
+                    continue
                 node_data["stage_id"] = normalized_stage_id
                 existing_stage_nodes_by_stage_id[normalized_stage_id] = node
             stage_ids_in_order = [stage.id for stage in _stages_cache]

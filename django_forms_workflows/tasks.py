@@ -1351,13 +1351,30 @@ def send_batched_notifications() -> str:
                 )
                 if not current:
                     continue
+                # Deduplicate rows for digest rendering/delivery while keeping all
+                # locked queue rows in `current` for sent bookkeeping.
+                seen_dispatch_keys = set()
+                render_rows = []
+                for n in current:
+                    dispatch_key = (
+                        n.recipient_email,
+                        n.notification_type,
+                        n.workflow_id,
+                        n.submission_id,
+                        n.notification_rule_id,
+                        n.approval_task_id,
+                    )
+                    if dispatch_key in seen_dispatch_keys:
+                        continue
+                    seen_dispatch_keys.add(dispatch_key)
+                    render_rows.append(n)
                 delivered = False
                 if notification_type == "submission_received":
-                    delivered = _dispatch_submission_digest(recipient_email, current)
+                    delivered = _dispatch_submission_digest(recipient_email, render_rows)
                 elif notification_type == "approval_request":
                     actionable = [
                         n
-                        for n in current
+                        for n in render_rows
                         if n.submission
                         and n.approval_task
                         and n.approval_task.status == "pending"
@@ -1367,10 +1384,10 @@ def send_batched_notifications() -> str:
                         PendingNotification.objects.filter(id__in=obsolete_ids).update(
                             sent=True
                         )
-                    current = actionable
-                    if not current:
+                    render_rows = actionable
+                    if not render_rows:
                         continue
-                    delivered = _dispatch_approval_digest(recipient_email, current)
+                    delivered = _dispatch_approval_digest(recipient_email, render_rows)
                 elif notification_type in (
                     "approval_notification",
                     "rejection_notification",

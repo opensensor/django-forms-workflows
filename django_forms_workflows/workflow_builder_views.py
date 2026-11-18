@@ -1305,10 +1305,18 @@ def convert_workflow_to_visual(workflow, form_definition):
                     node_data["sub_workflow_id_type"] = "workflow"
 
             if sub_workflow_defaults and not has_sub_workflow_node:
+                existing_ids = {
+                    node.get("id") for node in visual_data["nodes"] if node.get("id")
+                }
+                sub_workflow_node_id = f"sub-workflow-{workflow.id}"
+                while sub_workflow_node_id in existing_ids:
+                    sub_workflow_node_id += "-new"
                 visual_data.setdefault("nodes", []).append(
                     {
-                        "id": "sub-workflow-node",
+                        "id": sub_workflow_node_id,
                         "type": "sub_workflow",
+                        "x": 0,
+                        "y": 0,
                         "data": {
                             **sub_workflow_defaults,
                             "sub_workflow_id_type": "workflow",
@@ -1367,7 +1375,9 @@ def convert_workflow_to_visual(workflow, form_definition):
 
             existing_nodes = visual_data.get("nodes", [])
             used_node_ids = {
-                node_id for node_id in (node.get("id") for node in existing_nodes) if node_id
+                node_id
+                for node_id in (node.get("id") for node in existing_nodes)
+                if node_id
             }
             updated_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
@@ -1472,14 +1482,10 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in action_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
-            valid_sub_workflow_ids = {
-                node.get("data", {}).get("sub_workflow_id")
-                for node in sub_workflow_nodes_in_order
-                if node.get("data", {}).get("sub_workflow_id")
-            }
             used_email_action_ids = set()
             used_action_ids = set()
             used_stage_ids = set()
+            used_sub_workflow = False
             merged_nodes = []
             for node in existing_nodes:
                 if node.get("type") == "email":
@@ -1508,8 +1514,13 @@ def convert_workflow_to_visual(workflow, form_definition):
                         merged_nodes.append(node)
                 elif node.get("type") == "sub_workflow":
                     sub_workflow_id = node.get("data", {}).get("sub_workflow_id")
-                    if sub_workflow_id in valid_sub_workflow_ids:
+                    if (
+                        sub_workflow_defaults
+                        and sub_workflow_id == sub_workflow_defaults["sub_workflow_id"]
+                        and not used_sub_workflow
+                    ):
                         merged_nodes.append(node)
+                        used_sub_workflow = True
                 else:
                     merged_nodes.append(node)
 

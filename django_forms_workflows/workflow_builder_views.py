@@ -1449,6 +1449,8 @@ def convert_workflow_to_visual(workflow, form_definition):
                 if existing_stage_node:
                     stage_node_data = existing_stage_node.setdefault("data", {})
                     stage_node_data.setdefault("stage_id", stage_id)
+                    for key, value in stage_defaults[stage_id].items():
+                        stage_node_data.setdefault(key, value)
                     stage_nodes_in_order.append(existing_stage_node)
                     continue
                 generated_stage_node_id = allocate_unique_node_id(f"stage-{stage_id}")
@@ -2292,8 +2294,28 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         StageApprovalGroup.objects.filter(stage=stage).delete()
         normalized_group_entries = []
         for group_entry in group_entries:
-            if not group_entry.get("id"):
+            raw_group_id = group_entry.get("id")
+            if raw_group_id in (None, ""):
                 continue
+            if isinstance(raw_group_id, bool):
+                raise ValidationError("Approval group id must be an integer.")
+            if isinstance(raw_group_id, int):
+                group_id = raw_group_id
+            elif isinstance(raw_group_id, str):
+                group_id_digits = raw_group_id.strip()
+                if not group_id_digits.isascii() or not group_id_digits.isdigit():
+                    raise ValidationError("Approval group id must be an integer.")
+                try:
+                    group_id = int(group_id_digits)
+                except ValueError as exc:
+                    raise ValidationError(
+                        "Approval group id must be an integer."
+                    ) from exc
+            else:
+                raise ValidationError("Approval group id must be an integer.")
+            if not 0 < group_id <= 2**63 - 1:
+                raise ValidationError("Approval group id must be an integer.")
+
             raw_position = group_entry.get("position", 0)
             if isinstance(raw_position, bool):
                 raise ValidationError("Approval group position must be an integer.")
@@ -2313,7 +2335,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 raise ValidationError("Approval group position must be an integer.")
             if not 0 <= position <= 2**63 - 1:
                 raise ValidationError("Approval group position must be an integer.")
-            normalized_group_entries.append({**group_entry, "position": position})
+            normalized_group_entries.append(
+                {**group_entry, "id": group_id, "position": position}
+            )
         sorted_group_entries = sorted(
             normalized_group_entries,
             key=lambda g: g["position"],

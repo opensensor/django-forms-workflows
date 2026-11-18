@@ -1015,11 +1015,12 @@ def send_approval_reminder(task_id: int) -> None:
     task = ApprovalTask.objects.select_related(
         "submission__form_definition", "assigned_to"
     ).get(id=task_id)
-    if task.status != "pending":
+    if task.status != "pending" or task.submission.status != "pending_approval":
         logger.info(
-            "Skipping approval reminder for task %s because status is %s",
+            "Skipping approval reminder for task %s because task status is %s and submission status is %s",
             task.id,
             task.status,
+            task.submission.status,
         )
         return
     if not task.assigned_to or not getattr(task.assigned_to, "email", None):

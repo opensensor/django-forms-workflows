@@ -1193,6 +1193,7 @@ def check_approval_deadlines() -> str:
                     tracks: dict[tuple[str, int | None], list[ApprovalTask]] = (
                         defaultdict(list)
                     )
+                    track_latest_created_at: dict[tuple[str, int | None], datetime] = {}
                     for task in pending_locked_tasks:
                         if task.workflow_stage_id:
                             key = ("workflow", task.workflow_stage.workflow_id)
@@ -1205,6 +1206,7 @@ def check_approval_deadlines() -> str:
                         latest_track_task = max(
                             track_pending_tasks, key=lambda t: (t.created_at, t.pk)
                         )
+                        track_latest_created_at[track_key] = latest_track_task.created_at
                         if latest_track_task.workflow_stage_id:
                             locked_workflow = latest_track_task.workflow_stage.workflow
                         else:
@@ -1241,11 +1243,27 @@ def check_approval_deadlines() -> str:
                     ).exists():
                         continue
 
-                    # A different track may have failed already. Auto-skipped
-                    # tasks are valid here, but a failed decision is not.
-                    if locked_submission.approval_tasks.filter(
-                        status__in=("expired", "rejected", "returned")
-                    ).exists():
+                    # A different track may have failed already in the current
+                    # execution round. Auto-skipped tasks are valid here, but a
+                    # failed decision in the same round is not.
+                    has_current_round_failure = False
+                    for track_key, latest_created_at in track_latest_created_at.items():
+                        failed_qs = locked_submission.approval_tasks.filter(
+                            status__in=("expired", "rejected", "returned"),
+                            created_at__gte=latest_created_at,
+                        )
+                        if track_key[0] == "workflow":
+                            failed_qs = failed_qs.filter(
+                                workflow_stage__workflow_id=track_key[1]
+                            )
+                        else:
+                            failed_qs = failed_qs.filter(workflow_stage__isnull=True)
+
+                        if failed_qs.exists():
+                            has_current_round_failure = True
+                            break
+
+                    if has_current_round_failure:
                         continue
 
                     updated = FormSubmission.objects.filter(

@@ -661,6 +661,37 @@ class TestConvertWorkflowToVisual:
             != f"stage-{stage.id}"
         )
 
+    def test_generated_action_ids_avoid_saved_node_collisions(self, form_definition):
+        email = PostSubmissionAction.objects.create(
+            form_definition=form_definition, name="Notify", action_type="email"
+        )
+        database = PostSubmissionAction.objects.create(
+            form_definition=form_definition, name="Update DB", action_type="database"
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": f"email-action-{email.id}", "type": "start", "data": {}},
+                    {"id": f"action-{database.id}", "type": "end", "data": {}},
+                ],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        ids = [node["id"] for node in visual["nodes"]]
+        assert len(ids) == len(set(ids))
+        assert (
+            next(node for node in visual["nodes"] if node["type"] == "email")["id"]
+            != f"email-action-{email.id}"
+        )
+        assert (
+            next(node for node in visual["nodes"] if node["type"] == "action")["id"]
+            != f"action-{database.id}"
+        )
+
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
     ):

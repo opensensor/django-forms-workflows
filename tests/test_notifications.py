@@ -143,13 +143,16 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     send_calls = []
     worker_errors = []
     first_call_entered = Event()
-    release_first_call = Event()
+    second_dispatch_entered = Event()
+    second_delivery_before_release = []
     second_worker_at_lock = Event()
 
     def record_delivery(*args, **kwargs):
         send_calls.append(1)
         if len(send_calls) == 1:
             first_call_entered.set()
+        elif not release_first_call.is_set():
+            second_delivery_before_release.append(True)
             release_first_call.wait(timeout=5)
         return True
 
@@ -162,8 +165,14 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
 
     def worker():
         close_old_connections()
+        close_old_connections()
         try:
+            second_dispatch_entered.set()
             send_notification_rules(submission.id, "workflow_approved")
+        except Exception as exc:
+            worker_errors.append(exc)
+        finally:
+            close_old_connections()
         except Exception as exc:
             worker_errors.append(exc)
         finally:
@@ -174,7 +183,8 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
             "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
         ),
         patch.object(
-            FormSubmission.objects,
+        assert second_dispatch_entered.wait(timeout=5)
+        assert second_delivery_before_release == []
             "select_for_update",
             side_effect=instrumented_select_for_update,
         ),

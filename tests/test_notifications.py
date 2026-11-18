@@ -40,6 +40,24 @@ def test_form_field_email_extraction_rejects_malformed_addresses():
 
 
 @pytest.mark.django_db
+def test_legacy_approval_request_skips_completed_submission(form_definition, user):
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission, step_name="Stale review", status="pending"
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as send:
+        tasks_module.send_approval_request(task.id)
+
+    send.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_recipient_sources_dedupe_case_and_whitespace(form_definition, user):
     workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
     rule = NotificationRule.objects.create(
@@ -3782,6 +3800,33 @@ def test_zero_delivery_is_failed_and_logged():
     log = NotificationLog.objects.get(recipient_email="recipient@example.com")
     assert log.status == "failed"
     assert "zero deliveries" in log.error_message
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("inline", [False, True])
+@pytest.mark.parametrize("recipient_kind", ["cc", "bcc"])
+def test_email_helpers_send_and_log_copy_only_recipient(
+    inline, recipient_kind, mailoutbox
+):
+    address = "copy@example.com"
+    kwargs = {recipient_kind: [address]}
+    if inline:
+        delivered = tasks_module._send_html_email_from_string(
+            "Copy only", [], "<p>Hello</p>", {}, **kwargs
+        )
+    else:
+        with patch(
+            "django_forms_workflows.tasks.render_to_string", return_value="<p>Hello</p>"
+        ):
+            delivered = tasks_module._send_html_email(
+                "Copy only", [], "emails/unused.html", {}, **kwargs
+            )
+
+    assert delivered is True
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].to == []
+    assert getattr(mailoutbox[0], recipient_kind) == [address]
+    assert NotificationLog.objects.get(recipient_email=address).status == "sent"
 
 
 @pytest.mark.django_db

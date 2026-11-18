@@ -1701,6 +1701,33 @@ class TestConvertVisualToWorkflow:
 
         assert not form_definition.workflows.exists()
 
+    def test_numeric_string_stage_group_id_is_persisted_as_integer(
+        self, form_definition, approval_group
+    ):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "approval_groups": [{"id": str(approval_group.id)}],
+                }
+            ]
+        )
+
+        workflow = convert_visual_to_workflow(visual, form_definition)
+
+        assert (
+            workflow.stages.get().stageapprovalgroup_set.get().group_id
+            == approval_group.id
+        )
+
+    def test_rejects_zero_stage_group_id(self, form_definition):
+        visual = self._make_visual(
+            stages=[{"name": "Review", "approval_groups": [{"id": 0}]}]
+        )
+
+        with pytest.raises(ValidationError, match="approval group"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()
         wf = convert_visual_to_workflow(visual, form_definition)

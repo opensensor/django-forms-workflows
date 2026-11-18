@@ -2308,10 +2308,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 try:
                     group_id = int(group_id_digits)
                 except ValueError as exc:
-                    raise ValidationError("Approval group id must be an integer.") from exc
+                    raise ValidationError(
+                        "Approval group id must be an integer."
+                    ) from exc
             else:
                 raise ValidationError("Approval group id must be an integer.")
-            if not 0 <= group_id <= 2**63 - 1:
+            if not 0 < group_id <= 2**63 - 1:
                 raise ValidationError("Approval group id must be an integer.")
 
             raw_position = group_entry.get("position", 0)

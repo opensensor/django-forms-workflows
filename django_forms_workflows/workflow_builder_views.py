@@ -1535,11 +1535,15 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for stage_id, node in updated_stage_nodes_by_stage_id.items()
                 if stage_id not in used_stage_ids
             ]
+            missing_mixed_action_nodes = sorted(
+                missing_email_nodes + missing_action_nodes,
+                key=lambda node: (
+                    node.get("data", {}).get("order", 0),
+                    node.get("data", {}).get("action_id", 0),
+                ),
+            )
             visual_data["nodes"] = (
-                merged_nodes
-                + missing_email_nodes
-                + missing_action_nodes
-                + missing_stage_nodes
+                merged_nodes + missing_mixed_action_nodes + missing_stage_nodes
             )
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}

@@ -643,6 +643,52 @@ class TestConvertWorkflowToVisual:
         assert sub_nodes[0]["data"]["sub_workflow_id"] == target.id
         assert (sub_nodes[0]["x"], sub_nodes[0]["y"]) == (0, 0)
 
+    @pytest.mark.parametrize("saved_stage_id", [True, "²", "0"])
+    def test_saved_layout_ignores_invalid_stage_id(
+        self, form_definition, saved_stage_id
+    ):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        stage = workflow.stages.create(name="Review", order=1)
+        workflow.visual_workflow_data = {
+            "nodes": [
+                {
+                    "id": "stale-stage",
+                    "type": "stage",
+                    "data": {"stage_id": saved_stage_id},
+                }
+            ],
+            "connections": [],
+        }
+        workflow.save(update_fields=["visual_workflow_data"])
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        stages = [node for node in visual["nodes"] if node["type"] == "stage"]
+        assert len(stages) == 1
+        assert stages[0]["data"]["stage_id"] == stage.id
+
+    def test_saved_layout_matches_numeric_string_stage_id(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        stage = workflow.stages.create(name="Review", order=1)
+        workflow.visual_workflow_data = {
+            "nodes": [
+                {
+                    "id": "saved-stage",
+                    "type": "stage",
+                    "data": {"stage_id": str(stage.id)},
+                }
+            ],
+            "connections": [],
+        }
+        workflow.save(update_fields=["visual_workflow_data"])
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        stage_nodes = [node for node in visual["nodes"] if node["type"] == "stage"]
+        assert len(stage_nodes) == 1
+        assert stage_nodes[0]["id"] == "saved-stage"
+        assert stage_nodes[0]["data"]["stage_id"] == stage.id
+
     def test_saved_visual_drops_sub_workflow_without_config(self, form_definition):
         workflow = WorkflowDefinition.objects.create(
             form_definition=form_definition,
@@ -1636,6 +1682,24 @@ class TestConvertVisualToWorkflow:
 
         with pytest.raises(ValidationError, match="approval group"):
             convert_visual_to_workflow(visual, form_definition)
+
+    def test_rejects_duplicate_stage_group_role(self, form_definition, approval_group):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "approval_groups": [
+                        {"id": approval_group.id, "role": "approval", "position": 0},
+                        {"id": approval_group.id, "role": "approval", "position": 1},
+                    ],
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="Duplicate approval-group"):
+            convert_visual_to_workflow(visual, form_definition)
+
+        assert not form_definition.workflows.exists()
 
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()

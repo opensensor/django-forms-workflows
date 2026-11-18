@@ -444,9 +444,17 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             normalized_group = dict(g)
             normalized_group["id"] = group_id
             group_entries.append(normalized_group)
+        requires_manager_approval_raw = stage_data.get("requires_manager_approval")
+        if requires_manager_approval_raw is not None and not isinstance(
+            requires_manager_approval_raw, bool
+        ):
+            add_error(
+                f"{stage_label} has invalid requires_manager_approval value; expected a boolean."
+            )
+        requires_manager_approval_flag = requires_manager_approval_raw is True
         has_approver_source = bool(
             group_entries
-            or stage_data.get("requires_manager_approval")
+            or requires_manager_approval_flag
             or stage_data.get("assignee_form_field")
         )
 
@@ -1410,11 +1418,29 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in email_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
-            existing_stage_nodes_by_stage_id = {
-                node.get("data", {}).get("stage_id"): node
-                for node in existing_nodes
-                if node.get("type") == "stage" and node.get("data", {}).get("stage_id")
-            }
+            existing_stage_nodes_by_stage_id = {}
+            for node in existing_nodes:
+                if node.get("type") != "stage":
+                    continue
+                node_data = node.get("data", {})
+                raw_stage_id = node_data.get("stage_id")
+                if isinstance(raw_stage_id, bool) or raw_stage_id in (None, ""):
+                    continue
+                if isinstance(raw_stage_id, int):
+                    normalized_stage_id = raw_stage_id
+                elif isinstance(raw_stage_id, str):
+                    if not raw_stage_id.isascii() or not raw_stage_id.isdigit():
+                        continue
+                    try:
+                        normalized_stage_id = int(raw_stage_id)
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                if normalized_stage_id <= 0:
+                    continue
+                node_data["stage_id"] = normalized_stage_id
+                existing_stage_nodes_by_stage_id[normalized_stage_id] = node
             stage_ids_in_order = [stage.id for stage in _stages_cache]
             valid_stage_ids = set(stage_ids_in_order)
             stage_nodes_in_order = []
@@ -2292,12 +2318,20 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             normalized_group_entries,
             key=lambda g: g["position"],
         )
+        seen_group_role_pairs = set()
         for pos, group_entry in enumerate(sorted_group_entries):
+            role = group_entry.get("role", "approval")
+            assignment_key = (group_entry["id"], role)
+            if assignment_key in seen_group_role_pairs:
+                raise ValidationError(
+                    "Duplicate approval-group assignment for the same group and role is not allowed."
+                )
+            seen_group_role_pairs.add(assignment_key)
             StageApprovalGroup.objects.create(
                 stage=stage,
                 group_id=group_entry["id"],
                 position=group_entry.get("position", pos),
-                role=group_entry.get("role", "approval"),
+                role=role,
             )
 
         raw_node_id = snode.get("id")

@@ -2669,6 +2669,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
+        generated_description = (
+            f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
+            f"Subject: {data.get('email_subject_template', '')}"
+        )
+        if "description" in data:
+            description_value = data.get("description")
+        else:
+            description_value = None
+            raw_action_id = data.get("id")
+            try:
+                action_id = int(raw_action_id)
+            except (TypeError, ValueError):
+                action_id = None
+            if action_id is not None:
+                existing_action = existing_actions.get(action_id)
+                if existing_action is not None:
+                    description_value = existing_action.description
+            if description_value is None:
+                description_value = generated_description
+
         action_data = {
             "action_type": "email",
             "trigger": data.get("trigger", "on_approve"),
@@ -2680,11 +2700,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             "email_subject_template": data.get("email_subject_template", ""),
             "email_body_template": data.get("email_body_template", ""),
             "email_template_name": data.get("email_template_name", ""),
-            "description": data.get(
-                "description",
-                f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
-                f"Subject: {data.get('email_subject_template', '')}",
-            ),
+            "description": description_value,
         }
         save_action(data, action_name, action_data)
 

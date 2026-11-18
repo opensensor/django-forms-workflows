@@ -65,10 +65,16 @@ class TestConvertWorkflowToVisual:
         result = convert_workflow_to_visual(workflow, form_definition)
         assert result["nodes"][0] == expected["nodes"][0]
         assert result["connections"] == []
-        assert len(result["nodes"]) == 2
-        assert result["nodes"][1]["type"] == "stage"
-        assert result["nodes"][1]["data"]["stage_id"] == workflow.stages.get().id
-        assert result["nodes"][1]["data"]["name"] == workflow.stages.get().name
+        assert [node["type"] for node in result["nodes"]] == [
+            "start",
+            "workflow_settings",
+            "stage",
+        ]
+        assert result["nodes"][1]["data"]["requires_approval"] is True
+        assert result["nodes"][1]["x"] == 0
+        assert result["nodes"][1]["y"] == 0
+        assert result["nodes"][2]["data"]["stage_id"] == workflow.stages.get().id
+        assert result["nodes"][2]["data"]["name"] == workflow.stages.get().name
 
     def test_saved_settings_use_current_workflow_values(self, form_definition):
         workflow = WorkflowDefinition.objects.create(
@@ -416,6 +422,22 @@ class TestConvertWorkflowToVisual:
 
         assert visual["connections"] == [{"from": "first", "to": "second"}]
 
+    def test_saved_connection_keeps_numeric_zero_node_id(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {"id": 0, "type": "start", "data": {}},
+                    {"id": "end", "type": "end", "data": {}},
+                ],
+                "connections": [{"from": 0, "to": "end"}],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert visual["connections"] == [{"from": 0, "to": "end"}]
+
     def test_saved_email_action_uses_current_database_values(self, form_definition):
         action = PostSubmissionAction.objects.create(
             form_definition=form_definition,
@@ -488,7 +510,8 @@ class TestConvertWorkflowToVisual:
 
         visual = convert_workflow_to_visual(workflow, form_definition)
 
-        assert [node["id"] for node in visual["nodes"]] == ["start", "live"]
+        assert [node["id"] for node in visual["nodes"][:2]] == ["start", "live"]
+        assert visual["nodes"][-1]["type"] == "workflow_settings"
         assert visual["connections"] == [{"from": "start", "to": "live"}]
 
     def test_saved_visual_restores_missing_non_email_action(self, form_definition):
@@ -600,12 +623,13 @@ class TestConvertWorkflowToVisual:
 
         visual = convert_workflow_to_visual(workflow, form_definition)
 
-        assert [node["id"] for node in visual["nodes"]] == [
+        assert [node["id"] for node in visual["nodes"][:4]] == [
             "start",
             "first",
             "end",
             "second",
         ]
+        assert visual["nodes"][-1]["type"] == "workflow_settings"
         assert visual["connections"] == []
 
     def test_saved_visual_drops_stale_email_nodes_and_connections(
@@ -628,7 +652,8 @@ class TestConvertWorkflowToVisual:
 
         visual = convert_workflow_to_visual(workflow, form_definition)
 
-        assert [node["id"] for node in visual["nodes"]] == ["start", "end"]
+        assert [node["id"] for node in visual["nodes"][:2]] == ["start", "end"]
+        assert visual["nodes"][-1]["type"] == "workflow_settings"
         assert visual["connections"] == []
 
     def test_loads_notification_rules_into_workflow_settings(
@@ -1519,6 +1544,27 @@ class TestConvertVisualToWorkflow:
         )
         visual = convert_workflow_to_visual(workflow, form_definition)
         visual["nodes"] = [node for node in visual["nodes"] if node["type"] != "email"]
+        visual["deleted_action_ids"] = [action.id]
+
+        convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        assert not PostSubmissionAction.objects.filter(pk=action.id).exists()
+
+    def test_can_delete_non_email_action_added_by_visual_loader(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [{"id": "start", "type": "start", "data": {}}],
+                "connections": [],
+            },
+        )
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Generated action",
+            action_type="database",
+        )
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        visual["nodes"] = [node for node in visual["nodes"] if node["type"] != "action"]
         visual["deleted_action_ids"] = [action.id]
 
         convert_visual_to_workflow(visual, form_definition, workflow=workflow)

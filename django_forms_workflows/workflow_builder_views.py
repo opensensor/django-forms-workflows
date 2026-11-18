@@ -1261,6 +1261,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 .order_by("event", "stage_id", "id")
             ]
 
+            has_workflow_settings_node = False
             for node in visual_data.get("nodes", []):
                 node_type = node.get("type")
                 node_data = node.setdefault("data", {})
@@ -1271,6 +1272,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         for key, value in defaults.items():
                             node_data[key] = value
                 elif node_type == "workflow_settings":
+                    has_workflow_settings_node = True
                     for key, value in settings_defaults.items():
                         if key == "notification_rules":
                             continue
@@ -1299,6 +1301,26 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data[key] = value
                     node_data["sub_workflow_id_type"] = "workflow"
+
+            if not has_workflow_settings_node:
+                existing_ids = {
+                    node.get("id") for node in visual_data["nodes"] if node.get("id")
+                }
+                settings_node_id = f"workflow-settings-{workflow.id}"
+                while settings_node_id in existing_ids:
+                    settings_node_id += "-new"
+                visual_data.setdefault("nodes", []).append(
+                    {
+                        "id": settings_node_id,
+                        "type": "workflow_settings",
+                        "x": 0,
+                        "y": 0,
+                        "data": {
+                            **settings_defaults,
+                            "notification_rules": notification_rule_defaults,
+                        },
+                    }
+                )
 
             existing_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
@@ -1483,7 +1505,9 @@ def convert_workflow_to_visual(workflow, form_definition):
 
             email_node_ids = {node.get("id") for node in email_nodes_in_order}
             valid_node_ids = {
-                node.get("id") for node in visual_data["nodes"] if node.get("id")
+                node_id
+                for node_id in (node.get("id") for node in visual_data["nodes"])
+                if node_id is not None and node_id != ""
             }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
@@ -2476,18 +2500,18 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
-    # The loader adds missing email actions owned by the form to the graph.
+    # The loader can add missing form-owned actions to the graph.
     # Allow the builder to delete those generated nodes as well as saved ones.
     allowed_deleted_action_ids = set(previous_action_ids) | set(
         PostSubmissionAction.objects.filter(
-            form_definition=form_definition, action_type="email"
+            form_definition=form_definition
         ).values_list("id", flat=True)
     )
 
     if normalized_deleted_ids - allowed_deleted_action_ids:
         raise ValidationError(
             {
-                "deleted_action_ids": "Actions must belong to the saved workflow graph or be form email actions."
+                "deleted_action_ids": "Actions must belong to the saved workflow graph or be form actions."
             }
         )
     if normalized_deleted_ids & other_workflow_action_ids:

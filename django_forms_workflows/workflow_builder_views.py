@@ -585,6 +585,8 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         add_error("Workflow settings 'notification_rules' must be a list.")
         notification_rules = []
 
+    canonical_stage_node_ids = {str(node_id).strip() for node_id in stage_node_ids}
+
     for rule_index, rule_data in enumerate(notification_rules, start=1):
         if not isinstance(rule_data, dict):
             add_error(f"Notification rule {rule_index} must be an object.")
@@ -598,7 +600,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     f"Notification rule {rule_index} has an invalid stage node reference."
                 )
             elif isinstance(stage_node_id, int):
-                normalized_stage_node_id = stage_node_id
+                normalized_stage_node_id = str(stage_node_id)
             elif isinstance(stage_node_id, str):
                 value = stage_node_id.strip()
                 if value:
@@ -615,7 +617,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         stage_id = rule_data.get("stage_id")
         if (
             normalized_stage_node_id is not None
-            and normalized_stage_node_id not in stage_node_ids
+            and normalized_stage_node_id not in canonical_stage_node_ids
         ):
             add_error(
                 f"Notification rule {rule_index} references a stage that is not present in the builder graph."

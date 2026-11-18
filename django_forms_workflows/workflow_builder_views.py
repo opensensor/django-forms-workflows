@@ -1304,13 +1304,24 @@ def convert_workflow_to_visual(workflow, form_definition):
                         node_data[key] = value
                     node_data["sub_workflow_id_type"] = "workflow"
 
+            existing_nodes = visual_data.get("nodes", [])
+            used_node_ids = {
+                node_id
+                for node_id in (node.get("id") for node in existing_nodes)
+                if node_id
+            }
+
+            def allocate_unique_node_id(base_node_id):
+                candidate = base_node_id
+                while candidate in used_node_ids:
+                    candidate += "-new"
+                used_node_ids.add(candidate)
+                return candidate
+
             if sub_workflow_defaults and not has_sub_workflow_node:
-                existing_ids = {
-                    node.get("id") for node in visual_data["nodes"] if node.get("id")
-                }
-                sub_workflow_node_id = f"sub-workflow-{workflow.id}"
-                while sub_workflow_node_id in existing_ids:
-                    sub_workflow_node_id += "-new"
+                sub_workflow_node_id = allocate_unique_node_id(
+                    f"sub-workflow-{workflow.id}"
+                )
                 visual_data.setdefault("nodes", []).append(
                     {
                         "id": sub_workflow_node_id,
@@ -1325,12 +1336,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             if not has_workflow_settings_node:
-                existing_ids = {
-                    node.get("id") for node in visual_data["nodes"] if node.get("id")
-                }
-                settings_node_id = f"workflow-settings-{workflow.id}"
-                while settings_node_id in existing_ids:
-                    settings_node_id += "-new"
+                settings_node_id = allocate_unique_node_id(
+                    f"workflow-settings-{workflow.id}"
+                )
                 visual_data.setdefault("nodes", []).append(
                     {
                         "id": settings_node_id,
@@ -1362,7 +1370,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                     continue
                 email_nodes_in_order.append(
                     {
-                        "id": f"email-action-{action_id}",
+                        "id": allocate_unique_node_id(f"email-action-{action_id}"),
                         "type": "email",
                         "x": 0,
                         "y": index * 120,
@@ -1372,13 +1380,6 @@ def convert_workflow_to_visual(workflow, form_definition):
                         },
                     }
                 )
-
-            existing_nodes = visual_data.get("nodes", [])
-            used_node_ids = {
-                node_id
-                for node_id in (node.get("id") for node in existing_nodes)
-                if node_id
-            }
             updated_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node
                 for node in email_nodes_in_order

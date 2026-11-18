@@ -182,17 +182,19 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
         t1 = Thread(target=worker, name="first-worker")
         t2 = Thread(target=worker, name="second-worker")
 
-        t1.start()
-        assert first_call_entered.wait(timeout=5)
-        t2.start()
-        assert second_worker_at_lock.wait(timeout=5)
-        t2.join(timeout=0.2)
-        assert t2.is_alive()
-        assert send_calls == [1]
-
-        release_first_call.set()
-        t1.join(timeout=5)
-        t2.join(timeout=5)
+        try:
+            t1.start()
+            assert first_call_entered.wait(timeout=5)
+            t2.start()
+            assert second_worker_at_lock.wait(timeout=5)
+            t2.join(timeout=0.2)
+            assert t2.is_alive()
+            assert send_calls == [1]
+        finally:
+            release_first_call.set()
+            t1.join(timeout=5)
+            if t2.ident is not None:
+                t2.join(timeout=5)
 
     assert not t1.is_alive() and not t2.is_alive()
     assert worker_errors == []

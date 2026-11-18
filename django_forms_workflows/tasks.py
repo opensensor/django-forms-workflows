@@ -1201,36 +1201,6 @@ def check_approval_deadlines() -> str:
                             key = ("legacy", None)
                         tracks[key].append(task)
 
-                    current_cycle_workflow_ids = {
-                        track_key[1]
-                        for track_key in tracks
-                        if track_key[0] == "workflow" and track_key[1] is not None
-                    }
-                    current_cycle_has_legacy_track = any(
-                        track_key[0] == "legacy" for track_key in tracks
-                    )
-
-                    disqualifying_qs = locked_submission.approval_tasks.filter(
-                        status__in=("expired", "rejected", "returned")
-                    )
-                    if current_cycle_workflow_ids and current_cycle_has_legacy_track:
-                        disqualifying_qs = disqualifying_qs.filter(
-                            workflow_stage__workflow_id__in=current_cycle_workflow_ids
-                        ) | disqualifying_qs.filter(workflow_stage__isnull=True)
-                    elif current_cycle_workflow_ids:
-                        disqualifying_qs = disqualifying_qs.filter(
-                            workflow_stage__workflow_id__in=current_cycle_workflow_ids
-                        )
-                    else:
-                        disqualifying_qs = disqualifying_qs.filter(
-                            workflow_stage__isnull=True
-                        )
-
-                    # Only consider failures in the same cycle/tracks represented by
-                    # the current pending tasks, and do this before skipping pending.
-                    if disqualifying_qs.exists():
-                        continue
-
                     for track_key, track_pending_tasks in tracks.items():
                         latest_track_task = max(
                             track_pending_tasks, key=lambda t: (t.created_at, t.pk)
@@ -1268,6 +1238,13 @@ def check_approval_deadlines() -> str:
                     # Only approve once no pending tasks remain on the submission.
                     if locked_submission.approval_tasks.filter(
                         status="pending"
+                    ).exists():
+                        continue
+
+                    # A different track may have failed already. Auto-skipped
+                    # tasks are valid here, but a failed decision is not.
+                    if locked_submission.approval_tasks.filter(
+                        status__in=("expired", "rejected", "returned")
                     ).exists():
                         continue
 
@@ -1380,12 +1357,26 @@ def send_batched_notifications() -> str:
                     continue
                 # Re-check preferences at delivery time so rows queued before a mute
                 # change are not sent. Retire muted rows without dispatching.
+                rule_ids = {
+                    n.notification_rule_id for n in current if n.notification_rule_id
+                }
+                muted_rule_ids = set()
+                if rule_ids:
+                    from django.contrib.auth import get_user_model
+
+                    muted_rule_ids = set(
+                        get_user_model()
+                        .objects.filter(
+                            email__iexact=recipient_email.strip(),
+                            notification_preferences__rule_id__in=rule_ids,
+                            notification_preferences__muted=True,
+                        )
+                        .values_list("notification_preferences__rule_id", flat=True)
+                    )
                 sendable_current = []
                 retired_ids = []
                 for n in current:
-                    if n.notification_rule_id and _is_rule_muted_for_recipient(
-                        n.notification_rule_id, n.recipient_email
-                    ):
+                    if n.notification_rule_id in muted_rule_ids:
                         retired_ids.append(n.id)
                     else:
                         sendable_current.append(n)
@@ -1422,10 +1413,14 @@ def send_batched_notifications() -> str:
                     )
                 elif notification_type == "approval_request":
                     approval_task_ids = sorted(
-                        {n.approval_task_id for n in current if n.approval_task_id}
+                        {
+                            n.approval_task_id
+                            for n in sendable_current
+                            if n.approval_task_id
+                        }
                     )
                     submission_ids = sorted(
-                        {n.submission_id for n in current if n.submission_id}
+                        {n.submission_id for n in sendable_current if n.submission_id}
                     )
 
                     locked_submissions = (
@@ -1445,7 +1440,7 @@ def send_batched_notifications() -> str:
 
                     # The select_related objects in current were loaded before
                     # these locks and can contain stale statuses.
-                    for n in current:
+                    for n in sendable_current:
                         if n.submission_id in locked_submission_status:
                             n.submission.status = locked_submission_status[
                                 n.submission_id
@@ -1457,7 +1452,7 @@ def send_batched_notifications() -> str:
 
                     actionable_ids = {
                         n.id
-                        for n in current
+                        for n in sendable_current
                         if n.submission_id
                         and n.approval_task_id
                         and locked_task_status.get(n.approval_task_id) == "pending"
@@ -1465,7 +1460,7 @@ def send_batched_notifications() -> str:
                         == "pending_approval"
                     }
                     actionable = [n for n in render_rows if n.id in actionable_ids]
-                    obsolete_ids = {n.id for n in current} - actionable_ids
+                    obsolete_ids = {n.id for n in sendable_current} - actionable_ids
                     if obsolete_ids:
                         PendingNotification.objects.filter(id__in=obsolete_ids).update(
                             sent=True
@@ -2467,7 +2462,9 @@ def send_notification_rules(
             chunk_size = 500
             for i in range(0, len(normalized_email_list), chunk_size):
                 email_chunk = normalized_email_list[i : i + chunk_size]
-                for u in user_model.objects.filter(email__in=email_chunk):
+                for u in user_model.objects.annotate(email_lc=Lower("email")).filter(
+                    email_lc__in=email_chunk
+                ):
                     if u.email:
                         _users_by_email[_recipient_key(u.email)] = u
 

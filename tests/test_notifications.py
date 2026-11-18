@@ -18,6 +18,7 @@ from django_forms_workflows.models import (
     NotificationRule,
     PendingNotification,
     StageApprovalGroup,
+    UserNotificationPreference,
     WorkflowDefinition,
     WorkflowStage,
 )
@@ -55,6 +56,40 @@ def test_recipient_sources_dedupe_case_and_whitespace(form_definition, user):
     assert tasks_module._collect_notification_recipients(rule, {}, submission) == [
         user.email
     ]
+
+
+@pytest.mark.django_db
+def test_notification_approver_lookup_ignores_email_case(
+    form_definition, user, approver_user
+):
+    approver_user.email = "Reviewer@example.com"
+    approver_user.save(update_fields=["email"])
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    stage = workflow.stages.create(name="Review", order=1)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_request",
+        static_emails="REVIEWER@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="Review",
+        status="pending",
+    )
+
+    with patch(
+        "django_forms_workflows.tasks._send_html_email", return_value=True
+    ) as send:
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    assert send.call_args.args[3]["approver"] == approver_user
 
 
 @pytest.mark.django_db(transaction=True)
@@ -3523,6 +3558,43 @@ def test_failed_digest_remains_pending(form_definition, user):
         assert tasks_module.send_batched_notifications() == "sent=1"
     pending.refresh_from_db()
     assert pending.sent is True
+
+
+@pytest.mark.django_db
+def test_digest_rechecks_rule_mute_before_delivery(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    rules = [
+        NotificationRule.objects.create(
+            workflow=workflow, event="workflow_approved", notify_submitter=True
+        )
+        for _ in range(2)
+    ]
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    rows = [
+        PendingNotification.objects.create(
+            workflow=workflow,
+            notification_rule=rule,
+            notification_type="workflow_approved",
+            submission=submission,
+            recipient_email=user.email,
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+        )
+        for rule in rules
+    ]
+    UserNotificationPreference.objects.create(user=user, rule=rules[0], muted=True)
+
+    with patch(
+        "django_forms_workflows.tasks._dispatch_conclusion_digest", return_value=True
+    ) as dispatch:
+        assert tasks_module.send_batched_notifications() == "sent=1"
+
+    assert [n.id for n in dispatch.call_args.args[1]] == [rows[1].id]
+    assert all(PendingNotification.objects.get(pk=row.pk).sent for row in rows)
 
 
 @pytest.mark.django_db

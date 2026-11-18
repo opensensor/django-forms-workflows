@@ -2493,6 +2493,9 @@ def send_notification_rules(
             queued_emails = list(recipients) + list(cc_recipients)
             created_count = 0
             for recipient in queued_emails:
+                canonical_recipient = _recipient_key(recipient)
+                if not canonical_recipient:
+                    continue
                 # The sent row is the durable identity for a completed dispatch.
                 # Failed sends stay unsent and remain available for the periodic
                 # sender to retry; resetting sent=False explicitly retries a
@@ -2502,14 +2505,15 @@ def send_notification_rules(
                     "notification_type": event,
                     "submission": submission,
                     "approval_task_id": rule_task_id,
-                    "recipient_email": recipient,
                 }
                 existing_dispatch = PendingNotification.objects.filter(
-                    **dispatch_identity
+                    **dispatch_identity,
+                    recipient_email__iexact=canonical_recipient,
                 ).filter(Q(notification_rule=rule) | Q(notification_rule__isnull=True))
                 if not existing_dispatch.exists():
                     PendingNotification.objects.create(
                         **dispatch_identity,
+                        recipient_email=canonical_recipient,
                         notification_rule=rule,
                         scheduled_for=scheduled_for,
                     )

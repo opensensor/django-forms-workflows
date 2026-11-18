@@ -1050,7 +1050,7 @@ def check_approval_deadlines() -> str:
                 queryset=WorkflowDefinition.objects.order_by("pk"),
             )
         )
-        .filter(status="pending")
+        .filter(status="pending", submission__status="pending_approval")
     )
 
     expired_count = 0

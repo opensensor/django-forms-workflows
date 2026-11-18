@@ -3264,6 +3264,35 @@ def test_expired_task_is_not_reminded(form_definition, user, approver_user):
 
 
 @pytest.mark.django_db
+def test_deadline_scan_skips_terminal_submission_with_pending_task(
+    form_definition, user
+):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, approval_deadline_days=1
+    )
+    stage = workflow.stages.create(name="Review", order=1)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="Review",
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=task.pk).update(
+        created_at=timezone.now() - timedelta(days=2)
+    )
+
+    assert check_approval_deadlines() == "expired=0, reminders=0, auto_approved=0"
+    task.refresh_from_db()
+    assert task.status == "pending"
+
+
+@pytest.mark.django_db
 def test_unsupported_batch_type_remains_pending(form_definition):
     workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
     pending = PendingNotification.objects.create(

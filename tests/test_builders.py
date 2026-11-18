@@ -1588,6 +1588,15 @@ class TestConvertVisualToWorkflow:
 
         assert "approver source" in str(exc.value)
 
+    @pytest.mark.parametrize("name", [None, 42, []])
+    def test_rejects_non_text_stage_name(self, form_definition, name):
+        visual = self._make_visual(
+            stages=[{"name": name, "requires_manager_approval": True}]
+        )
+
+        with pytest.raises(ValidationError, match="missing a name"):
+            convert_visual_to_workflow(visual, form_definition)
+
     @pytest.mark.parametrize("approval_groups", [[{"id": True}], [{"id": "²"}], None])
     def test_rejects_malformed_approval_group_ids(
         self, form_definition, approval_groups

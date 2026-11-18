@@ -450,7 +450,8 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             or stage_data.get("assignee_form_field")
         )
 
-        if not str(stage_data.get("name", "")).strip():
+        stage_name = stage_data.get("name")
+        if not isinstance(stage_name, str) or not stage_name.strip():
             add_error(f"Stage {index} is missing a name.")
         if malformed_group_ids:
             add_error(

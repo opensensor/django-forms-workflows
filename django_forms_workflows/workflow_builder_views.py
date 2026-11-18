@@ -1294,6 +1294,27 @@ def convert_workflow_to_visual(workflow, form_definition):
 
             has_workflow_settings_node = False
             has_sub_workflow_node = False
+            form_node_ids = set()
+            for node in visual_data.get("nodes", []):
+                if node.get("type") != "form":
+                    continue
+                form_node_data = node.get("data", {})
+                form_id = form_node_data.get("form_id")
+                if form_id:
+                    form_node_ids.add(form_id)
+
+            form_node_defaults = {}
+            if form_node_ids:
+                for form in FormDefinition.objects.filter(id__in=form_node_ids):
+                    form_node_defaults[form.id] = {
+                        "form_id": form.id,
+                        "form_name": form.name,
+                        "field_count": len(form.fields or []),
+                        "fields": form.fields or [],
+                        "is_multi_step": bool(getattr(form, "is_multi_step", False)),
+                        "steps": getattr(form, "steps", []) or [],
+                    }
+
             for node in visual_data.get("nodes", []):
                 node_type = node.get("type")
                 node_data = node.setdefault("data", {})
@@ -1313,6 +1334,12 @@ def convert_workflow_to_visual(workflow, form_definition):
                 elif node_type == "email":
                     action_id = node_data.get("action_id")
                     defaults = email_action_defaults.get(action_id)
+                    if defaults:
+                        for key, value in defaults.items():
+                            node_data[key] = value
+                elif node_type == "form":
+                    form_id = node_data.get("form_id")
+                    defaults = form_node_defaults.get(form_id)
                     if defaults:
                         for key, value in defaults.items():
                             node_data[key] = value

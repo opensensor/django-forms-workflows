@@ -1535,7 +1535,7 @@ def test_cc_duplicate_of_to_is_dropped(form_definition, user):
         workflow=wf,
         event="workflow_approved",
         notify_submitter=True,
-        cc_static_emails=f"{user.email}, other@example.com",
+        cc_static_emails=f"{user.email.upper()}, other@example.com",
     )
     submission = FormSubmission.objects.create(
         form_definition=form_definition,
@@ -1548,7 +1548,7 @@ def test_cc_duplicate_of_to_is_dropped(form_definition, user):
         send_notification_rules(submission.id, "workflow_approved")
 
     cc = mock_send.call_args_list[0].kwargs.get("cc") or []
-    assert user.email not in cc
+    assert user.email.upper() not in cc
     assert "other@example.com" in cc
 
 

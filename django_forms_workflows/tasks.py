@@ -1363,16 +1363,20 @@ def send_batched_notifications() -> str:
     )
 
     groups: dict[tuple, list[int]] = defaultdict(list)
+    group_recipient_original: dict[tuple, str] = {}
     for pn_id, recipient_email, notification_type, workflow_id in due_rows:
-        key = (recipient_email, notification_type, workflow_id)
+        normalized_recipient = recipient_email.strip().casefold()
+        key = (normalized_recipient, notification_type, workflow_id)
         groups[key].append(pn_id)
+        group_recipient_original.setdefault(key, recipient_email.strip())
 
     sent_count = 0
     for (
-        recipient_email,
+        normalized_recipient,
         notification_type,
         _workflow_id,
     ), ids in groups.items():
+        recipient_email = group_recipient_original[(normalized_recipient, notification_type, _workflow_id)]
         try:
             # Hold the row locks through delivery and marking the batch sent.
             # A worker crash rolls back the transaction, leaving the rows retryable.
@@ -1607,6 +1611,8 @@ def send_batched_notifications() -> str:
 
 
 def _dispatch_submission_digest(recipient_email: str, notifications: list) -> bool:
+    recipient_email = recipient_email.strip()
+    recipient_email_normalized = recipient_email.casefold()
     """Send a digest of submission_received notifications to one recipient."""
     sample = notifications[0]
     workflow = sample.workflow

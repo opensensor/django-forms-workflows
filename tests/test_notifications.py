@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -6,7 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db import connection
+from django.db import connection, close_old_connections
 from django.utils import timezone
 
 from django_forms_workflows import tasks as tasks_module
@@ -94,6 +95,9 @@ def test_notification_approver_lookup_ignores_email_case(
 
 @pytest.mark.django_db(transaction=True)
 def test_notification_delivery_holds_submission_lock_transaction(form_definition, user):
+    if not connection.features.has_select_for_update:
+        pytest.skip("Row-level locking not supported by this database backend")
+
     workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
     NotificationRule.objects.create(
         workflow=workflow,
@@ -106,18 +110,37 @@ def test_notification_delivery_holds_submission_lock_transaction(form_definition
         form_data={},
         status="approved",
     )
-    delivery_in_transaction = []
+
+    send_calls = []
+    first_call_entered = Event()
+    release_first_call = Event()
 
     def record_delivery(*args, **kwargs):
-        delivery_in_transaction.append(connection.in_atomic_block)
+        send_calls.append(1)
+        if len(send_calls) == 1:
+            first_call_entered.set()
+            release_first_call.wait(timeout=5)
         return True
+
+    def worker():
+        close_old_connections()
+        send_notification_rules(submission.id, "workflow_approved")
 
     with patch(
         "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
     ):
-        send_notification_rules(submission.id, "workflow_approved")
+        t1 = Thread(target=worker)
+        t2 = Thread(target=worker)
 
-    assert delivery_in_transaction == [True]
+        t1.start()
+        assert first_call_entered.wait(timeout=5)
+        t2.start()
+
+        release_first_call.set()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+
+    assert send_calls == [1]
 
 
 def test_daily_digest_uses_active_timezone():

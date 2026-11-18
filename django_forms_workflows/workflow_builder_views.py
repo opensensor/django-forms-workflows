@@ -1297,7 +1297,18 @@ def convert_workflow_to_visual(workflow, form_definition):
                             "sub_workflow_name"
                         ]
                     for key, value in sub_workflow_defaults.items():
-                        node_data.setdefault(key, value)
+                        node_data[key] = value
+                    if (
+                        node_data.get("sub_workflow_id")
+                        == sub_workflow_defaults.get("sub_workflow_id")
+                    ):
+                        node_data["sub_workflow_id_type"] = "workflow"
+                    elif (
+                        node_data.get("sub_workflow_id")
+                        == sub_workflow_defaults.get("sub_workflow_form_id")
+                    ):
+                        node_data["sub_workflow_id_type"] = "form"
+                        node_data["sub_workflow_form_id"] = node_data["sub_workflow_id"]
 
             existing_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node

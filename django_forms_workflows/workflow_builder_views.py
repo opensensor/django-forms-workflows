@@ -274,7 +274,9 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     )
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
-    field_name_to_id = {field["field_name"]: field["id"] for field in field_records}
+    field_name_to_id = {
+        field["field_name"].strip().lower(): field["id"] for field in field_records
+    }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
         set(workflow.stages.values_list("id", flat=True))
@@ -1285,6 +1287,41 @@ def convert_workflow_to_visual(workflow, form_definition):
         visual_data = workflow.visual_workflow_data
         # Check if it has the new format with nodes array
         if isinstance(visual_data, dict) and "nodes" in visual_data:
+            stage_node_map = {}
+            for node in visual_data.get("nodes", []):
+                if node.get("type") == "stage":
+                    raw_stage_id = node.get("data", {}).get("stage_id")
+                    stage_id = None
+                    if isinstance(raw_stage_id, int) and not isinstance(
+                        raw_stage_id, bool
+                    ):
+                        stage_id = raw_stage_id
+                    elif isinstance(raw_stage_id, str):
+                        value = raw_stage_id.strip()
+                        if value.isascii() and value.isdigit():
+                            try:
+                                stage_id = int(value)
+                            except ValueError:
+                                stage_id = None
+                    node_id = node.get("id")
+                    if (
+                        stage_id in stage_defaults
+                        and isinstance(node_id, str | int)
+                        and not isinstance(node_id, bool)
+                        and str(node_id).strip()
+                    ):
+                        stage_node_map[stage_id] = node_id
+
+            notification_rule_defaults = [
+                _serialize_notification_rule(
+                    rule,
+                    stage_node_id=stage_node_map.get(rule.stage_id),
+                )
+                for rule in workflow.notification_rules.select_related("stage")
+                .prefetch_related("notify_groups")
+                .order_by("event", "stage_id", "id")
+            ]
+
             has_workflow_settings_node = False
             has_sub_workflow_node = False
             form_node_defaults = None
@@ -1384,28 +1421,6 @@ def convert_workflow_to_visual(workflow, form_definition):
                     node_data["sub_workflow_id_type"] = "workflow"
 
             existing_nodes = visual_data.get("nodes", [])
-            stage_node_map = {}
-            for node in existing_nodes:
-                if node.get("type") == "stage":
-                    stage_id = node.get("data", {}).get("stage_id")
-                    node_id = node.get("id")
-                    if (
-                        isinstance(stage_id, int)
-                        and not isinstance(stage_id, bool)
-                        and stage_id > 0
-                        and node_id
-                    ):
-                        stage_node_map[stage_id] = node_id
-
-            notification_rule_defaults = [
-                _serialize_notification_rule(
-                    rule,
-                    stage_node_id=stage_node_map.get(rule.stage_id),
-                )
-                for rule in workflow.notification_rules.select_related("stage")
-                .prefetch_related("notify_groups")
-                .order_by("event", "stage_id", "id")
-            ]
             used_node_ids = {
                 str(node_id).strip()
                 for node_id in (node.get("id") for node in existing_nodes)

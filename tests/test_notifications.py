@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.utils import timezone
 
 from django_forms_workflows import tasks as tasks_module
@@ -54,6 +55,34 @@ def test_recipient_sources_dedupe_case_and_whitespace(form_definition, user):
     assert tasks_module._collect_notification_recipients(rule, {}, submission) == [
         user.email
     ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_notification_delivery_holds_submission_lock_transaction(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        static_emails="recipient@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    delivery_in_transaction = []
+
+    def record_delivery(*args, **kwargs):
+        delivery_in_transaction.append(connection.in_atomic_block)
+        return True
+
+    with patch(
+        "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
+    ):
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert delivery_in_transaction == [True]
 
 
 def test_daily_digest_uses_active_timezone():

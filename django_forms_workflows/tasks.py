@@ -2140,23 +2140,18 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Do not wrap an entire rule dispatch in one transaction: each successful
-    # delivery log must be committed independently to survive worker crashes.
-    # Keep only short critical sections (locking/checks and individual log writes)
-    # in atomic blocks where needed.
+    # Keep the submission lock and delivery logs in one transaction per rule.
+    # select_for_update requires this atomic block, and the lock serializes
+    # concurrent dispatches before their idempotency checks and sends.
+    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Delivery serialization and log persistence are intentionally decoupled:
-        successful deliveries should commit their logs independently so retries
-        can honor idempotency guards after partial progress.
-
-        Note: an unavoidable crash window remains between "send succeeded" and
-        "success log committed"; a crash in that window can still cause a retry
-        to resend.
+        Hold the submission lock through delivery and log writes so
+        concurrent dispatches cannot send the same recipient twice.
         """
         nonlocal had_dispatch_failure
         # Lock an existing row before checking delivery logs. Locking log rows

@@ -1022,6 +1022,7 @@ def workflow_builder_save(request):
             "end",
         }
         if nodes:
+            seen_node_ids = {}
             for idx, node in enumerate(nodes):
                 if not isinstance(node, dict):
                     raise ValidationError(
@@ -1051,6 +1052,15 @@ def workflow_builder_save(request):
                     raise ValidationError(
                         f"Malformed payload: node.type at index {idx} is invalid."
                     )
+                if node_id is not None:
+                    normalized_node_id = str(node_id).strip()
+                    if normalized_node_id in seen_node_ids:
+                        prev_idx, prev_type = seen_node_ids[normalized_node_id]
+                        raise ValidationError(
+                            f"Malformed payload: duplicate node.id '{normalized_node_id}' found at indexes "
+                            f"{prev_idx} ({prev_type}) and {idx} ({node_type})."
+                        )
+                    seen_node_ids[normalized_node_id] = (idx, node_type)
                 if "data" in node and not isinstance(node["data"], dict):
                     raise ValidationError(
                         f"Malformed payload: node.data at index {idx} must be an object."
@@ -1118,6 +1128,7 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
+
         return JsonResponse(
             {
                 "success": False,
@@ -2465,7 +2476,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     for order, node in enumerate(ordered_nodes):
         node_type = node["type"]
         if node_type == "action":
-            data = node.get("data", {})
+            data = node.setdefault("data", {})
             action_name = data.get("name", "Unnamed Action")
             action_type = data.get("action_type", "database")
             valid_action_types = {

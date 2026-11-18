@@ -1448,9 +1448,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 existing_stage_node = existing_stage_nodes_by_stage_id.get(stage_id)
                 if existing_stage_node:
                     stage_node_data = existing_stage_node.setdefault("data", {})
-                    stage_node_data.setdefault("stage_id", stage_id)
+                    stage_node_data["stage_id"] = stage_id
                     for key, value in stage_defaults[stage_id].items():
-                        stage_node_data.setdefault(key, value)
+                        stage_node_data[key] = value
                     stage_nodes_in_order.append(existing_stage_node)
                     continue
                 generated_stage_node_id = allocate_unique_node_id(f"stage-{stage_id}")
@@ -2335,8 +2335,22 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 raise ValidationError("Approval group position must be an integer.")
             if not 0 <= position <= 2**63 - 1:
                 raise ValidationError("Approval group position must be an integer.")
+
+            raw_role = group_entry.get("role", "approval")
+            if not isinstance(raw_role, str):
+                raise ValidationError("Approval group role must be a string.")
+            role = raw_role.strip()
+            if not role:
+                raise ValidationError("Approval group role must be a non-empty string.")
+            valid_roles = {
+                choice[0]
+                for choice in StageApprovalGroup._meta.get_field("role").choices
+            }
+            if role not in valid_roles:
+                raise ValidationError("Approval group role is invalid.")
+
             normalized_group_entries.append(
-                {**group_entry, "id": group_id, "position": position}
+                {**group_entry, "id": group_id, "position": position, "role": role}
             )
         sorted_group_entries = sorted(
             normalized_group_entries,
@@ -2344,7 +2358,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         )
         seen_group_role_pairs = set()
         for pos, group_entry in enumerate(sorted_group_entries):
-            role = group_entry.get("role", "approval")
+            role = group_entry["role"]
             assignment_key = (group_entry["id"], role)
             if assignment_key in seen_group_role_pairs:
                 raise ValidationError(

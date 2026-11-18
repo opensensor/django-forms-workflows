@@ -1410,11 +1410,21 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in email_nodes_in_order
                 if node.get("data", {}).get("action_id")
             }
-            existing_stage_nodes_by_stage_id = {
-                node.get("data", {}).get("stage_id"): node
-                for node in existing_nodes
-                if node.get("type") == "stage" and node.get("data", {}).get("stage_id")
-            }
+            existing_stage_nodes_by_stage_id = {}
+            for node in existing_nodes:
+                if node.get("type") != "stage":
+                    continue
+                node_data = node.get("data", {})
+                raw_stage_id = node_data.get("stage_id")
+                if raw_stage_id in (None, ""):
+                    continue
+                normalized_stage_id = raw_stage_id
+                if isinstance(raw_stage_id, str):
+                    if not raw_stage_id.isdigit():
+                        continue
+                    normalized_stage_id = int(raw_stage_id)
+                node_data["stage_id"] = normalized_stage_id
+                existing_stage_nodes_by_stage_id[normalized_stage_id] = node
             stage_ids_in_order = [stage.id for stage in _stages_cache]
             valid_stage_ids = set(stage_ids_in_order)
             stage_nodes_in_order = []

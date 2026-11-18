@@ -1380,6 +1380,8 @@ def send_batched_notifications() -> str:
                         if n.submission
                         and n.approval_task
                         and n.approval_task.status == "pending"
+                        and str(getattr(n.submission, "status", "") or "").lower()
+                        in {"pending", "pending_approval", "in_review"}
                     }
                     actionable = [n for n in render_rows if n.id in actionable_ids]
                     obsolete_ids = {n.id for n in current} - actionable_ids

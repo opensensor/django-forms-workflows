@@ -397,19 +397,23 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         canonical_node_id = None
         if node_id not in (None, ""):
             if isinstance(node_id, bool) or not isinstance(node_id, str | int):
-                add_error(
+                    add_error(
                     f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
                 )
             else:
-                canonical_node_id = (
-                    node_id.strip() if isinstance(node_id, str) else str(node_id)
-                )
+                canonical_node_id = node_id.strip() if isinstance(node_id, str) else str(node_id)
                 if canonical_node_id == "":
                     add_error(
                         f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
                     )
                     canonical_node_id = None
         if canonical_node_id is not None:
+            if canonical_node_id in seen_stage_node_ids:
+                add_error(
+                        f"{stage_label} uses an invalid node ID '{node_id}'. Stage node IDs must be non-empty strings or integers."
+                    )
+                    canonical_node_id = None
+                seen_stage_node_ids.add(canonical_node_id)
             if canonical_node_id in seen_stage_node_ids:
                 add_error(
                     f"{stage_label} uses a duplicate node ID '{node_id}'. Stage node IDs must be unique."

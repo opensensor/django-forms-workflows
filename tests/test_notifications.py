@@ -143,16 +143,13 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     send_calls = []
     worker_errors = []
     first_call_entered = Event()
-    second_dispatch_entered = Event()
-    second_delivery_before_release = []
+    release_first_call = Event()
     second_worker_at_lock = Event()
 
     def record_delivery(*args, **kwargs):
         send_calls.append(1)
         if len(send_calls) == 1:
             first_call_entered.set()
-        elif not release_first_call.is_set():
-            second_delivery_before_release.append(True)
             release_first_call.wait(timeout=5)
         return True
 
@@ -165,14 +162,8 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
 
     def worker():
         close_old_connections()
-        close_old_connections()
         try:
-            second_dispatch_entered.set()
             send_notification_rules(submission.id, "workflow_approved")
-        except Exception as exc:
-            worker_errors.append(exc)
-        finally:
-            close_old_connections()
         except Exception as exc:
             worker_errors.append(exc)
         finally:
@@ -183,8 +174,7 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
             "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
         ),
         patch.object(
-        assert second_dispatch_entered.wait(timeout=5)
-        assert second_delivery_before_release == []
+            FormSubmission.objects,
             "select_for_update",
             side_effect=instrumented_select_for_update,
         ),
@@ -192,17 +182,19 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
         t1 = Thread(target=worker, name="first-worker")
         t2 = Thread(target=worker, name="second-worker")
 
-        t1.start()
-        assert first_call_entered.wait(timeout=5)
-        t2.start()
-        assert second_worker_at_lock.wait(timeout=5)
-        t2.join(timeout=0.2)
-        assert t2.is_alive()
-        assert send_calls == [1]
-
-        release_first_call.set()
-        t1.join(timeout=5)
-        t2.join(timeout=5)
+        try:
+            t1.start()
+            assert first_call_entered.wait(timeout=5)
+            t2.start()
+            assert second_worker_at_lock.wait(timeout=5)
+            t2.join(timeout=0.2)
+            assert t2.is_alive()
+            assert send_calls == [1]
+        finally:
+            release_first_call.set()
+            t1.join(timeout=5)
+            if t2.ident is not None:
+                t2.join(timeout=5)
 
     assert not t1.is_alive() and not t2.is_alive()
     assert worker_errors == []

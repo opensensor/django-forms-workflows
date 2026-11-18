@@ -1052,6 +1052,30 @@ def test_approval_request_includes_approver_in_context(
     assert ctx["approver"].pk == approver_user.pk
 
 
+def test_notification_context_matches_user_email_case_insensitively(
+    form_definition, user
+):
+    user.email = user.email.upper()
+    user.save(update_fields=["email"])
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        email_field="recipient",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"recipient": user.email.lower()},
+        status="approved",
+    )
+
+    with patch("django_forms_workflows.tasks._send_html_email") as send:
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert send.call_args.args[3]["approver"].pk == user.pk
+
+
 # ── body_template rendering ───────────────────────────────────────────
 
 
@@ -3116,6 +3140,44 @@ def test_approval_digest_drops_obsolete_tasks_and_sends_pending_ones(
     for notification in notifications:
         notification.refresh_from_db()
         assert notification.sent is True
+
+
+@pytest.mark.django_db
+def test_duplicate_actionable_digest_rows_remain_retryable_after_failure(
+    form_definition, user
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission, step_name="Review", status="pending"
+    )
+    rows = [
+        PendingNotification.objects.create(
+            workflow=workflow,
+            notification_type="approval_request",
+            submission=submission,
+            approval_task=task,
+            recipient_email=user.email,
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+        )
+        for _ in range(2)
+    ]
+
+    with patch(
+        "django_forms_workflows.tasks._dispatch_approval_digest",
+        side_effect=[False, True],
+    ) as dispatch:
+        assert tasks_module.send_batched_notifications() == "sent=0"
+        assert all(not row.__class__.objects.get(pk=row.pk).sent for row in rows)
+        assert tasks_module.send_batched_notifications() == "sent=2"
+
+    assert all(row.__class__.objects.get(pk=row.pk).sent for row in rows)
+    assert all(len(call.args[1]) == 1 for call in dispatch.call_args_list)
 
 
 @pytest.mark.django_db

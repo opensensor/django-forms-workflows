@@ -1370,16 +1370,19 @@ def send_batched_notifications() -> str:
                     render_rows.append(n)
                 delivered = False
                 if notification_type == "submission_received":
-                    delivered = _dispatch_submission_digest(recipient_email, render_rows)
+                    delivered = _dispatch_submission_digest(
+                        recipient_email, render_rows
+                    )
                 elif notification_type == "approval_request":
-                    actionable = [
-                        n
-                        for n in render_rows
+                    actionable_ids = {
+                        n.id
+                        for n in current
                         if n.submission
                         and n.approval_task
                         and n.approval_task.status == "pending"
-                    ]
-                    obsolete_ids = {n.id for n in current} - {n.id for n in actionable}
+                    }
+                    actionable = [n for n in render_rows if n.id in actionable_ids]
+                    obsolete_ids = {n.id for n in current} - actionable_ids
                     if obsolete_ids:
                         PendingNotification.objects.filter(id__in=obsolete_ids).update(
                             sent=True
@@ -2357,13 +2360,16 @@ def send_notification_rules(
         all_recipient_emails = list(
             dict.fromkeys(list(recipients) + list(cc_recipients))
         )
-        normalized_recipient_emails = [
-            e.strip().lower() for e in all_recipient_emails if e and e.strip()
-        ]
+        normalized_recipient_emails = {
+            _recipient_key(e) for e in all_recipient_emails if _recipient_key(e)
+        }
         if normalized_recipient_emails:
-            for u in user_model.objects.filter(email__in=normalized_recipient_emails):
+            email_query = Q()
+            for email in normalized_recipient_emails:
+                email_query |= Q(email__iexact=email)
+            for u in user_model.objects.filter(email_query):
                 if u.email:
-                    _users_by_email[u.email.strip().lower()] = u
+                    _users_by_email[_recipient_key(u.email)] = u
 
         # Check cadence — batch or send immediately
         cadence = (
@@ -2428,7 +2434,7 @@ def send_notification_rules(
             cc_pending = list(cc_recipients)
             for recipient in recipients:
                 ctx = {**base_context}
-                recipient_user = _users_by_email.get(recipient)
+                recipient_user = _users_by_email.get(_recipient_key(recipient))
                 if recipient_user:
                     ctx["approver"] = recipient_user
                 email_cc = cc_pending
@@ -2487,7 +2493,7 @@ def send_notification_rules(
             if cc_pending:
                 for recipient in cc_pending:
                     ctx = {**base_context}
-                    recipient_user = _users_by_email.get(recipient)
+                    recipient_user = _users_by_email.get(_recipient_key(recipient))
                     if recipient_user:
                         ctx["approver"] = recipient_user
                     try:

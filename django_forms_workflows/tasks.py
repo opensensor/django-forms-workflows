@@ -1355,11 +1355,31 @@ def send_batched_notifications() -> str:
                 )
                 if not current:
                     continue
+                # Re-check preferences at delivery time so rows queued before a mute
+                # change are not sent. Retire muted rows without dispatching.
+                sendable_current = []
+                retired_ids = []
+                for n in current:
+                    if n.notification_rule_id and _is_rule_muted_for_recipient(
+                        n.notification_rule_id, n.recipient_email
+                    ):
+                        retired_ids.append(n.id)
+                    else:
+                        sendable_current.append(n)
+
+                if retired_ids:
+                    PendingNotification.objects.filter(
+                        id__in=retired_ids, sent=False
+                    ).update(sent=True)
+
+                if not sendable_current:
+                    continue
+
                 # Deduplicate rows for digest rendering/delivery while keeping all
-                # locked queue rows in `current` for sent bookkeeping.
+                # sendable queue rows for sent bookkeeping.
                 seen_dispatch_keys = set()
                 render_rows = []
-                for n in current:
+                for n in sendable_current:
                     dispatch_key = (
                         n.recipient_email,
                         n.notification_type,
@@ -1467,7 +1487,7 @@ def send_batched_notifications() -> str:
                     continue
                 if delivered:
                     sent_count += PendingNotification.objects.filter(
-                        id__in=[n.id for n in current], sent=False
+                        id__in=[n.id for n in sendable_current], sent=False
                     ).update(sent=True)
                 else:
                     logger.warning(

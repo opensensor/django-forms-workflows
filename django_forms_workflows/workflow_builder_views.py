@@ -388,7 +388,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     for index, stage_node in enumerate(stage_nodes, start=1):
         stage_data = stage_node.get("data", {})
         stage_label = stage_data.get("name") or f"Stage {index}"
-        stage_identity = stage_node.get("id") or f"stage-index-{index}"
+        stage_identity = index
         node_id = stage_node.get("id")
         normalized_node_id = node_id.strip() if isinstance(node_id, str) else node_id
         if normalized_node_id not in (None, "") and (

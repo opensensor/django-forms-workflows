@@ -2159,6 +2159,32 @@ class TestWorkflowBuilderViews:
         assert response.status_code == 400
         assert not form_definition.workflows.exists()
 
+    @pytest.mark.parametrize("ids", [["shared", "shared"], [1, "1"]])
+    def test_save_rejects_duplicate_node_ids_without_exposing_validation_text(
+        self, client, superuser, form_definition, ids
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {
+                        "nodes": [
+                            {"id": ids[0], "type": "start", "data": {}},
+                            {"id": ids[1], "type": "end", "data": {}},
+                        ],
+                        "connections": [],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["errors"] == ["Invalid workflow configuration."]
+        assert not form_definition.workflows.exists()
+
     @pytest.mark.parametrize(
         "connections",
         [

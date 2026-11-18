@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db import connection, close_old_connections
+from django.db import close_old_connections, connection
 from django.utils import timezone
 
 from django_forms_workflows import tasks as tasks_module
@@ -95,6 +95,34 @@ def test_notification_approver_lookup_ignores_email_case(
 
 @pytest.mark.django_db(transaction=True)
 def test_notification_delivery_holds_submission_lock_transaction(form_definition, user):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        static_emails="recipient@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    delivery_in_transaction = []
+
+    def record_delivery(*args, **kwargs):
+        delivery_in_transaction.append(connection.in_atomic_block)
+        return True
+
+    with patch(
+        "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
+    ):
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert delivery_in_transaction == [True]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     if not connection.features.has_select_for_update:
         pytest.skip("Row-level locking not supported by this database backend")
 
@@ -112,8 +140,10 @@ def test_notification_delivery_holds_submission_lock_transaction(form_definition
     )
 
     send_calls = []
+    worker_errors = []
     first_call_entered = Event()
     release_first_call = Event()
+    second_worker_started = Event()
 
     def record_delivery(*args, **kwargs):
         send_calls.append(1)
@@ -124,22 +154,34 @@ def test_notification_delivery_holds_submission_lock_transaction(form_definition
 
     def worker():
         close_old_connections()
-        send_notification_rules(submission.id, "workflow_approved")
+        try:
+            send_notification_rules(submission.id, "workflow_approved")
+        except Exception as exc:
+            worker_errors.append(exc)
+        finally:
+            close_old_connections()
+
+    def second_worker():
+        second_worker_started.set()
+        worker()
 
     with patch(
         "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
     ):
         t1 = Thread(target=worker)
-        t2 = Thread(target=worker)
+        t2 = Thread(target=second_worker)
 
         t1.start()
         assert first_call_entered.wait(timeout=5)
         t2.start()
+        assert second_worker_started.wait(timeout=5)
 
         release_first_call.set()
         t1.join(timeout=5)
         t2.join(timeout=5)
 
+    assert not t1.is_alive() and not t2.is_alive()
+    assert worker_errors == []
     assert send_calls == [1]
 
 

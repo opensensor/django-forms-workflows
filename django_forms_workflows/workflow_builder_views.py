@@ -1261,6 +1261,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                 .order_by("event", "stage_id", "id")
             ]
 
+            has_workflow_settings_node = False
             for node in visual_data.get("nodes", []):
                 node_type = node.get("type")
                 node_data = node.setdefault("data", {})
@@ -1271,6 +1272,7 @@ def convert_workflow_to_visual(workflow, form_definition):
                         for key, value in defaults.items():
                             node_data[key] = value
                 elif node_type == "workflow_settings":
+                    has_workflow_settings_node = True
                     for key, value in settings_defaults.items():
                         if key == "notification_rules":
                             continue
@@ -1299,6 +1301,22 @@ def convert_workflow_to_visual(workflow, form_definition):
                     for key, value in sub_workflow_defaults.items():
                         node_data[key] = value
                     node_data["sub_workflow_id_type"] = "workflow"
+
+            if not has_workflow_settings_node:
+                synthesized_settings_data = {}
+                for key, value in settings_defaults.items():
+                    if key == "notification_rules":
+                        continue
+                    synthesized_settings_data[key] = value
+                synthesized_settings_data["notification_rules"] = notification_rule_defaults
+                visual_data.setdefault("nodes", []).append(
+                    {
+                        "id": "workflow_settings",
+                        "type": "workflow_settings",
+                        "position": {"x": 0, "y": 0},
+                        "data": synthesized_settings_data,
+                    }
+                )
 
             existing_email_nodes_by_action_id = {
                 node.get("data", {}).get("action_id"): node

@@ -1,3 +1,4 @@
+import threading
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 from types import SimpleNamespace
@@ -143,7 +144,7 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     worker_errors = []
     first_call_entered = Event()
     release_first_call = Event()
-    second_worker_started = Event()
+    second_worker_at_lock = Event()
 
     def record_delivery(*args, **kwargs):
         send_calls.append(1)
@@ -151,6 +152,13 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
             first_call_entered.set()
             release_first_call.wait(timeout=5)
         return True
+
+    original_select_for_update = FormSubmission.objects.select_for_update
+
+    def instrumented_select_for_update(*args, **kwargs):
+        if threading.current_thread().name == "second-worker":
+            second_worker_at_lock.set()
+        return original_select_for_update(*args, **kwargs)
 
     def worker():
         close_old_connections()
@@ -161,20 +169,26 @@ def test_concurrent_notification_dispatch_sends_once(form_definition, user):
         finally:
             close_old_connections()
 
-    def second_worker():
-        second_worker_started.set()
-        worker()
-
-    with patch(
-        "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
+    with (
+        patch(
+            "django_forms_workflows.tasks._send_html_email", side_effect=record_delivery
+        ),
+        patch.object(
+            FormSubmission.objects,
+            "select_for_update",
+            side_effect=instrumented_select_for_update,
+        ),
     ):
-        t1 = Thread(target=worker)
-        t2 = Thread(target=second_worker)
+        t1 = Thread(target=worker, name="first-worker")
+        t2 = Thread(target=worker, name="second-worker")
 
         t1.start()
         assert first_call_entered.wait(timeout=5)
         t2.start()
-        assert second_worker_started.wait(timeout=5)
+        assert second_worker_at_lock.wait(timeout=5)
+        t2.join(timeout=0.2)
+        assert t2.is_alive()
+        assert send_calls == [1]
 
         release_first_call.set()
         t1.join(timeout=5)

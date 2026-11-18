@@ -2465,7 +2465,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     for order, node in enumerate(ordered_nodes):
         node_type = node["type"]
         if node_type == "action":
-            data = node.get("data", {})
+            data = node.setdefault("data", {})
             action_name = data.get("name", "Unnamed Action")
             action_type = data.get("action_type", "database")
             valid_action_types = {

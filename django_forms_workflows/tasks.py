@@ -1405,7 +1405,7 @@ def send_batched_notifications() -> str:
                         "form_withdrawn": "withdrawal_notification",
                     }.get(notification_type, notification_type)
                     delivered = _dispatch_conclusion_digest(
-                        recipient_email, current, conclusion_type
+                        recipient_email, render_rows, conclusion_type
                     )
                 elif notification_type in (
                     "stage_decision",

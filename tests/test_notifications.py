@@ -3423,6 +3423,13 @@ def test_digest_replay_does_not_requeue_after_send_but_allows_explicit_retry(
     assert rows.count() == 1
     assert rows.filter(sent=False).count() == 1
 
+    with patch("django_forms_workflows.tasks._send_html_email", return_value=True):
+        assert tasks_module.send_batched_notifications() == "sent=1"
+    assert rows.filter(sent=True).count() == 1
+
+    with patch("django_forms_workflows.tasks._send_html_email", return_value=True):
+        assert tasks_module.send_batched_notifications() == "sent=0"
+
 
 @pytest.mark.django_db
 def test_digest_queue_keeps_distinct_rule_dispatches(form_definition, user):

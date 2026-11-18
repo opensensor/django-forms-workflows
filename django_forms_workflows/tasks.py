@@ -920,6 +920,17 @@ def send_approval_request(task_id: int) -> None:
         )
         return
 
+    # Submission may also have transitioned while this job was queued.
+    # Do not send actionable approval requests unless still pending approval.
+    if str(getattr(task.submission, "status", "")).lower() != "pending_approval":
+        logger.info(
+            "Skipping approval request for task %s because submission %s status is %r",
+            task.id,
+            task.submission_id,
+            getattr(task.submission, "status", None),
+        )
+        return
+
     approval_url = _abs(reverse("forms_workflows:approve_submission", args=[task.id]))
     subject = f"Approval Request: {task.submission.form_definition.name} (ID {task.submission.id})"
     template = "emails/approval_request.html"

@@ -1374,13 +1374,33 @@ def send_batched_notifications() -> str:
                         recipient_email, render_rows
                     )
                 elif notification_type == "approval_request":
+                    approval_task_ids = sorted(
+                        {n.approval_task_id for n in current if n.approval_task_id}
+                    )
+                    submission_ids = sorted(
+                        {n.submission_id for n in current if n.submission_id}
+                    )
+
+                    locked_tasks = ApprovalTask.objects.select_for_update().filter(
+                        id__in=approval_task_ids
+                    ).order_by("id")
+                    locked_submissions = FormSubmission.objects.select_for_update().filter(
+                        id__in=submission_ids
+                    ).order_by("id")
+
+                    locked_task_status = {t.id: t.status for t in locked_tasks}
+                    locked_submission_status = {
+                        s.id: s.status for s in locked_submissions
+                    }
+
                     actionable_ids = {
                         n.id
                         for n in current
-                        if n.submission
-                        and n.approval_task
-                        and n.approval_task.status == "pending"
-                        and n.submission.status == "pending_approval"
+                        if n.submission_id
+                        and n.approval_task_id
+                        and locked_task_status.get(n.approval_task_id) == "pending"
+                        and locked_submission_status.get(n.submission_id)
+                        == "pending_approval"
                     }
                     actionable = [n for n in render_rows if n.id in actionable_ids]
                     obsolete_ids = {n.id for n in current} - actionable_ids

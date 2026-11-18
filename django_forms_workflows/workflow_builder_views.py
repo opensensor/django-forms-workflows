@@ -1629,17 +1629,43 @@ def convert_workflow_to_visual(workflow, form_definition):
                 elif node.get("type") == "sub_workflow":
                     sub_workflow_id = node.get("data", {}).get("sub_workflow_id")
                     if (
-                        sub_workflow_defaults
-                        and sub_workflow_id == sub_workflow_defaults["sub_workflow_id"]
-                        and not used_sub_workflow
-                    ):
-                        merged_nodes.append(node)
-                        used_sub_workflow = True
-                else:
-                    merged_nodes.append(node)
-
-            missing_email_nodes = [
+            action_nodes_by_id = {}
+            for node in merged_nodes:
+                if node.get("type") in {"email", "action"}:
+                    action_id = node.get("data", {}).get("action_id")
+                    if action_id:
+                        action_nodes_by_id[action_id] = node
+            for node in missing_email_nodes + missing_action_nodes:
+                action_id = node.get("data", {}).get("action_id")
+                if action_id and action_id not in action_nodes_by_id:
+                    action_nodes_by_id[action_id] = node
                 node
+            ordered_action_nodes = [
+                action_nodes_by_id[action_id]
+                for action_id in sorted(
+                    action_nodes_by_id,
+                    key=lambda action_id: (
+                        action_order_by_id.get(action_id, 0),
+                        action_id,
+                    ),
+                )
+            ]
+
+            nodes_with_ordered_actions = []
+            inserted_ordered_actions = False
+            for node in merged_nodes:
+                if node.get("type") in {"email", "action"}:
+                    if not inserted_ordered_actions:
+                        nodes_with_ordered_actions.extend(ordered_action_nodes)
+                        inserted_ordered_actions = True
+                    continue
+                nodes_with_ordered_actions.append(node)
+
+            if not inserted_ordered_actions:
+                nodes_with_ordered_actions.extend(ordered_action_nodes)
+
+            visual_data["nodes"] = nodes_with_ordered_actions + missing_stage_nodes
+
                 for action_id, node in updated_email_nodes_by_action_id.items()
                 if action_id not in used_email_action_ids
             ]

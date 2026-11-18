@@ -1701,6 +1701,23 @@ class TestConvertVisualToWorkflow:
 
         assert not form_definition.workflows.exists()
 
+    @pytest.mark.parametrize("role", ["approval", "validation", "reassignment"])
+    def test_accepts_supported_stage_group_roles(
+        self, form_definition, approval_group, role
+    ):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "approval_groups": [{"id": approval_group.id, "role": role}],
+                }
+            ]
+        )
+
+        workflow = convert_visual_to_workflow(visual, form_definition)
+
+        assert workflow.stages.get().stageapprovalgroup_set.get().role == role
+
     def test_numeric_string_stage_group_id_is_persisted_as_integer(
         self, form_definition, approval_group
     ):

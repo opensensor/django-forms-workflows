@@ -271,7 +271,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
     field_name_to_id = {
-        field["field_name"]: field["id"] for field in field_records
+        field["field_name"].strip().lower(): field["id"] for field in field_records
     }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
@@ -2342,7 +2342,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             role = raw_role.strip()
             if not role:
                 raise ValidationError("Approval group role must be a non-empty string.")
-            if role not in {"approval"}:
+            valid_roles = {
+                choice[0]
+                for choice in StageApprovalGroup._meta.get_field("role").choices
+            }
+            if role not in valid_roles:
                 raise ValidationError("Approval group role is invalid.")
 
             normalized_group_entries.append(

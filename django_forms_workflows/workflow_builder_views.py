@@ -1412,11 +1412,18 @@ def convert_workflow_to_visual(workflow, form_definition):
                 for node in existing_nodes
                 if node.get("type") == "stage" and node.get("data", {}).get("stage_id")
             }
-            valid_stage_ids = set(workflow.stages.values_list("id", flat=True))
+            cached_stages = getattr(workflow, "_stages_cache", None)
+            if cached_stages is not None:
+                stage_ids_in_order = [stage.id for stage in cached_stages]
+            else:
+                cached_stages_by_id = getattr(workflow, "_stages_by_id_cache", None)
+                if cached_stages_by_id is not None:
+                    stage_ids_in_order = list(cached_stages_by_id.keys())
+                else:
+                    stage_ids_in_order = list(workflow.stages.values_list("id", flat=True))
+            valid_stage_ids = set(stage_ids_in_order)
             stage_nodes_in_order = []
-            for index, stage_id in enumerate(
-                workflow.stages.values_list("id", flat=True)
-            ):
+            for index, stage_id in enumerate(stage_ids_in_order):
                 existing_stage_node = existing_stage_nodes_by_stage_id.get(stage_id)
                 if existing_stage_node:
                     stage_node_data = existing_stage_node.setdefault("data", {})

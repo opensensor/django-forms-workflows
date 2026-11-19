@@ -2556,7 +2556,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             )
 
     # ── Notification rules ───────────────────────────────────────────────
-    workflow.notification_rules.all().delete()
+    existing_notification_rules = {
+        rule.id: rule for rule in workflow.notification_rules.all()
+    }
+    kept_notification_rule_ids = set()
+
     for rule_data in settings_data.get("notification_rules", []) or []:
         stage = None
         raw_stage_node_id = rule_data.get("stage_node_id")
@@ -2569,6 +2573,22 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         has_stage_node_id = stage_node_id is not None and stage_node_id != ""
         has_stage_id = stage_id is not None and stage_id != ""
         explicit_stage_reference = has_stage_node_id or has_stage_id
+
+        raw_rule_id = rule_data.get("rule_id")
+        if raw_rule_id in ("", None):
+            rule_obj = None
+        else:
+            if isinstance(raw_rule_id, bool) or not isinstance(raw_rule_id, int | str):
+                raise ValidationError("Invalid notification rule identifier.")
+            try:
+                normalized_rule_id = int(str(raw_rule_id).strip())
+            except (TypeError, ValueError):
+                raise ValidationError("Invalid notification rule identifier.")
+            rule_obj = existing_notification_rules.get(normalized_rule_id)
+            if rule_obj is None:
+                raise ValidationError(
+                    "Notification rule does not belong to this workflow."
+                )
 
         if has_stage_node_id:
             if isinstance(stage_node_id, bool) or not isinstance(

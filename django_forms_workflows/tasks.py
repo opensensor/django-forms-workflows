@@ -30,7 +30,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import F, Prefetch
+from django.db.models import F, Prefetch, Q
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -2148,7 +2148,10 @@ def send_notification_rules(
         _comments_qs = (
             submission.approval_tasks.select_related("workflow_stage", "completed_by")
             .filter(
-                workflow_stage__workflow_id=workflow_id,
+                (
+                    Q(workflow_stage__workflow_id=workflow_id)
+                    | Q(workflow_stage__isnull=True, workflow_id=workflow_id)
+                ),
                 status__in=["approved", "rejected"],
             )
             .exclude(comments="")

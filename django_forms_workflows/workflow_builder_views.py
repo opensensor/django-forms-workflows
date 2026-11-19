@@ -490,8 +490,12 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                 f"{stage_label} has invalid requires_manager_approval value; expected a boolean."
             )
         requires_manager_approval_flag = requires_manager_approval_raw is True
+        has_approval_group_source = any(
+            (entry.get("role") or "approver") == "approver"
+            for entry in group_entries
+        )
         has_approver_source = bool(
-            group_entries
+            has_approval_group_source
             or requires_manager_approval_flag
             or stage_data.get("assignee_form_field")
         )

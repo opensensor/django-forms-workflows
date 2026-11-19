@@ -162,6 +162,86 @@ def test_notification_delivery_holds_submission_lock_transaction(form_definition
 
 
 @pytest.mark.django_db(transaction=True)
+def test_interrupted_notification_dispatch_keeps_earlier_recipient_log(
+    form_definition, user, mailoutbox
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    rule = NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        static_emails="first@example.com, second@example.com",
+        cc_static_emails="copy@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+    original_send = tasks_module._send_html_email
+
+    def interrupted_send(*args, **kwargs):
+        if args[1] == ["second@example.com"]:
+            raise SystemExit("worker stopped")
+        return original_send(*args, **kwargs)
+
+    with (
+        patch(
+            "django_forms_workflows.tasks._send_html_email",
+            side_effect=interrupted_send,
+        ),
+        pytest.raises(SystemExit, match="worker stopped"),
+    ):
+        send_notification_rules(submission.id, "workflow_approved")
+
+    assert [message.to for message in mailoutbox] == [["first@example.com"]]
+    assert mailoutbox[0].cc == ["copy@example.com"]
+    assert list(
+        NotificationLog.objects.filter(
+            submission=submission, notification_rule=rule, status="sent"
+        ).values_list("recipient_email", flat=True)
+    ) == ["first@example.com"]
+
+    send_notification_rules(submission.id, "workflow_approved")
+
+    assert [message.to for message in mailoutbox] == [
+        ["first@example.com"],
+        ["second@example.com"],
+    ]
+    assert mailoutbox[1].cc == []
+
+
+@pytest.mark.django_db
+def test_notification_retry_reuses_dispatch_message_id(
+    form_definition, user, mailoutbox
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    rule = NotificationRule.objects.create(
+        workflow=workflow,
+        event="workflow_approved",
+        static_emails="recipient@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="approved",
+    )
+
+    send_notification_rules(submission.id, "workflow_approved")
+    NotificationLog.objects.filter(
+        submission=submission, notification_rule=rule
+    ).update(delivery_state="retried")
+    send_notification_rules(submission.id, "workflow_approved")
+
+    assert len(mailoutbox) == 2
+    assert (
+        mailoutbox[0].extra_headers["Message-ID"]
+        == mailoutbox[1].extra_headers["Message-ID"]
+    )
+
+
+@pytest.mark.django_db(transaction=True)
 def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     if not connection.features.has_select_for_update:
         pytest.skip("Row-level locking not supported by this database backend")

@@ -132,6 +132,7 @@ def _send_html_email(
     bcc: Iterable[str] | None = None,
     approval_task_id: int | None = None,
     notification_rule_id: int | None = None,
+    message_id: str | None = None,
 ) -> bool:
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
@@ -170,7 +171,7 @@ def _send_html_email(
     msg.attach_alternative(html_body, "text/html")
     # Stamp a Message-ID we control so delivery can be reconciled against the
     # Workspace Gmail log (see _make_message_id / GmailAPIBackend).
-    message_id = _make_message_id(from_addr)
+    message_id = message_id or _make_message_id(from_addr)
     msg.extra_headers["Message-ID"] = message_id
     cc_str = ", ".join(cc_list)
     bcc_str = ", ".join(bcc_list)
@@ -251,6 +252,7 @@ def _send_html_email_from_string(
     bcc: Iterable[str] | None = None,
     approval_task_id: int | None = None,
     notification_rule_id: int | None = None,
+    message_id: str | None = None,
 ) -> bool:
     """Like _send_html_email but renders an inline Django template string
     instead of loading a template file.  Used when a NotificationRule has a
@@ -295,7 +297,7 @@ def _send_html_email_from_string(
     msg.attach_alternative(html_body, "text/html")
     # Stamp a Message-ID we control so delivery can be reconciled against the
     # Workspace Gmail log (see _make_message_id / GmailAPIBackend).
-    message_id = _make_message_id(from_addr)
+    message_id = message_id or _make_message_id(from_addr)
     msg.extra_headers["Message-ID"] = message_id
     cc_str = ", ".join(cc_list)
     bcc_str = ", ".join(bcc_list)
@@ -2307,25 +2309,17 @@ def send_notification_rules(
                         already_cc_or_bcc_local.add(addr)
         return already_sent_local, already_cc_or_bcc_local
 
-    # Keep the submission lock and delivery logs in one transaction per rule.
-    # select_for_update requires this atomic block, and the lock serializes
-    # concurrent dispatches before their idempotency checks and sends.
-    @transaction.atomic
     def _apply_rule(rule) -> None:
         """Resolve recipients for one rule and send (or queue) its emails.
 
         Kept as a nested function so the caller can isolate each rule: see
         the ``for rule in rules`` loop below.
 
-        Hold the submission lock through delivery and log writes so
-        concurrent dispatches cannot send the same recipient twice.
+        Each recipient locks the submission, checks delivery state, sends,
+        and commits its log independently of later recipients.
         """
         nonlocal had_dispatch_failure
-        # Lock an existing row before checking delivery logs. Locking log rows
-        # cannot serialize the first send because there are no rows yet.
-        locked_submission = FormSubmission.objects.select_for_update().get(
-            pk=submission_id
-        )
+        locked_submission = FormSubmission.objects.get(pk=submission_id)
         if (
             event in {"approval_request", "approval_reminder"}
             and locked_submission.status != "pending_approval"
@@ -2336,8 +2330,7 @@ def send_notification_rules(
             locked_task = None
             if task is not None:
                 locked_task = (
-                    ApprovalTask.objects.select_for_update(of=("self",))
-                    .select_related("workflow_stage")
+                    ApprovalTask.objects.select_related("workflow_stage")
                     .filter(pk=task.pk)
                     .first()
                 )
@@ -2418,13 +2411,79 @@ def send_notification_rules(
         def _recipient_key(value):
             return (value or "").strip().casefold()
 
+        def _dispatch_message_id(recipient, cc_recipients=()):
+            """Stable message identity for transports that dedupe by Message-ID."""
+            identity = json.dumps(
+                [
+                    submission_id,
+                    event,
+                    rule.id,
+                    rule_task_id,
+                    _recipient_key(recipient),
+                    sorted(_recipient_key(value) for value in cc_recipients),
+                ],
+                separators=(",", ":"),
+            )
+            digest = hmac.new(
+                settings.SECRET_KEY.encode(), identity.encode(), hashlib.sha256
+            ).hexdigest()
+            from_addr = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@localhost")
+            domain = from_addr.rpartition("@")[2].strip().strip(">") or "localhost"
+            return f"<dfw-{digest}@{domain}>"
+
+        def _locked_recipient_cc(recipient, cc_candidates=()):
+            """Return undelivered CCs while holding the dispatch row lock.
+
+            Call inside a per-recipient transaction and keep that transaction
+            open through the send and its NotificationLog insert.
+            """
+            current_submission = FormSubmission.objects.select_for_update().get(
+                pk=submission_id
+            )
+            if (
+                event in {"approval_request", "approval_reminder"}
+                and current_submission.status != "pending_approval"
+            ):
+                return None
+            if explicit_task:
+                current_task = (
+                    ApprovalTask.objects.select_for_update(of=("self",))
+                    .select_related("workflow_stage")
+                    .filter(pk=task.pk)
+                    .first()
+                )
+                if (
+                    current_task is None
+                    or current_task.submission_id != submission_id
+                    or (
+                        current_task.workflow_stage_id
+                        and current_task.workflow_stage.workflow_id != workflow.pk
+                    )
+                    or (
+                        event in {"approval_request", "approval_reminder"}
+                        and current_task.status != "pending"
+                    )
+                ):
+                    return None
+            sent, copied = _already_delivered_for_dispatch(rule, rule_task_id)
+            sent_keys = {_recipient_key(value) for value in sent}
+            copied_keys = {_recipient_key(value) for value in copied}
+            if _recipient_key(recipient) in sent_keys | copied_keys:
+                return None
+            return [
+                value
+                for value in cc_candidates
+                if _recipient_key(value) not in sent_keys | copied_keys
+            ]
+
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
         recipient_keys = {_recipient_key(r) for r in recipients}
         cc_recipients = [
             c for c in cc_recipients if _recipient_key(c) not in recipient_keys
         ]
 
-        # Re-check delivery state while holding the lock.
+        # This early filter avoids preparation for completed recipients. Each
+        # send checks again after acquiring its own submission lock.
         already_sent, already_cc_or_bcc = _already_delivered_for_dispatch(
             rule, rule_task_id
         )
@@ -2586,28 +2645,31 @@ def send_notification_rules(
                 canonical_recipient = _recipient_key(recipient)
                 if not canonical_recipient:
                     continue
-                # The sent row is the durable identity for a completed dispatch.
-                # Failed sends stay unsent and remain available for the periodic
-                # sender to retry; resetting sent=False explicitly retries a
-                # previously completed dispatch.
-                dispatch_identity = {
-                    "workflow": workflow,
-                    "notification_type": event,
-                    "submission": submission,
-                    "approval_task_id": rule_task_id,
-                }
-                existing_dispatch = PendingNotification.objects.filter(
-                    **dispatch_identity,
-                    recipient_email__iexact=canonical_recipient,
-                ).filter(Q(notification_rule=rule) | Q(notification_rule__isnull=True))
-                if not existing_dispatch.exists():
-                    PendingNotification.objects.create(
+                with transaction.atomic():
+                    if _locked_recipient_cc(recipient) is None:
+                        continue
+                    # A sent row is the durable identity for a completed
+                    # dispatch. Retried rows are reset explicitly.
+                    dispatch_identity = {
+                        "workflow": workflow,
+                        "notification_type": event,
+                        "submission": submission,
+                        "approval_task_id": rule_task_id,
+                    }
+                    existing_dispatch = PendingNotification.objects.filter(
                         **dispatch_identity,
-                        recipient_email=canonical_recipient,
-                        notification_rule=rule,
-                        scheduled_for=scheduled_for,
+                        recipient_email__iexact=canonical_recipient,
+                    ).filter(
+                        Q(notification_rule=rule) | Q(notification_rule__isnull=True)
                     )
-                    created_count += 1
+                    if not existing_dispatch.exists():
+                        PendingNotification.objects.create(
+                            **dispatch_identity,
+                            recipient_email=canonical_recipient,
+                            notification_rule=rule,
+                            scheduled_for=scheduled_for,
+                        )
+                        created_count += 1
             logger.info(
                 "Queued %d/%d %s notification(s) for submission %s (due %s)",
                 created_count,
@@ -2619,97 +2681,78 @@ def send_notification_rules(
         else:
             # Determine template: per-rule body_template overrides file.
             rule_body = getattr(rule, "body_template", "") or ""
+
             # Each TO recipient gets a personalized email (approver context).
             # CCs are attached to the first email only so CC recipients receive
             # exactly one copy per rule execution rather than one per TO.
+            def _send_rule_email(recipient, context, email_cc=()):
+                send_kwargs = {
+                    "notification_type": event,
+                    "submission_id": submission_id,
+                    "approval_task_id": rule_task_id,
+                    "notification_rule_id": rule.id,
+                    "message_id": _dispatch_message_id(recipient, email_cc),
+                }
+                if email_cc:
+                    send_kwargs["cc"] = email_cc
+                if rule_body.strip():
+                    return _send_html_email_from_string(
+                        subject, [recipient], rule_body, context, **send_kwargs
+                    )
+                return _send_html_email(
+                    subject, [recipient], default_template, context, **send_kwargs
+                )
+
             cc_pending = list(cc_recipients)
             for recipient in recipients:
-                ctx = {**base_context}
-                recipient_user = _users_by_email.get(_recipient_key(recipient))
-                if recipient_user:
-                    ctx["approver"] = recipient_user
-                email_cc = cc_pending
-                try:
-                    if rule_body.strip():
-                        send_result = _send_html_email_from_string(
-                            subject,
-                            [recipient],
-                            rule_body,
-                            ctx,
-                            notification_type=event,
-                            submission_id=submission_id,
-                            cc=email_cc,
-                            approval_task_id=rule_task_id,
-                            notification_rule_id=rule.id,
-                        )
-                    else:
-                        send_result = _send_html_email(
-                            subject,
-                            [recipient],
-                            default_template,
-                            ctx,
-                            notification_type=event,
-                            submission_id=submission_id,
-                            cc=email_cc,
-                            approval_task_id=rule_task_id,
-                            notification_rule_id=rule.id,
-                        )
-                except Exception as exc:
-                    had_dispatch_failure = True
-                    logger.exception(
-                        "NotificationRule %s failed sending to %s",
-                        rule.id,
-                        recipient,
-                    )
-                    _write_notification_log(
-                        notification_type=event,
-                        submission_id=submission_id,
-                        recipient_email=recipient,
-                        subject=subject,
-                        status="failed",
-                        error_message=f"{type(exc).__name__}: {exc}",
-                        notification_rule_id=rule.id,
-                        approval_task_id=rule_task_id,
-                    )
-                    continue
-                if send_result is False:
-                    had_dispatch_failure = True
-                else:
-                    # Consume CCs only after a successful send.
-                    cc_pending = []
-
-            # If CCs were never delivered with a successful TO send (or there
-            # were no TO recipients), attempt a CC-only send so retries do not
-            # lose CC delivery.
-            if cc_pending:
-                for recipient in cc_pending:
+                # A completed recipient commits before the next one starts.
+                with transaction.atomic():
+                    email_cc = _locked_recipient_cc(recipient, cc_pending)
+                    if email_cc is None:
+                        continue
                     ctx = {**base_context}
                     recipient_user = _users_by_email.get(_recipient_key(recipient))
                     if recipient_user:
                         ctx["approver"] = recipient_user
                     try:
-                        if rule_body.strip():
-                            cc_send_result = _send_html_email_from_string(
-                                subject,
-                                [recipient],
-                                rule_body,
-                                ctx,
-                                notification_type=event,
-                                submission_id=submission_id,
-                                approval_task_id=rule_task_id,
-                                notification_rule_id=rule.id,
-                            )
-                        else:
-                            cc_send_result = _send_html_email(
-                                subject,
-                                [recipient],
-                                default_template,
-                                ctx,
-                                notification_type=event,
-                                submission_id=submission_id,
-                                approval_task_id=rule_task_id,
-                                notification_rule_id=rule.id,
-                            )
+                        send_result = _send_rule_email(recipient, ctx, email_cc)
+                    except Exception as exc:
+                        had_dispatch_failure = True
+                        logger.exception(
+                            "NotificationRule %s failed sending to %s",
+                            rule.id,
+                            recipient,
+                        )
+                        _write_notification_log(
+                            notification_type=event,
+                            submission_id=submission_id,
+                            recipient_email=recipient,
+                            subject=subject,
+                            status="failed",
+                            error_message=f"{type(exc).__name__}: {exc}",
+                            notification_rule_id=rule.id,
+                            approval_task_id=rule_task_id,
+                        )
+                        continue
+                    if send_result is False:
+                        had_dispatch_failure = True
+                    else:
+                        # The helper logs the TO and CC recipients in this
+                        # transaction, so later recipients need no CCs.
+                        cc_pending = []
+
+            # If no TO successfully carried the CCs, send each undelivered CC
+            # on its own so an interrupted dispatch can resume safely.
+            for recipient in cc_pending:
+                with transaction.atomic():
+                    if _locked_recipient_cc(recipient) is None:
+                        continue
+                    ctx = {**base_context}
+                    recipient_user = _users_by_email.get(_recipient_key(recipient))
+                    if recipient_user:
+                        ctx["approver"] = recipient_user
+                    try:
+                        cc_send_result = _send_rule_email(recipient, ctx)
                     except Exception as exc:
                         had_dispatch_failure = True
                         logger.exception(

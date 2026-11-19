@@ -1172,7 +1172,6 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-
         return JsonResponse(
             {
                 "success": False,
@@ -2390,6 +2389,19 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         if approval_logic not in allowed_approval_logic:
             raise ValidationError("Invalid approval logic.")
 
+        raw_assignee_lookup_type = sdata.get("assignee_lookup_type", "email")
+        if not isinstance(raw_assignee_lookup_type, str):
+            raise ValidationError("Invalid assignee lookup type.")
+        assignee_lookup_type = raw_assignee_lookup_type.strip()
+        allowed_assignee_lookup_types = {
+            value
+            for value, _ in WorkflowStage._meta.get_field(
+                "assignee_lookup_type"
+            ).choices
+        }
+        if assignee_lookup_type not in allowed_assignee_lookup_types:
+            raise ValidationError("Invalid assignee lookup type.")
+
         stage_fields = {
             "name": sdata.get("name", f"Stage {idx}"),
             "order": stage_order,
@@ -2400,7 +2412,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             "allow_edit_form_data": sdata.get("allow_edit_form_data", False),
             "approve_label": sdata.get("approve_label", ""),
             "assignee_form_field": sdata.get("assignee_form_field", ""),
-            "assignee_lookup_type": sdata.get("assignee_lookup_type", "email"),
+            "assignee_lookup_type": assignee_lookup_type,
             "validate_assignee_group": sdata.get("validate_assignee_group", True),
             "trigger_conditions": _normalize_trigger_conditions(
                 sdata.get("trigger_conditions")
@@ -2854,6 +2866,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         )
 
     normalized_deleted_ids = set()
+    max_primary_key_value = (2**63) - 1
     for raw_id in deleted_action_ids:
         if isinstance(raw_id, bool):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
@@ -2868,7 +2881,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 ) from exc
         else:
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
-        if action_id <= 0:
+        if action_id <= 0 or action_id > max_primary_key_value:
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 

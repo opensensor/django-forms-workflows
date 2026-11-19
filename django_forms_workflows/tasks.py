@@ -30,7 +30,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import F, Prefetch
+from django.db.models import F, Prefetch, Q
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -2142,13 +2142,19 @@ def send_notification_rules(
     # Build a denormalized "public_comments" list for template context on a
     # per-workflow basis so rule recipients only see comments from their
     # workflow. Ordered by workflow flow (stage → step → completion time).
+    legacy_workflow = submission.form_definition.workflow
+    legacy_workflow_id = legacy_workflow.id if legacy_workflow else None
+
     def _build_public_comments_for_workflow(workflow_id: int | None) -> list[dict]:
         if not workflow_id:
             return []
+        task_scope = Q(workflow_stage__workflow_id=workflow_id)
+        if workflow_id == legacy_workflow_id:
+            task_scope |= Q(workflow_stage__isnull=True)
         _comments_qs = (
             submission.approval_tasks.select_related("workflow_stage", "completed_by")
             .filter(
-                workflow_stage__workflow_id=workflow_id,
+                task_scope,
                 status__in=["approved", "rejected"],
             )
             .exclude(comments="")
@@ -2200,8 +2206,6 @@ def send_notification_rules(
     # versa), producing duplicate emails. ``use_triggering_stage=True``
     # rules handle scoping at recipient resolution time and must remain
     # candidates here regardless of which task triggered the event.
-    from django.db.models import Q
-
     if explicit_task and task and getattr(task, "workflow_stage_id", None):
         triggering_stage_id = task.workflow_stage_id
         rules_qs = rules_qs.filter(
@@ -2689,12 +2693,6 @@ def send_notification_rules(
         if rule_task:
             base_context["task"] = rule_task
 
-        # Pre-fetch User objects for all recipients so templates that
-        # reference ``{{ approver }}`` (e.g. approval_request.html) work
-        # identically to the legacy send_approval_request task.
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
         _users_by_email: dict = {}
         all_recipient_emails = list(
             dict.fromkeys(list(recipients) + list(cc_recipients))
@@ -2702,16 +2700,6 @@ def send_notification_rules(
         normalized_recipient_emails = {
             _recipient_key(e) for e in all_recipient_emails if _recipient_key(e)
         }
-        if normalized_recipient_emails:
-            normalized_email_list = list(normalized_recipient_emails)
-            chunk_size = 500
-            for i in range(0, len(normalized_email_list), chunk_size):
-                email_chunk = normalized_email_list[i : i + chunk_size]
-                for u in user_model.objects.annotate(email_lc=Lower("email")).filter(
-                    email_lc__in=email_chunk
-                ):
-                    if u.email:
-                        _users_by_email[_recipient_key(u.email)] = u
 
         # Check cadence — batch or send immediately
         cadence = (
@@ -2780,6 +2768,22 @@ def send_notification_rules(
                 scheduled_for,
             )
         else:
+            # Pre-fetch User objects only for immediate delivery so templates
+            # that reference ``{{ approver }}`` (e.g. approval_request.html)
+            # work identically to the legacy send_approval_request task.
+            from django.contrib.auth import get_user_model
+
+            user_model = get_user_model()
+            if normalized_recipient_emails:
+                normalized_email_list = list(normalized_recipient_emails)
+                chunk_size = 500
+                for i in range(0, len(normalized_email_list), chunk_size):
+                    email_chunk = normalized_email_list[i : i + chunk_size]
+                    for u in user_model.objects.annotate(
+                        email_lc=Lower("email")
+                    ).filter(email_lc__in=email_chunk):
+                        if u.email:
+                            _users_by_email[_recipient_key(u.email)] = u
             # Determine template: per-rule body_template overrides file.
             rule_body = getattr(rule, "body_template", "") or ""
 

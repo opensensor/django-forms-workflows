@@ -1312,41 +1312,6 @@ def convert_workflow_to_visual(workflow, form_definition):
         visual_data = workflow.visual_workflow_data
         # Check if it has the new format with nodes array
         if isinstance(visual_data, dict) and "nodes" in visual_data:
-            stage_node_map = {}
-            for node in visual_data.get("nodes", []):
-                if node.get("type") == "stage":
-                    raw_stage_id = node.get("data", {}).get("stage_id")
-                    stage_id = None
-                    if isinstance(raw_stage_id, int) and not isinstance(
-                        raw_stage_id, bool
-                    ):
-                        stage_id = raw_stage_id
-                    elif isinstance(raw_stage_id, str):
-                        value = raw_stage_id.strip()
-                        if value.isascii() and value.isdigit():
-                            try:
-                                stage_id = int(value)
-                            except ValueError:
-                                stage_id = None
-                    node_id = node.get("id")
-                    if (
-                        stage_id in stage_defaults
-                        and isinstance(node_id, str | int)
-                        and not isinstance(node_id, bool)
-                        and str(node_id).strip()
-                    ):
-                        stage_node_map[stage_id] = node_id
-
-            notification_rule_defaults = [
-                _serialize_notification_rule(
-                    rule,
-                    stage_node_id=stage_node_map.get(rule.stage_id),
-                )
-                for rule in workflow.notification_rules.select_related("stage")
-                .prefetch_related("notify_groups")
-                .order_by("event", "stage_id", "id")
-            ]
-
             has_workflow_settings_node = False
             has_sub_workflow_node = False
             form_node_defaults = None
@@ -1413,7 +1378,6 @@ def convert_workflow_to_visual(workflow, form_definition):
                         if key == "notification_rules":
                             continue
                         node_data[key] = value
-                    node_data["notification_rules"] = notification_rule_defaults
                 elif node_type == "email":
                     action_id = node_data.get("action_id")
                     defaults = email_action_defaults.get(action_id)
@@ -1490,7 +1454,6 @@ def convert_workflow_to_visual(workflow, form_definition):
                         "y": 0,
                         "data": {
                             **settings_defaults,
-                            "notification_rules": notification_rule_defaults,
                         },
                     }
                 )
@@ -1734,6 +1697,25 @@ def convert_workflow_to_visual(workflow, form_definition):
             visual_data["nodes"] = (
                 merged_nodes + missing_mixed_action_nodes + missing_stage_nodes
             )
+
+            stage_node_map = {
+                stage_id: node["id"]
+                for stage_id, node in updated_stage_nodes_by_stage_id.items()
+            }
+            notification_rule_defaults = [
+                _serialize_notification_rule(
+                    rule,
+                    stage_node_id=stage_node_map.get(rule.stage_id),
+                )
+                for rule in workflow.notification_rules.select_related("stage")
+                .prefetch_related("notify_groups")
+                .order_by("event", "stage_id", "id")
+            ]
+            for node in visual_data["nodes"]:
+                if node.get("type") == "workflow_settings":
+                    node.setdefault("data", {})["notification_rules"] = (
+                        notification_rule_defaults
+                    )
 
             def _canonical_node_id(node_id):
                 if node_id is None:
@@ -2227,11 +2209,21 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     normalized_notification_cadence = (
         settings_data.get("notification_cadence") or "immediate"
     )
+    start_trigger_value = settings_data.get("start_trigger", "on_submission")
+    valid_start_triggers = {
+        choice[0]
+        for choice in WorkflowDefinition._meta.get_field("start_trigger").choices
+    }
+    if (
+        not isinstance(start_trigger_value, str)
+        or start_trigger_value not in valid_start_triggers
+    ):
+        raise ValidationError({"start_trigger": "Unsupported start trigger."})
 
     # ── Workflow-level settings ──────────────────────────────────────────
     wf_defaults = {
         "name_label": settings_data.get("name_label", ""),
-        "start_trigger": settings_data.get("start_trigger", "on_submission"),
+        "start_trigger": start_trigger_value,
         "requires_approval": settings_data.get("requires_approval", requires_approval),
         "visual_workflow_data": workflow_data,
         "notification_cadence": normalized_notification_cadence,

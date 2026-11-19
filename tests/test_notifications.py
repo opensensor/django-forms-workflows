@@ -4411,6 +4411,14 @@ def test_taskless_final_notifications_keep_workflow_context_separate(
             ),
         )
 
+    ApprovalTask.objects.create(
+        submission=submission,
+        step_name="Legacy review",
+        status="approved",
+        comments="Legacy workflow 1",
+        completed_by=approver_user,
+    )
+
     send_notification_rules(submission.pk, "workflow_approved")
 
     assert len(mailoutbox) == 2
@@ -4424,6 +4432,7 @@ def test_taskless_final_notifications_keep_workflow_context_separate(
     assert "Private to workflow 1" in first_task_comments
     assert "Private to workflow 2" not in first_public_comments
     assert "Private to workflow 2" not in first_task_comments
+    assert "Legacy workflow 1" in first_public_comments
 
     assert second.count("|") == 1
     second_public_comments, second_task_comments = second.split("|", 1)
@@ -4431,3 +4440,4 @@ def test_taskless_final_notifications_keep_workflow_context_separate(
     assert "Private to workflow 2" in second_task_comments
     assert "Private to workflow 1" not in second_public_comments
     assert "Private to workflow 1" not in second_task_comments
+    assert "Legacy workflow 1" not in second_public_comments

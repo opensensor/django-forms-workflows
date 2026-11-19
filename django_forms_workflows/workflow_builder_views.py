@@ -280,7 +280,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
     field_name_to_id = {
-        field["field_name"].strip().lower(): field["id"] for field in field_records
+        field["field_name"].strip(): field["id"] for field in field_records
     }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
@@ -541,9 +541,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             if key_type == "id":
                 canonical_field_id = key_value
             else:
-                canonical_field_id = field_name_to_id.get(
-                    str(key_value).strip().lower()
-                )
+                canonical_field_id = field_name_to_id.get(str(key_value).strip())
 
             if not canonical_field_id:
                 continue
@@ -2814,9 +2812,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
-        normalized_action_name = (
-            action_name.strip() if isinstance(action_name, str) else action_name
-        )
+        if not isinstance(action_name, str):
+            raise ValidationError("Email action name must be a string.")
+        normalized_action_name = action_name.strip()
+        if not normalized_action_name:
+            raise ValidationError("Email action name cannot be blank.")
         generated_description = (
             f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
             f"Subject: {data.get('email_subject_template', '')}"

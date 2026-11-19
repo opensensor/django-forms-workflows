@@ -2176,6 +2176,23 @@ class TestConvertVisualToWorkflow:
         assert action.name == "Notice"
         assert form_definition.post_actions.count() == 1
 
+    @pytest.mark.parametrize("node_name", [None, 7, [], "", "   "])
+    def test_rejects_invalid_email_action_name(self, form_definition, node_name):
+        visual = self._make_visual()
+        visual["nodes"].insert(
+            1,
+            {
+                "type": "email",
+                "data": {"name": node_name, "email_to": "recipient@example.com"},
+            },
+        )
+
+        with pytest.raises(ValidationError, match="Email action name"):
+            convert_visual_to_workflow(visual, form_definition)
+
+        assert not form_definition.post_actions.exists()
+        assert not form_definition.workflows.exists()
+
     def test_action_id_from_another_form_is_rejected(self, form_definition):
         other_form = FormDefinition.objects.create(name="Other", slug="other")
         foreign_action = PostSubmissionAction.objects.create(
@@ -2804,10 +2821,15 @@ class TestWorkflowBuilderViews:
         assert email_field.workflow_stage_id == stage.id
         assert notes_field.workflow_stage_id == stage.id
 
+    @pytest.mark.parametrize("field_name", ["notes", "Notes"])
     def test_save_rejects_duplicate_stage_approval_fields(
-        self, client, superuser, form_with_fields, approval_group
+        self, client, superuser, form_with_fields, approval_group, field_name
     ):
         notes_field = form_with_fields.fields.get(field_name="notes")
+        if field_name != notes_field.field_name:
+            form_with_fields.fields.filter(pk=notes_field.pk).update(
+                field_name=field_name
+            )
         notes_field.refresh_from_db()
         initial_notes_workflow_stage_id = notes_field.workflow_stage_id
         initial_workflow_count = WorkflowDefinition.objects.count()

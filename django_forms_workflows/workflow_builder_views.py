@@ -121,7 +121,12 @@ def _normalize_trigger_conditions(raw_conditions):
             "Trigger conditions must be a list, a single condition object, or an object with a 'conditions' list."
         )
 
-    group_operator = "OR" if group_operator == "OR" else "AND"
+    group_operator = str(group_operator).strip().upper()
+    if group_operator not in {"AND", "OR"}:
+        raise ValidationError(
+            f"Unsupported trigger condition group operator: {group_operator}"
+        )
+
     normalized = []
     for condition in condition_list:
         if not isinstance(condition, dict):

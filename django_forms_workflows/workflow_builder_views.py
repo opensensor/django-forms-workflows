@@ -1207,14 +1207,8 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        return JsonResponse(
-            {
-                "success": False,
-                "error": "Workflow validation failed.",
-                "errors": ["Invalid workflow configuration."],
-            },
-            status=400,
-        )
+        messages = exc.messages if hasattr(exc, "messages") and exc.messages else [str(exc)]
+        raise BuilderValidationError(messages)
     except Http404:
         raise
     except Exception:

@@ -2814,9 +2814,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
-        normalized_action_name = (
-            action_name.strip() if isinstance(action_name, str) else action_name
-        )
+        if not isinstance(action_name, str):
+            raise ValidationError("Email action name must be a string.")
+        normalized_action_name = action_name.strip()
+        if not normalized_action_name:
+            raise ValidationError("Email action name cannot be blank.")
         generated_description = (
             f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
             f"Subject: {data.get('email_subject_template', '')}"

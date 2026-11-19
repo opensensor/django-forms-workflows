@@ -1646,8 +1646,10 @@ export class WorkflowBuilder {
             `;
 
             fields.forEach(field => {
+                const escapedPrefillSourceText = this.escapeHtml(field.prefill_source);
+                const escapedPrefillSourceTitle = this.escapeHtmlAttribute(field.prefill_source);
                 const prefillBadge = field.prefill_source ?
-                    `<span class="badge bg-info ms-2" title="Auto-filled from ${this.escapeHtml(field.prefill_source)}"><i class="bi bi-magic"></i> ${this.escapeHtml(field.prefill_source)}</span>` : '';
+                    `<span class="badge bg-info ms-2" title="Auto-filled from ${escapedPrefillSourceTitle}"><i class="bi bi-magic"></i> ${escapedPrefillSourceText}</span>` : '';
                 const requiredBadge = field.required ?
                     `<span class="badge bg-warning ms-1">Required</span>` : '';
 

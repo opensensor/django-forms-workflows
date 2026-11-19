@@ -2447,6 +2447,78 @@ def send_notification_rules(
             domain = from_addr.rpartition("@")[2].strip().strip(">") or "localhost"
             return f"<dfw-{digest}@{domain}>"
 
+        static_recipient_keys = {
+            _recipient_key(value)
+            for value in (rule.static_emails or "").split(",")
+            if "@" in value
+        }
+
+        def _current_to_eligible(
+            recipient_key, current_submission, current_task, form_data
+        ):
+            """Check one actionable TO address against current recipient sources."""
+            if recipient_key in static_recipient_keys:
+                return True
+            if rule.notify_submitter and current_submission.submitter_id:
+                if recipient_key == _recipient_key(current_submission.submitter.email):
+                    return True
+            if rule.email_field and any(
+                recipient_key == _recipient_key(value)
+                for value in _get_form_field_emails(form_data, rule.email_field)
+            ):
+                return True
+
+            stage_id = (
+                current_task.workflow_stage_id
+                if rule.use_triggering_stage and current_task
+                else rule.stage_id
+            )
+            stage_matches = (
+                current_task is not None
+                and current_task.workflow_stage_id is not None
+                and (stage_id is None or stage_id == current_task.workflow_stage_id)
+                and current_task.workflow_stage.workflow_id == workflow.pk
+            )
+            if stage_matches and rule.notify_stage_assignees:
+                if (
+                    current_task.assigned_to_id
+                    and current_task.workflow_stage.assignee_form_field
+                    and recipient_key == _recipient_key(current_task.assigned_to.email)
+                ):
+                    return True
+            if stage_matches and rule.notify_stage_groups:
+                if current_task.assigned_group_id and not current_task.assigned_to_id:
+                    from django.contrib.auth import get_user_model
+
+                    from .models import StageApprovalGroup
+
+                    if (
+                        StageApprovalGroup.objects.filter(
+                            stage_id=current_task.workflow_stage_id,
+                            group_id=current_task.assigned_group_id,
+                            role="approval",
+                        ).exists()
+                        and get_user_model()
+                        .objects.filter(
+                            groups__id=current_task.assigned_group_id,
+                            email__iexact=recipient_key,
+                        )
+                        .exists()
+                    ):
+                        return True
+            if rule.notify_groups.exists():
+                from django.contrib.auth import get_user_model
+
+                if (
+                    get_user_model()
+                    .objects.filter(
+                        groups__in=rule.notify_groups.all(), email__iexact=recipient_key
+                    )
+                    .exists()
+                ):
+                    return True
+            return False
+
         def _locked_recipient_cc(recipient, cc_candidates=(), *, cc_only=False):
             """Return undelivered CCs while holding the dispatch row lock.
 
@@ -2465,7 +2537,7 @@ def send_notification_rules(
             if explicit_task:
                 current_task = (
                     ApprovalTask.objects.select_for_update(of=("self",))
-                    .select_related("workflow_stage")
+                    .select_related("workflow_stage", "assigned_to")
                     .filter(pk=task.pk)
                     .first()
                 )
@@ -2490,24 +2562,26 @@ def send_notification_rules(
                 }
                 recipient_key = _recipient_key(recipient)
                 if cc_only:
-                    if recipient_key not in current_cc:
-                        return None
+                    eligible = recipient_key in current_cc
                 else:
-                    # Avoid rebuilding the full TO recipient set while holding locks.
-                    # For approval notifications, TO recipients are task assignees.
-                    assigned_to = (current_task.assigned_to if current_task else None) or ""
-                    assigned_members = {
-                        _recipient_key(value.strip())
-                        for value in assigned_to.split(",")
-                        if value and value.strip()
-                    }
-                    if recipient_key not in assigned_members:
-                        return None
+                    eligible = _current_to_eligible(
+                        recipient_key,
+                        current_submission,
+                        current_task,
+                        current_form_data,
+                    )
+                if not eligible:
+                    return None
                 cc_candidates = [
                     value
                     for value in cc_candidates
                     if _recipient_key(value) in current_cc
-                    and _recipient_key(value) != recipient_key
+                    and not _current_to_eligible(
+                        _recipient_key(value),
+                        current_submission,
+                        current_task,
+                        current_form_data,
+                    )
                 ]
             sent, copied = _already_delivered_for_dispatch(
                 rule, rule_task_id, [recipient, *cc_candidates]

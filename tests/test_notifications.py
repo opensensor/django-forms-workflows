@@ -293,6 +293,36 @@ def test_reassignment_before_lock_skips_old_assignee_but_keeps_static_recipient(
     assert mailoutbox[0].cc == ["copy@example.com"]
 
 
+@pytest.mark.django_db
+def test_actionable_dispatch_resolves_full_recipient_list_once(
+    form_definition, user, mailoutbox
+):
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_request",
+        static_emails="first@example.com, second@example.com, third@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission, step_name="Review", status="pending"
+    )
+
+    with patch(
+        "django_forms_workflows.tasks._collect_notification_recipients",
+        wraps=tasks_module._collect_notification_recipients,
+    ) as resolve:
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    assert resolve.call_count == 1
+    assert len(mailoutbox) == 3
+
+
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     if not connection.features.has_select_for_update:

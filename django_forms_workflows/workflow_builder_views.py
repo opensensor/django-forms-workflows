@@ -275,7 +275,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
     field_names = {field["field_name"] for field in field_records}
     field_ids = {field["id"] for field in field_records}
     field_name_to_id = {
-        field["field_name"].strip(): field["id"] for field in field_records
+        field["field_name"].strip().lower(): field["id"] for field in field_records
     }
     group_ids = set(Group.objects.values_list("id", flat=True))
     existing_stage_ids = (
@@ -1172,24 +1172,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-
-        if hasattr(exc, "message_dict"):
-            validation_errors = {
-                key: value if isinstance(value, list) else [value]
-                for key, value in exc.message_dict.items()
-            }
-        else:
-            validation_errors = {"non_field_errors": list(getattr(exc, "messages", []))}
-            if not validation_errors["non_field_errors"]:
-                validation_errors["non_field_errors"] = [
-                    "Invalid workflow configuration."
-                ]
-
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": validation_errors,
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -2408,7 +2395,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         assignee_lookup_type = raw_assignee_lookup_type.strip()
         allowed_assignee_lookup_types = {
             value
-            for value, _ in WorkflowStage._meta.get_field("assignee_lookup_type").choices
+            for value, _ in WorkflowStage._meta.get_field(
+                "assignee_lookup_type"
+            ).choices
         }
         if assignee_lookup_type not in allowed_assignee_lookup_types:
             raise ValidationError("Invalid assignee lookup type.")

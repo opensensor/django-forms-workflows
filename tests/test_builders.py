@@ -1218,6 +1218,29 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Must be an integer"):
             convert_visual_to_workflow(visual, form_definition)
 
+    @pytest.mark.parametrize("lookup_type", ["unsupported", 7])
+    def test_rejects_invalid_assignee_lookup_type(self, form_definition, lookup_type):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "requires_manager_approval": True,
+                    "assignee_lookup_type": lookup_type,
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="Invalid assignee lookup type"):
+            convert_visual_to_workflow(visual, form_definition)
+
+    @pytest.mark.parametrize("action_id", [2**63, str(2**63)])
+    def test_rejects_oversized_deleted_action_id(self, form_definition, action_id):
+        visual = self._make_visual()
+        visual["deleted_action_ids"] = [action_id]
+
+        with pytest.raises(ValidationError, match="Invalid action ID"):
+            convert_visual_to_workflow(visual, form_definition)
+
     def test_rejects_unsupported_notification_event(self, form_definition):
         visual = self._make_visual(
             settings={

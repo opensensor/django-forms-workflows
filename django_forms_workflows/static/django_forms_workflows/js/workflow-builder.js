@@ -1680,15 +1680,37 @@ export class WorkflowBuilder {
             `;
         }
 
+        const safeFormBuilderUrl = this.sanitizeFormBuilderUrl(data.form_builder_url);
+
         html += `
             <div class="mt-3">
-                <a href="${data.form_builder_url || '#'}" target="_blank" class="btn btn-outline-primary btn-sm w-100">
+                <a href="${safeFormBuilderUrl}" target="_blank" class="btn btn-outline-primary btn-sm w-100">
                     <i class="bi bi-pencil-square"></i> Edit Form in Form Builder
                 </a>
             </div>
         `;
 
         return html;
+    }
+
+    sanitizeFormBuilderUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return '#';
+        }
+
+        try {
+            const parsed = new URL(url, window.location.origin);
+            const isHttp = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+            const isSameOrigin = parsed.origin === window.location.origin;
+
+            if (!isHttp || !isSameOrigin) {
+                return '#';
+            }
+
+            return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        } catch (e) {
+            return '#';
+        }
     }
 
     buildApprovalProperties(node) {

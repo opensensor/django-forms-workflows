@@ -1724,20 +1724,33 @@ def convert_workflow_to_visual(workflow, form_definition):
             }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
+            dangling_connections = []
             for connection in existing_connections:
-                from_id = node_ids_by_canonical.get(
-                    _canonical_node_id(connection.get("from", connection.get("source")))
-                )
-                to_id = node_ids_by_canonical.get(
-                    _canonical_node_id(connection.get("to", connection.get("target")))
-                )
-                if from_id is not None and to_id is not None:
-                    normalized_connections.append(
+                raw_from = connection.get("from", connection.get("source"))
+                raw_to = connection.get("to", connection.get("target"))
+                canonical_from = _canonical_node_id(raw_from)
+                canonical_to = _canonical_node_id(raw_to)
+                from_id = node_ids_by_canonical.get(canonical_from)
+                to_id = node_ids_by_canonical.get(canonical_to)
+                if from_id is None or to_id is None:
+                    dangling_connections.append(
                         {
-                            "from": from_id,
-                            "to": to_id,
+                            "from": raw_from,
+                            "to": raw_to,
                         }
                     )
+                    continue
+                normalized_connections.append(
+                    {
+                        "from": from_id,
+                        "to": to_id,
+                    }
+                )
+            if dangling_connections:
+                raise ValidationError(
+                    "Connections reference unknown nodes: "
+                    + json.dumps(dangling_connections)
+                )
             non_email_connections = [
                 connection
                 for connection in normalized_connections

@@ -2465,15 +2465,26 @@ def send_notification_rules(
                     )
                 ):
                     return None
-            sent, copied = _already_delivered_for_dispatch(rule, rule_task_id)
-            sent_keys = {_recipient_key(value) for value in sent}
-            copied_keys = {_recipient_key(value) for value in copied}
-            if _recipient_key(recipient) in sent_keys | copied_keys:
+            recipient_key = _recipient_key(recipient)
+            candidate_keys = {recipient_key} | {
+                _recipient_key(value) for value in cc_candidates
+            }
+
+            # Targeted duplicate check: only inspect delivery rows relevant to
+            # the current TO recipient and outstanding CC candidates.
+            delivered_rows = NotificationLog.objects.filter(
+                rule=rule,
+                task_id=rule_task_id,
+                recipient__in=candidate_keys,
+            ).values_list("recipient", flat=True)
+            delivered_keys = {_recipient_key(value) for value in delivered_rows}
+
+            if recipient_key in delivered_keys:
                 return None
             return [
                 value
                 for value in cc_candidates
-                if _recipient_key(value) not in sent_keys | copied_keys
+                if _recipient_key(value) not in delivered_keys
             ]
 
         # Prevent duplicate delivery: don't CC anyone already in the TO list.

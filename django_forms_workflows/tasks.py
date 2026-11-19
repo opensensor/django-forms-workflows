@@ -122,7 +122,7 @@ def _make_message_id(from_addr: str) -> str:
 def _send_html_email(
     subject: str,
     to: Iterable[str],
-    template: str,
+    template: str | None,
     context: dict,
     from_email: str | None = None,
     *,
@@ -133,6 +133,7 @@ def _send_html_email(
     approval_task_id: int | None = None,
     notification_rule_id: int | None = None,
     message_id: str | None = None,
+    html_body_override: str | None = None,
 ) -> bool:
     to_list = [e for e in to if e]
     cc_list = [e for e in (cc or []) if e and e not in to_list]
@@ -154,7 +155,11 @@ def _send_html_email(
     # Inject site_name so all email templates can reference {{ site_name }}
     context.setdefault("site_name", _site_name())
 
-    html_body = render_to_string(template, context)
+    html_body = (
+        html_body_override
+        if html_body_override is not None
+        else render_to_string(template, context)
+    )
     text_body = strip_tags(html_body)
     from_addr = from_email or getattr(
         settings, "DEFAULT_FROM_EMAIL", "no-reply@localhost"
@@ -285,6 +290,7 @@ def _send_html_email_from_string(
     return _send_html_email(
         subject=subject,
         to=to_list,
+        template=None,
         context=context,
         html_body_override=html_body,
         from_email=from_email,

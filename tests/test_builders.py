@@ -1906,8 +1906,9 @@ class TestConvertVisualToWorkflow:
         assert not form_definition.post_actions.exists()
         assert not form_definition.workflows.exists()
 
+    @pytest.mark.parametrize("saved_action_id_as_string", [False, True])
     def test_explicit_action_deletion_respects_other_workflow_graphs(
-        self, form_definition
+        self, form_definition, saved_action_id_as_string
     ):
         action = PostSubmissionAction.objects.create(
             form_definition=form_definition, name="Shared", action_type="database"
@@ -1919,7 +1920,12 @@ class TestConvertVisualToWorkflow:
                 {"type": "start", "data": {}},
                 {
                     "type": "action",
-                    "data": {"action_id": action.id, "name": "Shared"},
+                    "data": {
+                        "action_id": f" {action.id} "
+                        if saved_action_id_as_string
+                        else action.id,
+                        "name": "Shared",
+                    },
                 },
                 {"type": "end", "data": {}},
             ],

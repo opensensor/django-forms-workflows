@@ -856,6 +856,51 @@ class TestConvertWorkflowToVisual:
             email.id,
         ]
 
+    def test_saved_action_ids_accept_numeric_strings_without_changing_layout(
+        self, form_definition
+    ):
+        email = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Email",
+            action_type="email",
+            order=2,
+        )
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Database",
+            action_type="database",
+            order=1,
+        )
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition,
+            visual_workflow_data={
+                "nodes": [
+                    {
+                        "id": "email",
+                        "type": "email",
+                        "data": {"action_id": f" {email.id} "},
+                    },
+                    {"id": "end", "type": "end", "data": {}},
+                    {
+                        "id": "database",
+                        "type": "action",
+                        "data": {"action_id": str(action.id)},
+                    },
+                ],
+                "connections": [],
+            },
+        )
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        assert [node["id"] for node in visual["nodes"][:3]] == [
+            "email",
+            "end",
+            "database",
+        ]
+        assert visual["nodes"][0]["data"]["action_id"] == email.id
+        assert visual["nodes"][2]["data"]["action_id"] == action.id
+
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
     ):
@@ -1970,6 +2015,15 @@ class TestConvertVisualToWorkflow:
         assert list(
             form_definition.post_actions.order_by("order").values_list("name", "order")
         ) == [("First email", 0), ("Database update", 1), ("Second email", 2)]
+
+    @pytest.mark.parametrize("name", ["", "   ", 42])
+    def test_rejects_invalid_action_name(self, form_definition, name):
+        visual = self._make_visual(
+            actions=[{"name": name, "action_type": "database", "config": {}}]
+        )
+
+        with pytest.raises(ValidationError, match="Invalid action name"):
+            convert_visual_to_workflow(visual, form_definition)
 
     def test_inactive_action_round_trip_preserves_identity(self, form_definition):
         workflow = WorkflowDefinition.objects.create(form_definition=form_definition)

@@ -1471,16 +1471,19 @@ def convert_workflow_to_visual(workflow, form_definition):
                 )
 
             def normalize_action_id(action_id):
-                if action_id is None:
+                if isinstance(action_id, bool):
                     return None
                 if isinstance(action_id, str):
-                    stripped = action_id.strip()
-                    if not stripped:
+                    value = action_id.strip()
+                    if not value.isascii() or not value.isdigit():
                         return None
-                    if stripped.isdigit():
-                        return int(stripped)
-                    return stripped
-                return action_id
+                    try:
+                        action_id = int(value)
+                    except ValueError:
+                        return None
+                if isinstance(action_id, int) and 0 < action_id <= 2**63 - 1:
+                    return action_id
+                return None
 
             existing_email_nodes_by_action_id = {
                 normalize_action_id(node.get("data", {}).get("action_id")): node
@@ -1494,7 +1497,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                 email_action_defaults.items()
             ):
                 normalized_action_id = normalize_action_id(action_id)
-                existing_node = existing_email_nodes_by_action_id.get(normalized_action_id)
+                existing_node = existing_email_nodes_by_action_id.get(
+                    normalized_action_id
+                )
                 if existing_node:
                     existing_node_data = existing_node.setdefault("data", {})
                     existing_node_data["action_id"] = normalized_action_id
@@ -1504,7 +1509,9 @@ def convert_workflow_to_visual(workflow, form_definition):
                     continue
                 email_nodes_in_order.append(
                     {
-                        "id": allocate_unique_node_id(f"email-action-{normalized_action_id}"),
+                        "id": allocate_unique_node_id(
+                            f"email-action-{normalized_action_id}"
+                        ),
                         "type": "email",
                         "x": 0,
                         "y": index * 120,
@@ -1570,10 +1577,11 @@ def convert_workflow_to_visual(workflow, form_definition):
                 if node.get("data", {}).get("stage_id")
             }
             existing_action_nodes_by_action_id = {
-                node.get("data", {}).get("action_id"): node
+                normalize_action_id(node.get("data", {}).get("action_id")): node
                 for node in existing_nodes
                 if node.get("type") == "action"
-                and node.get("data", {}).get("action_id")
+                and normalize_action_id(node.get("data", {}).get("action_id"))
+                is not None
             }
             action_nodes_in_order = []
             for index, action in enumerate(
@@ -1691,27 +1699,16 @@ def convert_workflow_to_visual(workflow, form_definition):
             action_order_by_id = dict(
                 form_definition.post_actions.values_list("id", "order")
             )
-            action_like_types = {"email", "action"}
-            merged_action_nodes = [
-                node for node in merged_nodes if node.get("type") in action_like_types
-            ]
-            restored_action_nodes = missing_email_nodes + missing_action_nodes
-            all_action_nodes_sorted = sorted(
-                merged_action_nodes + restored_action_nodes,
+            missing_mixed_action_nodes = sorted(
+                missing_email_nodes + missing_action_nodes,
                 key=lambda node: (
                     action_order_by_id.get(node.get("data", {}).get("action_id"), 0),
                     node.get("data", {}).get("action_id", 0),
                 ),
             )
-            sorted_action_iter = iter(all_action_nodes_sorted)
-            reordered_nodes = []
-            for node in merged_nodes:
-                if node.get("type") in action_like_types:
-                    reordered_nodes.append(next(sorted_action_iter))
-                else:
-                    reordered_nodes.append(node)
-            reordered_nodes.extend(sorted_action_iter)
-            visual_data["nodes"] = reordered_nodes + missing_stage_nodes
+            visual_data["nodes"] = (
+                merged_nodes + missing_mixed_action_nodes + missing_stage_nodes
+            )
 
             def _canonical_node_id(node_id):
                 if node_id is None:

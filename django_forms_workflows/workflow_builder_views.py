@@ -2586,6 +2586,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     actions_to_keep = []
 
     def save_action(node_data, action_name, action_data):
+        if not isinstance(action_name, str):
+            raise ValidationError("Invalid action name.")
+        action_name = action_name.strip()
+        if not action_name:
+            raise ValidationError("Invalid action name.")
+
         raw_action_id = node_data.get("action_id")
         if raw_action_id not in (None, ""):
             if isinstance(raw_action_id, bool):

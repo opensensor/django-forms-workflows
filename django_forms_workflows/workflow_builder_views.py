@@ -2854,6 +2854,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         )
 
     normalized_deleted_ids = set()
+    max_primary_key_value = (2**63) - 1
     for raw_id in deleted_action_ids:
         if isinstance(raw_id, bool):
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
@@ -2868,7 +2869,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 ) from exc
         else:
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
-        if action_id <= 0:
+        if action_id <= 0 or action_id > max_primary_key_value:
             raise ValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 

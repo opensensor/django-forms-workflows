@@ -849,6 +849,7 @@ export class WorkflowBuilder {
                         node.id,
                         Number(button.dataset.stageGroupId),
                         Number(button.dataset.stageGroupDirection),
+                        button.dataset.stageGroupRole,
                     );
                 });
             });
@@ -1147,11 +1148,11 @@ export class WorkflowBuilder {
                             </div>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary" ${index === 0 ? 'disabled' : ''}
-                                        data-stage-group-id="${group.id}" data-stage-group-direction="-1">
+                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="-1">
                                     <i class="bi bi-arrow-up"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" ${index === orderedGroups.length - 1 ? 'disabled' : ''}
-                                        data-stage-group-id="${group.id}" data-stage-group-direction="1">
+                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="1">
                                     <i class="bi bi-arrow-down"></i>
                                 </button>
                             </div>
@@ -1684,7 +1685,7 @@ export class WorkflowBuilder {
 
         html += `
             <div class="mt-3">
-                <a href="${safeFormBuilderUrl}" target="_blank" class="btn btn-outline-primary btn-sm w-100">
+                <a href="${this.escapeHtmlAttribute(safeFormBuilderUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm w-100">
                     <i class="bi bi-pencil-square"></i> Edit Form in Form Builder
                 </a>
             </div>

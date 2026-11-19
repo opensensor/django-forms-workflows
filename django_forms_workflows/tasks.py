@@ -2689,12 +2689,6 @@ def send_notification_rules(
         if rule_task:
             base_context["task"] = rule_task
 
-        # Pre-fetch User objects for all recipients so templates that
-        # reference ``{{ approver }}`` (e.g. approval_request.html) work
-        # identically to the legacy send_approval_request task.
-        from django.contrib.auth import get_user_model
-
-        user_model = get_user_model()
         _users_by_email: dict = {}
         all_recipient_emails = list(
             dict.fromkeys(list(recipients) + list(cc_recipients))
@@ -2702,16 +2696,6 @@ def send_notification_rules(
         normalized_recipient_emails = {
             _recipient_key(e) for e in all_recipient_emails if _recipient_key(e)
         }
-        if normalized_recipient_emails:
-            normalized_email_list = list(normalized_recipient_emails)
-            chunk_size = 500
-            for i in range(0, len(normalized_email_list), chunk_size):
-                email_chunk = normalized_email_list[i : i + chunk_size]
-                for u in user_model.objects.annotate(email_lc=Lower("email")).filter(
-                    email_lc__in=email_chunk
-                ):
-                    if u.email:
-                        _users_by_email[_recipient_key(u.email)] = u
 
         # Check cadence — batch or send immediately
         cadence = (
@@ -2780,6 +2764,22 @@ def send_notification_rules(
                 scheduled_for,
             )
         else:
+            # Pre-fetch User objects only for immediate delivery so templates
+            # that reference ``{{ approver }}`` (e.g. approval_request.html)
+            # work identically to the legacy send_approval_request task.
+            from django.contrib.auth import get_user_model
+
+            user_model = get_user_model()
+            if normalized_recipient_emails:
+                normalized_email_list = list(normalized_recipient_emails)
+                chunk_size = 500
+                for i in range(0, len(normalized_email_list), chunk_size):
+                    email_chunk = normalized_email_list[i : i + chunk_size]
+                    for u in user_model.objects.annotate(email_lc=Lower("email")).filter(
+                        email_lc__in=email_chunk
+                    ):
+                        if u.email:
+                            _users_by_email[_recipient_key(u.email)] = u
             # Determine template: per-rule body_template overrides file.
             rule_body = getattr(rule, "body_template", "") or ""
 

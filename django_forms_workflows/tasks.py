@@ -281,80 +281,21 @@ def _send_html_email_from_string(
 
     tpl = Template(body_template_string)
     html_body = tpl.render(Context(context))
-    text_body = strip_tags(html_body)
-    from_addr = from_email or getattr(
-        settings, "DEFAULT_FROM_EMAIL", "no-reply@localhost"
-    )
 
-    msg = EmailMultiAlternatives(
+    return _send_html_email(
         subject=subject,
-        body=text_body,
-        from_email=from_addr,
         to=to_list,
-        cc=cc_list or None,
-        bcc=bcc_list or None,
+        context=context,
+        html_body_override=html_body,
+        from_email=from_email,
+        cc=cc_list,
+        bcc=bcc_list,
+        notification_type=notification_type,
+        submission_id=submission_id,
+        approval_task_id=approval_task_id,
+        notification_rule_id=notification_rule_id,
+        message_id=message_id,
     )
-    msg.attach_alternative(html_body, "text/html")
-    # Stamp a Message-ID we control so delivery can be reconciled against the
-    # Workspace Gmail log (see _make_message_id / GmailAPIBackend).
-    message_id = message_id or _make_message_id(from_addr)
-    msg.extra_headers["Message-ID"] = message_id
-    cc_str = ", ".join(cc_list)
-    bcc_str = ", ".join(bcc_list)
-    try:
-        sent_count = msg.send(fail_silently=False)
-        if sent_count == 0:
-            for recipient in log_recipients:
-                _write_notification_log(
-                    notification_type=notification_type,
-                    submission_id=submission_id,
-                    recipient_email=recipient,
-                    subject=subject,
-                    status="failed",
-                    error_message="Email backend reported zero deliveries",
-                    cc_emails=cc_str,
-                    bcc_emails=bcc_str,
-                    approval_task_id=approval_task_id,
-                    notification_rule_id=notification_rule_id,
-                )
-            return False
-        logger.info(
-            "Sent email '%s' to %s%s%s",
-            subject,
-            to_list,
-            f" cc={cc_list}" if cc_list else "",
-            f" bcc={bcc_list}" if bcc_list else "",
-        )
-        for recipient in log_recipients:
-            _write_notification_log(
-                notification_type=notification_type,
-                submission_id=submission_id,
-                recipient_email=recipient,
-                subject=subject,
-                status="sent",
-                cc_emails=cc_str,
-                bcc_emails=bcc_str,
-                rfc2822_message_id=message_id,
-                approval_task_id=approval_task_id,
-                notification_rule_id=notification_rule_id,
-            )
-        return True
-    except Exception as e:  # pragma: no cover
-        logger.exception("Failed sending email '%s' to %s: %s", subject, to_list, e)
-        for recipient in log_recipients:
-            _write_notification_log(
-                notification_type=notification_type,
-                submission_id=submission_id,
-                recipient_email=recipient,
-                subject=subject,
-                status="failed",
-                error_message=str(e),
-                cc_emails=cc_str,
-                bcc_emails=bcc_str,
-                approval_task_id=approval_task_id,
-                notification_rule_id=notification_rule_id,
-            )
-        return False
 
 
 def _write_notification_log(

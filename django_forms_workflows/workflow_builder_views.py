@@ -2158,11 +2158,13 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     and raw_id > 0
                 ):
                     result.add(raw_id)
-                elif isinstance(raw_id, str) and raw_id.isascii() and raw_id.isdigit():
-                    try:
-                        result.add(int(raw_id))
-                    except ValueError:
-                        continue
+                elif isinstance(raw_id, str):
+                    normalized_raw_id = raw_id.strip()
+                    if normalized_raw_id.isascii() and normalized_raw_id.isdigit():
+                        try:
+                            result.add(int(normalized_raw_id))
+                        except ValueError:
+                            continue
             return result
 
         previous_action_ids = graph_action_ids(

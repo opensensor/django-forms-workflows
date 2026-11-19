@@ -242,7 +242,8 @@ export class WorkflowBuilder {
     /** Zoom to a specific level, centred on the canvas midpoint. */
     setZoom(newZoom) {
         const rect = this.canvas.getBoundingClientRect();
-        const cx = rect.width / 2, cy = rect.height / 2;
+        const cx = this.canvas.scrollLeft + (rect.width / 2);
+        const cy = this.canvas.scrollTop + (rect.height / 2);
         const oldZoom = this.zoom;
         this.zoom = Math.min(this.maxZoom, Math.max(this.minZoom, newZoom));
         const scale = this.zoom / oldZoom;

@@ -2484,28 +2484,30 @@ def send_notification_rules(
                     return None
             if event in {"approval_request", "approval_reminder"}:
                 current_form_data = current_submission.form_data or {}
-                current_to = {
-                    _recipient_key(value)
-                    for value in _collect_notification_recipients(
-                        rule,
-                        current_form_data,
-                        submission=current_submission,
-                        task=current_task,
-                    )
-                }
                 current_cc = {
                     _recipient_key(value)
                     for value in _collect_notification_cc(rule, current_form_data)
                 }
-                if _recipient_key(recipient) not in (
-                    current_cc if cc_only else current_to
-                ):
-                    return None
+                recipient_key = _recipient_key(recipient)
+                if cc_only:
+                    if recipient_key not in current_cc:
+                        return None
+                else:
+                    # Avoid rebuilding the full TO recipient set while holding locks.
+                    # For approval notifications, TO recipients are task assignees.
+                    assigned_to = (current_task.assigned_to if current_task else None) or ""
+                    assigned_members = {
+                        _recipient_key(value.strip())
+                        for value in assigned_to.split(",")
+                        if value and value.strip()
+                    }
+                    if recipient_key not in assigned_members:
+                        return None
                 cc_candidates = [
                     value
                     for value in cc_candidates
                     if _recipient_key(value) in current_cc
-                    and _recipient_key(value) not in current_to
+                    and _recipient_key(value) != recipient_key
                 ]
             sent, copied = _already_delivered_for_dispatch(
                 rule, rule_task_id, [recipient, *cc_candidates]

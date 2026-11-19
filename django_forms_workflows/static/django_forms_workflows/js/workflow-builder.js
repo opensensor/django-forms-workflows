@@ -159,9 +159,9 @@ export class WorkflowBuilder {
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const rect = this.canvas.getBoundingClientRect();
-            // Cursor position relative to canvas element
-            const cx = e.clientX - rect.left;
-            const cy = e.clientY - rect.top;
+            // Cursor position in canvas space (include scroll offsets)
+            const cx = e.clientX - rect.left + this.canvas.scrollLeft;
+            const cy = e.clientY - rect.top + this.canvas.scrollTop;
 
             const oldZoom = this.zoom;
             const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -849,6 +849,7 @@ export class WorkflowBuilder {
                         node.id,
                         Number(button.dataset.stageGroupId),
                         Number(button.dataset.stageGroupDirection),
+                        button.dataset.stageGroupRole,
                     );
                 });
             });
@@ -1147,11 +1148,11 @@ export class WorkflowBuilder {
                             </div>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary" ${index === 0 ? 'disabled' : ''}
-                                        data-stage-group-id="${group.id}" data-stage-group-direction="-1">
+                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="-1">
                                     <i class="bi bi-arrow-up"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" ${index === orderedGroups.length - 1 ? 'disabled' : ''}
-                                        data-stage-group-id="${group.id}" data-stage-group-direction="1">
+                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="1">
                                     <i class="bi bi-arrow-down"></i>
                                 </button>
                             </div>
@@ -1680,15 +1681,37 @@ export class WorkflowBuilder {
             `;
         }
 
+        const safeFormBuilderUrl = this.sanitizeFormBuilderUrl(data.form_builder_url);
+
         html += `
             <div class="mt-3">
-                <a href="${data.form_builder_url || '#'}" target="_blank" class="btn btn-outline-primary btn-sm w-100">
+                <a href="${this.escapeHtmlAttribute(safeFormBuilderUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm w-100">
                     <i class="bi bi-pencil-square"></i> Edit Form in Form Builder
                 </a>
             </div>
         `;
 
         return html;
+    }
+
+    sanitizeFormBuilderUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return '#';
+        }
+
+        try {
+            const parsed = new URL(url, window.location.origin);
+            const isHttp = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+            const isSameOrigin = parsed.origin === window.location.origin;
+
+            if (!isHttp || !isSameOrigin) {
+                return '#';
+            }
+
+            return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        } catch (e) {
+            return '#';
+        }
     }
 
     buildApprovalProperties(node) {
@@ -2146,12 +2169,14 @@ export class WorkflowBuilder {
         });
     }
 
-    moveStageApprovalGroup(nodeId, groupId, direction) {
+    moveStageApprovalGroup(nodeId, groupId, direction, groupRole = null) {
         const node = this.nodes.find(n => n.id === nodeId);
         if (!node) return;
 
         const groups = this.getNormalizedStageApprovalGroups(node.data.approval_groups || []);
-        const currentIndex = groups.findIndex(group => group.id === groupId);
+        const currentIndex = groups.findIndex(group => (
+            group.id === groupId && (groupRole === null || group.role === groupRole)
+        ));
         const targetIndex = currentIndex + direction;
         if (currentIndex < 0 || targetIndex < 0 || targetIndex >= groups.length) {
             return;

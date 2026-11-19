@@ -2814,18 +2814,23 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             if action_id is not None:
                 existing_action = existing_actions_by_id.get(action_id)
             if existing_action is None:
-                for candidate_action in existing_actions:
-                    if candidate_action.name == action_name:
-                        existing_action = candidate_action
-                        break
+                existing_action = existing_actions_by_name.get(action_name)
             if existing_action is not None:
                 description_value = existing_action.description
             if description_value is None:
                 description_value = generated_description
 
+        trigger = data.get("trigger", "on_approve")
+        valid_triggers = {
+            choice[0]
+            for choice in PostSubmissionAction._meta.get_field("trigger").choices
+        }
+        if not isinstance(trigger, str) or trigger not in valid_triggers:
+            raise ValidationError("Unsupported trigger for email action.")
+
         action_data = {
             "action_type": "email",
-            "trigger": data.get("trigger", "on_approve"),
+            "trigger": trigger,
             "order": order,
             "email_to": data.get("email_to", ""),
             "email_to_field": data.get("email_to_field", ""),

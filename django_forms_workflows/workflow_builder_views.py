@@ -284,6 +284,29 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         else set()
     )
     errors = []
+    canonical_node_ids = {
+        str(node_id).strip()
+        for node_id in (node.get("id") for node in nodes)
+        if isinstance(node_id, str | int)
+        and not isinstance(node_id, bool)
+        and str(node_id).strip()
+    }
+    for connection_index, connection in enumerate(
+        workflow_data.get("connections", []) or [], start=1
+    ):
+        if not isinstance(connection, dict):
+            errors.append(f"Connection {connection_index} must be an object.")
+            continue
+        for endpoint, legacy_endpoint in (("from", "source"), ("to", "target")):
+            node_id = connection.get(endpoint, connection.get(legacy_endpoint))
+            if (
+                isinstance(node_id, bool)
+                or not isinstance(node_id, str | int)
+                or str(node_id).strip() not in canonical_node_ids
+            ):
+                errors.append(
+                    f"Connection {connection_index} references an unknown {endpoint} node."
+                )
     stage_node_ids = set()
     for node in stage_nodes:
         raw_node_id = node.get("id")
@@ -1724,33 +1747,20 @@ def convert_workflow_to_visual(workflow, form_definition):
             }
             existing_connections = visual_data.get("connections", [])
             normalized_connections = []
-            dangling_connections = []
             for connection in existing_connections:
-                raw_from = connection.get("from", connection.get("source"))
-                raw_to = connection.get("to", connection.get("target"))
-                canonical_from = _canonical_node_id(raw_from)
-                canonical_to = _canonical_node_id(raw_to)
-                from_id = node_ids_by_canonical.get(canonical_from)
-                to_id = node_ids_by_canonical.get(canonical_to)
-                if from_id is None or to_id is None:
-                    dangling_connections.append(
+                from_id = node_ids_by_canonical.get(
+                    _canonical_node_id(connection.get("from", connection.get("source")))
+                )
+                to_id = node_ids_by_canonical.get(
+                    _canonical_node_id(connection.get("to", connection.get("target")))
+                )
+                if from_id is not None and to_id is not None:
+                    normalized_connections.append(
                         {
-                            "from": raw_from,
-                            "to": raw_to,
+                            "from": from_id,
+                            "to": to_id,
                         }
                     )
-                    continue
-                normalized_connections.append(
-                    {
-                        "from": from_id,
-                        "to": to_id,
-                    }
-                )
-            if dangling_connections:
-                raise ValidationError(
-                    "Connections reference unknown nodes: "
-                    + json.dumps(dangling_connections)
-                )
             non_email_connections = [
                 connection
                 for connection in normalized_connections
@@ -2602,10 +2612,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             raise ValidationError("Invalid notification event.")
         event = raw_event.strip()
         supported_events = {
-            choice_value
-            for choice_value, _choice_label in NotificationRule._meta.get_field(
-                "event"
-            ).choices
+            value for value, _ in NotificationRule._meta.get_field("event").choices
         }
         if event not in supported_events:
             raise ValidationError("Invalid notification event.")

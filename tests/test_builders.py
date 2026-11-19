@@ -1218,6 +1218,20 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Must be an integer"):
             convert_visual_to_workflow(visual, form_definition)
 
+    def test_rejects_unsupported_notification_event(self, form_definition):
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {"event": "unsupported_event", "static_emails": "team@example.com"}
+                ]
+            }
+        )
+
+        with pytest.raises(ValidationError, match="Invalid notification event"):
+            convert_visual_to_workflow(visual, form_definition)
+
+        assert not NotificationRule.objects.exists()
+
     def test_rejects_duplicate_stage_ids_across_integer_and_string(
         self, staged_workflow, form_definition
     ):
@@ -2572,6 +2586,30 @@ class TestWorkflowBuilderViews:
         )
 
         assert response.status_code == 200
+
+    def test_save_rejects_connection_to_unknown_node(
+        self, client, superuser, form_definition
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_definition.id,
+                    "workflow": {
+                        "nodes": [
+                            {"id": 1, "type": "start", "data": {}},
+                            {"id": "end", "type": "end", "data": {}},
+                        ],
+                        "connections": [{"from": " 1 ", "to": "missing"}],
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert not form_definition.workflows.exists()
 
     @pytest.mark.parametrize(
         "connections",

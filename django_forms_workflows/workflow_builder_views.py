@@ -2743,9 +2743,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             elif not isinstance(config, dict | list):
                 config = {}
 
+            trigger = data.get("trigger", "on_approve")
+            valid_triggers = {
+                choice[0]
+                for choice in PostSubmissionAction._meta.get_field("trigger").choices
+            }
+            if not isinstance(trigger, str):
+                raise ValidationError(
+                    "Unsupported trigger type. "
+                    f"Expected string, got {type(trigger).__name__}. "
+                    f"Supported values are: {sorted(valid_triggers)}"
+                )
+            if trigger not in valid_triggers:
+                raise ValidationError(
+                    f"Unsupported trigger '{trigger}'. "
+                    f"Supported values are: {sorted(valid_triggers)}"
+                )
+
             action_data = {
                 "action_type": action_type,
-                "trigger": data.get("trigger", "on_approve"),
+                "trigger": trigger,
                 "order": order,
             }
 

@@ -89,7 +89,7 @@ def _resolve_builder_workflow(
 
 
 def _normalize_trigger_conditions(raw_conditions):
-    if not raw_conditions:
+    if raw_conditions is None or raw_conditions == "" or raw_conditions == [] or raw_conditions == {}:
         return None
 
     if isinstance(raw_conditions, str):
@@ -97,7 +97,7 @@ def _normalize_trigger_conditions(raw_conditions):
             raw_conditions = json.loads(raw_conditions)
         except json.JSONDecodeError as exc:
             raise ValidationError("Trigger conditions must be valid JSON.") from exc
-        if not raw_conditions:
+        if raw_conditions is None or raw_conditions == "" or raw_conditions == [] or raw_conditions == {}:
             return None
 
     if isinstance(raw_conditions, list):

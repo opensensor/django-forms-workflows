@@ -2630,11 +2630,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             event=event,
             conditions=_normalize_trigger_conditions(rule_data.get("conditions")),
             subject_template=rule_data.get("subject_template", ""),
+            body_template=rule_data.get("body_template", ""),
             notify_submitter=rule_data.get("notify_submitter", False),
             email_field=rule_data.get("email_field", ""),
             static_emails=rule_data.get("static_emails", ""),
+            cc_email_field=rule_data.get("cc_email_field", ""),
+            cc_static_emails=rule_data.get("cc_static_emails", ""),
             notify_stage_assignees=rule_data.get("notify_stage_assignees", False),
             notify_stage_groups=rule_data.get("notify_stage_groups", False),
+            use_triggering_stage=rule_data.get("use_triggering_stage", False),
         )
         if normalized_group_ids:
             rule.notify_groups.set(

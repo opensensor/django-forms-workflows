@@ -159,9 +159,9 @@ export class WorkflowBuilder {
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const rect = this.canvas.getBoundingClientRect();
-            // Cursor position relative to canvas element
-            const cx = e.clientX - rect.left;
-            const cy = e.clientY - rect.top;
+            // Cursor position in canvas space (include scroll offsets)
+            const cx = e.clientX - rect.left + this.canvas.scrollLeft;
+            const cy = e.clientY - rect.top + this.canvas.scrollTop;
 
             const oldZoom = this.zoom;
             const delta = e.deltaY > 0 ? -0.1 : 0.1;

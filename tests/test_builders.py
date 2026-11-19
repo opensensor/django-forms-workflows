@@ -1032,6 +1032,37 @@ class TestConvertWorkflowToVisual:
             settings["data"]["notification_rules"][0]["stage_node_id"] == "saved-stage"
         )
 
+    @pytest.mark.parametrize("settings_present", [False, True])
+    def test_restored_stage_keeps_notification_rule_node(
+        self, form_definition, settings_present
+    ):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        stage = workflow.stages.create(name="Restored", order=1)
+        NotificationRule.objects.create(
+            workflow=workflow, stage=stage, event="approval_request"
+        )
+        workflow.visual_workflow_data = {
+            "nodes": (
+                [{"id": "settings", "type": "workflow_settings", "data": {}}]
+                if settings_present
+                else []
+            ),
+            "connections": [],
+        }
+        workflow.save(update_fields=["visual_workflow_data"])
+
+        visual = convert_workflow_to_visual(workflow, form_definition)
+
+        stage_node = next(node for node in visual["nodes"] if node["type"] == "stage")
+        settings_node = next(
+            node for node in visual["nodes"] if node["type"] == "workflow_settings"
+        )
+        assert stage_node["data"]["stage_id"] == stage.id
+        assert (
+            settings_node["data"]["notification_rules"][0]["stage_node_id"]
+            == stage_node["id"]
+        )
+
     def test_loads_stage_approval_group_positions(
         self, staged_workflow, form_definition
     ):
@@ -1089,6 +1120,24 @@ class TestConvertVisualToWorkflow:
             nodes.append({"type": "action", "data": a})
         nodes.append({"type": "end", "data": {}})
         return {"nodes": nodes, "connections": []}
+
+    @pytest.mark.parametrize("start_trigger", ["unsupported", [], None])
+    def test_rejects_unsupported_start_trigger_without_modifying_workflow(
+        self, form_definition, start_trigger
+    ):
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_definition, name_label="Original"
+        )
+        visual = self._make_visual(
+            settings={"name_label": "Changed", "start_trigger": start_trigger}
+        )
+
+        with pytest.raises(ValidationError, match="start_trigger"):
+            convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        workflow.refresh_from_db()
+        assert workflow.name_label == "Original"
+        assert workflow.start_trigger == "on_submission"
 
     def test_creates_stages(
         self, form_with_fields, approval_group, second_approval_group

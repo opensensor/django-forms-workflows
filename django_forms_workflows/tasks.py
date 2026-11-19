@@ -2142,16 +2142,19 @@ def send_notification_rules(
     # Build a denormalized "public_comments" list for template context on a
     # per-workflow basis so rule recipients only see comments from their
     # workflow. Ordered by workflow flow (stage → step → completion time).
+    legacy_workflow = submission.form_definition.workflow
+    legacy_workflow_id = legacy_workflow.id if legacy_workflow else None
+
     def _build_public_comments_for_workflow(workflow_id: int | None) -> list[dict]:
         if not workflow_id:
             return []
+        task_scope = Q(workflow_stage__workflow_id=workflow_id)
+        if workflow_id == legacy_workflow_id:
+            task_scope |= Q(workflow_stage__isnull=True)
         _comments_qs = (
             submission.approval_tasks.select_related("workflow_stage", "completed_by")
             .filter(
-                (
-                    Q(workflow_stage__workflow_id=workflow_id)
-                    | Q(workflow_stage__isnull=True, workflow_id=workflow_id)
-                ),
+                task_scope,
                 status__in=["approved", "rejected"],
             )
             .exclude(comments="")
@@ -2203,8 +2206,6 @@ def send_notification_rules(
     # versa), producing duplicate emails. ``use_triggering_stage=True``
     # rules handle scoping at recipient resolution time and must remain
     # candidates here regardless of which task triggered the event.
-    from django.db.models import Q
-
     if explicit_task and task and getattr(task, "workflow_stage_id", None):
         triggering_stage_id = task.workflow_stage_id
         rules_qs = rules_qs.filter(
@@ -2778,9 +2779,9 @@ def send_notification_rules(
                 chunk_size = 500
                 for i in range(0, len(normalized_email_list), chunk_size):
                     email_chunk = normalized_email_list[i : i + chunk_size]
-                    for u in user_model.objects.annotate(email_lc=Lower("email")).filter(
-                        email_lc__in=email_chunk
-                    ):
+                    for u in user_model.objects.annotate(
+                        email_lc=Lower("email")
+                    ).filter(email_lc__in=email_chunk):
                         if u.email:
                             _users_by_email[_recipient_key(u.email)] = u
             # Determine template: per-rule body_template overrides file.

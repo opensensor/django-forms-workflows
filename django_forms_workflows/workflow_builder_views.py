@@ -2743,9 +2743,26 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             elif not isinstance(config, dict | list):
                 config = {}
 
+            trigger = data.get("trigger", "on_approve")
+            valid_triggers = {
+                choice[0]
+                for choice in PostSubmissionAction._meta.get_field("trigger").choices
+            }
+            if not isinstance(trigger, str):
+                raise ValidationError(
+                    "Unsupported trigger type. "
+                    f"Expected string, got {type(trigger).__name__}. "
+                    f"Supported values are: {sorted(valid_triggers)}"
+                )
+            if trigger not in valid_triggers:
+                raise ValidationError(
+                    f"Unsupported trigger '{trigger}'. "
+                    f"Supported values are: {sorted(valid_triggers)}"
+                )
+
             action_data = {
                 "action_type": action_type,
-                "trigger": data.get("trigger", "on_approve"),
+                "trigger": trigger,
                 "order": order,
             }
 
@@ -2788,6 +2805,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             description_value = data.get("description")
         else:
             description_value = None
+            existing_action = None
             raw_action_id = data.get("action_id")
             try:
                 action_id = int(raw_action_id)
@@ -2795,14 +2813,24 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 action_id = None
             if action_id is not None:
                 existing_action = existing_actions_by_id.get(action_id)
-                if existing_action is not None:
-                    description_value = existing_action.description
+            if existing_action is None:
+                existing_action = existing_actions_by_name.get(action_name)
+            if existing_action is not None:
+                description_value = existing_action.description
             if description_value is None:
                 description_value = generated_description
 
+        trigger = data.get("trigger", "on_approve")
+        valid_triggers = {
+            choice[0]
+            for choice in PostSubmissionAction._meta.get_field("trigger").choices
+        }
+        if not isinstance(trigger, str) or trigger not in valid_triggers:
+            raise ValidationError("Unsupported trigger for email action.")
+
         action_data = {
             "action_type": "email",
-            "trigger": data.get("trigger", "on_approve"),
+            "trigger": trigger,
             "order": order,
             "email_to": data.get("email_to", ""),
             "email_to_field": data.get("email_to_field", ""),

@@ -1920,6 +1920,28 @@ class TestConvertVisualToWorkflow:
         assert not form_definition.post_actions.exists()
         assert not form_definition.workflows.exists()
 
+    @pytest.mark.parametrize("node_type", ["action", "email"])
+    @pytest.mark.parametrize("trigger", ["unknown", 7])
+    def test_rejects_invalid_action_trigger(self, form_definition, node_type, trigger):
+        visual = self._make_visual()
+        visual["nodes"].insert(
+            1,
+            {
+                "type": node_type,
+                "data": {
+                    "name": "Notice",
+                    "action_type": "database",
+                    "trigger": trigger,
+                    "email_to": "recipient@example.com",
+                },
+            },
+        )
+
+        with pytest.raises(ValidationError, match="Unsupported trigger"):
+            convert_visual_to_workflow(visual, form_definition)
+
+        assert not form_definition.post_actions.exists()
+
     @pytest.mark.parametrize("saved_action_id_as_string", [False, True])
     def test_explicit_action_deletion_respects_other_workflow_graphs(
         self, form_definition, saved_action_id_as_string
@@ -2086,6 +2108,28 @@ class TestConvertVisualToWorkflow:
 
         action.refresh_from_db()
         assert action.description == "Custom explanation"
+
+    def test_legacy_email_node_preserves_description_by_name(self, form_definition):
+        action = PostSubmissionAction.objects.create(
+            form_definition=form_definition,
+            name="Notice",
+            action_type="email",
+            description="Keep this description",
+        )
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        visual = self._make_visual()
+        visual["nodes"].insert(
+            1,
+            {
+                "type": "email",
+                "data": {"name": "Notice", "email_to": "recipient@example.com"},
+            },
+        )
+
+        convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        action.refresh_from_db()
+        assert action.description == "Keep this description"
 
     def test_action_id_from_another_form_is_rejected(self, form_definition):
         other_form = FormDefinition.objects.create(name="Other", slug="other")

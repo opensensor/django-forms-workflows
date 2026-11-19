@@ -1166,24 +1166,60 @@ def check_approval_deadlines() -> str:
                     if not locked_submission:
                         continue
 
-                    pending_locked_tasks = list(
+                    locked_tasks = list(
                         locked_submission.approval_tasks.select_related(
                             "workflow_stage__workflow"
-                        ).filter(status="pending")
+                        )
                     )
+                    pending_locked_tasks = [
+                        task for task in locked_tasks if task.status == "pending"
+                    ]
                     if not pending_locked_tasks:
                         continue
+
+                    def task_track(task: ApprovalTask) -> tuple[str, int | None]:
+                        if task.workflow_stage_id:
+                            return ("workflow", task.workflow_stage.workflow_id)
+                        return ("legacy", None)
 
                     tracks: dict[tuple[str, int | None], list[ApprovalTask]] = (
                         defaultdict(list)
                     )
                     for task in pending_locked_tasks:
-                        if task.workflow_stage_id:
-                            key = ("workflow", task.workflow_stage.workflow_id)
-                        else:
-                            # Legacy tasks without a stage belong to the fallback track.
-                            key = ("legacy", None)
-                        tracks[key].append(task)
+                        tracks[task_track(task)].append(task)
+
+                    # A send-back starts a new round only when fresh tasks were
+                    # created on that same track after the returned decision.
+                    # Keep failures on other tracks (or in the current round)
+                    # blocking approval, before changing any pending task state.
+                    latest_task_created_by_track = {}
+                    for task in locked_tasks:
+                        key = task_track(task)
+                        latest_created = latest_task_created_by_track.get(key)
+                        if latest_created is None or task.created_at > latest_created:
+                            latest_task_created_by_track[key] = task.created_at
+
+                    round_start_by_track = {}
+                    for task in locked_tasks:
+                        if task.status != "returned" or task.completed_at is None:
+                            continue
+                        key = task_track(task)
+                        if latest_task_created_by_track[key] <= task.completed_at:
+                            continue
+                        previous_start = round_start_by_track.get(key)
+                        if previous_start is None or task.completed_at > previous_start:
+                            round_start_by_track[key] = task.completed_at
+
+                    if any(
+                        task.status in ("expired", "rejected", "returned")
+                        and (
+                            task_track(task) not in round_start_by_track
+                            or (task.completed_at or task.created_at)
+                            > round_start_by_track[task_track(task)]
+                        )
+                        for task in locked_tasks
+                    ):
+                        continue
 
                     for track_key, track_pending_tasks in tracks.items():
                         latest_track_task = max(
@@ -1222,13 +1258,6 @@ def check_approval_deadlines() -> str:
                     # Only approve once no pending tasks remain on the submission.
                     if locked_submission.approval_tasks.filter(
                         status="pending"
-                    ).exists():
-                        continue
-
-                    # A different track may have failed already. Auto-skipped
-                    # tasks are valid here, but a failed decision is not.
-                    if locked_submission.approval_tasks.filter(
-                        status__in=("expired", "rejected", "returned")
                     ).exists():
                         continue
 

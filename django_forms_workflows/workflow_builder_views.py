@@ -2809,6 +2809,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
+        normalized_action_name = (
+            action_name.strip() if isinstance(action_name, str) else action_name
+        )
         generated_description = (
             f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
             f"Subject: {data.get('email_subject_template', '')}"
@@ -2826,7 +2829,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             if action_id is not None:
                 existing_action = existing_actions_by_id.get(action_id)
             if existing_action is None:
-                existing_action = existing_actions_by_name.get(action_name)
+                existing_action = existing_actions_by_name.get(
+                    normalized_action_name
+                )
             if existing_action is not None:
                 description_value = existing_action.description
             if description_value is None:
@@ -2853,7 +2858,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             "email_template_name": data.get("email_template_name", ""),
             "description": description_value,
         }
-        save_action(data, action_name, action_data)
+        save_action(data, normalized_action_name, action_data)
 
     # Explicit deletion only: preserve cross-track actions unless the client
     # requests specific action IDs to remove.

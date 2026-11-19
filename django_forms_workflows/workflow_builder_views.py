@@ -2584,10 +2584,23 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     if 0 < parsed_group_id <= 2**63 - 1:
                         normalized_group_ids.append(parsed_group_id)
 
+        raw_event = rule_data.get("event", "approval_request")
+        if not isinstance(raw_event, str):
+            raise ValidationError("Invalid notification event.")
+        event = raw_event.strip()
+        supported_events = {
+            choice_value
+            for choice_value, _choice_label in NotificationRule._meta.get_field(
+                "event"
+            ).choices
+        }
+        if event not in supported_events:
+            raise ValidationError("Invalid notification event.")
+
         rule = NotificationRule.objects.create(
             workflow=workflow,
             stage=stage,
-            event=rule_data.get("event", "approval_request"),
+            event=event,
             conditions=_normalize_trigger_conditions(rule_data.get("conditions")),
             subject_template=rule_data.get("subject_template", ""),
             notify_submitter=rule_data.get("notify_submitter", False),

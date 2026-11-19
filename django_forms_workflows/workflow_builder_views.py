@@ -541,9 +541,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             if key_type == "id":
                 canonical_field_id = key_value
             else:
-                canonical_field_id = field_name_to_id.get(
-                    str(key_value).strip().lower()
-                )
+                canonical_field_id = field_name_to_id.get(str(key_value).strip())
 
             if not canonical_field_id:
                 continue

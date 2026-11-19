@@ -1675,16 +1675,27 @@ def convert_workflow_to_visual(workflow, form_definition):
             action_order_by_id = dict(
                 form_definition.post_actions.values_list("id", "order")
             )
-            missing_mixed_action_nodes = sorted(
-                missing_email_nodes + missing_action_nodes,
+            action_like_types = {"email", "action"}
+            merged_action_nodes = [
+                node for node in merged_nodes if node.get("type") in action_like_types
+            ]
+            restored_action_nodes = missing_email_nodes + missing_action_nodes
+            all_action_nodes_sorted = sorted(
+                merged_action_nodes + restored_action_nodes,
                 key=lambda node: (
                     action_order_by_id.get(node.get("data", {}).get("action_id"), 0),
                     node.get("data", {}).get("action_id", 0),
                 ),
             )
-            visual_data["nodes"] = (
-                merged_nodes + missing_mixed_action_nodes + missing_stage_nodes
-            )
+            sorted_action_iter = iter(all_action_nodes_sorted)
+            reordered_nodes = []
+            for node in merged_nodes:
+                if node.get("type") in action_like_types:
+                    reordered_nodes.append(next(sorted_action_iter))
+                else:
+                    reordered_nodes.append(node)
+            reordered_nodes.extend(sorted_action_iter)
+            visual_data["nodes"] = reordered_nodes + missing_stage_nodes
 
             def _canonical_node_id(node_id):
                 if node_id is None:

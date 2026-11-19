@@ -2788,6 +2788,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             description_value = data.get("description")
         else:
             description_value = None
+            existing_action = None
             raw_action_id = data.get("action_id")
             try:
                 action_id = int(raw_action_id)
@@ -2795,8 +2796,13 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 action_id = None
             if action_id is not None:
                 existing_action = existing_actions_by_id.get(action_id)
-                if existing_action is not None:
-                    description_value = existing_action.description
+            if existing_action is None:
+                for candidate_action in existing_actions:
+                    if candidate_action.name == action_name:
+                        existing_action = candidate_action
+                        break
+            if existing_action is not None:
+                description_value = existing_action.description
             if description_value is None:
                 description_value = generated_description
 

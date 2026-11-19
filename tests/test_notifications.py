@@ -739,7 +739,11 @@ def _reminder_setup(form_definition, user, approver_user):
         send_reminder_after_days=1,
     )
     stage = WorkflowStage.objects.create(
-        workflow=workflow, name="Review", order=1, approval_logic="all"
+        workflow=workflow,
+        name="Review",
+        order=1,
+        approval_logic="all",
+        assignee_form_field="approver_email",
     )
     NotificationRule.objects.create(
         workflow=workflow,
@@ -749,7 +753,7 @@ def _reminder_setup(form_definition, user, approver_user):
     submission = FormSubmission.objects.create(
         form_definition=form_definition,
         submitter=user,
-        form_data={},
+        form_data={"approver_email": approver_user.email},
         status="pending_approval",
     )
     task = ApprovalTask.objects.create(

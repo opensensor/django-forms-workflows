@@ -284,6 +284,29 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
         else set()
     )
     errors = []
+    canonical_node_ids = {
+        str(node_id).strip()
+        for node_id in (node.get("id") for node in nodes)
+        if isinstance(node_id, str | int)
+        and not isinstance(node_id, bool)
+        and str(node_id).strip()
+    }
+    for connection_index, connection in enumerate(
+        workflow_data.get("connections", []) or [], start=1
+    ):
+        if not isinstance(connection, dict):
+            errors.append(f"Connection {connection_index} must be an object.")
+            continue
+        for endpoint, legacy_endpoint in (("from", "source"), ("to", "target")):
+            node_id = connection.get(endpoint, connection.get(legacy_endpoint))
+            if (
+                isinstance(node_id, bool)
+                or not isinstance(node_id, str | int)
+                or str(node_id).strip() not in canonical_node_ids
+            ):
+                errors.append(
+                    f"Connection {connection_index} references an unknown {endpoint} node."
+                )
     stage_node_ids = set()
     for node in stage_nodes:
         raw_node_id = node.get("id")
@@ -2584,10 +2607,20 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     if 0 < parsed_group_id <= 2**63 - 1:
                         normalized_group_ids.append(parsed_group_id)
 
+        raw_event = rule_data.get("event", "approval_request")
+        if not isinstance(raw_event, str):
+            raise ValidationError("Invalid notification event.")
+        event = raw_event.strip()
+        supported_events = {
+            value for value, _ in NotificationRule._meta.get_field("event").choices
+        }
+        if event not in supported_events:
+            raise ValidationError("Invalid notification event.")
+
         rule = NotificationRule.objects.create(
             workflow=workflow,
             stage=stage,
-            event=rule_data.get("event", "approval_request"),
+            event=event,
             conditions=_normalize_trigger_conditions(rule_data.get("conditions")),
             subject_template=rule_data.get("subject_template", ""),
             notify_submitter=rule_data.get("notify_submitter", False),

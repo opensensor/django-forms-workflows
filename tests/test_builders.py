@@ -968,9 +968,11 @@ class TestConvertWorkflowToVisual:
             stage=stage,
             event="approval_request",
             subject_template="Approval Needed: {form_name}",
+            body_template="<p>Custom body</p>",
             notify_submitter=True,
             email_field="manager_email",
             static_emails="ops@example.com",
+            cc_static_emails="copy@example.com",
             notify_stage_assignees=True,
             notify_stage_groups=True,
             conditions={
@@ -996,6 +998,8 @@ class TestConvertWorkflowToVisual:
         assert loaded_rule["stage_id"] == stage.id
         assert loaded_rule["stage_node_id"]
         assert loaded_rule["email_field"] == "manager_email"
+        assert loaded_rule["body_template"] == "<p>Custom body</p>"
+        assert loaded_rule["cc_static_emails"] == "copy@example.com"
         assert loaded_rule["notify_stage_groups"] is True
         assert {group["id"] for group in loaded_rule["notify_groups"]} == {
             approval_group.id,
@@ -1321,6 +1325,17 @@ class TestConvertVisualToWorkflow:
 
         assert not NotificationRule.objects.exists()
 
+    @pytest.mark.parametrize("conditions", [0, False])
+    def test_rejects_invalid_falsy_trigger_conditions(
+        self, form_definition, conditions
+    ):
+        visual = self._make_visual(settings={"trigger_conditions": conditions})
+
+        with pytest.raises(ValidationError, match="Trigger conditions"):
+            convert_visual_to_workflow(visual, form_definition)
+
+        assert not form_definition.workflows.exists()
+
     def test_rejects_duplicate_stage_ids_across_integer_and_string(
         self, staged_workflow, form_definition
     ):
@@ -1582,6 +1597,99 @@ class TestConvertVisualToWorkflow:
                 }
             ],
         }
+
+    def test_updates_notification_rule_without_replacing_identity(
+        self, form_definition, approval_group
+    ):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        rule = NotificationRule.objects.create(
+            workflow=workflow,
+            event="approval_request",
+            subject_template="Original",
+            body_template="Custom body",
+            cc_static_emails="copy@example.com",
+            use_triggering_stage=True,
+        )
+        rule.notify_groups.add(approval_group)
+        removed_rule = NotificationRule.objects.create(
+            workflow=workflow, event="workflow_approved"
+        )
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {
+                        "rule_id": str(rule.id),
+                        "event": "approval_request",
+                        "subject_template": "Updated",
+                        "static_emails": "team@example.com",
+                    }
+                ]
+            }
+        )
+
+        convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        rule.refresh_from_db()
+        assert rule.subject_template == "Updated"
+        assert rule.body_template == "Custom body"
+        assert rule.cc_static_emails == "copy@example.com"
+        assert rule.use_triggering_stage is True
+        assert not rule.notify_groups.exists()
+        assert list(workflow.notification_rules.values_list("id", flat=True)) == [
+            rule.id
+        ]
+        assert not NotificationRule.objects.filter(pk=removed_rule.id).exists()
+
+    def test_rejects_notification_rule_from_another_workflow(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        other = WorkflowDefinition.objects.create(form_definition=form_definition)
+        foreign_rule = NotificationRule.objects.create(
+            workflow=other, event="approval_request"
+        )
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {
+                        "rule_id": foreign_rule.id,
+                        "event": "approval_request",
+                        "static_emails": "team@example.com",
+                    }
+                ]
+            }
+        )
+
+        with pytest.raises(ValidationError, match="does not belong"):
+            convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        assert not workflow.notification_rules.exists()
+        assert other.notification_rules.filter(pk=foreign_rule.id).exists()
+
+    def test_rejects_duplicate_notification_rule_id(self, form_definition):
+        workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+        rule = NotificationRule.objects.create(
+            workflow=workflow, event="approval_request"
+        )
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {
+                        "rule_id": rule.id,
+                        "event": "approval_request",
+                        "static_emails": "team@example.com",
+                    },
+                    {
+                        "rule_id": rule.id,
+                        "event": "approval_request",
+                        "static_emails": "team@example.com",
+                    },
+                ]
+            }
+        )
+
+        with pytest.raises(ValidationError, match="Duplicate notification rule"):
+            convert_visual_to_workflow(visual, form_definition, workflow=workflow)
+
+        assert workflow.notification_rules.get().id == rule.id
 
     def test_updates_specific_workflow_when_passed(self, form_definition):
         first = WorkflowDefinition.objects.create(
@@ -1932,6 +2040,7 @@ class TestConvertVisualToWorkflow:
             stages=[
                 {
                     "name": "Review",
+                    "requires_manager_approval": role != "approval",
                     "approval_groups": [{"id": approval_group.id, "role": role}],
                 }
             ]
@@ -1940,6 +2049,22 @@ class TestConvertVisualToWorkflow:
         workflow = convert_visual_to_workflow(visual, form_definition)
 
         assert workflow.stages.get().stageapprovalgroup_set.get().role == role
+
+    @pytest.mark.parametrize("role", ["validation", "reassignment"])
+    def test_rejects_stage_with_only_nonapproval_group(
+        self, form_definition, approval_group, role
+    ):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "approval_groups": [{"id": approval_group.id, "role": role}],
+                }
+            ]
+        )
+
+        with pytest.raises(ValidationError, match="approver source"):
+            convert_visual_to_workflow(visual, form_definition)
 
     def test_numeric_string_stage_group_id_is_persisted_as_integer(
         self, form_definition, approval_group

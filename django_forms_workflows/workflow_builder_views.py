@@ -89,7 +89,12 @@ def _resolve_builder_workflow(
 
 
 def _normalize_trigger_conditions(raw_conditions):
-    if raw_conditions is None or raw_conditions == "" or raw_conditions == [] or raw_conditions == {}:
+    if (
+        raw_conditions is None
+        or raw_conditions == ""
+        or raw_conditions == []
+        or raw_conditions == {}
+    ):
         return None
 
     if isinstance(raw_conditions, str):
@@ -97,7 +102,12 @@ def _normalize_trigger_conditions(raw_conditions):
             raw_conditions = json.loads(raw_conditions)
         except json.JSONDecodeError as exc:
             raise ValidationError("Trigger conditions must be valid JSON.") from exc
-        if raw_conditions is None or raw_conditions == "" or raw_conditions == [] or raw_conditions == {}:
+        if (
+            raw_conditions is None
+            or raw_conditions == ""
+            or raw_conditions == []
+            or raw_conditions == {}
+        ):
             return None
 
     if isinstance(raw_conditions, list):
@@ -491,8 +501,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             )
         requires_manager_approval_flag = requires_manager_approval_raw is True
         has_approval_group_source = any(
-            (entry.get("role") or "approver") == "approver"
-            for entry in group_entries
+            (entry.get("role") or "approval") == "approval" for entry in group_entries
         )
         has_approver_source = bool(
             has_approval_group_source
@@ -817,11 +826,15 @@ def _serialize_notification_rule(rule, stage_node_id=None):
         "event": rule.event,
         "conditions": rule.conditions,
         "subject_template": rule.subject_template,
+        "body_template": rule.body_template,
         "notify_submitter": rule.notify_submitter,
         "email_field": rule.email_field,
         "static_emails": rule.static_emails,
+        "cc_email_field": rule.cc_email_field,
+        "cc_static_emails": rule.cc_static_emails,
         "notify_stage_assignees": rule.notify_stage_assignees,
         "notify_stage_groups": rule.notify_stage_groups,
+        "use_triggering_stage": rule.use_triggering_stage,
         "notify_groups": [
             {"id": group.id, "name": group.name}
             for group in sorted(rule.notify_groups.all(), key=lambda group: group.name)
@@ -1179,18 +1192,11 @@ def workflow_builder_save(request):
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
-        validation_errors = (
-            exc.message_dict
-            if hasattr(exc, "message_dict")
-            else exc.messages if hasattr(exc, "messages") else None
-        )
-        if not validation_errors:
-            validation_errors = ["Invalid workflow configuration."]
         return JsonResponse(
             {
                 "success": False,
                 "error": "Workflow validation failed.",
-                "errors": validation_errors,
+                "errors": ["Invalid workflow configuration."],
             },
             status=400,
         )
@@ -2591,15 +2597,19 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         else:
             if isinstance(raw_rule_id, bool) or not isinstance(raw_rule_id, int | str):
                 raise ValidationError("Invalid notification rule identifier.")
-            try:
-                normalized_rule_id = int(str(raw_rule_id).strip())
-            except (TypeError, ValueError):
+            rule_id_text = str(raw_rule_id).strip()
+            if not rule_id_text.isascii() or not rule_id_text.isdigit():
+                raise ValidationError("Invalid notification rule identifier.")
+            normalized_rule_id = int(rule_id_text)
+            if not 0 < normalized_rule_id <= 2**63 - 1:
                 raise ValidationError("Invalid notification rule identifier.")
             rule_obj = existing_notification_rules.get(normalized_rule_id)
             if rule_obj is None:
                 raise ValidationError(
                     "Notification rule does not belong to this workflow."
                 )
+            if normalized_rule_id in kept_notification_rule_ids:
+                raise ValidationError("Duplicate notification rule identifier.")
 
         if has_stage_node_id:
             if isinstance(stage_node_id, bool) or not isinstance(
@@ -2655,26 +2665,43 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         if event not in supported_events:
             raise ValidationError("Invalid notification event.")
 
-        rule = NotificationRule.objects.create(
-            workflow=workflow,
-            stage=stage,
-            event=event,
-            conditions=_normalize_trigger_conditions(rule_data.get("conditions")),
-            subject_template=rule_data.get("subject_template", ""),
-            body_template=rule_data.get("body_template", ""),
-            notify_submitter=rule_data.get("notify_submitter", False),
-            email_field=rule_data.get("email_field", ""),
-            static_emails=rule_data.get("static_emails", ""),
-            cc_email_field=rule_data.get("cc_email_field", ""),
-            cc_static_emails=rule_data.get("cc_static_emails", ""),
-            notify_stage_assignees=rule_data.get("notify_stage_assignees", False),
-            notify_stage_groups=rule_data.get("notify_stage_groups", False),
-            use_triggering_stage=rule_data.get("use_triggering_stage", False),
+        rule_values = {
+            "stage": stage,
+            "event": event,
+            "conditions": _normalize_trigger_conditions(rule_data.get("conditions")),
+            "subject_template": rule_data.get("subject_template", ""),
+            "body_template": rule_data.get(
+                "body_template", rule_obj.body_template if rule_obj else ""
+            ),
+            "notify_submitter": rule_data.get("notify_submitter", False),
+            "email_field": rule_data.get("email_field", ""),
+            "static_emails": rule_data.get("static_emails", ""),
+            "cc_email_field": rule_data.get(
+                "cc_email_field", rule_obj.cc_email_field if rule_obj else ""
+            ),
+            "cc_static_emails": rule_data.get(
+                "cc_static_emails", rule_obj.cc_static_emails if rule_obj else ""
+            ),
+            "notify_stage_assignees": rule_data.get("notify_stage_assignees", False),
+            "notify_stage_groups": rule_data.get("notify_stage_groups", False),
+            "use_triggering_stage": rule_data.get(
+                "use_triggering_stage",
+                rule_obj.use_triggering_stage if rule_obj else False,
+            ),
+        }
+        if rule_obj is None:
+            rule = NotificationRule.objects.create(workflow=workflow, **rule_values)
+        else:
+            rule = rule_obj
+            for field_name, value in rule_values.items():
+                setattr(rule, field_name, value)
+            rule.save(update_fields=list(rule_values))
+        rule.notify_groups.set(
+            Group.objects.filter(id__in=normalized_group_ids).order_by("name")
         )
-        if normalized_group_ids:
-            rule.notify_groups.set(
-                Group.objects.filter(id__in=normalized_group_ids).order_by("name")
-            )
+        kept_notification_rule_ids.add(rule.id)
+
+    workflow.notification_rules.exclude(id__in=kept_notification_rule_ids).delete()
 
     # ── Post-submission actions (unchanged logic) ───────────────────────
     existing_actions_by_id = {

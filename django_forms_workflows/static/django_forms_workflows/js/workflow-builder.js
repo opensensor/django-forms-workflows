@@ -2166,7 +2166,8 @@ export class WorkflowBuilder {
                 ),
             };
         }).filter(rule => (
-            rule.notify_submitter
+            rule.rule_id
+            || rule.notify_submitter
             || rule.email_field
             || rule.static_emails
             || rule.notify_stage_assignees

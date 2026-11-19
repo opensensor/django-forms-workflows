@@ -3349,6 +3349,122 @@ def test_auto_approve_does_not_override_failed_track(
     due_task.refresh_from_db()
     assert "auto_approved=0" in result
     assert submission.status == "pending_approval"
+    assert due_task.status == "pending"
+
+
+@pytest.mark.django_db
+def test_auto_approve_after_send_back_starts_new_round(
+    form_definition, user, approver_user, django_capture_on_commit_callbacks
+):
+    workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, auto_approve_after_days=2
+    )
+    first_stage = WorkflowStage.objects.create(
+        workflow=workflow, name="Correction", order=1
+    )
+    second_stage = WorkflowStage.objects.create(
+        workflow=workflow, name="Review", order=2
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    returned_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=second_stage,
+        step_name="Review",
+        assigned_to=approver_user,
+        status="returned",
+    )
+    ApprovalTask.objects.filter(pk=returned_task.pk).update(
+        created_at=timezone.now() - timedelta(days=5),
+        completed_at=timezone.now() - timedelta(days=4),
+    )
+    correction_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=first_stage,
+        step_name="Correction",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=correction_task.pk).update(
+        created_at=timezone.now() - timedelta(days=3)
+    )
+
+    with (
+        patch.object(tasks_module.send_notification_rules, "delay") as notify,
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        result = check_approval_deadlines()
+
+    submission.refresh_from_db()
+    correction_task.refresh_from_db()
+    assert "auto_approved=1" in result
+    assert submission.status == "approved"
+    assert correction_task.status == "skipped"
+    notify.assert_called_once_with(submission.pk, "workflow_approved")
+
+
+@pytest.mark.django_db
+def test_auto_approve_ignores_recovered_track_return(
+    form_definition, user, approver_user
+):
+    recovered_workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition
+    )
+    due_workflow = WorkflowDefinition.objects.create(
+        form_definition=form_definition, auto_approve_after_days=2
+    )
+    recovered_stage = WorkflowStage.objects.create(
+        workflow=recovered_workflow, name="Recovered", order=1
+    )
+    due_stage = WorkflowStage.objects.create(workflow=due_workflow, name="Due", order=1)
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={},
+        status="pending_approval",
+    )
+    returned_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=recovered_stage,
+        step_name="Returned",
+        assigned_to=approver_user,
+        status="returned",
+    )
+    ApprovalTask.objects.filter(pk=returned_task.pk).update(
+        created_at=timezone.now() - timedelta(days=6),
+        completed_at=timezone.now() - timedelta(days=5),
+    )
+    recovered_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=recovered_stage,
+        step_name="Recovered",
+        assigned_to=approver_user,
+        status="approved",
+    )
+    ApprovalTask.objects.filter(pk=recovered_task.pk).update(
+        created_at=timezone.now() - timedelta(days=4)
+    )
+    due_task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=due_stage,
+        step_name="Due",
+        assigned_to=approver_user,
+        status="pending",
+    )
+    ApprovalTask.objects.filter(pk=due_task.pk).update(
+        created_at=timezone.now() - timedelta(days=3)
+    )
+
+    result = check_approval_deadlines()
+
+    submission.refresh_from_db()
+    due_task.refresh_from_db()
+    assert "auto_approved=1" in result
+    assert submission.status == "approved"
     assert due_task.status == "skipped"
 
 

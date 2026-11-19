@@ -48,7 +48,10 @@ def test_legacy_approval_request_skips_completed_submission(form_definition, use
         status="approved",
     )
     task = ApprovalTask.objects.create(
-        submission=submission, step_name="Stale review", status="pending"
+        submission=submission,
+        step_name="Stale review",
+        status="pending",
+        assigned_to=user,
     )
 
     with patch("django_forms_workflows.tasks._send_html_email") as send:

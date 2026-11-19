@@ -31,6 +31,11 @@ from .security import builder_permission_required
 
 logger = logging.getLogger(__name__)
 
+
+class BuilderValidationError(ValidationError):
+    """A user-facing error produced by the workflow builder's own validators."""
+
+
 SUPPORTED_CONDITION_OPERATORS = {
     "equals",
     "not_equals",
@@ -815,7 +820,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
 def _validate_visual_workflow(workflow_data, form_definition, workflow=None):
     errors = _collect_visual_workflow_errors(workflow_data, form_definition, workflow)
     if errors:
-        raise ValidationError(errors)
+        raise BuilderValidationError(errors)
 
 
 def _serialize_notification_rule(rule, stage_node_id=None):
@@ -1189,6 +1194,16 @@ def workflow_builder_save(request):
         logger.error(f"JSON decode error: {e}")
         return JsonResponse(
             {"success": False, "error": "Invalid JSON data"}, status=400
+        )
+    except BuilderValidationError as exc:
+        logger.info("Workflow validation failed: %s", exc)
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Workflow validation failed.",
+                "errors": exc.messages,
+            },
+            status=400,
         )
     except ValidationError as exc:
         logger.warning("Workflow validation failed: %s", exc)
@@ -2551,7 +2566,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             conflicting_ids_display = ", ".join(
                 str(fid) for fid in sorted(conflicting_field_ids)
             )
-            raise ValidationError(
+            raise BuilderValidationError(
                 "Approval fields already assigned to another workflow track "
                 f"cannot be reused here: {conflicting_ids_display}."
             )

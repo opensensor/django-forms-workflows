@@ -1090,7 +1090,7 @@ class TestConvertVisualToWorkflow:
     """Tests for converting visual node graph → WorkflowDefinition + stages."""
 
     def test_rejects_approval_field_owned_by_another_track(
-        self, form_with_fields, approval_group
+        self, form_with_fields, approval_group, client, superuser
     ):
         first = WorkflowDefinition.objects.create(form_definition=form_with_fields)
         first_stage = first.stages.create(name="First review", order=1)
@@ -1109,7 +1109,24 @@ class TestConvertVisualToWorkflow:
         )
 
         with pytest.raises(ValidationError, match="another workflow track"):
-            convert_visual_to_workflow(visual, form_with_fields, workflow=second)
+            convert_visual_to_workflow(
+                copy.deepcopy(visual), form_with_fields, workflow=second
+            )
+
+        client.force_login(superuser)
+        response = client.post(
+            _wf_url("workflow/api/save/"),
+            data=json.dumps(
+                {
+                    "form_id": form_with_fields.id,
+                    "workflow_id": second.id,
+                    "workflow": visual,
+                }
+            ),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+        assert "another workflow track" in response.json()["errors"][0]
 
         field.refresh_from_db()
         assert field.workflow_stage_id == first_stage.id

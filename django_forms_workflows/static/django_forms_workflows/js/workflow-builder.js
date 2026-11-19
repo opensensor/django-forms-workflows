@@ -838,9 +838,30 @@ export class WorkflowBuilder {
         const content = document.getElementById('propertiesContent');
         content.innerHTML = this.buildPropertiesForm(node);
 
+        if (node.type === 'stage') {
+            for (const name of ['name', 'order', 'approve_label']) {
+                const input = content.querySelector(`[name="${name}"]`);
+                if (input) input.value = node.data?.[name] ?? (name === 'order' ? 1 : '');
+            }
+            content.querySelectorAll('[data-stage-group-id]').forEach(button => {
+                button.addEventListener('click', () => {
+                    this.moveStageApprovalGroup(
+                        node.id,
+                        Number(button.dataset.stageGroupId),
+                        Number(button.dataset.stageGroupDirection),
+                    );
+                });
+            });
+        }
+
         // Add event listeners for property changes
         content.querySelectorAll('input, select, textarea').forEach(input => {
             input.addEventListener('change', (e) => {
+                if (e.target.hasAttribute('onchange') || !e.target.name) return;
+                if (node.type === 'stage') {
+                    this.updateStageConfig(node.id);
+                    return;
+                }
                 let value = e.target.value;
                 if (e.target.type === 'checkbox') {
                     value = e.target.checked;
@@ -924,33 +945,30 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Stage Name</strong></label>
                 <input type="text" class="form-control" name="name"
-                       value="${this.escapeHtml(data.name || '')}"
-                       onchange="workflowBuilder.updateStageConfig('${node.id}')" />
+                       />
             </div>
 
             <div class="mb-3">
                 <label class="form-label"><strong>Order</strong></label>
                 <input type="number" class="form-control" name="order" min="1"
-                       value="${data.order || 1}"
-                       onchange="workflowBuilder.updateStageConfig('${node.id}')" />
+                       />
                 <small class="text-muted">Stages with the same order number run in parallel (fork/join).</small>
             </div>
 
             <div class="mb-3">
                 <label class="form-label"><strong>Approve Button Label</strong></label>
                 <input type="text" class="form-control" name="approve_label"
-                       value="${this.escapeHtml(data.approve_label || '')}"
                        placeholder="Approve"
-                       onchange="workflowBuilder.updateStageConfig('${node.id}')" />
+                        />
                 <small class="text-muted">Custom label for the approve button (e.g. "Sign Off")</small>
             </div>
 
             <div class="mb-3">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="stage_requires_manager_${node.id}"
+                    <input class="form-check-input" type="checkbox" id="stage_requires_manager_${this.escapeHtmlAttribute(node.id)}"
                            name="requires_manager_approval" ${data.requires_manager_approval ? 'checked' : ''}
-                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
-                    <label class="form-check-label" for="stage_requires_manager_${node.id}">
+                           >
+                    <label class="form-check-label" for="stage_requires_manager_${this.escapeHtmlAttribute(node.id)}">
                         <i class="bi bi-person-badge"></i> <strong>Require Manager Approval</strong>
                     </label>
                 </div>
@@ -958,10 +976,10 @@ export class WorkflowBuilder {
 
             <div class="mb-3">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="stage_allow_send_back_${node.id}"
+                    <input class="form-check-input" type="checkbox" id="stage_allow_send_back_${this.escapeHtmlAttribute(node.id)}"
                            name="allow_send_back" ${data.allow_send_back ? 'checked' : ''}
-                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
-                    <label class="form-check-label" for="stage_allow_send_back_${node.id}">
+                           >
+                    <label class="form-check-label" for="stage_allow_send_back_${this.escapeHtmlAttribute(node.id)}">
                         <i class="bi bi-arrow-return-left"></i> <strong>Allow Send Back to This Stage</strong>
                     </label>
                 </div>
@@ -970,10 +988,10 @@ export class WorkflowBuilder {
 
             <div class="mb-3">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="stage_allow_reassign_${node.id}"
+                    <input class="form-check-input" type="checkbox" id="stage_allow_reassign_${this.escapeHtmlAttribute(node.id)}"
                            name="allow_reassign" ${data.allow_reassign ? 'checked' : ''}
-                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
-                    <label class="form-check-label" for="stage_allow_reassign_${node.id}">
+                           >
+                    <label class="form-check-label" for="stage_allow_reassign_${this.escapeHtmlAttribute(node.id)}">
                         <i class="bi bi-arrow-left-right"></i> <strong>Allow Reassignment</strong>
                     </label>
                 </div>
@@ -982,10 +1000,10 @@ export class WorkflowBuilder {
 
             <div class="mb-3">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="stage_allow_edit_form_data_${node.id}"
+                    <input class="form-check-input" type="checkbox" id="stage_allow_edit_form_data_${this.escapeHtmlAttribute(node.id)}"
                            name="allow_edit_form_data" ${data.allow_edit_form_data ? 'checked' : ''}
-                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
-                    <label class="form-check-label" for="stage_allow_edit_form_data_${node.id}">
+                           >
+                    <label class="form-check-label" for="stage_allow_edit_form_data_${this.escapeHtmlAttribute(node.id)}">
                         <i class="bi bi-pencil-square"></i> <strong>Allow Reviewer Edits</strong>
                     </label>
                 </div>
@@ -996,8 +1014,8 @@ export class WorkflowBuilder {
         let routingSection = `
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
-                <select class="form-select builder-multiselect-lg" id="stage_groups_${node.id}" name="approval_groups" multiple size="6"
-                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                <select class="form-select builder-multiselect-lg" id="stage_groups_${this.escapeHtmlAttribute(node.id)}" name="approval_groups" multiple size="6"
+                        >
         `;
 
         this.groups.forEach(group => {
@@ -1015,7 +1033,7 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label">Approval Logic</label>
                 <select class="form-select" name="approval_logic"
-                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                        >
                     <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>Any (OR)</option>
                     <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
                     <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>Sequential</option>
@@ -1026,8 +1044,8 @@ export class WorkflowBuilder {
         const approvalFieldsSection = `
             <div class="mb-3">
                 <label class="form-label"><strong>Fields shown during this stage</strong></label>
-                <select class="form-select builder-multiselect-lg" id="stage_fields_${node.id}" name="approval_fields" multiple size="6"
-                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                <select class="form-select builder-multiselect-lg" id="stage_fields_${this.escapeHtmlAttribute(node.id)}" name="approval_fields" multiple size="6"
+                        >
                     ${this.fields.map(field => `
                         <option value="${field.id}" ${selectedApprovalFieldIds.has(field.id) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
                     `).join('')}
@@ -1040,7 +1058,7 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Assignee Field</strong></label>
                 <select class="form-select" name="assignee_form_field"
-                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                        >
                     <option value="">-- Use approval groups --</option>
                     ${this.fields.map(f => `
                         <option value="${f.field_name}" ${data.assignee_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
@@ -1052,7 +1070,7 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Lookup Type</strong></label>
                 <select class="form-select" name="assignee_lookup_type"
-                        onchange="workflowBuilder.updateStageConfig('${node.id}')">
+                        >
                     <option value="email" ${data.assignee_lookup_type === 'email' ? 'selected' : ''}>Email address</option>
                     <option value="username" ${data.assignee_lookup_type === 'username' ? 'selected' : ''}>Username</option>
                     <option value="full_name" ${data.assignee_lookup_type === 'full_name' ? 'selected' : ''}>Full name</option>
@@ -1062,10 +1080,10 @@ export class WorkflowBuilder {
 
             <div class="mb-3">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="stage_validate_assignee_group_${node.id}"
+                    <input class="form-check-input" type="checkbox" id="stage_validate_assignee_group_${this.escapeHtmlAttribute(node.id)}"
                            name="validate_assignee_group" ${data.validate_assignee_group !== false ? 'checked' : ''}
-                           onchange="workflowBuilder.updateStageConfig('${node.id}')">
-                    <label class="form-check-label" for="stage_validate_assignee_group_${node.id}">
+                           >
+                    <label class="form-check-label" for="stage_validate_assignee_group_${this.escapeHtmlAttribute(node.id)}">
                         <strong>Require Assignee to Belong to Stage Groups</strong>
                     </label>
                 </div>
@@ -1129,11 +1147,11 @@ export class WorkflowBuilder {
                             </div>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary" ${index === 0 ? 'disabled' : ''}
-                                        onclick="workflowBuilder.moveStageApprovalGroup('${node.id}', ${group.id}, -1)">
+                                        data-stage-group-id="${group.id}" data-stage-group-direction="-1">
                                     <i class="bi bi-arrow-up"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" ${index === orderedGroups.length - 1 ? 'disabled' : ''}
-                                        onclick="workflowBuilder.moveStageApprovalGroup('${node.id}', ${group.id}, 1)">
+                                        data-stage-group-id="${group.id}" data-stage-group-direction="1">
                                     <i class="bi bi-arrow-down"></i>
                                 </button>
                             </div>
@@ -1152,9 +1170,9 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label">Workflow Track Label</label>
                 <input type="text" class="form-control" name="name_label"
-                       value="${this.escapeHtml(data.name_label || '')}"
+                       value="${this.escapeHtmlAttribute(data.name_label || '')}"
                        placeholder="e.g. Finance Approval"
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                       onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Helpful when a form has multiple workflow tracks.</small>
             </div>
         `;
@@ -1164,26 +1182,25 @@ export class WorkflowBuilder {
                 <label class="form-label">Approval Deadline (days)</label>
                 <input type="number" class="form-control" name="approval_deadline_days" min="1"
                        value="${data.approval_deadline_days || ''}" placeholder="No deadline"
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                       onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Send Reminder After (days)</label>
                 <input type="number" class="form-control" name="send_reminder_after_days" min="1"
                        value="${data.send_reminder_after_days || ''}" placeholder="No reminder"
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                       onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Auto-Approve After (days)</label>
                 <input type="number" class="form-control" name="auto_approve_after_days" min="1"
                        value="${data.auto_approve_after_days || ''}" placeholder="Never"
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                       onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Notification Cadence</label>
                 <select class="form-select" name="notification_cadence"
-                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
+                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})">
                     <option value="immediate" ${data.notification_cadence === 'immediate' ? 'selected' : ''}>Immediate</option>
-                    <option value="daily" ${data.notification_cadence === 'daily' ? 'selected' : ''}>Daily Digest</option>
                     <option value="weekly" ${data.notification_cadence === 'weekly' ? 'selected' : ''}>Weekly Digest</option>
                     <option value="monthly" ${data.notification_cadence === 'monthly' ? 'selected' : ''}>Monthly Digest</option>
                     <option value="form_field_date" ${data.notification_cadence === 'form_field_date' ? 'selected' : ''}>On Date From Form Field</option>
@@ -1193,22 +1210,22 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label">Digest Day</label>
                 <input type="number" class="form-control" name="notification_cadence_day" min="0" max="31"
-                       value="${data.notification_cadence_day || ''}" placeholder="Weekly: 0-6, Monthly: 1-31"
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                       value="${data.notification_cadence_day ?? ''}" placeholder="Weekly: 0-6, Monthly: 1-31"
+                       onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Used for weekly and monthly cadences only.</small>
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Digest Time</label>
                 <input type="time" class="form-control" name="notification_cadence_time"
-                       value="${this.escapeHtml(data.notification_cadence_time || '')}"
-                       onchange="workflowBuilder.updateWorkflowSettings('${node.id}')" />
+                       value="${this.escapeHtmlAttribute(data.notification_cadence_time || '')}"
+                       onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Date Field</label>
                 <select class="form-select" name="notification_cadence_form_field"
-                        onchange="workflowBuilder.updateWorkflowSettings('${node.id}')">
+                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})">
                     <option value="">-- Select a date field --</option>
                     ${this.fields.map(f => `
                         <option value="${f.field_name}" ${data.notification_cadence_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
@@ -1290,7 +1307,7 @@ export class WorkflowBuilder {
                                 <h6 class="mb-0">Rule ${index + 1}</h6>
                                 ${rules.length ? `
                                     <button type="button" class="btn btn-sm btn-outline-danger"
-                                            onclick="workflowBuilder.removeNotificationRule('${node.id}', ${index})">
+                                            onclick="workflowBuilder.removeNotificationRule(${this.inlineNodeId(node.id)}, ${index})">
                                         Remove
                                     </button>
                                 ` : ''}
@@ -1298,7 +1315,7 @@ export class WorkflowBuilder {
                             <div class="mb-3">
                                 <label class="form-label form-label-sm">Scope</label>
                                 <select class="form-select form-select-sm" name="notification_rule_stage"
-                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">Workflow-level</option>
                                     ${stageOptions.map(option => `
                                         <option value="${option.nodeId}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
@@ -1308,7 +1325,7 @@ export class WorkflowBuilder {
                             <div class="mb-3">
                                 <label class="form-label form-label-sm">Event</label>
                                 <select class="form-select form-select-sm" name="notification_rule_event"
-                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     ${eventOptions.map(([value, label]) => `
                                         <option value="${value}" ${state.event === value ? 'selected' : ''}>${label}</option>
                                     `).join('')}
@@ -1317,14 +1334,14 @@ export class WorkflowBuilder {
                             <div class="mb-3">
                                 <label class="form-label form-label-sm">Subject Template</label>
                                 <input type="text" class="form-control form-control-sm" name="notification_rule_subject_template"
-                                       value="${this.escapeHtml(state.subject_template)}"
+                                       value="${this.escapeHtmlAttribute(state.subject_template)}"
                                        placeholder="Submission Approved: {form_name} (ID {submission_id})"
-                                       onchange="workflowBuilder.updateNotificationRules('${node.id}')" />
+                                       onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})" />
                             </div>
                             <div class="mb-3">
                                 <label class="form-label form-label-sm">Email Field</label>
                                 <select class="form-select form-select-sm" name="notification_rule_email_field"
-                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">-- None --</option>
                                     ${this.fields.map(field => `
                                         <option value="${field.field_name}" ${state.email_field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
@@ -1334,14 +1351,14 @@ export class WorkflowBuilder {
                             <div class="mb-3">
                                 <label class="form-label form-label-sm">Static Emails</label>
                                 <input type="text" class="form-control form-control-sm" name="notification_rule_static_emails"
-                                       value="${this.escapeHtml(state.static_emails)}"
+                                       value="${this.escapeHtmlAttribute(state.static_emails)}"
                                        placeholder="ops@example.com, owner@example.com"
-                                       onchange="workflowBuilder.updateNotificationRules('${node.id}')" />
+                                       onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})" />
                             </div>
                             <div class="mb-3">
                                 <label class="form-label form-label-sm">Additional Groups</label>
                                 <select class="form-select form-select-sm" name="notification_rule_notify_groups" multiple size="4"
-                                        onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     ${this.groups.map(group => `
                                         <option value="${group.id}" ${selectedGroupIds.has(group.id) ? 'selected' : ''}>${this.escapeHtml(group.name)}</option>
                                     `).join('')}
@@ -1352,7 +1369,7 @@ export class WorkflowBuilder {
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_submitter"
                                                ${state.notify_submitter ? 'checked' : ''}
-                                               onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                               onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                         <label class="form-check-label">Notify submitter</label>
                                     </div>
                                 </div>
@@ -1360,7 +1377,7 @@ export class WorkflowBuilder {
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_assignees"
                                                ${state.notify_stage_assignees ? 'checked' : ''}
-                                               onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                               onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                         <label class="form-check-label">Notify stage assignees</label>
                                     </div>
                                 </div>
@@ -1368,7 +1385,7 @@ export class WorkflowBuilder {
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_groups"
                                                ${state.notify_stage_groups ? 'checked' : ''}
-                                               onchange="workflowBuilder.updateNotificationRules('${node.id}')">
+                                               onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                         <label class="form-check-label">Notify stage groups</label>
                                     </div>
                                 </div>
@@ -1376,20 +1393,20 @@ export class WorkflowBuilder {
                             ${this.buildConditionsEditor({
                                 title: 'Rule conditions',
                                 conditions: state.conditions,
-                                onChangeHandler: `workflowBuilder.updateNotificationRules('${node.id}')`,
+                                onChangeHandler: `workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})`,
                                 editorKind: 'notification-rule',
                                 extraAttributes: `data-rule-index="${index}"`,
-                                removeConditionHandler: `workflowBuilder.removeNotificationRuleCondition('${node.id}', ${index}, __INDEX__)`,
+                                removeConditionHandler: `workflowBuilder.removeNotificationRuleCondition(${this.inlineNodeId(node.id)}, ${index}, __INDEX__)`,
                             })}
                             <button type="button" class="btn btn-sm btn-outline-primary"
-                                    onclick="workflowBuilder.addNotificationRuleCondition('${node.id}', ${index})">
+                                    onclick="workflowBuilder.addNotificationRuleCondition(${this.inlineNodeId(node.id)}, ${index})">
                                 <i class="bi bi-plus-lg"></i> Add Rule Condition
                             </button>
                         </div>
                     </div>
                 `;
             }).join('')}
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="workflowBuilder.addNotificationRule('${node.id}')">
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="workflowBuilder.addNotificationRule(${this.inlineNodeId(node.id)})">
                 <i class="bi bi-plus-lg"></i> Add Notification Rule
             </button>
         `;
@@ -1473,7 +1490,7 @@ export class WorkflowBuilder {
                     <div class="mb-2">
                         <label class="form-label form-label-sm mb-1">Value</label>
                         <input type="text" class="form-control form-control-sm" name="condition_value"
-                               value="${this.escapeHtml(condition.value ?? '')}"
+                               value="${this.escapeHtmlAttribute(condition.value ?? '')}"
                                placeholder="${operator === 'in' ? 'Comma-separated values' : 'Comparison value'}"
                                ${needsValue ? '' : 'disabled'}
                                onchange="${onChangeHandler}" />
@@ -1515,13 +1532,13 @@ export class WorkflowBuilder {
             ${this.buildConditionsEditor({
                 title,
                 conditions: node.data.trigger_conditions,
-                onChangeHandler: `workflowBuilder.updateNodeTriggerConditions('${node.id}')`,
+                onChangeHandler: `workflowBuilder.updateNodeTriggerConditions(${this.inlineNodeId(node.id)})`,
                 editorKind: 'node-trigger',
-                removeConditionHandler: `workflowBuilder.removeTriggerCondition('${node.id}', __INDEX__)`,
+                removeConditionHandler: `workflowBuilder.removeTriggerCondition(${this.inlineNodeId(node.id)}, __INDEX__)`,
                 showHeader: false,
             })}
             <button type="button" class="btn btn-sm btn-outline-primary"
-                    onclick="workflowBuilder.addTriggerCondition('${node.id}')">
+                    onclick="workflowBuilder.addTriggerCondition(${this.inlineNodeId(node.id)})">
                 <i class="bi bi-plus-lg"></i> Add Condition
             </button>
         `;
@@ -1550,7 +1567,7 @@ export class WorkflowBuilder {
             html += `
                 <div class="mb-3">
                     <label class="form-label"><i class="bi bi-file-earmark-text"></i> <strong>Select Form</strong></label>
-                    <select class="form-select" name="form_id" onchange="workflowBuilder.updateFormSelection('${node.id}', this.value)">
+                    <select class="form-select" name="form_id" onchange="workflowBuilder.updateFormSelection(${this.inlineNodeId(node.id)}, this.value)">
                         <option value="">-- Select a form --</option>
             `;
 
@@ -1569,7 +1586,7 @@ export class WorkflowBuilder {
             html += `
                 <div class="mb-3">
                     <label class="form-label">Form Name</label>
-                    <input type="text" class="form-control" value="${this.escapeHtml(data.form_name || '')}" disabled />
+                    <input type="text" class="form-control" value="${this.escapeHtmlAttribute(data.form_name || '')}" disabled />
                 </div>
             `;
         }
@@ -1679,7 +1696,7 @@ export class WorkflowBuilder {
         let html = `
             <div class="mb-3">
                 <label class="form-label">Step Name</label>
-                <input type="text" class="form-control" name="step_name" value="${this.escapeHtml(data.step_name || '')}" />
+                <input type="text" class="form-control" name="step_name" value="${this.escapeHtmlAttribute(data.step_name || '')}" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Approval Type</label>
@@ -1722,11 +1739,11 @@ export class WorkflowBuilder {
         return `
             <div class="mb-3">
                 <label class="form-label">Action Name</label>
-                <input type="text" class="form-control" name="name" value="${this.escapeHtml(data.name || '')}" placeholder="e.g., Update User Record" onchange="workflowBuilder.updateActionConfig('${node.id}')" />
+                <input type="text" class="form-control" name="name" value="${this.escapeHtmlAttribute(data.name || '')}" placeholder="e.g., Update User Record" onchange="workflowBuilder.updateActionConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Action Type</label>
-                <select class="form-select" name="action_type" onchange="workflowBuilder.updateActionConfig('${node.id}')">
+                <select class="form-select" name="action_type" onchange="workflowBuilder.updateActionConfig(${this.inlineNodeId(node.id)})">
                     <option value="database" ${data.action_type === 'database' ? 'selected' : ''}>Database Update</option>
                     <option value="ldap" ${data.action_type === 'ldap' ? 'selected' : ''}>LDAP Update</option>
                     <option value="api" ${data.action_type === 'api' ? 'selected' : ''}>API Call</option>
@@ -1735,7 +1752,7 @@ export class WorkflowBuilder {
             </div>
             <div class="mb-3">
                 <label class="form-label">When to Execute</label>
-                <select class="form-select" name="trigger" onchange="workflowBuilder.updateActionConfig('${node.id}')">
+                <select class="form-select" name="trigger" onchange="workflowBuilder.updateActionConfig(${this.inlineNodeId(node.id)})">
                     <option value="on_submit" ${data.trigger === 'on_submit' ? 'selected' : ''}>On Submission</option>
                     <option value="on_approve" ${data.trigger === 'on_approve' ? 'selected' : ''}>On Approval</option>
                     <option value="on_reject" ${data.trigger === 'on_reject' ? 'selected' : ''}>On Rejection</option>
@@ -1745,7 +1762,7 @@ export class WorkflowBuilder {
             <hr class="my-3" />
             <div class="mb-3">
                 <label class="form-label">Configuration (JSON)</label>
-                <textarea class="form-control font-monospace" name="config" rows="4" placeholder='{"table": "users", "field": "status", "value": "approved"}' onchange="workflowBuilder.updateActionConfig('${node.id}')">${this.escapeHtml(typeof data.config === 'string' ? data.config : JSON.stringify(data.config || {}, null, 2))}</textarea>
+                <textarea class="form-control font-monospace" name="config" rows="4" placeholder='{"table": "users", "field": "status", "value": "approved"}' onchange="workflowBuilder.updateActionConfig(${this.inlineNodeId(node.id)})">${this.escapeHtml(typeof data.config === 'string' ? data.config : JSON.stringify(data.config || {}, null, 2))}</textarea>
                 <small class="text-muted">Action-specific configuration in JSON format</small>
             </div>
         `;
@@ -1762,16 +1779,16 @@ export class WorkflowBuilder {
         return `
             <div class="mb-3">
                 <label class="form-label">Email Name</label>
-                <input type="text" class="form-control" name="name" value="${this.escapeHtml(data.name || '')}" placeholder="e.g., Approval Notification" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+                <input type="text" class="form-control" name="name" value="${this.escapeHtmlAttribute(data.name || '')}" placeholder="e.g., Approval Notification" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Static Recipients</label>
-                <input type="text" class="form-control" name="email_to" value="${this.escapeHtml(data.email_to || '')}" placeholder="email@example.com, approver@example.com" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+                <input type="text" class="form-control" name="email_to" value="${this.escapeHtmlAttribute(data.email_to || '')}" placeholder="email@example.com, approver@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Comma-separated email addresses.</small>
             </div>
             <div class="mb-3">
                 <label class="form-label">Recipient Field</label>
-                <select class="form-select" name="email_to_field" onchange="workflowBuilder.updateEmailConfig('${node.id}')">
+                <select class="form-select" name="email_to_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
                     <option value="">-- None --</option>
                     ${fieldOptions}
                 </select>
@@ -1779,18 +1796,18 @@ export class WorkflowBuilder {
             </div>
             <div class="mb-3">
                 <label class="form-label">CC Addresses</label>
-                <input type="text" class="form-control" name="email_cc" value="${this.escapeHtml(data.email_cc || '')}" placeholder="manager@example.com" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+                <input type="text" class="form-control" name="email_cc" value="${this.escapeHtmlAttribute(data.email_cc || '')}" placeholder="manager@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">CC Field</label>
-                <select class="form-select" name="email_cc_field" onchange="workflowBuilder.updateEmailConfig('${node.id}')">
+                <select class="form-select" name="email_cc_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
                     <option value="">-- None --</option>
                     ${ccFieldOptions}
                 </select>
             </div>
             <div class="mb-3">
                 <label class="form-label">When to Send</label>
-                <select class="form-select" name="trigger" onchange="workflowBuilder.updateEmailConfig('${node.id}')">
+                <select class="form-select" name="trigger" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
                     <option value="on_submit" ${data.trigger === 'on_submit' ? 'selected' : ''}>On Submission</option>
                     <option value="on_approve" ${data.trigger === 'on_approve' ? 'selected' : ''}>On Approval</option>
                     <option value="on_reject" ${data.trigger === 'on_reject' ? 'selected' : ''}>On Rejection</option>
@@ -1799,15 +1816,15 @@ export class WorkflowBuilder {
             </div>
             <div class="mb-3">
                 <label class="form-label">Subject Template</label>
-                <input type="text" class="form-control" name="email_subject_template" value="${this.escapeHtml(data.email_subject_template || '')}" placeholder="Form {form_name} approved" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+                <input type="text" class="form-control" name="email_subject_template" value="${this.escapeHtmlAttribute(data.email_subject_template || '')}" placeholder="Form {form_name} approved" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Body Template</label>
-                <textarea class="form-control" name="email_body_template" rows="5" placeholder="Submission by {submitter} has been approved." onchange="workflowBuilder.updateEmailConfig('${node.id}')">${this.escapeHtml(data.email_body_template || '')}</textarea>
+                <textarea class="form-control" name="email_body_template" rows="5" placeholder="Submission by {submitter} has been approved." onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">${this.escapeHtml(data.email_body_template || '')}</textarea>
             </div>
             <div class="mb-3">
                 <label class="form-label">HTML Template Path</label>
-                <input type="text" class="form-control" name="email_template_name" value="${this.escapeHtml(data.email_template_name || '')}" placeholder="emails/approval.html" onchange="workflowBuilder.updateEmailConfig('${node.id}')" />
+                <input type="text" class="form-control" name="email_template_name" value="${this.escapeHtmlAttribute(data.email_template_name || '')}" placeholder="emails/approval.html" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
         `;
     }
@@ -1833,7 +1850,7 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Target Workflow</strong></label>
                 <select class="form-select" name="sub_workflow_id"
-                        onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                        onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})">
                     ${workflowOptions}
                 </select>
                 <small class="text-muted">The workflow definition used for each sub-workflow instance</small>
@@ -1842,16 +1859,16 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Section Label</strong></label>
                 <input type="text" class="form-control" name="section_label"
-                       value="${this.escapeHtml(data.section_label || '')}"
+                       value="${this.escapeHtmlAttribute(data.section_label || '')}"
                        placeholder="e.g. Payment Approvals"
-                       onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')" />
+                       onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Heading shown to end users in approval history. If blank, uses the workflow name.</small>
             </div>
 
             <div class="mb-3">
                 <label class="form-label"><strong>Count Field</strong></label>
                 <select class="form-select" name="count_field"
-                        onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                        onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})">
                     ${fieldOptions}
                 </select>
                 <small class="text-muted">Form field whose value determines how many sub-workflows to spawn</small>
@@ -1860,8 +1877,8 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Label Template</strong></label>
                 <input type="text" class="form-control" name="label_template"
-                       value="${this.escapeHtml(data.label_template || 'Sub-workflow {index}')}"
-                       onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')" />
+                       value="${this.escapeHtmlAttribute(data.label_template || 'Sub-workflow {index}')}"
+                       onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Use {index} as placeholder (e.g. "Payment {index}")</small>
             </div>
         `;
@@ -1870,7 +1887,7 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Trigger</strong></label>
                 <select class="form-select" name="trigger"
-                        onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
+                        onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})">
                     <option value="on_submission" ${data.trigger === 'on_submission' ? 'selected' : ''}>On Submission</option>
                     <option value="on_approval" ${data.trigger === 'on_approval' ? 'selected' : ''}>After Parent Approval</option>
                 </select>
@@ -1879,17 +1896,17 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label"><strong>Data Prefix</strong></label>
                 <input type="text" class="form-control" name="data_prefix"
-                       value="${this.escapeHtml(data.data_prefix || '')}"
-                       onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')" />
+                       value="${this.escapeHtmlAttribute(data.data_prefix || '')}"
+                       onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Field prefix to scope data per instance (e.g. "payment" matches payment_type_1, payment_amount_1 …)</small>
             </div>
 
             <div class="mb-3">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="sub_wf_detached_${node.id}"
+                    <input class="form-check-input" type="checkbox" id="sub_wf_detached_${this.escapeHtmlAttribute(node.id)}"
                            name="detached" ${data.detached ? 'checked' : ''}
-                           onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
-                    <label class="form-check-label" for="sub_wf_detached_${node.id}">
+                           onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})">
+                    <label class="form-check-label" for="sub_wf_detached_${this.escapeHtmlAttribute(node.id)}">
                         <strong>Detached</strong>
                     </label>
                 </div>
@@ -1898,10 +1915,10 @@ export class WorkflowBuilder {
 
             <div class="mb-3">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="sub_wf_reject_parent_${node.id}"
+                    <input class="form-check-input" type="checkbox" id="sub_wf_reject_parent_${this.escapeHtmlAttribute(node.id)}"
                            name="reject_parent" ${data.reject_parent ? 'checked' : ''}
-                           onchange="workflowBuilder.updateSubWorkflowConfig('${node.id}')">
-                    <label class="form-check-label" for="sub_wf_reject_parent_${node.id}">
+                           onchange="workflowBuilder.updateSubWorkflowConfig(${this.inlineNodeId(node.id)})">
+                    <label class="form-check-label" for="sub_wf_reject_parent_${this.escapeHtmlAttribute(node.id)}">
                         <strong>Reject Parent on Failure</strong>
                     </label>
                 </div>
@@ -2006,13 +2023,13 @@ export class WorkflowBuilder {
         node.data.name = container.querySelector('input[name="name"]').value;
         node.data.order = parseInt(container.querySelector('input[name="order"]').value) || 1;
         node.data.approve_label = container.querySelector('input[name="approve_label"]').value;
-        node.data.requires_manager_approval = container.querySelector(`#stage_requires_manager_${nodeId}`).checked;
-        node.data.allow_send_back = container.querySelector(`#stage_allow_send_back_${nodeId}`).checked;
-        node.data.allow_reassign = container.querySelector(`#stage_allow_reassign_${nodeId}`).checked;
-        node.data.allow_edit_form_data = container.querySelector(`#stage_allow_edit_form_data_${nodeId}`).checked;
+        node.data.requires_manager_approval = container.querySelector('[name="requires_manager_approval"]').checked;
+        node.data.allow_send_back = container.querySelector('[name="allow_send_back"]').checked;
+        node.data.allow_reassign = container.querySelector('[name="allow_reassign"]').checked;
+        node.data.allow_edit_form_data = container.querySelector('[name="allow_edit_form_data"]').checked;
         node.data.assignee_form_field = container.querySelector('select[name="assignee_form_field"]').value;
         node.data.assignee_lookup_type = container.querySelector('select[name="assignee_lookup_type"]').value;
-        node.data.validate_assignee_group = container.querySelector(`#stage_validate_assignee_group_${nodeId}`).checked;
+        node.data.validate_assignee_group = container.querySelector('[name="validate_assignee_group"]').checked;
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
         node.data.approval_groups = this.readStageApprovalGroupsFromPanel(
             container,
@@ -2087,28 +2104,31 @@ export class WorkflowBuilder {
     }
 
     readStageApprovalGroupsFromPanel(container, nodeId, existingGroups) {
-        const groupSelect = container.querySelector(`#stage_groups_${nodeId}`);
+        const groupSelect = container.querySelector('[name="approval_groups"]');
+        if (!groupSelect) return [];
         const selected = Array.from(groupSelect.selectedOptions).map(opt => ({
-            id: parseInt(opt.value),
+            id: parseInt(opt.value, 10),
             name: opt.text,
-        }));
+        })).filter(group => !Number.isNaN(group.id));
+        const selectedIds = new Set(selected.map(group => group.id));
         const existingOrdered = this.getNormalizedStageApprovalGroups(existingGroups || []);
         const existingMap = new Map(existingOrdered.map(group => [group.id, group]));
 
-        const kept = existingOrdered.filter(group => selected.some(sel => sel.id === group.id));
+        const kept = existingOrdered.filter(group => selectedIds.has(group.id));
         const appended = selected
             .filter(group => !existingMap.has(group.id))
-            .map(group => ({ id: group.id, name: group.name }));
+            .map(group => ({ id: group.id, name: group.name, role: 'approval' }));
 
         return [...kept, ...appended].map((group, index) => ({
             id: group.id,
             name: group.name,
+            role: group.role || 'approval',
             position: index,
         }));
     }
 
     readStageApprovalFieldsFromPanel(container, nodeId) {
-        const fieldSelect = container.querySelector(`#stage_fields_${nodeId}`);
+        const fieldSelect = container.querySelector('[name="approval_fields"]');
         if (!fieldSelect) {
             return [];
         }
@@ -2323,6 +2343,19 @@ export class WorkflowBuilder {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    escapeHtmlAttribute(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    inlineNodeId(nodeId) {
+        return this.escapeHtmlAttribute(JSON.stringify(String(nodeId)));
     }
 
     addNodeIssue(result, nodeId, severity, message) {
@@ -2653,13 +2686,13 @@ export class WorkflowBuilder {
             </div>
             ${canDelete ? `
                 <div class="node-actions">
-                    <button class="btn btn-sm btn-outline-danger" onclick="workflowBuilder.deleteNode('${node.id}')">
+                    <button class="btn btn-sm btn-outline-danger" onclick="workflowBuilder.deleteNode(${this.inlineNodeId(node.id)})">
                         <i class="bi bi-trash"></i>
                     </button>
                 </div>
             ` : ''}
-            <div class="connection-point input ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${node.id}" data-point="input" title="${inputHandleTitle}"></div>
-            <div class="connection-point output ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${node.id}" data-point="output" title="${outputHandleTitle}"></div>
+            <div class="connection-point input ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${this.escapeHtmlAttribute(node.id)}" data-point="input" title="${inputHandleTitle}"></div>
+            <div class="connection-point output ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${this.escapeHtmlAttribute(node.id)}" data-point="output" title="${outputHandleTitle}"></div>
         `;
 
         // Add connection point event listeners

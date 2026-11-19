@@ -15,6 +15,7 @@ function createInstance() {
   const instance = Object.create(WorkflowBuilder.prototype);
   instance.store = createWorkflowBuilderStore();
   instance.render = vi.fn();
+  instance.validationState = { nodeIssues: {} };
   return instance;
 }
 
@@ -34,7 +35,7 @@ afterEach(() => {
 describe('WorkflowBuilder#showNodeProperties generic change listener', () => {
   it('stores a checkbox\'s checked state as a real boolean, not its "on" value attribute', () => {
     const instance = createInstance();
-    const node = { id: 'node_1', type: 'stage', data: { requires_manager_approval: false } };
+    const node = { id: 'node_1', type: 'condition', data: { requires_manager_approval: false } };
     instance.nodes = [node];
     instance.buildPropertiesForm = vi.fn(
       () => '<input type="checkbox" name="requires_manager_approval">'
@@ -50,7 +51,7 @@ describe('WorkflowBuilder#showNodeProperties generic change listener', () => {
 
   it('stores an unchecked checkbox as false, not the string "on"', () => {
     const instance = createInstance();
-    const node = { id: 'node_1', type: 'stage', data: { allow_send_back: true } };
+    const node = { id: 'node_1', type: 'condition', data: { allow_send_back: true } };
     instance.nodes = [node];
     instance.buildPropertiesForm = vi.fn(
       () => '<input type="checkbox" name="allow_send_back" checked>'
@@ -66,7 +67,7 @@ describe('WorkflowBuilder#showNodeProperties generic change listener', () => {
 
   it('still forwards the typed value for non-checkbox inputs', () => {
     const instance = createInstance();
-    const node = { id: 'node_1', type: 'stage', data: { approve_label: '' } };
+    const node = { id: 'node_1', type: 'condition', data: { approve_label: '' } };
     instance.nodes = [node];
     instance.buildPropertiesForm = vi.fn(
       () => '<input type="text" name="approve_label" value="">'
@@ -78,5 +79,92 @@ describe('WorkflowBuilder#showNodeProperties generic change listener', () => {
     dispatchChange(input);
 
     expect(node.data.approve_label).toBe('Sign Off');
+  });
+
+  it('does not overwrite values managed by a specialized change handler', () => {
+    const instance = createInstance();
+    const node = { id: 'node_1', type: 'condition', data: { approval_groups: [{ id: 1 }] } };
+    instance.nodes = [node];
+    instance.buildPropertiesForm = vi.fn(
+      () => '<select name="approval_groups" onchange="void 0"><option value="1" selected>Reviewers</option></select>'
+    );
+    const updateProperty = vi.spyOn(instance, 'updateNodeProperty');
+
+    instance.showNodeProperties(node);
+    dispatchChange(document.querySelector('[name="approval_groups"]'));
+
+    expect(updateProperty).not.toHaveBeenCalled();
+    expect(node.data.approval_groups).toEqual([{ id: 1 }]);
+  });
+});
+
+describe('WorkflowBuilder stage editor', () => {
+  it('assigns saved text through input properties without injecting markup', () => {
+    const instance = createInstance();
+    const node = {
+      id: `stage'" onclick="alert(1)`,
+      type: 'stage',
+      data: { name: 'Review" autofocus onfocus="alert(1)', approve_label: 'Sign "Off"', order: 2 },
+    };
+    instance.nodes = [node];
+    instance.groups = [];
+    instance.fields = [];
+
+    instance.showNodeProperties(node);
+
+    expect(document.querySelector('[name="name"]').value).toBe(node.data.name);
+    expect(document.querySelector('[name="approve_label"]').value).toBe(node.data.approve_label);
+    expect(document.querySelector('[name="name"]').hasAttribute('autofocus')).toBe(false);
+    expect(document.querySelector('[name="name"]').hasAttribute('onclick')).toBe(false);
+  });
+
+  it('preserves group roles and approval field arrays on a stage change', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1',
+      type: 'stage',
+      data: {
+        name: 'Review',
+        approval_groups: [
+          { id: 1, name: 'Reviewers', role: 'approval', position: 0 },
+          { id: 1, name: 'Reviewers', role: 'validation', position: 1 },
+        ],
+        approval_fields: [{ id: 2, field_name: 'notes' }],
+      },
+    };
+    instance.nodes = [node];
+    instance.groups = [{ id: 1, name: 'Reviewers' }];
+    instance.fields = [{ id: 2, field_name: 'notes', field_label: 'Notes' }];
+    instance.selectNode = vi.fn();
+
+    instance.showNodeProperties(node);
+    const input = document.querySelector('[name="name"]');
+    input.value = 'Updated';
+    dispatchChange(input);
+
+    expect(node.data.name).toBe('Updated');
+    expect(node.data.approval_groups.map(group => group.role)).toEqual(['approval', 'validation']);
+    expect(node.data.approval_fields.map(field => field.id)).toEqual([2]);
+  });
+});
+
+describe('WorkflowBuilder workflow settings editor', () => {
+  it('keeps weekly day zero visible and omits unsupported daily cadence', () => {
+    const instance = createInstance();
+    instance.fields = [];
+    instance.groups = [];
+    const node = { id: 'settings', type: 'workflow_settings', data: { notification_cadence: 'weekly', notification_cadence_day: 0 } };
+    instance.nodes = [node];
+    instance.selectNode = vi.fn();
+
+    instance.showNodeProperties(node);
+
+    expect(document.querySelector('[name="notification_cadence_day"]').value).toBe('0');
+    expect(document.querySelector('option[value="daily"]')).toBeNull();
+
+    const label = document.querySelector('[name="name_label"]');
+    label.value = 'Updated track';
+    instance.updateWorkflowSettings(node.id);
+    expect(node.data.notification_cadence_day).toBe(0);
   });
 });

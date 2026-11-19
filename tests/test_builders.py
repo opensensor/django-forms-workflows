@@ -707,6 +707,7 @@ class TestConvertWorkflowToVisual:
         stages = [node for node in visual["nodes"] if node["type"] == "stage"]
         assert len(stages) == 1
         assert stages[0]["id"] != "stale-stage"
+        assert stages[0]["id"] != "stale-stage"
         assert stages[0]["data"]["stage_id"] == stage.id
 
     def test_saved_layout_matches_numeric_string_stage_id(self, form_definition):

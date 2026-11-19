@@ -241,6 +241,58 @@ def test_notification_retry_reuses_dispatch_message_id(
     )
 
 
+@pytest.mark.django_db
+def test_reassignment_before_lock_skips_old_assignee_but_keeps_static_recipient(
+    form_definition, user, approver_user, mailoutbox
+):
+    new_assignee = User.objects.create_user(
+        username="replacement-approver", email="replacement@example.com"
+    )
+    workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
+    stage = workflow.stages.create(
+        name="Review", order=1, assignee_form_field="approver_email"
+    )
+    NotificationRule.objects.create(
+        workflow=workflow,
+        event="approval_request",
+        notify_stage_assignees=True,
+        static_emails="static@example.com",
+        cc_static_emails="copy@example.com",
+    )
+    submission = FormSubmission.objects.create(
+        form_definition=form_definition,
+        submitter=user,
+        form_data={"approver_email": approver_user.email},
+        status="pending_approval",
+    )
+    task = ApprovalTask.objects.create(
+        submission=submission,
+        workflow_stage=stage,
+        step_name="Review",
+        status="pending",
+        assigned_to=approver_user,
+    )
+    original_resolve = tasks_module._collect_notification_recipients
+    resolve_calls = 0
+
+    def reassign_after_resolution(*args, **kwargs):
+        nonlocal resolve_calls
+        recipients = original_resolve(*args, **kwargs)
+        resolve_calls += 1
+        if resolve_calls == 1:
+            ApprovalTask.objects.filter(pk=task.pk).update(assigned_to=new_assignee)
+        return recipients
+
+    with patch(
+        "django_forms_workflows.tasks._collect_notification_recipients",
+        side_effect=reassign_after_resolution,
+    ):
+        send_notification_rules(submission.id, "approval_request", task_id=task.id)
+
+    assert [message.to for message in mailoutbox] == [["static@example.com"]]
+    assert mailoutbox[0].cc == ["copy@example.com"]
+
+
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_notification_dispatch_sends_once(form_definition, user):
     if not connection.features.has_select_for_update:

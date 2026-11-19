@@ -2270,7 +2270,7 @@ def send_notification_rules(
     ).count() == 1 and (task is None or submission.approval_tasks.count() == 1)
 
     def _already_delivered_for_dispatch(
-        rule, rule_task_id
+        rule, rule_task_id, candidate_emails=None
     ) -> tuple[set[str], set[str]]:
         sent_filter = {
             "submission_id": submission_id,
@@ -2280,22 +2280,38 @@ def send_notification_rules(
             "notification_rule_id": rule.id,
         }
 
-        _sent_rows = list(
-            NotificationLog.objects.filter(**sent_filter)
-            .exclude(delivery_state="retried")
-            .values_list("recipient_email", "cc_emails", "bcc_emails")
-        )
+        def matching_rows(queryset):
+            queryset = queryset.exclude(delivery_state="retried")
+            if candidate_emails is not None:
+                candidates = {
+                    email.strip().casefold() for email in candidate_emails if email
+                }
+                if not candidates:
+                    return []
+                target = Q()
+                for email in candidates:
+                    target |= (
+                        Q(recipient_email__iexact=email)
+                        | Q(cc_emails__icontains=email)
+                        | Q(bcc_emails__icontains=email)
+                    )
+                queryset = queryset.filter(target)
+            return list(
+                queryset.values_list("recipient_email", "cc_emails", "bcc_emails")
+            )
+
+        _sent_rows = matching_rows(NotificationLog.objects.filter(**sent_filter))
         if use_legacy_logs:
             _sent_rows.extend(
-                NotificationLog.objects.filter(
-                    submission_id=submission_id,
-                    notification_type=event,
-                    status="sent",
-                    approval_task__isnull=True,
-                    notification_rule__isnull=True,
+                matching_rows(
+                    NotificationLog.objects.filter(
+                        submission_id=submission_id,
+                        notification_type=event,
+                        status="sent",
+                        approval_task__isnull=True,
+                        notification_rule__isnull=True,
+                    )
                 )
-                .exclude(delivery_state="retried")
-                .values_list("recipient_email", "cc_emails", "bcc_emails")
             )
         already_sent_local: set[str] = {row[0] for row in _sent_rows}
         already_cc_or_bcc_local: set[str] = set()
@@ -2431,7 +2447,7 @@ def send_notification_rules(
             domain = from_addr.rpartition("@")[2].strip().strip(">") or "localhost"
             return f"<dfw-{digest}@{domain}>"
 
-        def _locked_recipient_cc(recipient, cc_candidates=()):
+        def _locked_recipient_cc(recipient, cc_candidates=(), *, cc_only=False):
             """Return undelivered CCs while holding the dispatch row lock.
 
             Call inside a per-recipient transaction and keep that transaction
@@ -2445,6 +2461,7 @@ def send_notification_rules(
                 and current_submission.status != "pending_approval"
             ):
                 return None
+            current_task = None
             if explicit_task:
                 current_task = (
                     ApprovalTask.objects.select_for_update(of=("self",))
@@ -2465,26 +2482,42 @@ def send_notification_rules(
                     )
                 ):
                     return None
-            recipient_key = _recipient_key(recipient)
-            candidate_keys = {recipient_key} | {
-                _recipient_key(value) for value in cc_candidates
-            }
-
-            # Targeted duplicate check: only inspect delivery rows relevant to
-            # the current TO recipient and outstanding CC candidates.
-            delivered_rows = NotificationLog.objects.filter(
-                rule=rule,
-                task_id=rule_task_id,
-                recipient__in=candidate_keys,
-            ).values_list("recipient", flat=True)
-            delivered_keys = {_recipient_key(value) for value in delivered_rows}
-
-            if recipient_key in delivered_keys:
+            if event in {"approval_request", "approval_reminder"}:
+                current_form_data = current_submission.form_data or {}
+                current_to = {
+                    _recipient_key(value)
+                    for value in _collect_notification_recipients(
+                        rule,
+                        current_form_data,
+                        submission=current_submission,
+                        task=current_task,
+                    )
+                }
+                current_cc = {
+                    _recipient_key(value)
+                    for value in _collect_notification_cc(rule, current_form_data)
+                }
+                if _recipient_key(recipient) not in (
+                    current_cc if cc_only else current_to
+                ):
+                    return None
+                cc_candidates = [
+                    value
+                    for value in cc_candidates
+                    if _recipient_key(value) in current_cc
+                    and _recipient_key(value) not in current_to
+                ]
+            sent, copied = _already_delivered_for_dispatch(
+                rule, rule_task_id, [recipient, *cc_candidates]
+            )
+            sent_keys = {_recipient_key(value) for value in sent}
+            copied_keys = {_recipient_key(value) for value in copied}
+            if _recipient_key(recipient) in sent_keys | copied_keys:
                 return None
             return [
                 value
                 for value in cc_candidates
-                if _recipient_key(value) not in delivered_keys
+                if _recipient_key(value) not in sent_keys | copied_keys
             ]
 
         # Prevent duplicate delivery: don't CC anyone already in the TO list.
@@ -2657,7 +2690,12 @@ def send_notification_rules(
                 if not canonical_recipient:
                     continue
                 with transaction.atomic():
-                    if _locked_recipient_cc(recipient) is None:
+                    if (
+                        _locked_recipient_cc(
+                            recipient, cc_only=recipient in cc_recipients
+                        )
+                        is None
+                    ):
                         continue
                     # A sent row is the durable identity for a completed
                     # dispatch. Retried rows are reset explicitly.
@@ -2756,7 +2794,7 @@ def send_notification_rules(
             # on its own so an interrupted dispatch can resume safely.
             for recipient in cc_pending:
                 with transaction.atomic():
-                    if _locked_recipient_cc(recipient) is None:
+                    if _locked_recipient_cc(recipient, cc_only=True) is None:
                         continue
                     ctx = {**base_context}
                     recipient_user = _users_by_email.get(_recipient_key(recipient))

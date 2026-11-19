@@ -1470,30 +1470,53 @@ def convert_workflow_to_visual(workflow, form_definition):
                     }
                 )
 
+            def normalize_action_id(action_id):
+                if isinstance(action_id, bool):
+                    return None
+                if isinstance(action_id, str):
+                    value = action_id.strip()
+                    if not value.isascii() or not value.isdigit():
+                        return None
+                    try:
+                        action_id = int(value)
+                    except ValueError:
+                        return None
+                if isinstance(action_id, int) and 0 < action_id <= 2**63 - 1:
+                    return action_id
+                return None
+
             existing_email_nodes_by_action_id = {
-                node.get("data", {}).get("action_id"): node
+                normalize_action_id(node.get("data", {}).get("action_id")): node
                 for node in visual_data.get("nodes", [])
-                if node.get("type") == "email" and node.get("data", {}).get("action_id")
+                if node.get("type") == "email"
+                and normalize_action_id(node.get("data", {}).get("action_id"))
+                is not None
             }
             email_nodes_in_order = []
             for index, (action_id, defaults) in enumerate(
                 email_action_defaults.items()
             ):
-                existing_node = existing_email_nodes_by_action_id.get(action_id)
+                normalized_action_id = normalize_action_id(action_id)
+                existing_node = existing_email_nodes_by_action_id.get(
+                    normalized_action_id
+                )
                 if existing_node:
                     existing_node_data = existing_node.setdefault("data", {})
+                    existing_node_data["action_id"] = normalized_action_id
                     for key, value in defaults.items():
                         existing_node_data.setdefault(key, value)
                     email_nodes_in_order.append(existing_node)
                     continue
                 email_nodes_in_order.append(
                     {
-                        "id": allocate_unique_node_id(f"email-action-{action_id}"),
+                        "id": allocate_unique_node_id(
+                            f"email-action-{normalized_action_id}"
+                        ),
                         "type": "email",
                         "x": 0,
                         "y": index * 120,
                         "data": {
-                            "action_id": action_id,
+                            "action_id": normalized_action_id,
                             **defaults,
                         },
                     }
@@ -1554,10 +1577,11 @@ def convert_workflow_to_visual(workflow, form_definition):
                 if node.get("data", {}).get("stage_id")
             }
             existing_action_nodes_by_action_id = {
-                node.get("data", {}).get("action_id"): node
+                normalize_action_id(node.get("data", {}).get("action_id")): node
                 for node in existing_nodes
                 if node.get("type") == "action"
-                and node.get("data", {}).get("action_id")
+                and normalize_action_id(node.get("data", {}).get("action_id"))
+                is not None
             }
             action_nodes_in_order = []
             for index, action in enumerate(
@@ -2586,6 +2610,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     actions_to_keep = []
 
     def save_action(node_data, action_name, action_data):
+        if not isinstance(action_name, str):
+            raise ValidationError("Invalid action name.")
+        action_name = action_name.strip()
+        if not action_name:
+            raise ValidationError("Invalid action name.")
+
         raw_action_id = node_data.get("action_id")
         if raw_action_id not in (None, ""):
             if isinstance(raw_action_id, bool):

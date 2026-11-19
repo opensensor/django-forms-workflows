@@ -1185,6 +1185,35 @@ def check_approval_deadlines() -> str:
                             key = ("legacy", None)
                         tracks[key].append(task)
 
+                    active_workflow_ids = [
+                        track_key[1] for track_key in tracks if track_key[0] == "workflow"
+                    ]
+                    has_active_legacy_track = any(
+                        track_key[0] == "legacy" for track_key in tracks
+                    )
+
+                    # Only consider failures from the active approval round/tracks.
+                    active_failed_qs = locked_submission.approval_tasks.filter(
+                        status__in=("expired", "rejected", "returned")
+                    )
+                    if active_workflow_ids and has_active_legacy_track:
+                        active_failed_qs = active_failed_qs.filter(
+                            workflow_stage__workflow_id__in=active_workflow_ids
+                        ) | active_failed_qs.filter(workflow_stage__isnull=True)
+                    elif active_workflow_ids:
+                        active_failed_qs = active_failed_qs.filter(
+                            workflow_stage__workflow_id__in=active_workflow_ids
+                        )
+                    elif has_active_legacy_track:
+                        active_failed_qs = active_failed_qs.filter(
+                            workflow_stage__isnull=True
+                        )
+                    else:
+                        active_failed_qs = active_failed_qs.none()
+
+                    if active_failed_qs.exists():
+                        continue
+
                     for track_key, track_pending_tasks in tracks.items():
                         latest_track_task = max(
                             track_pending_tasks, key=lambda t: (t.created_at, t.pk)
@@ -1222,13 +1251,6 @@ def check_approval_deadlines() -> str:
                     # Only approve once no pending tasks remain on the submission.
                     if locked_submission.approval_tasks.filter(
                         status="pending"
-                    ).exists():
-                        continue
-
-                    # A different track may have failed already. Auto-skipped
-                    # tasks are valid here, but a failed decision is not.
-                    if locked_submission.approval_tasks.filter(
-                        status__in=("expired", "rejected", "returned")
                     ).exists():
                         continue
 

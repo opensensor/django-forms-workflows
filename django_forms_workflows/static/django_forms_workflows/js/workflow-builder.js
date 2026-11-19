@@ -2146,12 +2146,14 @@ export class WorkflowBuilder {
         });
     }
 
-    moveStageApprovalGroup(nodeId, groupId, direction) {
+    moveStageApprovalGroup(nodeId, groupId, direction, groupRole = null) {
         const node = this.nodes.find(n => n.id === nodeId);
         if (!node) return;
 
         const groups = this.getNormalizedStageApprovalGroups(node.data.approval_groups || []);
-        const currentIndex = groups.findIndex(group => group.id === groupId);
+        const currentIndex = groups.findIndex(group => (
+            group.id === groupId && (groupRole === null || group.role === groupRole)
+        ));
         const targetIndex = currentIndex + direction;
         if (currentIndex < 0 || targetIndex < 0 || targetIndex >= groups.length) {
             return;

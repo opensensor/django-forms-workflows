@@ -2794,7 +2794,8 @@ export class WorkflowBuilder {
                 }
 
                 const badgeHtml = badges ? `${badges}<br>` : '';
-                return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${node.data.form_builder_url || '#'}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
+                const safeFormBuilderUrl = this.escapeHtmlAttribute(this.sanitizeFormBuilderUrl(node.data.form_builder_url || '#'));
+                return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${safeFormBuilderUrl}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
             case 'workflow_settings':
                 const parts_ws = [];
                 if (node.data.name_label) parts_ws.push(this.escapeHtml(node.data.name_label));

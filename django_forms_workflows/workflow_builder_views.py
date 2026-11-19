@@ -2834,9 +2834,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             if action_id is not None:
                 existing_action = existing_actions_by_id.get(action_id)
             if existing_action is None:
-                existing_action = existing_actions_by_name.get(
-                    normalized_action_name
-                )
+                existing_action = existing_actions_by_name.get(normalized_action_name)
             if existing_action is not None:
                 description_value = existing_action.description
             if description_value is None:

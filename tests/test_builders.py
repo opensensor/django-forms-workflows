@@ -1218,6 +1218,23 @@ class TestConvertVisualToWorkflow:
         with pytest.raises(ValidationError, match="Must be an integer"):
             convert_visual_to_workflow(visual, form_definition)
 
+    def test_rejects_unsupported_trigger_group_operator(self, form_with_fields):
+        visual = self._make_visual(
+            settings={
+                "trigger_conditions": {
+                    "operator": "XOR",
+                    "conditions": [
+                        {"field": "full_name", "operator": "equals", "value": "Ada"}
+                    ],
+                }
+            }
+        )
+
+        with pytest.raises(
+            ValidationError, match="Unsupported trigger condition group operator"
+        ):
+            convert_visual_to_workflow(visual, form_with_fields)
+
     @pytest.mark.parametrize("lookup_type", ["unsupported", 7])
     def test_rejects_invalid_assignee_lookup_type(self, form_definition, lookup_type):
         visual = self._make_visual(
@@ -2132,7 +2149,10 @@ class TestConvertVisualToWorkflow:
         action.refresh_from_db()
         assert action.description == "Custom explanation"
 
-    def test_legacy_email_node_preserves_description_by_name(self, form_definition):
+    @pytest.mark.parametrize("node_name", ["Notice", " Notice "])
+    def test_legacy_email_node_preserves_description_by_name(
+        self, form_definition, node_name
+    ):
         action = PostSubmissionAction.objects.create(
             form_definition=form_definition,
             name="Notice",
@@ -2145,7 +2165,7 @@ class TestConvertVisualToWorkflow:
             1,
             {
                 "type": "email",
-                "data": {"name": "Notice", "email_to": "recipient@example.com"},
+                "data": {"name": node_name, "email_to": "recipient@example.com"},
             },
         )
 
@@ -2153,6 +2173,8 @@ class TestConvertVisualToWorkflow:
 
         action.refresh_from_db()
         assert action.description == "Keep this description"
+        assert action.name == "Notice"
+        assert form_definition.post_actions.count() == 1
 
     def test_action_id_from_another_form_is_rejected(self, form_definition):
         other_form = FormDefinition.objects.create(name="Other", slug="other")

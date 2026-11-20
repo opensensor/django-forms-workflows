@@ -2160,7 +2160,9 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     """
     Convert visual workflow format to WorkflowDefinition model.
 
-    Stage nodes are persisted as WorkflowStage records.
+    Stage nodes are persisted as WorkflowStage records. Explicit checks below
+    raise BuilderValidationError so the save view can show their safe messages;
+    unexpected Django ValidationError details remain private.
     """
 
     with transaction.atomic():
@@ -2250,7 +2252,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         not isinstance(start_trigger_value, str)
         or start_trigger_value not in valid_start_triggers
     ):
-        raise ValidationError({"start_trigger": "Unsupported start trigger."})
+        raise BuilderValidationError({"start_trigger": "Unsupported start trigger."})
 
     # ── Workflow-level settings ──────────────────────────────────────────
     wf_defaults = {
@@ -2280,8 +2282,8 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             try:
                 WorkflowDefinition._meta.get_field(key).clean(parsed_value, None)
             except ValidationError as exc:
-                raise ValidationError(
-                    {key: exc.messages or ["Must be within the allowed range."]}
+                raise BuilderValidationError(
+                    {key: "Must be within the allowed range."}
                 ) from exc
         wf_defaults[key] = parsed_value
     raw_time = settings_data.get("notification_cadence_time")
@@ -2289,7 +2291,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         wf_defaults["notification_cadence_time"] = None
     else:
         if not isinstance(raw_time, str):
-            raise ValidationError(
+            raise BuilderValidationError(
                 {"notification_cadence_time": "Must be a valid time string."}
             )
         time_value = raw_time.strip()
@@ -2299,11 +2301,11 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             try:
                 parsed_time = parse_time(time_value)
             except ValueError as exc:
-                raise ValidationError(
+                raise BuilderValidationError(
                     {"notification_cadence_time": "Must be a valid time."}
                 ) from exc
             if parsed_time is None:
-                raise ValidationError(
+                raise BuilderValidationError(
                     {"notification_cadence_time": "Must be a valid time."}
                 )
             wf_defaults["notification_cadence_time"] = parsed_time
@@ -2326,12 +2328,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             workflow.form_definition = form_definition
             workflow.save()
         else:
-            raise ValidationError(
+            raise BuilderValidationError(
                 "Multiple workflow tracks exist for this form. Please select a workflow ID."
             )
     else:
         if workflow.form_definition_id != form_definition.id:
-            raise ValidationError(
+            raise BuilderValidationError(
                 "Provided workflow does not belong to the selected form_definition."
             )
         for key, value in wf_defaults.items():
@@ -2353,21 +2355,21 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         if raw_stage_id in (None, ""):
             continue
         if isinstance(raw_stage_id, bool):
-            raise ValidationError("Invalid stage_id.")
+            raise BuilderValidationError("Invalid stage_id.")
         if isinstance(raw_stage_id, int):
             stage_id = raw_stage_id
         elif isinstance(raw_stage_id, str):
             value = raw_stage_id.strip()
             if not value.isascii() or not value.isdigit():
-                raise ValidationError("Invalid stage_id.")
+                raise BuilderValidationError("Invalid stage_id.")
             try:
                 stage_id = int(value)
             except ValueError as exc:
-                raise ValidationError("Invalid stage_id.") from exc
+                raise BuilderValidationError("Invalid stage_id.") from exc
         else:
-            raise ValidationError("Invalid stage_id.")
+            raise BuilderValidationError("Invalid stage_id.")
         if stage_id <= 0:
-            raise ValidationError("Invalid stage_id.")
+            raise BuilderValidationError("Invalid stage_id.")
         sdata["stage_id"] = stage_id
         if stage_id in submitted_stage_ids:
             duplicate_stage_ids.add(stage_id)
@@ -2378,7 +2380,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         duplicate_ids_display = ", ".join(
             str(sid) for sid in sorted(duplicate_stage_ids)
         )
-        raise ValidationError(
+        raise BuilderValidationError(
             f"Duplicate stage_id values in workflow data are not allowed: {duplicate_ids_display}."
         )
 
@@ -2389,36 +2391,36 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         raw_order = sdata.get("order", idx)
         if isinstance(raw_order, bool):
-            raise ValidationError("Invalid stage order.")
+            raise BuilderValidationError("Invalid stage order.")
         if isinstance(raw_order, int):
             stage_order = raw_order
         elif isinstance(raw_order, str):
             order_text = raw_order.strip()
             if not order_text.isascii() or not order_text.isdigit():
-                raise ValidationError("Invalid stage order.")
+                raise BuilderValidationError("Invalid stage order.")
             try:
                 stage_order = int(order_text)
             except ValueError as exc:
-                raise ValidationError("Invalid stage order.") from exc
+                raise BuilderValidationError("Invalid stage order.") from exc
         else:
-            raise ValidationError("Invalid stage order.")
+            raise BuilderValidationError("Invalid stage order.")
         if not 0 <= stage_order <= 2**31 - 1:
-            raise ValidationError("Invalid stage order.")
+            raise BuilderValidationError("Invalid stage order.")
 
         raw_approval_logic = sdata.get("approval_logic", "all")
         if not isinstance(raw_approval_logic, str):
-            raise ValidationError("Invalid approval logic.")
+            raise BuilderValidationError("Invalid approval logic.")
         approval_logic = raw_approval_logic.strip()
         allowed_approval_logic = {
             value
             for value, _ in WorkflowStage._meta.get_field("approval_logic").choices
         }
         if approval_logic not in allowed_approval_logic:
-            raise ValidationError("Invalid approval logic.")
+            raise BuilderValidationError("Invalid approval logic.")
 
         raw_assignee_lookup_type = sdata.get("assignee_lookup_type", "email")
         if not isinstance(raw_assignee_lookup_type, str):
-            raise ValidationError("Invalid assignee lookup type.")
+            raise BuilderValidationError("Invalid assignee lookup type.")
         assignee_lookup_type = raw_assignee_lookup_type.strip()
         allowed_assignee_lookup_types = {
             value
@@ -2427,7 +2429,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             ).choices
         }
         if assignee_lookup_type not in allowed_assignee_lookup_types:
-            raise ValidationError("Invalid assignee lookup type.")
+            raise BuilderValidationError("Invalid assignee lookup type.")
 
         stage_fields = {
             "name": sdata.get("name", f"Stage {idx}"),
@@ -2452,7 +2454,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 stage = WorkflowStage.objects.get(id=stage_id)
                 kept_stage_ids.add(stage_id)
             else:
-                raise ValidationError(
+                raise BuilderValidationError(
                     f"Invalid stage_id '{stage_id}' for this workflow."
                 )
         else:
@@ -2469,56 +2471,68 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             if raw_group_id in (None, ""):
                 continue
             if isinstance(raw_group_id, bool):
-                raise ValidationError("Approval group id must be an integer.")
+                raise BuilderValidationError("Approval group id must be an integer.")
             if isinstance(raw_group_id, int):
                 group_id = raw_group_id
             elif isinstance(raw_group_id, str):
                 group_id_digits = raw_group_id.strip()
                 if not group_id_digits.isascii() or not group_id_digits.isdigit():
-                    raise ValidationError("Approval group id must be an integer.")
+                    raise BuilderValidationError(
+                        "Approval group id must be an integer."
+                    )
                 try:
                     group_id = int(group_id_digits)
                 except ValueError as exc:
-                    raise ValidationError(
+                    raise BuilderValidationError(
                         "Approval group id must be an integer."
                     ) from exc
             else:
-                raise ValidationError("Approval group id must be an integer.")
+                raise BuilderValidationError("Approval group id must be an integer.")
             if not 0 < group_id <= 2**63 - 1:
-                raise ValidationError("Approval group id must be an integer.")
+                raise BuilderValidationError("Approval group id must be an integer.")
 
             raw_position = group_entry.get("position", 0)
             if isinstance(raw_position, bool):
-                raise ValidationError("Approval group position must be an integer.")
+                raise BuilderValidationError(
+                    "Approval group position must be an integer."
+                )
             if isinstance(raw_position, int):
                 position = raw_position
             elif isinstance(raw_position, str):
                 digits = raw_position.strip()
                 if not digits.isascii() or not digits.isdigit():
-                    raise ValidationError("Approval group position must be an integer.")
+                    raise BuilderValidationError(
+                        "Approval group position must be an integer."
+                    )
                 try:
                     position = int(digits)
                 except ValueError as exc:
-                    raise ValidationError(
+                    raise BuilderValidationError(
                         "Approval group position must be an integer."
                     ) from exc
             else:
-                raise ValidationError("Approval group position must be an integer.")
+                raise BuilderValidationError(
+                    "Approval group position must be an integer."
+                )
             if not 0 <= position <= 2**63 - 1:
-                raise ValidationError("Approval group position must be an integer.")
+                raise BuilderValidationError(
+                    "Approval group position must be an integer."
+                )
 
             raw_role = group_entry.get("role", "approval")
             if not isinstance(raw_role, str):
-                raise ValidationError("Approval group role must be a string.")
+                raise BuilderValidationError("Approval group role must be a string.")
             role = raw_role.strip()
             if not role:
-                raise ValidationError("Approval group role must be a non-empty string.")
+                raise BuilderValidationError(
+                    "Approval group role must be a non-empty string."
+                )
             valid_roles = {
                 choice[0]
                 for choice in StageApprovalGroup._meta.get_field("role").choices
             }
             if role not in valid_roles:
-                raise ValidationError("Approval group role is invalid.")
+                raise BuilderValidationError("Approval group role is invalid.")
 
             normalized_group_entries.append(
                 {**group_entry, "id": group_id, "position": position, "role": role}
@@ -2532,7 +2546,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             role = group_entry["role"]
             assignment_key = (group_entry["id"], role)
             if assignment_key in seen_group_role_pairs:
-                raise ValidationError(
+                raise BuilderValidationError(
                     "Duplicate approval-group assignment for the same group and role is not allowed."
                 )
             seen_group_role_pairs.add(assignment_key)
@@ -2611,47 +2625,55 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             rule_obj = None
         else:
             if isinstance(raw_rule_id, bool) or not isinstance(raw_rule_id, int | str):
-                raise ValidationError("Invalid notification rule identifier.")
+                raise BuilderValidationError("Invalid notification rule identifier.")
             rule_id_text = str(raw_rule_id).strip()
             if not rule_id_text.isascii() or not rule_id_text.isdigit():
-                raise ValidationError("Invalid notification rule identifier.")
+                raise BuilderValidationError("Invalid notification rule identifier.")
             normalized_rule_id = int(rule_id_text)
             if not 0 < normalized_rule_id <= 2**63 - 1:
-                raise ValidationError("Invalid notification rule identifier.")
+                raise BuilderValidationError("Invalid notification rule identifier.")
             rule_obj = existing_notification_rules.get(normalized_rule_id)
             if rule_obj is None:
-                raise ValidationError(
+                raise BuilderValidationError(
                     "Notification rule does not belong to this workflow."
                 )
             if normalized_rule_id in kept_notification_rule_ids:
-                raise ValidationError("Duplicate notification rule identifier.")
+                raise BuilderValidationError("Duplicate notification rule identifier.")
 
         if has_stage_node_id:
             if isinstance(stage_node_id, bool) or not isinstance(
                 stage_node_id, str | int
             ):
-                raise ValidationError("Invalid stage reference in notification rule.")
+                raise BuilderValidationError(
+                    "Invalid stage reference in notification rule."
+                )
             stage = stage_node_map.get(str(stage_node_id).strip())
         if stage is None and has_stage_id:
             if isinstance(stage_id, bool):
-                raise ValidationError("Invalid stage reference in notification rule.")
+                raise BuilderValidationError(
+                    "Invalid stage reference in notification rule."
+                )
             if isinstance(stage_id, str):
                 stage_id = stage_id.strip()
                 if not stage_id.isascii() or not stage_id.isdigit():
-                    raise ValidationError(
+                    raise BuilderValidationError(
                         "Invalid stage reference in notification rule."
                     )
                 try:
                     stage_id = int(stage_id)
                 except ValueError as exc:
-                    raise ValidationError(
+                    raise BuilderValidationError(
                         "Invalid stage reference in notification rule."
                     ) from exc
             if not isinstance(stage_id, int) or not 0 < stage_id <= 2**63 - 1:
-                raise ValidationError("Invalid stage reference in notification rule.")
+                raise BuilderValidationError(
+                    "Invalid stage reference in notification rule."
+                )
             stage = workflow.stages.filter(id=stage_id).first()
         if stage is None and explicit_stage_reference:
-            raise ValidationError("Invalid stage reference in notification rule.")
+            raise BuilderValidationError(
+                "Invalid stage reference in notification rule."
+            )
 
         notify_groups = rule_data.get("notify_groups", []) or []
         normalized_group_ids = []
@@ -2672,13 +2694,13 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         raw_event = rule_data.get("event", "approval_request")
         if not isinstance(raw_event, str):
-            raise ValidationError("Invalid notification event.")
+            raise BuilderValidationError("Invalid notification event.")
         event = raw_event.strip()
         supported_events = {
             value for value, _ in NotificationRule._meta.get_field("event").choices
         }
         if event not in supported_events:
-            raise ValidationError("Invalid notification event.")
+            raise BuilderValidationError("Invalid notification event.")
 
         rule_values = {
             "stage": stage,
@@ -2730,39 +2752,39 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
     def save_action(node_data, action_name, action_data):
         if not isinstance(action_name, str):
-            raise ValidationError("Invalid action name.")
+            raise BuilderValidationError("Invalid action name.")
         action_name = action_name.strip()
         if not action_name:
-            raise ValidationError("Invalid action name.")
+            raise BuilderValidationError("Invalid action name.")
 
         raw_action_id = node_data.get("action_id")
         if raw_action_id not in (None, ""):
             if isinstance(raw_action_id, bool):
-                raise ValidationError("Invalid action ID.")
+                raise BuilderValidationError("Invalid action ID.")
             if isinstance(raw_action_id, int):
                 action_id = raw_action_id
             elif isinstance(raw_action_id, str):
                 action_id_str = raw_action_id.strip()
                 if not action_id_str.isascii() or not action_id_str.isdigit():
-                    raise ValidationError("Invalid action ID.")
+                    raise BuilderValidationError("Invalid action ID.")
                 try:
                     action_id = int(action_id_str)
                 except ValueError as exc:
-                    raise ValidationError("Invalid action ID.") from exc
+                    raise BuilderValidationError("Invalid action ID.") from exc
             else:
-                raise ValidationError("Invalid action ID.")
+                raise BuilderValidationError("Invalid action ID.")
 
             if action_id <= 0:
-                raise ValidationError("Invalid action ID.")
+                raise BuilderValidationError("Invalid action ID.")
 
             action = existing_actions_by_id.get(action_id)
             if action is None:
-                raise ValidationError("Action ID does not belong to this form.")
+                raise BuilderValidationError("Action ID does not belong to this form.")
         else:
             action = existing_actions_by_name.get(action_name)
 
         if action and action.id in actions_to_keep:
-            raise ValidationError(
+            raise BuilderValidationError(
                 "An action appears more than once in the builder graph."
             )
 
@@ -2804,13 +2826,13 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 ).choices
             } - {"email"}
             if not isinstance(action_type, str):
-                raise ValidationError(
+                raise BuilderValidationError(
                     "Unsupported action_type type. "
                     f"Expected string, got {type(action_type).__name__}. "
                     f"Supported values are: {sorted(valid_action_types)}"
                 )
             if action_type not in valid_action_types:
-                raise ValidationError(
+                raise BuilderValidationError(
                     f"Unsupported action_type '{action_type}'. "
                     f"Supported values are: {sorted(valid_action_types)}"
                 )
@@ -2833,13 +2855,13 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 for choice in PostSubmissionAction._meta.get_field("trigger").choices
             }
             if not isinstance(trigger, str):
-                raise ValidationError(
+                raise BuilderValidationError(
                     "Unsupported trigger type. "
                     f"Expected string, got {type(trigger).__name__}. "
                     f"Supported values are: {sorted(valid_triggers)}"
                 )
             if trigger not in valid_triggers:
-                raise ValidationError(
+                raise BuilderValidationError(
                     f"Unsupported trigger '{trigger}'. "
                     f"Supported values are: {sorted(valid_triggers)}"
                 )
@@ -2882,10 +2904,10 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
         data = node.get("data", {})
         action_name = data.get("name", "Email Notification")
         if not isinstance(action_name, str):
-            raise ValidationError("Email action name must be a string.")
+            raise BuilderValidationError("Email action name must be a string.")
         normalized_action_name = action_name.strip()
         if not normalized_action_name:
-            raise ValidationError("Email action name cannot be blank.")
+            raise BuilderValidationError("Email action name cannot be blank.")
         generated_description = (
             f"Email to: {data.get('email_to', '') or data.get('email_to_field', '')}, "
             f"Subject: {data.get('email_subject_template', '')}"
@@ -2915,7 +2937,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             for choice in PostSubmissionAction._meta.get_field("trigger").choices
         }
         if not isinstance(trigger, str) or trigger not in valid_triggers:
-            raise ValidationError("Unsupported trigger for email action.")
+            raise BuilderValidationError("Unsupported trigger for email action.")
 
         action_data = {
             "action_type": "email",
@@ -2938,7 +2960,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     if deleted_action_ids is None:
         deleted_action_ids = []
     if not isinstance(deleted_action_ids, list):
-        raise ValidationError(
+        raise BuilderValidationError(
             {"deleted_action_ids": "Must be a list of action IDs to delete."}
         )
 
@@ -2946,20 +2968,20 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     max_primary_key_value = (2**63) - 1
     for raw_id in deleted_action_ids:
         if isinstance(raw_id, bool):
-            raise ValidationError({"deleted_action_ids": "Invalid action ID."})
+            raise BuilderValidationError({"deleted_action_ids": "Invalid action ID."})
         if isinstance(raw_id, int):
             action_id = raw_id
         elif isinstance(raw_id, str) and raw_id.isascii() and raw_id.isdigit():
             try:
                 action_id = int(raw_id)
             except ValueError as exc:
-                raise ValidationError(
+                raise BuilderValidationError(
                     {"deleted_action_ids": "Invalid action ID."}
                 ) from exc
         else:
-            raise ValidationError({"deleted_action_ids": "Invalid action ID."})
+            raise BuilderValidationError({"deleted_action_ids": "Invalid action ID."})
         if action_id <= 0 or action_id > max_primary_key_value:
-            raise ValidationError({"deleted_action_ids": "Invalid action ID."})
+            raise BuilderValidationError({"deleted_action_ids": "Invalid action ID."})
         normalized_deleted_ids.add(action_id)
 
     # The loader can add missing form-owned actions to the graph.
@@ -2971,17 +2993,17 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
     )
 
     if normalized_deleted_ids - allowed_deleted_action_ids:
-        raise ValidationError(
+        raise BuilderValidationError(
             {
                 "deleted_action_ids": "Actions must belong to the saved workflow graph or be form actions."
             }
         )
     if normalized_deleted_ids & other_workflow_action_ids:
-        raise ValidationError(
+        raise BuilderValidationError(
             {"deleted_action_ids": "An action is still used by another workflow."}
         )
     if normalized_deleted_ids & set(actions_to_keep):
-        raise ValidationError(
+        raise BuilderValidationError(
             {"deleted_action_ids": "An action cannot be kept and deleted together."}
         )
     if normalized_deleted_ids:
@@ -2995,7 +3017,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
     # ── Sub-workflow definitions ────────────────────────────────────────
     if len(sub_workflow_nodes) > 1:
-        raise ValidationError(
+        raise BuilderValidationError(
             {
                 "sub_workflow_nodes": (
                     "Only one sub-workflow node is allowed per workflow graph."
@@ -3012,7 +3034,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
         if target_workflow_id:
             if isinstance(target_workflow_id, bool):
-                raise ValidationError(
+                raise BuilderValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )
             if isinstance(target_workflow_id, int):
@@ -3025,15 +3047,15 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                 try:
                     target_workflow_pk = int(target_workflow_id)
                 except ValueError as exc:
-                    raise ValidationError(
+                    raise BuilderValidationError(
                         {"sub_workflow_id": "Target ID must be a positive integer."}
                     ) from exc
             else:
-                raise ValidationError(
+                raise BuilderValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )
             if target_workflow_pk <= 0 or target_workflow_pk > 9223372036854775807:
-                raise ValidationError(
+                raise BuilderValidationError(
                     {"sub_workflow_id": "Target ID must be a positive integer."}
                 )
             if target_id_type == "workflow":
@@ -3049,7 +3071,7 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
                     .first()
                 )
             else:
-                raise ValidationError(
+                raise BuilderValidationError(
                     {
                         "sub_workflow_id_type": (
                             "Invalid sub_workflow_id_type. "
@@ -3060,14 +3082,14 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
 
             if not target_workflow:
                 if target_id_type == "workflow":
-                    raise ValidationError(
+                    raise BuilderValidationError(
                         {
                             "sub_workflow_id": (
                                 f"WorkflowDefinition with id '{target_workflow_id}' does not exist."
                             )
                         }
                     )
-                raise ValidationError(
+                raise BuilderValidationError(
                     {
                         "sub_workflow_id": (
                             f"No workflow definition found for form_definition_id '{target_workflow_id}'."

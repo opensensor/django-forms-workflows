@@ -704,12 +704,26 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
                     f"Notification rule {rule_index} references workflow stage ID {stage_id}, but that stage is not present in the submitted builder graph."
                 )
 
+        notify_submitter = rule_data.get("notify_submitter")
+        notify_stage_assignees = rule_data.get("notify_stage_assignees")
+        notify_stage_groups = rule_data.get("notify_stage_groups")
+
+        for flag_name, flag_value in (
+            ("notify_submitter", notify_submitter),
+            ("notify_stage_assignees", notify_stage_assignees),
+            ("notify_stage_groups", notify_stage_groups),
+        ):
+            if flag_value is not None and not isinstance(flag_value, bool):
+                add_error(
+                    f"Notification rule {rule_index} field '{flag_name}' must be a boolean."
+                )
+
         has_recipients = bool(
-            rule_data.get("notify_submitter")
+            (notify_submitter is True)
             or rule_data.get("email_field")
             or rule_data.get("static_emails")
-            or rule_data.get("notify_stage_assignees")
-            or rule_data.get("notify_stage_groups")
+            or (notify_stage_assignees is True)
+            or (notify_stage_groups is True)
             or (rule_data.get("notify_groups") or [])
         )
         if not has_recipients:

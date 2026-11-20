@@ -258,6 +258,10 @@ export class WorkflowBuilder {
         this.panX = 0;
         this.panY = 0;
         this.zoom = 1;
+        if (this.canvas) {
+            this.canvas.scrollLeft = 0;
+            this.canvas.scrollTop = 0;
+        }
         this.applyTransform();
         this.updateZoomIndicator();
     }

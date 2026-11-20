@@ -242,7 +242,8 @@ export class WorkflowBuilder {
     /** Zoom to a specific level, centred on the canvas midpoint. */
     setZoom(newZoom) {
         const rect = this.canvas.getBoundingClientRect();
-        const cx = rect.width / 2, cy = rect.height / 2;
+        const cx = this.canvas.scrollLeft + (rect.width / 2);
+        const cy = this.canvas.scrollTop + (rect.height / 2);
         const oldZoom = this.zoom;
         this.zoom = Math.min(this.maxZoom, Math.max(this.minZoom, newZoom));
         const scale = this.zoom / oldZoom;
@@ -1646,8 +1647,10 @@ export class WorkflowBuilder {
             `;
 
             fields.forEach(field => {
+                const escapedPrefillSourceText = this.escapeHtml(field.prefill_source);
+                const escapedPrefillSourceTitle = this.escapeHtmlAttribute(field.prefill_source);
                 const prefillBadge = field.prefill_source ?
-                    `<span class="badge bg-info ms-2" title="Auto-filled from ${this.escapeHtml(field.prefill_source)}"><i class="bi bi-magic"></i> ${this.escapeHtml(field.prefill_source)}</span>` : '';
+                    `<span class="badge bg-info ms-2" title="Auto-filled from ${escapedPrefillSourceTitle}"><i class="bi bi-magic"></i> ${escapedPrefillSourceText}</span>` : '';
                 const requiredBadge = field.required ?
                     `<span class="badge bg-warning ms-1">Required</span>` : '';
 
@@ -2174,9 +2177,10 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const groups = this.getNormalizedStageApprovalGroups(node.data.approval_groups || []);
-        const currentIndex = groups.findIndex(group => (
-            group.id === groupId && (groupRole === null || group.role === groupRole)
-        ));
+        const currentIndex = groups.findIndex(group => {
+            const normalizedRole = group.role || 'approval';
+            return group.id === groupId && (groupRole === null || normalizedRole === groupRole);
+        });
         const targetIndex = currentIndex + direction;
         if (currentIndex < 0 || targetIndex < 0 || targetIndex >= groups.length) {
             return;
@@ -2794,7 +2798,8 @@ export class WorkflowBuilder {
                 }
 
                 const badgeHtml = badges ? `${badges}<br>` : '';
-                return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${node.data.form_builder_url || '#'}" target="_blank" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
+                const safeFormBuilderUrl = this.escapeHtmlAttribute(this.sanitizeFormBuilderUrl(node.data.form_builder_url || '#'));
+                return `${badgeHtml}${fieldCount} field${fieldCount !== 1 ? 's' : ''} • <a href="${safeFormBuilderUrl}" target="_blank" rel="noopener noreferrer" class="text-primary form-edit-link"><i class="bi bi-pencil-square"></i> Edit Form</a>`;
             case 'workflow_settings':
                 const parts_ws = [];
                 if (node.data.name_label) parts_ws.push(this.escapeHtml(node.data.name_label));

@@ -1149,10 +1149,12 @@ export class WorkflowBuilder {
                             </div>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary" ${index === 0 ? 'disabled' : ''}
+                                        aria-label="${this.escapeHtmlAttribute(`Move ${group.name || 'group'} (${group.role || 'approval'}) up`)}"
                                         data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="-1">
                                     <i class="bi bi-arrow-up"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" ${index === orderedGroups.length - 1 ? 'disabled' : ''}
+                                        aria-label="${this.escapeHtmlAttribute(`Move ${group.name || 'group'} (${group.role || 'approval'}) down`)}"
                                         data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="1">
                                     <i class="bi bi-arrow-down"></i>
                                 </button>

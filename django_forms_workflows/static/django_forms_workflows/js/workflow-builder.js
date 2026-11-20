@@ -362,6 +362,9 @@ export class WorkflowBuilder {
         const container = document.getElementById('builderMessage');
         if (!container) return;
 
+        window.clearTimeout(this.builderMessageTimeout);
+        this.builderMessageTimeout = null;
+
         const safeDetails = (details || []).slice(0, 6);
         container.innerHTML = `
             <div class="alert alert-${level} mb-2 py-2 px-3">
@@ -375,11 +378,11 @@ export class WorkflowBuilder {
         `;
 
         if (autoHide) {
-            window.clearTimeout(this.builderMessageTimeout);
             this.builderMessageTimeout = window.setTimeout(() => {
                 if (container) {
                     container.innerHTML = '';
                 }
+                this.builderMessageTimeout = null;
             }, 4000);
         }
     }

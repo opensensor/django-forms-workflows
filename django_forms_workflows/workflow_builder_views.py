@@ -2629,7 +2629,12 @@ def convert_visual_to_workflow(workflow_data, form_definition, workflow=None):
             rule_id_text = str(raw_rule_id).strip()
             if not rule_id_text.isascii() or not rule_id_text.isdigit():
                 raise BuilderValidationError("Invalid notification rule identifier.")
-            normalized_rule_id = int(rule_id_text)
+            try:
+                normalized_rule_id = int(rule_id_text)
+            except ValueError as exc:
+                raise BuilderValidationError(
+                    "Invalid notification rule identifier."
+                ) from exc
             if not 0 < normalized_rule_id <= 2**63 - 1:
                 raise BuilderValidationError("Invalid notification rule identifier.")
             rule_obj = existing_notification_rules.get(normalized_rule_id)

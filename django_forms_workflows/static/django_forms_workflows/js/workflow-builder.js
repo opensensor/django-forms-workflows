@@ -2892,15 +2892,31 @@ export class WorkflowBuilder {
         this.bringNodeToFront(node.id);
         this.render();
         const [startCanvasX, startCanvasY] = this.clientToCanvas(e.clientX, e.clientY);
-        const dragOffsetX = startCanvasX - node.x;
-        const dragOffsetY = startCanvasY - node.y;
         let rafId = null;
         let pendingCanvasX = startCanvasX;
         let pendingCanvasY = startCanvasY;
-
+        const dragOffsetX = startCanvasX - node.x;
         const flushDragRender = () => {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
+            node.y = pendingCanvasY - dragOffsetY;
+
+        const flushDragRender = () => {
+            rafId = null;
+        const onMouseMove = (e) => {
+            [pendingCanvasX, pendingCanvasY] = this.clientToCanvas(e.clientX, e.clientY);
+            if (rafId === null) {
+                rafId = window.requestAnimationFrame(flushDragRender);
+            }
+        };
+
+            node.x = pendingCanvasX - dragOffsetX;
+            if (rafId !== null) {
+                window.cancelAnimationFrame(rafId);
+                rafId = null;
+                node.x = pendingCanvasX - dragOffsetX;
+                node.y = pendingCanvasY - dragOffsetY;
+            }
             node.y = pendingCanvasY - dragOffsetY;
             this.render();
         };

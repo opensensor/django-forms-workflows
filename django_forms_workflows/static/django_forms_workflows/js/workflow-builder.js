@@ -2883,6 +2883,48 @@ export class WorkflowBuilder {
         }
     }
 
+    renderNodeDragFrame(nodeId) {
+        const node = this.nodes.find((n) => n.id === nodeId);
+        if (!node) return;
+
+        const nodeEl = this.canvas?.querySelector(`[data-node-id="${nodeId}"]`);
+        if (nodeEl) {
+            nodeEl.style.left = `${node.x}px`;
+            nodeEl.style.top = `${node.y}px`;
+        }
+
+        this.updateConnectionsForNode(nodeId);
+    }
+
+    updateConnectionsForNode(nodeId) {
+        const relatedConnections = this.connections.filter(
+            (connection) => connection.sourceId === nodeId || connection.targetId === nodeId
+        );
+
+        relatedConnections.forEach((connection) => {
+            const connectionEl = this.canvas?.querySelector(`[data-connection-id="${connection.id}"]`);
+            if (!connectionEl) return;
+
+            const sourceNode = this.nodes.find((n) => n.id === connection.sourceId);
+            const targetNode = this.nodes.find((n) => n.id === connection.targetId);
+            if (!sourceNode || !targetNode) return;
+
+            const x1 = sourceNode.x;
+            const y1 = sourceNode.y;
+            const x2 = targetNode.x;
+            const y2 = targetNode.y;
+
+            if (connectionEl.tagName && connectionEl.tagName.toLowerCase() === 'path') {
+                connectionEl.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
+            } else {
+                connectionEl.setAttribute('x1', `${x1}`);
+                connectionEl.setAttribute('y1', `${y1}`);
+                connectionEl.setAttribute('x2', `${x2}`);
+                connectionEl.setAttribute('y2', `${y2}`);
+            }
+        });
+    }
+
     startDragNode(e, node) {
         if (e.button !== 0) return;
 
@@ -2902,7 +2944,7 @@ export class WorkflowBuilder {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            this.render();
+            this.renderNodeDragFrame(node.id);
         };
 
         const onMouseMove = (e) => {

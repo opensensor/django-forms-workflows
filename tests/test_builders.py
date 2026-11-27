@@ -2091,6 +2091,24 @@ class TestConvertVisualToWorkflow:
 
         assert workflow.stages.get().stageapprovalgroup_set.get().role == role
 
+    def test_accepts_padded_approval_group_role_as_approver_source(
+        self, form_definition, approval_group
+    ):
+        visual = self._make_visual(
+            stages=[
+                {
+                    "name": "Review",
+                    "approval_groups": [
+                        {"id": approval_group.id, "role": " approval "}
+                    ],
+                }
+            ]
+        )
+
+        workflow = convert_visual_to_workflow(visual, form_definition)
+
+        assert workflow.stages.get().stageapprovalgroup_set.get().role == "approval"
+
     @pytest.mark.parametrize("role", ["validation", "reassignment"])
     def test_rejects_stage_with_only_nonapproval_group(
         self, form_definition, approval_group, role

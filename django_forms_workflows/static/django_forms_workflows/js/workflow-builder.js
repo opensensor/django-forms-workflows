@@ -1719,7 +1719,7 @@ export class WorkflowBuilder {
                 return '#';
             }
 
-            return parsed.href;
+            return `${parsed.pathname}${parsed.search}${parsed.hash}`;
         } catch (e) {
             return '#';
         }

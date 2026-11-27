@@ -4326,6 +4326,12 @@ class TestFormBuilderViews:
         form_with_fields.save(update_fields=["api_enabled", "allow_resubmit"])
         workflow = WorkflowDefinition.objects.create(form_definition=form_with_fields)
         stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+        stage_assignment = StageApprovalGroup.objects.create(
+            stage=stage,
+            group=approval_group,
+            role="approver",
+            position=1,
+        )
         rule = NotificationRule.objects.create(
             workflow=workflow,
             stage=stage,
@@ -4351,9 +4357,23 @@ class TestFormBuilderViews:
         assert cloned.allow_resubmit is True
         cloned_workflow = cloned.workflows.get()
         cloned_rule = cloned_workflow.notification_rules.get()
-        assert cloned_rule.stage == cloned_workflow.stages.get()
+        cloned_stage = cloned_workflow.stages.get()
+        assert cloned_rule.stage == cloned_stage
         assert cloned_rule.static_emails == rule.static_emails
         assert list(cloned_rule.notify_groups.all()) == [approval_group]
+        source_assignments = list(
+            StageApprovalGroup.objects.filter(stage=stage).order_by("position", "id")
+        )
+        cloned_assignments = list(
+            StageApprovalGroup.objects.filter(stage=cloned_stage).order_by("position", "id")
+        )
+        assert len(cloned_assignments) == len(source_assignments)
+        assert [(a.group_id, a.role, a.position) for a in cloned_assignments] == [
+            (a.group_id, a.role, a.position) for a in source_assignments
+        ]
+        assert {a.pk for a in cloned_assignments}.isdisjoint(
+            {stage_assignment.pk, *(a.pk for a in source_assignments)}
+        )
         cloned_action = cloned.post_actions.get()
         assert cloned_action.email_to == "owner@example.com"
         assert cloned_action.trigger == "on_submit"

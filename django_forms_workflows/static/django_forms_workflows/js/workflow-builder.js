@@ -2123,9 +2123,9 @@ export class WorkflowBuilder {
                 condition.value = row.querySelector('input[name="condition_value"]').value;
             }
             return condition;
-        }).filter(condition => condition.field);
+        });
 
-        if (!conditions.length) {
+        if (!rows.length) {
             return null;
         }
 

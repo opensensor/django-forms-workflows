@@ -574,7 +574,9 @@ class TestConvertWorkflowToVisual:
 
         visual = convert_workflow_to_visual(workflow, form_definition)
 
-        assert [node["id"] for node in visual["nodes"][:2]] == ["start", "live"]
+        node_ids = [node["id"] for node in visual["nodes"]]
+        assert node_ids[:2] == ["start", "live"]
+        assert "stale" not in node_ids
         assert visual["nodes"][-1]["type"] == "workflow_settings"
         assert visual["connections"] == [{"from": "start", "to": "live"}]
 

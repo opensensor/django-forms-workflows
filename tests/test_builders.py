@@ -2669,6 +2669,59 @@ class TestWorkflowBuilderViews:
             form_definition=form_definition
         ).exists()
 
+    def test_load_and_save_staff_require_model_permissions(
+        self, client, django_user_model, form_definition
+    ):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        load_url = _wf_url(f"workflow/api/load/{form_definition.id}/")
+        save_url = _wf_url("workflow/api/save/")
+        payload = {"form_id": form_definition.id, "workflow": {"nodes": []}}
+
+        staff = django_user_model.objects.create_user(
+            username="staff_no_perms",
+            password="testpass123",
+            is_staff=True,
+        )
+        client.force_login(staff)
+
+        denied_load = client.get(load_url)
+        assert denied_load.status_code in (302, 403)
+
+        before_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        denied_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert denied_save.status_code in (302, 403)
+        after_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        assert after_count == before_count
+
+        ct = ContentType.objects.get_for_model(WorkflowDefinition)
+        form_ct = ContentType.objects.get_for_model(FormDefinition)
+        perms = Permission.objects.filter(
+            content_type__in=[ct, form_ct],
+            codename__in=[
+                "view_formdefinition",
+                "change_formdefinition",
+                "view_workflowdefinition",
+                "add_workflowdefinition",
+                "change_workflowdefinition",
+            ],
+        )
+        staff.user_permissions.add(*perms)
+
+        allowed_load = client.get(load_url)
+        assert allowed_load.status_code == 200
+        allowed_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert allowed_save.status_code not in (302, 403)
+
     def test_load_returns_requested_workflow_track(
         self, client, superuser, form_definition
     ):
@@ -4326,6 +4379,12 @@ class TestFormBuilderViews:
         form_with_fields.save(update_fields=["api_enabled", "allow_resubmit"])
         workflow = WorkflowDefinition.objects.create(form_definition=form_with_fields)
         stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+        StageApprovalGroup.objects.create(
+            stage=stage,
+            group=approval_group,
+            role="approval",
+            position=1,
+        )
         rule = NotificationRule.objects.create(
             workflow=workflow,
             stage=stage,
@@ -4351,9 +4410,25 @@ class TestFormBuilderViews:
         assert cloned.allow_resubmit is True
         cloned_workflow = cloned.workflows.get()
         cloned_rule = cloned_workflow.notification_rules.get()
-        assert cloned_rule.stage == cloned_workflow.stages.get()
+        cloned_stage = cloned_workflow.stages.get()
+        assert cloned_rule.stage == cloned_stage
         assert cloned_rule.static_emails == rule.static_emails
         assert list(cloned_rule.notify_groups.all()) == [approval_group]
+        source_assignments = list(
+            StageApprovalGroup.objects.filter(stage=stage).order_by("position", "id")
+        )
+        cloned_assignments = list(
+            StageApprovalGroup.objects.filter(stage=cloned_stage).order_by(
+                "position", "id"
+            )
+        )
+        assert len(cloned_assignments) == len(source_assignments)
+        assert [(a.group_id, a.role, a.position) for a in cloned_assignments] == [
+            (a.group_id, a.role, a.position) for a in source_assignments
+        ]
+        assert {a.pk for a in cloned_assignments}.isdisjoint(
+            {a.pk for a in source_assignments}
+        )
         cloned_action = cloned.post_actions.get()
         assert cloned_action.email_to == "owner@example.com"
         assert cloned_action.trigger == "on_submit"

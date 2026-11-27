@@ -506,7 +506,16 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             )
         requires_manager_approval_flag = requires_manager_approval_raw is True
         has_approval_group_source = any(
-            (entry.get("role") or "approval") == "approval" for entry in group_entries
+            (
+                (
+                    entry.get("role").strip()
+                    if isinstance(entry.get("role"), str)
+                    else entry.get("role")
+                )
+                or "approval"
+            )
+            == "approval"
+            for entry in group_entries
         )
         has_approver_source = bool(
             has_approval_group_source

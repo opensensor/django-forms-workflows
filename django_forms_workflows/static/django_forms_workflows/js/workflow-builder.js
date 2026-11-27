@@ -1718,8 +1718,9 @@ export class WorkflowBuilder {
             const parsed = new URL(url, window.location.origin);
             const isHttp = parsed.protocol === 'http:' || parsed.protocol === 'https:';
             const isSameOrigin = parsed.origin === window.location.origin;
+            const hasProtocolRelativePath = parsed.pathname.startsWith('//');
 
-            if (!isHttp || !isSameOrigin) {
+            if (!isHttp || !isSameOrigin || hasProtocolRelativePath) {
                 return '#';
             }
 

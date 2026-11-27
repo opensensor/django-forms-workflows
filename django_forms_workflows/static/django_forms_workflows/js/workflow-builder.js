@@ -2208,6 +2208,7 @@ export class WorkflowBuilder {
                 id: parseInt(opt.value),
                 name: opt.text,
             }));
+            const isPlaceholder = card.dataset.placeholder === 'true' || card.dataset.isPlaceholder === 'true';
             return {
                 rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
                 stage_node_id: stageNodeId || '',
@@ -2222,20 +2223,26 @@ export class WorkflowBuilder {
                 conditions: this.readConditionsFromEditor(
                     card.querySelector('.conditions-editor[data-editor-kind="notification-rule"]')
                 ),
+                __isPlaceholder: isPlaceholder,
             };
-        }).filter(rule => (
-            rule.rule_id
-            || rule.stage_node_id
-            || rule.event
-            || rule.notify_submitter
-            || rule.email_field
-            || rule.static_emails
-            || rule.notify_stage_assignees
-            || rule.notify_stage_groups
-            || rule.notify_groups.length > 0
-            || rule.subject_template
-            || (rule.conditions && rule.conditions.conditions && rule.conditions.conditions.length > 0)
-        ));
+        }).filter(rule => {
+            const hasMeaningfulData = (
+                rule.rule_id
+                || rule.stage_node_id
+                || rule.notify_submitter
+                || rule.email_field
+                || rule.static_emails
+                || rule.notify_stage_assignees
+                || rule.notify_stage_groups
+                || rule.notify_groups.length > 0
+                || rule.subject_template
+                || (rule.conditions && rule.conditions.conditions && rule.conditions.conditions.length > 0)
+            );
+            return !rule.__isPlaceholder || hasMeaningfulData;
+        }).map(rule => {
+            delete rule.__isPlaceholder;
+            return rule;
+        });
     }
 
     addNotificationRule(nodeId) {

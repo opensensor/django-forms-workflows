@@ -713,7 +713,7 @@ def _collect_visual_workflow_errors(workflow_data, form_definition, workflow=Non
             ("notify_stage_assignees", notify_stage_assignees),
             ("notify_stage_groups", notify_stage_groups),
         ):
-            if flag_value is not None and not isinstance(flag_value, bool):
+            if flag_name in rule_data and not isinstance(flag_value, bool):
                 add_error(
                     f"Notification rule {rule_index} field '{flag_name}' must be a boolean."
                 )

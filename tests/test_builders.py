@@ -2720,7 +2720,13 @@ class TestWorkflowBuilderViews:
         allowed_save = client.post(
             save_url, data=json.dumps(payload), content_type="application/json"
         )
-        assert allowed_save.status_code not in (302, 403)
+        assert allowed_save.status_code == 200
+        allowed_save_data = allowed_save.json()
+        assert allowed_save_data.get("ok", True) is True
+        final_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        assert final_count > before_count
 
     def test_load_returns_requested_workflow_track(
         self, client, superuser, form_definition

@@ -1720,7 +1720,7 @@ export class WorkflowBuilder {
             }
 
             return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-        } catch (e) {
+            return parsed.href;
             return '#';
         }
     }

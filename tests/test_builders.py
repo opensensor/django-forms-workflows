@@ -1342,6 +1342,30 @@ class TestConvertVisualToWorkflow:
 
         assert not NotificationRule.objects.exists()
 
+    @pytest.mark.parametrize(
+        "flag", ["notify_submitter", "notify_stage_assignees", "notify_stage_groups"]
+    )
+    @pytest.mark.parametrize("value", [None, "true", 1])
+    def test_rejects_non_boolean_notification_recipient_flag(
+        self, form_definition, flag, value
+    ):
+        visual = self._make_visual(
+            settings={
+                "notification_rules": [
+                    {
+                        "event": "approval_request",
+                        "static_emails": "team@example.com",
+                        flag: value,
+                    }
+                ]
+            }
+        )
+
+        with pytest.raises(ValidationError, match=f"'{flag}' must be a boolean"):
+            convert_visual_to_workflow(visual, form_definition)
+
+        assert not NotificationRule.objects.exists()
+
     @pytest.mark.parametrize("conditions", [0, False])
     def test_rejects_invalid_falsy_trigger_conditions(
         self, form_definition, conditions

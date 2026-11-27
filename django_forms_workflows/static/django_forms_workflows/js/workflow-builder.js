@@ -682,7 +682,6 @@ export class WorkflowBuilder {
 
         this.normalizeParallelStageGroups();
         this.resolveNodeCollisions();
-        this.normalizeParallelStageGroups();
         this.updateWorkspaceBounds();
 
         if (!silent) {
@@ -952,21 +951,21 @@ export class WorkflowBuilder {
 
         const basicsSection = `
             <div class="mb-3">
-                <label class="form-label"><strong>Stage Name</strong></label>
-                <input type="text" class="form-control" name="name"
+                <label class="form-label" for="stage_name_${this.escapeHtmlAttribute(node.id)}"><strong>Stage Name</strong></label>
+                <input type="text" class="form-control" name="name" id="stage_name_${this.escapeHtmlAttribute(node.id)}"
                        />
             </div>
 
             <div class="mb-3">
-                <label class="form-label"><strong>Order</strong></label>
-                <input type="number" class="form-control" name="order" min="1"
+                <label class="form-label" for="stage_order_${this.escapeHtmlAttribute(node.id)}"><strong>Order</strong></label>
+                <input type="number" class="form-control" name="order" min="1" id="stage_order_${this.escapeHtmlAttribute(node.id)}"
                        />
                 <small class="text-muted">Stages with the same order number run in parallel (fork/join).</small>
             </div>
 
             <div class="mb-3">
-                <label class="form-label"><strong>Approve Button Label</strong></label>
-                <input type="text" class="form-control" name="approve_label"
+                <label class="form-label" for="stage_approve_label_${this.escapeHtmlAttribute(node.id)}"><strong>Approve Button Label</strong></label>
+                <input type="text" class="form-control" name="approve_label" id="stage_approve_label_${this.escapeHtmlAttribute(node.id)}"
                        placeholder="Approve"
                         />
                 <small class="text-muted">Custom label for the approve button (e.g. "Sign Off")</small>
@@ -2204,6 +2203,7 @@ export class WorkflowBuilder {
     readNotificationRulesFromPanel(container) {
         return Array.from(container.querySelectorAll('.notification-rule-card')).map(card => {
             const stageNodeId = card.querySelector('select[name="notification_rule_stage"]').value;
+            const eventValue = card.querySelector('select[name="notification_rule_event"]').value;
             const notifyGroups = Array.from(card.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions).map(opt => ({
                 id: parseInt(opt.value),
                 name: opt.text,
@@ -2211,7 +2211,7 @@ export class WorkflowBuilder {
             return {
                 rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
                 stage_node_id: stageNodeId || '',
-                event: card.querySelector('select[name="notification_rule_event"]').value,
+                event: eventValue,
                 subject_template: card.querySelector('input[name="notification_rule_subject_template"]').value,
                 notify_submitter: card.querySelector('input[name="notification_rule_notify_submitter"]').checked,
                 email_field: card.querySelector('select[name="notification_rule_email_field"]').value,
@@ -2225,6 +2225,8 @@ export class WorkflowBuilder {
             };
         }).filter(rule => (
             rule.rule_id
+            || rule.stage_node_id
+            || rule.event
             || rule.notify_submitter
             || rule.email_field
             || rule.static_emails
@@ -2892,15 +2894,31 @@ export class WorkflowBuilder {
         const [startCanvasX, startCanvasY] = this.clientToCanvas(e.clientX, e.clientY);
         const dragOffsetX = startCanvasX - node.x;
         const dragOffsetY = startCanvasY - node.y;
+        let rafId = null;
+        let pendingCanvasX = startCanvasX;
+        let pendingCanvasY = startCanvasY;
 
-        const onMouseMove = (e) => {
-            const [canvasX, canvasY] = this.clientToCanvas(e.clientX, e.clientY);
-            node.x = canvasX - dragOffsetX;
-            node.y = canvasY - dragOffsetY;
+        const flushDragRender = () => {
+            rafId = null;
+            node.x = pendingCanvasX - dragOffsetX;
+            node.y = pendingCanvasY - dragOffsetY;
             this.render();
         };
 
+        const onMouseMove = (e) => {
+            [pendingCanvasX, pendingCanvasY] = this.clientToCanvas(e.clientX, e.clientY);
+            if (rafId === null) {
+                rafId = window.requestAnimationFrame(flushDragRender);
+            }
+        };
+
         const onMouseUp = () => {
+            if (rafId !== null) {
+                window.cancelAnimationFrame(rafId);
+                rafId = null;
+                node.x = pendingCanvasX - dragOffsetX;
+                node.y = pendingCanvasY - dragOffsetY;
+            }
             this.isDraggingNode = false;
             this.draggingNodeId = null;
             this.render();

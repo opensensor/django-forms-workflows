@@ -2204,6 +2204,7 @@ export class WorkflowBuilder {
         return Array.from(container.querySelectorAll('.notification-rule-card')).map(card => {
             const stageNodeId = card.querySelector('select[name="notification_rule_stage"]').value;
             const eventValue = card.querySelector('select[name="notification_rule_event"]').value;
+            const eventValue = card.querySelector('select[name="notification_rule_event"]').value;
             const notifyGroups = Array.from(card.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions).map(opt => ({
                 id: parseInt(opt.value),
                 name: opt.text,
@@ -2225,6 +2226,8 @@ export class WorkflowBuilder {
             };
         }).filter(rule => (
             rule.rule_id
+            || rule.stage_node_id
+            || rule.event
             || rule.stage_node_id
             || rule.event
             || rule.notify_submitter

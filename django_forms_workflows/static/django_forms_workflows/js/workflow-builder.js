@@ -1310,8 +1310,9 @@ export class WorkflowBuilder {
             ${(rules.length ? rules : [null]).map((rule, index) => {
                 const state = this.getNotificationRuleState(rule || {});
                 const selectedGroupIds = new Set((state.notify_groups || []).map(group => group.id));
+                const ruleInputId = (name) => `notification_rule_${this.escapeHtmlAttribute(String(node.id))}_${index}_${name}`;
                 return `
-                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${state.rule_id || ''}">
+                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${state.rule_id || ''}" data-placeholder="${!rules.length}">
                         <div class="card-body py-3">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6 class="mb-0">Rule ${index + 1}</h6>
@@ -1378,28 +1379,28 @@ export class WorkflowBuilder {
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_submitter"
-                                               id="notification_rule_notify_submitter_${this.inlineNodeId(node.id)}"
+                                               id="${ruleInputId('notify_submitter')}"
                                                ${state.notify_submitter ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label" for="notification_rule_notify_submitter_${this.inlineNodeId(node.id)}">Notify submitter</label>
+                                        <label class="form-check-label" for="${ruleInputId('notify_submitter')}">Notify submitter</label>
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_assignees"
-                                               id="notification_rule_notify_stage_assignees_${this.inlineNodeId(node.id)}"
+                                               id="${ruleInputId('notify_stage_assignees')}"
                                                ${state.notify_stage_assignees ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label" for="notification_rule_notify_stage_assignees_${this.inlineNodeId(node.id)}">Notify stage assignees</label>
+                                        <label class="form-check-label" for="${ruleInputId('notify_stage_assignees')}">Notify stage assignees</label>
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_groups"
-                                               id="notification_rule_notify_stage_groups_${this.inlineNodeId(node.id)}"
+                                               id="${ruleInputId('notify_stage_groups')}"
                                                ${state.notify_stage_groups ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label" for="notification_rule_notify_stage_groups_${this.inlineNodeId(node.id)}">Notify stage groups</label>
+                                        <label class="form-check-label" for="${ruleInputId('notify_stage_groups')}">Notify stage groups</label>
                                     </div>
                                 </div>
                             </div>
@@ -2211,7 +2212,7 @@ export class WorkflowBuilder {
                 id: parseInt(opt.value),
                 name: opt.text,
             }));
-            const isPlaceholder = card.dataset.placeholder === 'true' || card.dataset.isPlaceholder === 'true';
+            const isPlaceholder = card.dataset.placeholder === 'true';
             return {
                 rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
                 stage_node_id: stageNodeId || '',
@@ -2232,6 +2233,7 @@ export class WorkflowBuilder {
             const hasMeaningfulData = (
                 rule.rule_id
                 || rule.stage_node_id
+                || rule.event !== 'approval_request'
                 || rule.notify_submitter
                 || rule.email_field
                 || rule.static_emails
@@ -2893,48 +2895,6 @@ export class WorkflowBuilder {
         }
     }
 
-    renderNodeDragFrame(nodeId) {
-        const node = this.nodes.find((n) => n.id === nodeId);
-        if (!node) return;
-
-        const nodeEl = this.canvas?.querySelector(`[data-node-id="${nodeId}"]`);
-        if (nodeEl) {
-            nodeEl.style.left = `${node.x}px`;
-            nodeEl.style.top = `${node.y}px`;
-        }
-
-        this.updateConnectionsForNode(nodeId);
-    }
-
-    updateConnectionsForNode(nodeId) {
-        const relatedConnections = this.connections.filter(
-            (connection) => connection.sourceId === nodeId || connection.targetId === nodeId
-        );
-
-        relatedConnections.forEach((connection) => {
-            const connectionEl = this.canvas?.querySelector(`[data-connection-id="${connection.id}"]`);
-            if (!connectionEl) return;
-
-            const sourceNode = this.nodes.find((n) => n.id === connection.sourceId);
-            const targetNode = this.nodes.find((n) => n.id === connection.targetId);
-            if (!sourceNode || !targetNode) return;
-
-            const x1 = sourceNode.x;
-            const y1 = sourceNode.y;
-            const x2 = targetNode.x;
-            const y2 = targetNode.y;
-
-            if (connectionEl.tagName && connectionEl.tagName.toLowerCase() === 'path') {
-                connectionEl.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
-            } else {
-                connectionEl.setAttribute('x1', `${x1}`);
-                connectionEl.setAttribute('y1', `${y1}`);
-                connectionEl.setAttribute('x2', `${x2}`);
-                connectionEl.setAttribute('y2', `${y2}`);
-            }
-        });
-    }
-
     startDragNode(e, node) {
         if (e.button !== 0) return;
 
@@ -2954,7 +2914,7 @@ export class WorkflowBuilder {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            this.renderNodeDragFrame(node.id);
+            this.render();
         };
 
         const onMouseMove = (e) => {

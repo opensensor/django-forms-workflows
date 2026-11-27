@@ -1310,8 +1310,9 @@ export class WorkflowBuilder {
             ${(rules.length ? rules : [null]).map((rule, index) => {
                 const state = this.getNotificationRuleState(rule || {});
                 const selectedGroupIds = new Set((state.notify_groups || []).map(group => group.id));
+                const ruleInputId = (name) => `notification_rule_${this.escapeHtmlAttribute(String(node.id))}_${index}_${name}`;
                 return `
-                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${state.rule_id || ''}">
+                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${state.rule_id || ''}" data-placeholder="${!rules.length}">
                         <div class="card-body py-3">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6 class="mb-0">Rule ${index + 1}</h6>
@@ -1378,25 +1379,28 @@ export class WorkflowBuilder {
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_submitter"
+                                               id="${ruleInputId('notify_submitter')}"
                                                ${state.notify_submitter ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label">Notify submitter</label>
+                                        <label class="form-check-label" for="${ruleInputId('notify_submitter')}">Notify submitter</label>
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_assignees"
+                                               id="${ruleInputId('notify_stage_assignees')}"
                                                ${state.notify_stage_assignees ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label">Notify stage assignees</label>
+                                        <label class="form-check-label" for="${ruleInputId('notify_stage_assignees')}">Notify stage assignees</label>
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_groups"
+                                               id="${ruleInputId('notify_stage_groups')}"
                                                ${state.notify_stage_groups ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label">Notify stage groups</label>
+                                        <label class="form-check-label" for="${ruleInputId('notify_stage_groups')}">Notify stage groups</label>
                                     </div>
                                 </div>
                             </div>
@@ -2208,6 +2212,7 @@ export class WorkflowBuilder {
                 id: parseInt(opt.value),
                 name: opt.text,
             }));
+            const isPlaceholder = card.dataset.placeholder === 'true';
             return {
                 rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
                 stage_node_id: stageNodeId || '',
@@ -2222,20 +2227,27 @@ export class WorkflowBuilder {
                 conditions: this.readConditionsFromEditor(
                     card.querySelector('.conditions-editor[data-editor-kind="notification-rule"]')
                 ),
+                __isPlaceholder: isPlaceholder,
             };
-        }).filter(rule => (
-            rule.rule_id
-            || rule.stage_node_id
-            || rule.event
-            || rule.notify_submitter
-            || rule.email_field
-            || rule.static_emails
-            || rule.notify_stage_assignees
-            || rule.notify_stage_groups
-            || rule.notify_groups.length > 0
-            || rule.subject_template
-            || (rule.conditions && rule.conditions.conditions && rule.conditions.conditions.length > 0)
-        ));
+        }).filter(rule => {
+            const hasMeaningfulData = (
+                rule.rule_id
+                || rule.stage_node_id
+                || rule.event !== 'approval_request'
+                || rule.notify_submitter
+                || rule.email_field
+                || rule.static_emails
+                || rule.notify_stage_assignees
+                || rule.notify_stage_groups
+                || rule.notify_groups.length > 0
+                || rule.subject_template
+                || (rule.conditions && rule.conditions.conditions && rule.conditions.conditions.length > 0)
+            );
+            return !rule.__isPlaceholder || hasMeaningfulData;
+        }).map(rule => {
+            delete rule.__isPlaceholder;
+            return rule;
+        });
     }
 
     addNotificationRule(nodeId) {

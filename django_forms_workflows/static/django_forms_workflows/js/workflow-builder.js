@@ -682,7 +682,6 @@ export class WorkflowBuilder {
 
         this.normalizeParallelStageGroups();
         this.resolveNodeCollisions();
-        this.normalizeParallelStageGroups();
         this.updateWorkspaceBounds();
 
         if (!silent) {

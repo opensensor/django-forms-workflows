@@ -952,21 +952,21 @@ export class WorkflowBuilder {
         const basicsSection = `
             <div class="mb-3">
                 <label class="form-label" for="stage_name_${this.escapeHtmlAttribute(node.id)}"><strong>Stage Name</strong></label>
+                <label class="form-label" for="stage_name_${this.escapeHtmlAttribute(node.id)}"><strong>Stage Name</strong></label>
                 <input type="text" class="form-control" name="name" id="stage_name_${this.escapeHtmlAttribute(node.id)}"
-                       />
             </div>
 
             <div class="mb-3">
                 <label class="form-label" for="stage_order_${this.escapeHtmlAttribute(node.id)}"><strong>Order</strong></label>
+                <label class="form-label" for="stage_order_${this.escapeHtmlAttribute(node.id)}"><strong>Order</strong></label>
                 <input type="number" class="form-control" name="order" min="1" id="stage_order_${this.escapeHtmlAttribute(node.id)}"
-                       />
                 <small class="text-muted">Stages with the same order number run in parallel (fork/join).</small>
             </div>
 
             <div class="mb-3">
                 <label class="form-label" for="stage_approve_label_${this.escapeHtmlAttribute(node.id)}"><strong>Approve Button Label</strong></label>
+                <label class="form-label" for="stage_approve_label_${this.escapeHtmlAttribute(node.id)}"><strong>Approve Button Label</strong></label>
                 <input type="text" class="form-control" name="approve_label" id="stage_approve_label_${this.escapeHtmlAttribute(node.id)}"
-                       placeholder="Approve"
                         />
                 <small class="text-muted">Custom label for the approve button (e.g. "Sign Off")</small>
             </div>

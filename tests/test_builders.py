@@ -2702,9 +2702,12 @@ class TestWorkflowBuilderViews:
         assert after_count == before_count
 
         ct = ContentType.objects.get_for_model(WorkflowDefinition)
+        form_ct = ContentType.objects.get_for_model(FormDefinition)
         perms = Permission.objects.filter(
-            content_type=ct,
+            content_type__in=[ct, form_ct],
             codename__in=[
+                "view_formdefinition",
+                "change_formdefinition",
                 "view_workflowdefinition",
                 "add_workflowdefinition",
                 "change_workflowdefinition",
@@ -4376,10 +4379,10 @@ class TestFormBuilderViews:
         form_with_fields.save(update_fields=["api_enabled", "allow_resubmit"])
         workflow = WorkflowDefinition.objects.create(form_definition=form_with_fields)
         stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
-        stage_assignment = StageApprovalGroup.objects.create(
+        StageApprovalGroup.objects.create(
             stage=stage,
             group=approval_group,
-            role="approver",
+            role="approval",
             position=1,
         )
         rule = NotificationRule.objects.create(
@@ -4415,14 +4418,16 @@ class TestFormBuilderViews:
             StageApprovalGroup.objects.filter(stage=stage).order_by("position", "id")
         )
         cloned_assignments = list(
-            StageApprovalGroup.objects.filter(stage=cloned_stage).order_by("position", "id")
+            StageApprovalGroup.objects.filter(stage=cloned_stage).order_by(
+                "position", "id"
+            )
         )
         assert len(cloned_assignments) == len(source_assignments)
         assert [(a.group_id, a.role, a.position) for a in cloned_assignments] == [
             (a.group_id, a.role, a.position) for a in source_assignments
         ]
         assert {a.pk for a in cloned_assignments}.isdisjoint(
-            {stage_assignment.pk, *(a.pk for a in source_assignments)}
+            {a.pk for a in source_assignments}
         )
         cloned_action = cloned.post_actions.get()
         assert cloned_action.email_to == "owner@example.com"

@@ -1378,25 +1378,28 @@ export class WorkflowBuilder {
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_submitter"
+                                               id="notification_rule_notify_submitter_${this.inlineNodeId(node.id)}"
                                                ${state.notify_submitter ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label">Notify submitter</label>
+                                        <label class="form-check-label" for="notification_rule_notify_submitter_${this.inlineNodeId(node.id)}">Notify submitter</label>
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_assignees"
+                                               id="notification_rule_notify_stage_assignees_${this.inlineNodeId(node.id)}"
                                                ${state.notify_stage_assignees ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label">Notify stage assignees</label>
+                                        <label class="form-check-label" for="notification_rule_notify_stage_assignees_${this.inlineNodeId(node.id)}">Notify stage assignees</label>
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="notification_rule_notify_stage_groups"
+                                               id="notification_rule_notify_stage_groups_${this.inlineNodeId(node.id)}"
                                                ${state.notify_stage_groups ? 'checked' : ''}
                                                onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                        <label class="form-check-label">Notify stage groups</label>
+                                        <label class="form-check-label" for="notification_rule_notify_stage_groups_${this.inlineNodeId(node.id)}">Notify stage groups</label>
                                     </div>
                                 </div>
                             </div>

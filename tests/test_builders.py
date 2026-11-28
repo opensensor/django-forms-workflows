@@ -4509,6 +4509,36 @@ class TestFormBuilderViews:
         assert cloned_action.email_to == "owner@example.com"
         assert cloned_action.trigger == "on_submit"
 
+    def test_clone_keeps_notifications_on_their_original_workflow_tracks(
+        self, client, superuser, form_with_fields
+    ):
+        for trigger in ("on_submission", "on_all_complete"):
+            workflow = WorkflowDefinition.objects.create(
+                form_definition=form_with_fields,
+                name_label=trigger,
+                start_trigger=trigger,
+            )
+            stage = WorkflowStage.objects.create(
+                workflow=workflow, name=f"Review {trigger}", order=1
+            )
+            NotificationRule.objects.create(
+                workflow=workflow,
+                stage=stage,
+                event="approval_request",
+                static_emails=f"{trigger}@example.com",
+            )
+        client.force_login(superuser)
+
+        response = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
+
+        assert response.status_code == 200
+        cloned = FormDefinition.objects.get(pk=response.json()["form_id"])
+        assert cloned.workflows.count() == 2
+        for workflow in cloned.workflows.all():
+            rule = workflow.notification_rules.get()
+            assert rule.stage.workflow_id == workflow.pk
+            assert rule.static_emails == f"{workflow.start_trigger}@example.com"
+
     def test_clone_preserves_field_settings_without_stale_workflow_layout(
         self, client, superuser, form_with_fields
     ):

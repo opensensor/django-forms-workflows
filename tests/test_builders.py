@@ -166,6 +166,7 @@ class TestConvertWorkflowToVisual:
         assert "stage" in types
         assert "end" in types
         # Should NOT contain legacy approval_config or approval nodes
+        assert "approval" not in types
         assert "approval_config" not in types
 
         stage_nodes = [n for n in result["nodes"] if n["type"] == "stage"]
@@ -3518,6 +3519,7 @@ class TestSaveFormDefinitionFromBuilderData:
         }
 
         form_definition, _ = save_form_definition_from_builder_data(data, user)
+        form_definition.refresh_from_db()
 
         assert form_definition.max_submissions == 0
 

@@ -286,7 +286,11 @@ export const apiMethods = {
             // If this was a new form, redirect to edit mode
             if (this.config.isNew && result.form_id) {
                 setTimeout(() => {
-                    window.location.href = `/admin/django_forms_workflows/formdefinition/${result.form_id}/builder/`;
+                    const redirectUrl = result.builder_url ||
+                        (this.config.builderUrlTemplate
+                            ? this.config.builderUrlTemplate.replace('{form_id}', result.form_id)
+                            : `/admin/django_forms_workflows/formdefinition/${result.form_id}/builder/`);
+                    window.location.href = redirectUrl;
                 }, 1000);
             } else {
                 // Show success message

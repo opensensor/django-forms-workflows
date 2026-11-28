@@ -2567,9 +2567,11 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const groups = this.getNormalizedStageApprovalGroups(node.data.approval_groups || []);
+        const normalizedGroupId = groupId == null ? '' : String(groupId);
         const currentIndex = groups.findIndex(group => {
             const normalizedRole = group.role || 'approval';
-            return group.id === groupId && (groupRole === null || normalizedRole === groupRole);
+            return String(group.id) === normalizedGroupId
+                && (groupRole === null || normalizedRole === groupRole);
         });
         const targetIndex = currentIndex + direction;
         if (currentIndex < 0 || targetIndex < 0 || targetIndex >= groups.length) {

@@ -5408,7 +5408,7 @@ class TestFormBuilderViews:
         "reference_name",
         ["prefill_source_id", "shared_option_list_id", "workflow_stage_id"],
     )
-    @pytest.mark.parametrize("invalid_value", [True, [1], {"id": 1}])
+    @pytest.mark.parametrize("invalid_value", [True, 1.5, "²", [1], {"id": 1}])
     def test_preview_rejects_invalid_optional_reference_ids(
         self, client, superuser, reference_name, invalid_value
     ):
@@ -5530,8 +5530,6 @@ class TestFormBuilderViews:
 
         assert response.status_code == 200
         assert saved_rules == [rules]
-
-
 
     def test_preview_accepts_numeric_shared_list_reference(self, client, superuser):
         shared_list = SharedOptionList.objects.create(

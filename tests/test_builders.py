@@ -4438,23 +4438,46 @@ class TestFormBuilderViews:
         cloned_form = FormDefinition.objects.get(pk=response.json()["form_id"])
         cloned_template = cloned_form.document_templates.get()
         assert cloned_template.pk != template.pk
-        assert cloned_template.name == template.name
+        workflow_a = WorkflowDefinition.objects.create(
         assert cloned_template.html_content == template.html_content
         assert cloned_template.page_size == "a4"
-        assert cloned_template.is_default is True
+        stage_a = WorkflowStage.objects.create(
+            workflow=workflow_a, name="Review A", order=1
+        )
         assert cloned_template.is_active is False
-
+            stage=stage_a,
     def test_clone_copies_automation_and_settings(
         self, client, superuser, form_with_fields, approval_group
     ):
         form_with_fields.api_enabled = True
-        form_with_fields.allow_resubmit = True
-        form_with_fields.save(update_fields=["api_enabled", "allow_resubmit"])
-        workflow = WorkflowDefinition.objects.create(
+        rule_a = NotificationRule.objects.create(
+            workflow=workflow_a,
+            stage=stage_a,
             form_definition=form_with_fields, start_trigger="on_all_complete"
-        )
+            static_emails="review-a@example.com",
         stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
+        rule_a.notify_groups.add(approval_group)
+
+        workflow_b = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, start_trigger="on_submit"
+        )
+        stage_b = WorkflowStage.objects.create(
+            workflow=workflow_b, name="Review B", order=1
+        )
         StageApprovalGroup.objects.create(
+            stage=stage_b,
+            group=approval_group,
+            role="approval",
+            position=1,
+        )
+        rule_b = NotificationRule.objects.create(
+            workflow=workflow_b,
+            stage=stage_b,
+            event="approval_request",
+            static_emails="review-b@example.com",
+        )
+        rule_b.notify_groups.add(approval_group)
+
             stage=stage,
             group=approval_group,
             role="approval",
@@ -4471,28 +4494,39 @@ class TestFormBuilderViews:
             form_definition=form_with_fields,
             name="Follow up",
             action_type="email",
-            trigger="on_submit",
-            email_to="owner@example.com",
-        )
-        client.force_login(superuser)
 
-        response = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
+        cloned_workflows = {w.start_trigger: w for w in cloned.workflows.all()}
+        assert set(cloned_workflows.keys()) == {"on_all_complete", "on_submit"}
 
-        assert response.status_code == 200
-        cloned = FormDefinition.objects.get(pk=response.json()["form_id"])
-        assert cloned.uuid != form_with_fields.uuid
-        assert cloned.api_enabled is True
-        assert cloned.allow_resubmit is True
-        cloned_workflow = cloned.workflows.get()
+        source_by_trigger = {
+            "on_all_complete": (workflow_a, stage_a, rule_a),
+            "on_submit": (workflow_b, stage_b, rule_b),
+        }
+        for trigger, (_, source_stage, source_rule) in source_by_trigger.items():
+            cloned_workflow = cloned_workflows[trigger]
+            cloned_stage = cloned_workflow.stages.get()
+            cloned_rule = cloned_workflow.notification_rules.get()
+            assert cloned_rule.stage == cloned_stage
+            assert cloned_rule.static_emails == source_rule.static_emails
+            assert list(cloned_rule.notify_groups.all()) == [approval_group]
+            source_assignments = list(
+                StageApprovalGroup.objects.filter(stage=source_stage).order_by(
+                    "position", "id"
+                )
         assert cloned_workflow.start_trigger == "on_all_complete"
-        cloned_rule = cloned_workflow.notification_rules.get()
-        cloned_stage = cloned_workflow.stages.get()
-        assert cloned_rule.stage == cloned_stage
-        assert cloned_rule.static_emails == rule.static_emails
-        assert list(cloned_rule.notify_groups.all()) == [approval_group]
-        source_assignments = list(
-            StageApprovalGroup.objects.filter(stage=stage).order_by("position", "id")
-        )
+            cloned_assignments = list(
+                StageApprovalGroup.objects.filter(stage=cloned_stage).order_by(
+                    "position", "id"
+                )
+            )
+            assert len(cloned_assignments) == len(source_assignments)
+            assert [(a.group_id, a.role, a.position) for a in cloned_assignments] == [
+                (a.group_id, a.role, a.position) for a in source_assignments
+            ]
+            assert {a.pk for a in cloned_assignments}.isdisjoint(
+                {a.pk for a in source_assignments}
+            )
+
         cloned_assignments = list(
             StageApprovalGroup.objects.filter(stage=cloned_stage).order_by(
                 "position", "id"

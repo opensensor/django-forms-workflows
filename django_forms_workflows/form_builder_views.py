@@ -53,6 +53,7 @@ def _normalize_builder_field_properties(field_data):
 
     return validation, conditional, validation_rules, field_dependencies
 
+
 # Signed 64-bit integer max, compatible with Django BigAutoField/SQLite INTEGER PK range.
 MAX_DB_PRIMARY_KEY = 2**63 - 1
 
@@ -927,17 +928,19 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 "Field 'conditional' must be an object/dictionary."
             )
 
-        conditional_rules = conditional.get(
-            "conditional_rules",
-            field_data.get("conditional_rules"),
+        _, _, validation_rules, field_dependencies = (
+            _normalize_builder_field_properties(field_data)
         )
+        conditional_rules = conditional.get("conditional_rules")
+        if conditional_rules is None:
+            conditional_rules = field_data.get("conditional_rules")
 
         # Add client-side enhancement properties
         field_props.update(
             {
                 "conditional_rules": conditional_rules,
-                "validation_rules": field_data.get("validation_rules"),
-                "field_dependencies": field_data.get("field_dependencies"),
+                "validation_rules": validation_rules,
+                "field_dependencies": field_dependencies,
                 "step_number": field_data.get("step_number"),
             }
         )

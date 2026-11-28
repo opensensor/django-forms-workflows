@@ -4,6 +4,7 @@ Tests for the form builder and workflow builder admin views.
 
 import copy
 import json
+import re
 from urllib.parse import quote
 
 import pytest
@@ -4158,6 +4159,22 @@ class TestFormBuilderViews:
         url = _fb_url(f"builder/{form_definition.id}/")
         resp = client.get(url)
         assert resp.status_code == 200
+
+    def test_builder_view_embeds_data_as_json(self, client, form_definition, superuser):
+        client.force_login(superuser)
+
+        response = client.get(_fb_url(f"builder/{form_definition.id}/"))
+
+        assert response.status_code == 200
+        html = response.content.decode()
+        for script_id in ("field-types-data", "payment-providers-data"):
+            match = re.search(
+                rf'<script id="{script_id}" type="application/json">(.*?)</script>',
+                html,
+                re.DOTALL,
+            )
+            assert match is not None
+            assert isinstance(json.loads(match.group(1)), list)
 
     def test_builder_new_view_requires_staff(self, client, user):
         client.force_login(user)

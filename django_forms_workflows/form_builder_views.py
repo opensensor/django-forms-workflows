@@ -403,10 +403,7 @@ def form_builder_view(request, form_id=None):
         "order", "name"
     )
 
-    # Get field type choices - convert to JSON-serializable format
-    field_types_json = json.dumps(
-        [{"value": ft[0], "label": ft[1]} for ft in FormField.FIELD_TYPES]
-    )
+    field_types = [{"value": ft[0], "label": ft[1]} for ft in FormField.FIELD_TYPES]
 
     # Get shared option lists for the field property panel
     shared_option_lists = SharedOptionList.objects.filter(is_active=True).order_by(
@@ -422,8 +419,8 @@ def form_builder_view(request, form_id=None):
         "form_definition": form_definition,
         "prefill_sources": prefill_sources,
         "shared_option_lists": shared_option_lists,
-        "field_types": field_types_json,
-        "payment_provider_choices_json": json.dumps(payment_provider_choices),
+        "field_types": field_types,
+        "payment_provider_choices": payment_provider_choices,
         "is_new": form_id is None,
     }
 

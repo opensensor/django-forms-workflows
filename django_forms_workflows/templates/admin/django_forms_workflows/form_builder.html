@@ -1034,7 +1034,7 @@
                             </div>
                         </div>
                         <div class="col-12">
-                            <label class="form-label" for="docTemplateHtmlContent">HTML Content</label>
+                            <label class="form-label" for="docTemplateHtml">HTML Content</label>
 {% verbatim %}
                             <textarea class="form-control font-monospace" id="docTemplateHtml" rows="16" placeholder="<!DOCTYPE html>
 <html>
@@ -1073,7 +1073,7 @@
     
     <!-- Form Builder JavaScript -->
     {{ field_types|json_script:"field-types-data" }}
-    {{ payment_provider_choices_json|json_script:"payment-providers-data" }}
+    {{ payment_provider_choices|json_script:"payment-providers-data" }}
     <script type="module">
         import { FormBuilder } from "{% static 'django_forms_workflows/js/form-builder.js' %}";
 

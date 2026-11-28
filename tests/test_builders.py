@@ -2556,27 +2556,48 @@ class TestConvertVisualToWorkflow:
         assert not form_definition.post_actions.exists()
         assert not form_definition.workflows.exists()
 
-    def test_action_id_from_another_form_is_rejected(self, form_definition):
+    @pytest.mark.parametrize("target_kind", ["action", "email"])
+    def test_action_id_from_another_form_is_rejected(
+        self, form_definition, target_kind
+    ):
         other_form = FormDefinition.objects.create(name="Other", slug="other")
         foreign_action = PostSubmissionAction.objects.create(
             form_definition=other_form,
             name="Foreign",
             action_type="database",
         )
-        visual = self._make_visual(
-            actions=[
+        if target_kind == "action":
+            visual = self._make_visual(
+                actions=[
+                    {
+                        "action_id": foreign_action.id,
+                        "name": "Foreign",
+                        "action_type": "database",
+                        "config": {},
+                    }
+                ]
+            )
+        else:
+            visual = self._make_visual()
+            visual["nodes"].insert(
+                1,
                 {
-                    "action_id": foreign_action.id,
-                    "name": "Foreign",
-                    "action_type": "database",
-                    "config": {},
-                }
-            ]
-        )
+                    "type": "email",
+                    "data": {
+                        "action_id": foreign_action.id,
+                        "name": "Foreign",
+                        "email_to": "recipient@example.com",
+                    },
+                },
+            )
 
         with pytest.raises(ValidationError, match="does not belong"):
             convert_visual_to_workflow(visual, form_definition)
         assert not form_definition.post_actions.exists()
+        foreign_action.refresh_from_db()
+        assert foreign_action.form_definition_id == other_form.id
+        assert foreign_action.name == "Foreign"
+        assert foreign_action.action_type == "database"
 
     def test_workflow_from_another_form_is_rejected(self, form_definition):
         other_form = FormDefinition.objects.create(name="Other", slug="other-workflow")
@@ -3991,6 +4012,72 @@ class TestSaveFormDefinitionFromBuilderData:
         assert form_with_fields.name != "Changed form"
         assert form_with_fields.version == original_version
         assert first.field_label == original_label
+
+    def test_direct_save_rolls_back_after_partial_field_updates(
+        self, user, form_with_fields, monkeypatch
+    ):
+        first = form_with_fields.fields.get(field_name="full_name")
+        second = form_with_fields.fields.get(field_name="email")
+        original_name = form_with_fields.name
+        original_version = form_with_fields.version
+        original_first_label = first.field_label
+        original_second_label = second.field_label
+        original_field_ids = set(form_with_fields.fields.values_list("id", flat=True))
+
+        save_calls = {"count": 0}
+        original_save = FormField.save
+
+        def flaky_save(instance, *args, **kwargs):
+            if instance.form_definition_id == form_with_fields.id:
+                save_calls["count"] += 1
+                if save_calls["count"] == 2:
+                    raise ValidationError("Injected failure after partial save")
+            return original_save(instance, *args, **kwargs)
+
+        monkeypatch.setattr(FormField, "save", flaky_save)
+
+        data = {
+            "name": "Changed form",
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": first.id,
+                    "field_name": first.field_name,
+                    "field_label": "Changed first label",
+                    "field_type": first.field_type,
+                    "order": first.order,
+                },
+                {
+                    "id": second.id,
+                    "field_name": second.field_name,
+                    "field_label": "Changed second label",
+                    "field_type": second.field_type,
+                    "order": second.order,
+                },
+            ],
+        }
+
+        with pytest.raises(
+            ValidationError, match="Injected failure after partial save"
+        ):
+            save_form_definition_from_builder_data(
+                data, user, form_definition=form_with_fields
+            )
+
+        assert save_calls["count"] == 2
+
+        form_with_fields.refresh_from_db()
+        first.refresh_from_db()
+        second.refresh_from_db()
+
+        assert form_with_fields.name == original_name
+        assert form_with_fields.version == original_version
+        assert first.field_label == original_first_label
+        assert second.field_label == original_second_label
+        assert (
+            set(form_with_fields.fields.values_list("id", flat=True))
+            == original_field_ids
+        )
 
     def test_deletes_fields_absent_from_the_payload(self, user, form_with_fields):
         assert form_with_fields.fields.count() == 5

@@ -2438,7 +2438,7 @@ class TestConvertVisualToWorkflow:
         assert action.description == "Keep this description"
         assert action.name == "Notice"
         assert action.email_to == "recipient@example.com"
-        assert legacy_email_node["data"]["id"] == action.id
+        assert legacy_email_node["data"]["action_id"] == action.id
         assert form_definition.post_actions.count() == 1
 
     @pytest.mark.parametrize("node_name", [None, 7, [], "", "   "])

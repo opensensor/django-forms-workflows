@@ -1366,9 +1366,13 @@ export class WorkflowBuilder {
                                 <select id="${ruleInputId('stage')}" class="form-select form-select-sm" name="notification_rule_stage"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">Workflow-level</option>
-                                    ${stageOptions.map(option => `
-                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
-                                    `).join('')}
+                                    ${stageOptions.map(option => {
+                                        const numericOrder = Number(option.order);
+                                        const safeOrder = Number.isFinite(numericOrder) ? numericOrder : '';
+                                        return `
+                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
+                                    `;
+                                    }).join('')}
                                 </select>
                             </div>
                             <div class="mb-3">

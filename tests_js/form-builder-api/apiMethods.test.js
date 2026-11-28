@@ -284,6 +284,28 @@ describe('apiMethods.saveForm', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('allows retry after an in-flight save rejects and re-enables Save', async () => {
+    document.getElementById('formName').value = 'My Form';
+    document.getElementById('formSlug').value = 'my-form';
+    let rejectFirst;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const ctx = createContext();
+
+    const first = ctx.saveForm();
+    await ctx.saveForm();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    rejectFirst(new Error('network error'));
+    await expect(first).rejects.toThrow('network error');
+    expect(document.getElementById('btnSave').disabled).toBe(false);
+
+    await ctx.saveForm();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('does not save malformed success redirect rules', async () => {
     document.getElementById('formName').value = 'My Form';
     document.getElementById('formSlug').value = 'my-form';

@@ -927,17 +927,18 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
                 "Field 'conditional' must be an object/dictionary."
             )
 
-        conditional_rules = conditional.get(
+        normalized_field_props = _normalize_builder_field_properties(field_data)
+        conditional_rules = normalized_field_props.get(
             "conditional_rules",
-            field_data.get("conditional_rules"),
+            conditional.get("conditional_rules", field_data.get("conditional_rules")),
         )
 
         # Add client-side enhancement properties
         field_props.update(
             {
                 "conditional_rules": conditional_rules,
-                "validation_rules": field_data.get("validation_rules"),
-                "field_dependencies": field_data.get("field_dependencies"),
+                "validation_rules": normalized_field_props.get("validation_rules"),
+                "field_dependencies": normalized_field_props.get("field_dependencies"),
                 "step_number": field_data.get("step_number"),
             }
         )

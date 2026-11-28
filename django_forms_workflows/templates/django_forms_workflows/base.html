@@ -155,6 +155,44 @@
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.9/dist/js/bootstrap.bundle.min.js" integrity="sha384-WyOxWvTyr1QaMPfiPJSv76iReVthorl5uWlFtZPyK0IEB0hGzo9y5Bp9mYanr8Bu" crossorigin="anonymous"></script>
     <script>
+        function setBackgroundInert(isInert) {
+            ['nav', 'main', 'footer'].forEach(function(selector) {
+                var el = document.querySelector(selector);
+                if (!el) return;
+                if (isInert) {
+                    el.setAttribute('inert', '');
+                    el.setAttribute('aria-hidden', 'true');
+                } else {
+                    el.removeAttribute('inert');
+                    el.removeAttribute('aria-hidden');
+                }
+            });
+        }
+
+        function showLoadingOverlay(form) {
+            var overlay = document.getElementById('loadingOverlay');
+            var msg = document.getElementById('loadingMessage');
+            if (overlay) {
+                overlay.classList.add('active');
+                setBackgroundInert(true);
+                if (msg && form.dataset.loadingMessage) {
+                    msg.textContent = form.dataset.loadingMessage;
+                }
+            }
+        }
+
+        function hideLoadingOverlay() {
+            var overlay = document.getElementById('loadingOverlay');
+            var msg = document.getElementById('loadingMessage');
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
+            setBackgroundInert(false);
+            if (msg) {
+                msg.textContent = 'Processing...';
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('form[method="post"]').forEach(function(form) {
                 form.addEventListener('submit', function() {
@@ -163,27 +201,13 @@
                     // overlay would never be dismissed.  Add data-no-spinner to
                     // any form whose response is a file rather than a page load.
                     if (form.hasAttribute('data-no-spinner')) return;
-                    var overlay = document.getElementById('loadingOverlay');
-                    var msg = document.getElementById('loadingMessage');
-                    if (overlay) {
-                        overlay.classList.add('active');
-                        if (msg && form.dataset.loadingMessage) {
-                            msg.textContent = form.dataset.loadingMessage;
-                        }
-                    }
+                    showLoadingOverlay(form);
                 });
             });
         });
 
         window.addEventListener('pageshow', function() {
-            var overlay = document.getElementById('loadingOverlay');
-            var msg = document.getElementById('loadingMessage');
-            if (overlay) {
-                overlay.classList.remove('active');
-            }
-            if (msg) {
-                msg.textContent = 'Processing...';
-            }
+            hideLoadingOverlay();
         });
     </script>
     {% block extra_js %}{% endblock %}

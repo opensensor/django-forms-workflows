@@ -2329,7 +2329,7 @@ export class WorkflowBuilder {
             return [`${ownerLabel}: conditions must be a list.`];
         }
 
-        if (hasConditionList && group.operator) {
+        if (hasConditionList && Object.prototype.hasOwnProperty.call(group, 'operator')) {
             const normalizedGroupOperator = String(group.operator).trim().toUpperCase();
             if (!['AND', 'OR'].includes(normalizedGroupOperator)) {
                 errors.push(`${ownerLabel}: match mode must be AND or OR.`);

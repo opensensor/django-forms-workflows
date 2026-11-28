@@ -240,6 +240,10 @@ class TestConvertWorkflowToVisual:
         stage_ids = {node["id"] for node in stage_nodes}
         join_id = join_node["id"]
         connections = result["connections"]
+        start_id = next(
+            node["id"] for node in result["nodes"] if node["type"] == "start"
+        )
+        end_id = next(node["id"] for node in result["nodes"] if node["type"] == "end")
 
         # Parallel branches should both flow into the same join node.
         for stage_id in stage_ids:
@@ -247,6 +251,7 @@ class TestConvertWorkflowToVisual:
                 edge["from"] == stage_id and edge["to"] == join_id
                 for edge in connections
             )
+        assert {"from": join_id, "to": end_id} in connections
 
         # Parallel stages must not be connected sequentially to each other.
         assert not any(
@@ -261,6 +266,19 @@ class TestConvertWorkflowToVisual:
         }
         shared_predecessors = set.intersection(*predecessors_by_stage.values())
         assert shared_predecessors
+
+        adjacency = {}
+        for edge in connections:
+            adjacency.setdefault(edge["from"], set()).add(edge["to"])
+        reachable = set()
+        pending = [start_id]
+        while pending:
+            node_id = pending.pop()
+            if node_id in reachable:
+                continue
+            reachable.add(node_id)
+            pending.extend(adjacency.get(node_id, ()))
+        assert end_id in reachable
 
     def test_backfills_send_back_flag_from_saved_visual_data(
         self, staged_workflow, form_definition
@@ -6002,6 +6020,24 @@ class TestSharedOptionListAPI:
         change_perm = Permission.objects.get(
             codename="change_sharedoptionlist", content_type=ct
         )
+        add_perm = Permission.objects.get(
+            codename="add_sharedoptionlist", content_type=ct
+        )
+        staff_user.user_permissions.add(add_perm)
+
+        resp = client.post(
+            url,
+            data=json.dumps(
+                {"id": ol.id, "name": "Renamed Departments", "items": ["HR", "IT"]}
+            ),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+        ol.refresh_from_db()
+        assert ol.name == "Updatable Departments"
+        assert ol.items == ["HR"]
+
+        staff_user.user_permissions.remove(add_perm)
         staff_user.user_permissions.add(change_perm)
 
         resp = client.post(
@@ -6015,6 +6051,20 @@ class TestSharedOptionListAPI:
         ol.refresh_from_db()
         assert ol.name == "Renamed Departments"
         assert ol.items == ["HR", "IT"]
+
+        resp = client.post(
+            url,
+            data=json.dumps(
+                {
+                    "name": "Create Requires Add",
+                    "slug": "create-requires-add",
+                    "items": ["A", "B"],
+                }
+            ),
+            content_type="application/json",
+        )
+        assert resp.status_code in (302, 403)
+        assert not SharedOptionList.objects.filter(slug="create-requires-add").exists()
 
     def test_staff_delete_requires_delete_permission_and_denied_write_is_unchanged(
         self, client, django_user_model

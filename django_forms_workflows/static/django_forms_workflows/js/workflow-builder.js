@@ -2117,7 +2117,6 @@ export class WorkflowBuilder {
         node.data.approval_fields = this.readStageApprovalFieldsFromPanel(container, nodeId);
         node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
 
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2142,7 +2141,6 @@ export class WorkflowBuilder {
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
 
-        this.render();
         this.selectNode(nodeId);
     }
 

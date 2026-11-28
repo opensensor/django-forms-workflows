@@ -207,6 +207,17 @@ export const apiMethods = {
             this.updateFieldOrderFromSteps();
         }
 
+        const successRedirectRulesRaw = document.getElementById('formSuccessRedirectRules').value.trim();
+        let successRedirectRules = null;
+        if (successRedirectRulesRaw) {
+            try {
+                successRedirectRules = JSON.parse(successRedirectRulesRaw);
+            } catch (e) {
+                alert('Success redirect rules must be valid JSON.');
+                return;
+            }
+        }
+
         // Build form data
         const formData = {
             id: this.config.formId,
@@ -220,7 +231,7 @@ export const apiMethods = {
             allow_withdrawal: document.getElementById('formAllowWithdrawal').checked,
             success_message: document.getElementById('formSuccessMessage').value.trim(),
             success_redirect_url: document.getElementById('formSuccessRedirectUrl').value.trim(),
-            success_redirect_rules: (() => { try { const v = document.getElementById('formSuccessRedirectRules').value.trim(); return v ? JSON.parse(v) : null; } catch(e) { return null; } })(),
+            success_redirect_rules: successRedirectRules,
             payment_enabled: document.getElementById('formPaymentEnabled').checked,
             payment_provider: document.getElementById('formPaymentProvider').value,
             payment_amount_type: document.getElementById('formPaymentAmountType').value,

@@ -5152,6 +5152,9 @@ class TestDocumentTemplateAPI:
             content_type="application/json",
         )
         assert create_denied.status_code in (302, 403)
+        assert not DocumentTemplate.objects.filter(
+            form_definition=form_definition, name="CreateDenied"
+        ).exists()
 
         update_ok_user = _make_user("doc_update_ok", ["change_documenttemplate"])
         client.force_login(update_ok_user)
@@ -5185,6 +5188,9 @@ class TestDocumentTemplateAPI:
             content_type="application/json",
         )
         assert update_denied.status_code in (302, 403)
+        existing.refresh_from_db()
+        assert existing.name == "ExistingTemplateUpdated"
+        assert existing.html_content == "<p>updated</p>"
 
         delete_ok_user = _make_user("doc_delete_ok", ["delete_documenttemplate"])
         client.force_login(delete_ok_user)

@@ -5024,10 +5024,14 @@ class TestFormBuilderViews:
         self, client, superuser, form_with_fields
     ):
         source_workflow = WorkflowDefinition.objects.create(
-            form_definition=form_with_fields, start_trigger="on_all_complete"
+            form_definition=form_with_fields,
+            start_trigger="on_all_complete",
+            name_label="Parent track",
         )
         target_workflow = WorkflowDefinition.objects.create(
-            form_definition=form_with_fields, start_trigger="on_all_complete"
+            form_definition=form_with_fields,
+            start_trigger="on_all_complete",
+            name_label="Target track",
         )
         sub_workflow = SubWorkflowDefinition.objects.create(
             parent_workflow=source_workflow,
@@ -5044,10 +5048,10 @@ class TestFormBuilderViews:
         assert response.status_code == 200
         cloned_form = FormDefinition.objects.get(pk=response.json()["form_id"])
         cloned_parent_workflow = WorkflowDefinition.objects.get(
-            form_definition=cloned_form, start_trigger=source_workflow.start_trigger
+            form_definition=cloned_form, name_label=source_workflow.name_label
         )
         cloned_target_workflow = WorkflowDefinition.objects.get(
-            form_definition=cloned_form, start_trigger=target_workflow.start_trigger
+            form_definition=cloned_form, name_label=target_workflow.name_label
         )
         cloned_sub_workflow = SubWorkflowDefinition.objects.get(
             parent_workflow=cloned_parent_workflow

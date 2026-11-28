@@ -71,6 +71,19 @@ describe('WorkflowBuilder#deleteNode', () => {
     expect(instance.nodes).toEqual([]);
     expect(instance.deletedActionIds).toEqual([17]);
   });
+
+  it('does not delete the node or record action id when confirmation is canceled', () => {
+    const instance = createInstance();
+    instance.deletedActionIds = [99];
+    instance.nodes = [{ id: 'action-1', type: 'action', data: { action_id: 17 } }];
+    instance.deselectAll = vi.fn();
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+
+    instance.deleteNode('action-1');
+
+    expect(instance.nodes).toEqual([{ id: 'action-1', type: 'action', data: { action_id: 17 } }]);
+    expect(instance.deletedActionIds).toEqual([99]);
+  });
 });
 
 describe('WorkflowBuilder#createNode', () => {

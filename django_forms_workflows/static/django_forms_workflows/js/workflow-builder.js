@@ -2918,11 +2918,20 @@ export class WorkflowBuilder {
         let pendingCanvasX = startCanvasX;
         let pendingCanvasY = startCanvasY;
 
+        const updateDraggedNodeAndConnections = () => {
+            this.updateNodePosition(node);
+            this.connections.forEach((connection) => {
+                if (connection.fromNodeId === node.id || connection.toNodeId === node.id) {
+                    this.updateConnectionPath(connection);
+                }
+            });
+        };
+
         const flushDragRender = () => {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            this.render();
+            updateDraggedNodeAndConnections();
         };
 
         const onMouseMove = (e) => {
@@ -2938,6 +2947,7 @@ export class WorkflowBuilder {
                 rafId = null;
                 node.x = pendingCanvasX - dragOffsetX;
                 node.y = pendingCanvasY - dragOffsetY;
+                updateDraggedNodeAndConnections();
             }
             this.isDraggingNode = false;
             this.draggingNodeId = null;

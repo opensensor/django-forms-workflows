@@ -997,34 +997,15 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         if wf_stage_id is None or wf_stage_id == "":
             field_props["workflow_stage_id"] = None
         else:
-            # Reject malformed JSON references (e.g., booleans/fractional numbers)
-            if isinstance(wf_stage_id, bool):
+            try:
+                parsed_wf_stage_id = _positive_integer_id(
+                    wf_stage_id, "workflow_stage_id"
+                )
+            except (ValidationError, ValueError, TypeError) as exc:
                 raise FormBuilderPayloadError(
                     "Invalid workflow_stage_id for field "
                     f"'{field_data.get('field_name', '')}'"
-                )
-            if isinstance(wf_stage_id, int):
-                parsed_wf_stage_id = wf_stage_id
-            elif isinstance(wf_stage_id, str):
-                wf_stage_id_str = wf_stage_id.strip()
-                if not wf_stage_id_str.isascii() or not wf_stage_id_str.isdigit():
-                    raise FormBuilderPayloadError(
-                        "Invalid workflow_stage_id for field "
-                        f"'{field_data.get('field_name', '')}'"
-                    )
-                try:
-                    parsed_wf_stage_id = int(wf_stage_id_str)
-                except ValueError as exc:
-                    raise FormBuilderPayloadError(
-                        "Invalid workflow_stage_id for field "
-                        f"'{field_data.get('field_name', '')}'"
-                    ) from exc
-            else:
-                # Includes floats (fractional JSON numbers) and other invalid types
-                raise FormBuilderPayloadError(
-                    "Invalid workflow_stage_id for field "
-                    f"'{field_data.get('field_name', '')}'"
-                )
+                ) from exc
 
             if parsed_wf_stage_id not in allowed_workflow_stage_ids:
                 raise FormBuilderPayloadError(

@@ -795,11 +795,11 @@
                     <div class="col-md-9" id="paymentSettings" style="display:none;">
                         <div class="row g-2">
                             <div class="col-md-4">
-                                <label class="form-label small">Provider</label>
+                                <label class="form-label small" for="formPaymentProvider">Provider</label>
                                 <select class="form-select form-select-sm" id="formPaymentProvider"></select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small">Amount Type</label>
+                                <label class="form-label small" for="formPaymentAmountType">Amount Type</label>
                                 <select class="form-select form-select-sm" id="formPaymentAmountType"
                                         onchange="document.getElementById('paymentFixedGroup').style.display = this.value==='fixed' ? '' : 'none'; document.getElementById('paymentFieldGroup').style.display = this.value==='field' ? '' : 'none';">
                                     <option value="fixed">Fixed Amount</option>
@@ -807,18 +807,18 @@
                                 </select>
                             </div>
                             <div class="col-md-4" id="paymentFixedGroup">
-                                <label class="form-label small">Amount</label>
+                                <label class="form-label small" for="formPaymentFixedAmount">Amount</label>
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text">$</span>
                                     <input type="number" class="form-control" id="formPaymentFixedAmount" step="0.01" min="0.01">
                                 </div>
                             </div>
                             <div class="col-md-4" id="paymentFieldGroup" style="display:none;">
-                                <label class="form-label small">Amount Field</label>
+                                <label class="form-label small" for="formPaymentAmountField">Amount Field</label>
                                 <input type="text" class="form-control form-control-sm" id="formPaymentAmountField" placeholder="field_name">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label small">Currency</label>
+                                <label class="form-label small" for="formPaymentCurrency">Currency</label>
                                 <select class="form-select form-select-sm" id="formPaymentCurrency">
                                     <option value="usd">USD</option>
                                     <option value="cad">CAD</option>
@@ -827,7 +827,7 @@
                                 </select>
                             </div>
                             <div class="col-md-9">
-                                <label class="form-label small">Description</label>
+                                <label class="form-label small" for="formPaymentDescription">Description</label>
                                 <input type="text" class="form-control form-control-sm" id="formPaymentDescription"
                                        placeholder="{form_name} - {student_id}">
                             </div>
@@ -1180,12 +1180,38 @@
 
             async function loadDocTemplates() {
                 if (!docUrls.docTemplates) { docEmpty.style.display = 'block'; return; }
+
+                let docLoadError = docContainer.querySelector('.doc-templates-load-error');
+                if (docLoadError) {
+                    docLoadError.remove();
+                }
+
                 try {
                     const resp = await fetch(docUrls.docTemplates);
+                    if (!resp.ok) {
+                        throw new Error(`HTTP ${resp.status}`);
+                    }
+
                     const data = await resp.json();
-                    docTemplates = data.templates || [];
+                    if (!data || data.success !== true || !Array.isArray(data.templates)) {
+                        throw new Error('Invalid templates payload');
+                    }
+
+                    docTemplates = data.templates;
                     renderDocTemplates();
-                } catch (e) { console.error('Error loading doc templates:', e); }
+                } catch (e) {
+                    console.error('Error loading doc templates:', e);
+                    docTemplates = [];
+                    const list = docContainer.querySelectorAll('.doc-tpl-item');
+                    list.forEach(el => el.remove());
+                    docEmpty.style.display = 'none';
+
+                    docLoadError = document.createElement('div');
+                    docLoadError.className = 'doc-templates-load-error alert alert-danger mb-2';
+                    docLoadError.setAttribute('role', 'alert');
+                    docLoadError.textContent = 'Unable to load document templates. Please try again.';
+                    docContainer.appendChild(docLoadError);
+                }
             }
 
             function renderDocTemplates() {
@@ -1304,6 +1330,13 @@
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('docTemplateModal')).show();
             });
 
+            let docTemplateEditorSession = 0;
+            const docTemplateModalEl = document.getElementById('docTemplateModal');
+            docTemplateModalEl.addEventListener('show.bs.modal', function () {
+                docTemplateEditorSession += 1;
+                this.dataset.editorSession = String(docTemplateEditorSession);
+            });
+
             document.getElementById('btnSaveDocTemplate').addEventListener('click', async (event) => {
                 const saveBtn = event.currentTarget;
                 if (saveBtn.dataset.submitting === 'true') return;
@@ -1322,8 +1355,10 @@
                     is_active: document.getElementById('docTemplateIsActive').checked,
                 };
                 if (payload.id) payload.id = parseInt(payload.id);
+                const requestEditorSession = docTemplateModalEl.dataset.editorSession || String(docTemplateEditorSession);
                 saveBtn.dataset.submitting = 'true';
                 saveBtn.disabled = true;
+                const modalInstance = bootstrap.Modal.getOrCreateInstance(docTemplateModalEl);
                 try {
                     const resp = await fetch(docUrls.docTemplateSave, {
                         method: 'POST',
@@ -1332,7 +1367,9 @@
                     });
                     const data = await resp.json();
                     if (data.success) {
-                        bootstrap.Modal.getInstance(document.getElementById('docTemplateModal')).hide();
+                        if ((docTemplateModalEl.dataset.editorSession || '') === requestEditorSession) {
+                            modalInstance.hide();
+                        }
                         loadDocTemplates();
                     } else { alert(data.error || 'Error saving template'); }
                 } catch (e) { alert('Error: ' + e.message); }

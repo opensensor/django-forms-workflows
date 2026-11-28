@@ -115,6 +115,7 @@ describe('WorkflowBuilder stage editor', () => {
     expect(document.querySelector('[name="name"]').value).toBe(node.data.name);
     expect(document.querySelector('[name="approve_label"]').value).toBe(node.data.approve_label);
     expect(document.querySelector('[name="name"]').hasAttribute('autofocus')).toBe(false);
+    expect(document.querySelector('[name="name"]').hasAttribute('onfocus')).toBe(false);
     expect(document.querySelector('[name="name"]').hasAttribute('onclick')).toBe(false);
   });
 

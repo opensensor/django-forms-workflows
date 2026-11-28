@@ -305,17 +305,17 @@ describe('WorkflowBuilder stage editor', () => {
     instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
     instance.showNodeProperties(node);
 
-    const moveDownButton = document.querySelector(
-      'button[data-stage-group-id="5"][data-stage-group-role="approver"][data-stage-group-direction="1"]',
+    const reviewerMoveDownButton = document.querySelector(
+      'button[data-stage-group-id="5"][data-stage-group-role="reviewer"][data-stage-group-direction="1"]',
     );
-    expect(moveDownButton).not.toBeNull();
+    expect(reviewerMoveDownButton).not.toBeNull();
 
-    moveDownButton.click();
+    reviewerMoveDownButton.click();
 
     expect(node.data.approval_groups.map(group => `${group.id}:${group.role}`)).toEqual([
-      '5:reviewer',
       '5:approver',
       '6:approver',
+      '5:reviewer',
     ]);
     expect(node.data.approval_groups.map(group => group.position)).toEqual([0, 1, 2]);
   });

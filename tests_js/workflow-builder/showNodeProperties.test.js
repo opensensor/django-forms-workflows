@@ -130,7 +130,7 @@ describe('WorkflowBuilder stage editor', () => {
           { id: 1, name: 'Reviewers', role: 'approval', position: 0 },
           { id: 1, name: 'Reviewers', role: 'validation', position: 1 },
         ],
-        approval_fields: [{ id: 2, field_name: 'notes' }],
+        approval_fields: [{ id: 2, field_name: 'notes', field_label: 'Notes', field_type: '', order: 0 }],
       },
     };
     instance.nodes = [node];
@@ -206,7 +206,7 @@ describe('WorkflowBuilder workflow settings editor', () => {
     document.querySelector('[name="approval_deadline_days"]').value = '5';
     const digestDay = document.querySelector('[name="notification_cadence_day"]');
     digestDay.value = '7';
-    dispatchChange(digestDay);
+    instance.updateWorkflowSettings(node.id);
 
     expect(node.data.approval_deadline_days).toBe(2);
     expect(node.data.notification_cadence_day).toBe(0);

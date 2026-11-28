@@ -13,6 +13,31 @@ describe('WorkflowBuilder module wiring', () => {
   });
 });
 
+describe('node ID rendering', () => {
+  it('keeps numeric IDs numeric in inline callbacks', () => {
+    const instance = createInstance();
+    expect(instance.inlineNodeId(7)).toBe('7');
+    expect(instance.inlineNodeId('7')).toBe('&quot;7&quot;');
+  });
+
+  it('locates connection points for IDs containing selector syntax', () => {
+    const instance = createInstance();
+    instance.transformWrapper = document.createElement('div');
+    const node = document.createElement('div');
+    node.className = 'workflow-node';
+    node.dataset.nodeId = 'stage"[1]';
+    const point = document.createElement('div');
+    point.className = 'connection-point output';
+    node.appendChild(point);
+    instance.transformWrapper.appendChild(node);
+    instance.zoom = 1;
+    instance.transformWrapper.getBoundingClientRect = () => ({ left: 0, top: 0 });
+    point.getBoundingClientRect = () => ({ left: 10, top: 20, width: 10, height: 10 });
+
+    expect(instance.getConnectionPointPosition('stage"[1]', 'output')).toEqual({ x: 15, y: 25 });
+  });
+});
+
 describe('WorkflowBuilder#getNodeDescription — escaping regression', () => {
   const payload = '"><script>alert(1)</script>';
 

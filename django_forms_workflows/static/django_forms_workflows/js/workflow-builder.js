@@ -798,9 +798,10 @@ export class WorkflowBuilder {
     deleteNode(nodeId) {
         if (confirm('Delete this node?')) {
             const nodeToDelete = this.nodes.find(n => n.id === nodeId);
-            if (nodeToDelete && (nodeToDelete.type === 'action' || nodeToDelete.type === 'email') && nodeToDelete.action_id) {
-                if (!this.deletedActionIds.includes(nodeToDelete.action_id)) {
-                    this.deletedActionIds.push(nodeToDelete.action_id);
+            const actionId = nodeToDelete?.data?.action_id;
+            if ((nodeToDelete?.type === 'action' || nodeToDelete?.type === 'email') && actionId) {
+                if (!this.deletedActionIds.includes(actionId)) {
+                    this.deletedActionIds.push(actionId);
                 }
             }
             this.nodes = this.nodes.filter(n => n.id !== nodeId);

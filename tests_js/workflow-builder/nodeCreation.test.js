@@ -57,6 +57,22 @@ describe('WorkflowBuilder#createStartNode', () => {
   });
 });
 
+describe('WorkflowBuilder#deleteNode', () => {
+  it('records the persisted action ID from node data when deleting an action', () => {
+    const instance = createInstance();
+    instance.deletedActionIds = [];
+    instance.nodes = [{ id: 'action-1', type: 'action', data: { action_id: 17 } }];
+    instance.deselectAll = vi.fn();
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+
+    instance.deleteNode('action-1');
+
+    expect(instance.nodes).toEqual([]);
+    expect(instance.deletedActionIds).toEqual([17]);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('WorkflowBuilder#createNode', () => {
   it('generates sequential ids across calls, sharing the counter with createStartNode', () => {
     const instance = createInstance();

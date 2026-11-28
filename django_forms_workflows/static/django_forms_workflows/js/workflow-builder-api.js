@@ -58,6 +58,7 @@ export const apiMethods = {
             console.log('Workflow data received:', data);
 
             if (data.success) {
+                this.deletedActionIds = [];
                 this.nodes = data.workflow.nodes || [];
                 this.connections = data.workflow.connections || [];
                 this.fields = data.fields || [];
@@ -122,7 +123,8 @@ export const apiMethods = {
             workflow_id: this.config.currentWorkflowId,
             workflow: {
                 nodes: this.nodes,
-                connections: this.connections
+                connections: this.connections,
+                deleted_action_ids: this.deletedActionIds
             }
         };
 
@@ -156,6 +158,7 @@ export const apiMethods = {
                 this.config.currentWorkflowId = result.workflow_id;
             }
 
+            this.deletedActionIds = [];
             this.syncSavedWorkflowSnapshot();
             this.setSaveStatus('Saved successfully', 'success');
             this.setBuilderMessage(

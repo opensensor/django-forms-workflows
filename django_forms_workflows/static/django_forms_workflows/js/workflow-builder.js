@@ -847,7 +847,9 @@ export class WorkflowBuilder {
 
     deleteSelectedConnection() {
         if (this.selectedConnection === null || !this.connections[this.selectedConnection]) return;
-        this.connections.splice(this.selectedConnection, 1);
+        const selectedIndex = this.selectedConnection;
+        const updatedConnections = this.connections.filter((_, index) => index !== selectedIndex);
+        this.setConnections(updatedConnections);
         this.selectedConnection = null;
         this.updateConnectionSelectionUI();
         this.render();

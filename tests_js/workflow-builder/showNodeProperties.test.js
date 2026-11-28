@@ -204,7 +204,7 @@ describe('WorkflowBuilder workflow settings editor', () => {
     document.querySelector('[name="approval_deadline_days"]').value = '5';
     const digestDay = document.querySelector('[name="notification_cadence_day"]');
     digestDay.value = '7';
-    instance.updateWorkflowSettings(node.id);
+    dispatchChange(digestDay);
 
     expect(node.data.approval_deadline_days).toBe(2);
     expect(node.data.notification_cadence_day).toBe(0);

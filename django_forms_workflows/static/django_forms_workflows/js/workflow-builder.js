@@ -2021,7 +2021,11 @@ export class WorkflowBuilder {
         let workflowOptions = '<option value="">-- Select a workflow --</option>';
         this.workflowTargets.forEach(target => {
             const selected = (data.sub_workflow_id == target.workflow_id) ? 'selected' : '';
-            workflowOptions += `<option value="${target.workflow_id}" data-form-id="${target.form_id}" ${selected}>${this.escapeHtml(target.workflow_label)} (${target.field_count} fields)</option>`;
+            const escapedWorkflowIdAttr = this.escapeHtmlAttribute(target.workflow_id == null ? '' : String(target.workflow_id));
+            const escapedFormIdAttr = this.escapeHtmlAttribute(target.form_id == null ? '' : String(target.form_id));
+            const parsedFieldCount = Number(target.field_count);
+            const safeFieldCount = (Number.isSafeInteger(parsedFieldCount) && parsedFieldCount >= 0) ? parsedFieldCount : 0;
+            workflowOptions += `<option value="${escapedWorkflowIdAttr}" data-form-id="${escapedFormIdAttr}" ${selected}>${this.escapeHtml(target.workflow_label)} (${safeFieldCount} fields)</option>`;
         });
 
         // Build count field options from this.fields

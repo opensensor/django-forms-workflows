@@ -2191,7 +2191,6 @@ export class WorkflowBuilder {
         node.data.detached = container.querySelector('input[name="detached"]')?.checked ?? false;
         node.data.reject_parent = container.querySelector('input[name="reject_parent"]')?.checked ?? false;
 
-        this.render();
         this.selectNode(nodeId);
     }
 

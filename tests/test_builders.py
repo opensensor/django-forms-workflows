@@ -5113,14 +5113,18 @@ class TestDocumentTemplateAPI:
         assert list_resp.status_code in (302, 403)
 
         save_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
-        before_count = DocumentTemplate.objects.filter(form_definition=form_definition).count()
+        before_count = DocumentTemplate.objects.filter(
+            form_definition=form_definition
+        ).count()
         save_resp = client.post(
             save_url,
             data=json.dumps({"name": "ShouldNotSave", "html_content": "<p>no</p>"}),
             content_type="application/json",
         )
         assert save_resp.status_code in (302, 403)
-        after_count = DocumentTemplate.objects.filter(form_definition=form_definition).count()
+        after_count = DocumentTemplate.objects.filter(
+            form_definition=form_definition
+        ).count()
         assert after_count == before_count
 
     def test_doc_templates_permissions_partial_doc_only_denied_and_no_write_changes(
@@ -5174,7 +5178,11 @@ class TestDocumentTemplateAPI:
         update_resp = client.post(
             update_url,
             data=json.dumps(
-                {"id": template.id, "name": "ChangedName", "html_content": "<p>changed</p>"}
+                {
+                    "id": template.id,
+                    "name": "ChangedName",
+                    "html_content": "<p>changed</p>",
+                }
             ),
             content_type="application/json",
         )

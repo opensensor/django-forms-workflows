@@ -4766,6 +4766,35 @@ class TestDocumentTemplateAPI:
         )
         assert resp.status_code == 400
 
+    def test_update_template_rejects_foreign_template_id(self, client, superuser):
+        client.force_login(superuser)
+        owner_form = FormDefinition.objects.create(name="Owner Form")
+        other_form = FormDefinition.objects.create(name="Other Form")
+        foreign_tpl = DocumentTemplate.objects.create(
+            form_definition=other_form,
+            name="Foreign",
+            html_content="<p>foreign</p>",
+        )
+
+        url = _fb_url(f"builder/api/doc-templates/{owner_form.id}/save/")
+        resp = client.post(
+            url,
+            data=json.dumps(
+                {
+                    "id": foreign_tpl.id,
+                    "name": "Hijacked",
+                    "html_content": "<p>changed</p>",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert resp.status_code in (400, 403, 404)
+        foreign_tpl.refresh_from_db()
+        assert foreign_tpl.name == "Foreign"
+        assert foreign_tpl.html_content == "<p>foreign</p>"
+        assert foreign_tpl.form_definition_id == other_form.id
+
     def test_update_template(self, client, superuser, form_definition):
         from django_forms_workflows.models import DocumentTemplate
 
@@ -4809,6 +4838,27 @@ class TestDocumentTemplateAPI:
         resp = client.post(url)
         assert resp.status_code == 200
         assert not DocumentTemplate.objects.filter(id=tpl.id).exists()
+
+    def test_delete_template_rejects_foreign_template_id(self, client, superuser):
+        client.force_login(superuser)
+        owner_form = FormDefinition.objects.create(name="Owner Form")
+        other_form = FormDefinition.objects.create(name="Other Form")
+        foreign_tpl = DocumentTemplate.objects.create(
+            form_definition=other_form,
+            name="Foreign Delete",
+            html_content="<p>foreign</p>",
+        )
+
+        url = _fb_url(
+            f"builder/api/doc-templates/{owner_form.id}/delete/{foreign_tpl.id}/"
+        )
+        resp = client.post(url)
+
+        assert resp.status_code in (400, 403, 404)
+        foreign_tpl.refresh_from_db()
+        assert foreign_tpl.name == "Foreign Delete"
+        assert foreign_tpl.form_definition_id == other_form.id
+        assert DocumentTemplate.objects.filter(id=foreign_tpl.id).exists()
 
     def test_delete_requires_staff(self, client, user, form_definition):
         from django_forms_workflows.models import DocumentTemplate

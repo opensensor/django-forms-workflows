@@ -4519,23 +4519,25 @@ class TestFormBuilderViews:
     def test_clone_copies_all_permission_groups(
         self, client, superuser, form_with_fields, approval_group
     ):
-        for groups in (
-            form_with_fields.submit_groups,
-            form_with_fields.view_groups,
-            form_with_fields.reviewer_groups,
-            form_with_fields.admin_groups,
-        ):
-            groups.set([approval_group])
+        submit_group = StageApprovalGroup.objects.create(name="Submit Group")
+        view_group = StageApprovalGroup.objects.create(name="View Group")
+        reviewer_group = StageApprovalGroup.objects.create(name="Reviewer Group")
+        admin_group = StageApprovalGroup.objects.create(name="Admin Group")
+
+        form_with_fields.submit_groups.set([submit_group])
+        form_with_fields.view_groups.set([view_group])
+        form_with_fields.reviewer_groups.set([reviewer_group])
+        form_with_fields.admin_groups.set([admin_group])
         client.force_login(superuser)
 
         resp = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
 
         assert resp.status_code == 200
         cloned = FormDefinition.objects.get(id=resp.json()["form_id"])
-        assert list(cloned.submit_groups.all()) == [approval_group]
-        assert list(cloned.view_groups.all()) == [approval_group]
-        assert list(cloned.reviewer_groups.all()) == [approval_group]
-        assert list(cloned.admin_groups.all()) == [approval_group]
+        assert list(cloned.submit_groups.all()) == [submit_group]
+        assert list(cloned.view_groups.all()) == [view_group]
+        assert list(cloned.reviewer_groups.all()) == [reviewer_group]
+        assert list(cloned.admin_groups.all()) == [admin_group]
 
     def test_clone_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

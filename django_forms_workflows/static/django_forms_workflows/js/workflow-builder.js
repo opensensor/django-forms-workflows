@@ -2746,8 +2746,8 @@ export class WorkflowBuilder {
             </div>
             ${canDelete ? `
                 <div class="node-actions">
-                    <button class="btn btn-sm btn-outline-danger" onclick="workflowBuilder.deleteNode(${this.inlineNodeId(node.id)})">
-                        <i class="bi bi-trash"></i>
+                    <button type="button" class="btn btn-sm btn-outline-danger" aria-label="Delete node: ${this.escapeHtmlAttribute(label)}" onclick="workflowBuilder.deleteNode(${this.inlineNodeId(node.id)})">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
                     </button>
                 </div>
             ` : ''}

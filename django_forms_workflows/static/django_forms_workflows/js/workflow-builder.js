@@ -3250,6 +3250,15 @@ export class WorkflowBuilder {
     }
 
     cancelKeyboardConnection() {
+        const moveHandler = this.boundUpdateTempConnection || this.handleConnectionMouseMove;
+        const upHandler = this.boundFinishConnection || this.handleConnectionMouseUp;
+        if (moveHandler) {
+            document.removeEventListener('mousemove', moveHandler);
+        }
+        if (upHandler) {
+            document.removeEventListener('mouseup', upHandler);
+        }
+
         if (!this.isConnecting) {
             return;
         }

@@ -1062,9 +1062,16 @@ export class WorkflowBuilder {
                         >
         `;
 
+        const availableGroupIds = new Set(this.groups.map(group => String(group.id)));
         this.groups.forEach(group => {
             const selected = selectedGroupIds.includes(group.id) ? 'selected' : '';
-            routingSection += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
+            routingSection += `<option value="${this.escapeHtmlAttribute(group.id)}" ${selected}>${this.escapeHtml(group.name)}</option>`;
+        });
+        selectedGroupIds.forEach(groupId => {
+            if (!availableGroupIds.has(String(groupId))) {
+                const safeGroupId = this.escapeHtmlAttribute(groupId);
+                routingSection += `<option value="${safeGroupId}" selected data-unavailable="true">Unavailable group (ID: ${this.escapeHtml(String(groupId))})</option>`;
+            }
         });
 
         const approvalLogic = data.approval_logic || 'all';

@@ -1536,6 +1536,8 @@ export class WorkflowBuilder {
             const operator = condition.operator || 'equals';
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
             const hasSupportedOperator = operatorOptions.some(([value]) => value === operator);
+            const conditionField = condition.field || '';
+            const hasSupportedField = this.fields.some(field => field.field_name === conditionField);
             const fieldId = `${editorIdBase}-row-${index}-field`;
             const operatorId = `${editorIdBase}-row-${index}-operator`;
             const valueId = `${editorIdBase}-row-${index}-value`;
@@ -1546,8 +1548,13 @@ export class WorkflowBuilder {
                         <select class="form-select form-select-sm" id="${fieldId}" name="condition_field"
                                 onchange="${onChangeHandler}">
                             <option value="">-- Select field --</option>
+                            ${!hasSupportedField && conditionField ? `
+                                <option value="${this.escapeHtmlAttribute(conditionField)}" selected data-invalid="true">
+                                    Unsupported field: ${this.escapeHtml(conditionField)}
+                                </option>
+                            ` : ''}
                             ${this.fields.map(field => `
-                                <option value="${this.escapeHtmlAttribute(field.field_name)}" ${condition.field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
+                                <option value="${this.escapeHtmlAttribute(field.field_name)}" ${conditionField === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                             `).join('')}
                         </select>
                     </div>

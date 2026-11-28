@@ -2562,18 +2562,43 @@ export class WorkflowBuilder {
             return [];
         }
 
+        const existingById = new Map(
+            (existingFields || [])
+                .filter(entry => entry && entry.id != null)
+                .map(entry => [String(entry.id), entry])
+        );
+
         return Array.from(fieldSelect.selectedOptions).map(option => {
-            const field = this.fields.find(entry => String(entry.id) === option.value);
-            if (!field) {
-                return existingFields.find(entry => entry && String(entry.id) === option.value);
+            const selectedId = option.value;
+            const existing = existingById.get(selectedId);
+            const field = this.fields.find(entry => String(entry.id) === selectedId);
+
+            if (existing && field) {
+                return {
+                    ...existing,
+                    id: existing.id ?? field.id,
+                    field_name: existing.field_name ?? field.field_name ?? option.text,
+                    field_label: existing.field_label ?? field.field_label ?? option.text,
+                    field_type: existing.field_type ?? field.field_type ?? '',
+                    order: existing.order ?? field.order ?? 0,
+                };
             }
-            return {
-                id: field.id,
-                field_name: field.field_name || option.text,
-                field_label: field.field_label || option.text,
-                field_type: field.field_type || '',
-                order: field.order ?? 0,
-            };
+
+            if (existing) {
+                return existing;
+            }
+
+            if (field) {
+                return {
+                    id: field.id,
+                    field_name: field.field_name || option.text,
+                    field_label: field.field_label || option.text,
+                    field_type: field.field_type || '',
+                    order: field.order ?? 0,
+                };
+            }
+
+            return null;
         }).filter(Boolean);
     }
 

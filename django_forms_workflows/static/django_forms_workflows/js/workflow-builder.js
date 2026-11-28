@@ -2766,10 +2766,9 @@ export class WorkflowBuilder {
         const outputHandleTitle = directionalHandles
             ? 'Drag to next step'
             : 'Drag to connect next step';
-                <div class="node-icon ${this.escapeHtmlAttribute(node.type)}">
         div.innerHTML = `
             <div class="node-header">
-                <div class="node-icon ${node.type}">
+                <div class="node-icon ${this.escapeHtmlAttribute(node.type)}">
                     <i class="bi bi-${icon}"></i>
                 </div>
                 <span>${this.escapeHtml(label)}</span>
@@ -3268,26 +3267,6 @@ export class WorkflowBuilder {
             this.cancelKeyboardConnection();
             const renderedNode = Array.from(
                 this.transformWrapper?.querySelectorAll('.workflow-node') || []
-    getAllowedNodeTypes() {
-        return new Set([
-            'start',
-            'workflow_settings',
-            'form',
-            'stage',
-            'join',
-            'email',
-            'webhook',
-            'approval',
-            'condition',
-            'delay',
-            'notification'
-        ]);
-    }
-
-    sanitizeNodeType(nodeType) {
-        const normalized = String(nodeType || '').trim();
-        return this.getAllowedNodeTypes().has(normalized) ? normalized : null;
-    }
             ).find(element => element.dataset.nodeId === String(nodeId));
             renderedNode?.querySelector('.connection-point.input')?.focus({ preventScroll: true });
         }

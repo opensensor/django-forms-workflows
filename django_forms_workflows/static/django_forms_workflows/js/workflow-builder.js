@@ -2266,6 +2266,12 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const container = document.getElementById('propertiesContent');
+        const activeElement = document.activeElement;
+        const focusState = (activeElement && container.contains(activeElement)) ? {
+            id: activeElement.id || null,
+            name: activeElement.getAttribute('name') || null,
+            tagName: activeElement.tagName.toLowerCase()
+        } : null;
         const orderInput = container.querySelector('input[name="order"]');
         const parsedOrder = Number(orderInput.value);
         if (!Number.isInteger(parsedOrder) || parsedOrder < 1) {
@@ -2295,6 +2301,20 @@ export class WorkflowBuilder {
         node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
 
         this.selectNode(nodeId);
+
+        if (focusState) {
+            const refreshedContainer = document.getElementById('propertiesContent');
+            let focusTarget = null;
+            if (focusState.id) {
+                focusTarget = refreshedContainer.querySelector(`#${CSS.escape(focusState.id)}`);
+            }
+            if (!focusTarget && focusState.name) {
+                focusTarget = refreshedContainer.querySelector(`${focusState.tagName}[name="${focusState.name}"]`);
+            }
+            if (focusTarget) {
+                focusTarget.focus();
+            }
+        }
     }
 
     updateWorkflowSettings(nodeId) {

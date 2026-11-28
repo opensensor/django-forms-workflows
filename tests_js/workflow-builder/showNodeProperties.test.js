@@ -132,11 +132,22 @@ describe('WorkflowBuilder stage editor', () => {
 
     instance.showNodeProperties(node);
 
-    expect(document.querySelector('[name="name"]').value).toBe(node.data.name);
-    expect(document.querySelector('[name="approve_label"]').value).toBe(node.data.approve_label);
-    expect(document.querySelector('[name="name"]').hasAttribute('autofocus')).toBe(false);
-    expect(document.querySelector('[name="name"]').hasAttribute('onfocus')).toBe(false);
-    expect(document.querySelector('[name="name"]').hasAttribute('onclick')).toBe(false);
+    const nameInput = document.querySelector('[name="name"]');
+    const approveLabelInput = document.querySelector('[name="approve_label"]');
+    expect(nameInput.value).toBe(node.data.name);
+    expect(approveLabelInput.value).toBe(node.data.approve_label);
+    expect(nameInput.hasAttribute('autofocus')).toBe(false);
+    expect(nameInput.hasAttribute('onfocus')).toBe(false);
+    expect(nameInput.hasAttribute('onclick')).toBe(false);
+
+    const panelRoot = document.getElementById('propertiesContent');
+    expect(panelRoot.querySelector('[autofocus], [onfocus]')).toBeNull();
+    const action = Array.from(panelRoot.querySelectorAll('button[onclick]'))
+      .find(button => button.getAttribute('onclick').startsWith('workflowBuilder.addTriggerCondition('));
+    expect(action).toBeDefined();
+    const handler = action.getAttribute('onclick');
+    const argument = handler.slice('workflowBuilder.addTriggerCondition('.length, -1);
+    expect(JSON.parse(argument)).toBe(node.id);
   });
 
   it('preserves group roles and approval field arrays on a stage change', () => {

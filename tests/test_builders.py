@@ -4083,11 +4083,9 @@ class TestFormBuilderSavePayloadValidation:
         assert response.status_code == 400
         assert set(form_with_fields.fields.values_list("id", flat=True)) == original_ids
 
-    @pytest.mark.parametrize("field_ids", [[[], []], ["new_1", "new_1"], [1, 1]])
-    def test_rejects_malformed_or_duplicate_field_ids(
-        self, client, superuser, field_ids
-    ):
+    def test_rejects_malformed_field_ids(self, client, superuser):
         client.force_login(superuser)
+        field_ids = [[]]
         response = client.post(
             _fb_url("builder/api/save/"),
             data=json.dumps(
@@ -4095,7 +4093,12 @@ class TestFormBuilderSavePayloadValidation:
                     "name": "Form",
                     "slug": "form",
                     "fields": [
-                        {"id": field_id, "field_name": f"field_{index}"}
+                        {
+                            "id": field_id,
+                            "field_name": f"field_{index}",
+                            "field_label": f"Field {index}",
+                            "field_type": "text",
+                        }
                         for index, field_id in enumerate(field_ids)
                     ],
                 }
@@ -4107,10 +4110,48 @@ class TestFormBuilderSavePayloadValidation:
         assert response.json()["success"] is False
         assert not FormDefinition.objects.filter(slug="form").exists()
 
+    def test_rejects_duplicate_new_field_ids(self, client, superuser):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "name": "Form",
+                    "slug": "form",
+                    "fields": [
+                        {
+                            "id": "new_1",
+                            "field_name": "field_0",
+                            "field_label": "Field 0",
+                            "field_type": "text",
+                        },
+                        {
+                            "id": "new_1",
+                            "field_name": "field_1",
+                            "field_label": "Field 1",
+                            "field_type": "text",
+                        },
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["success"] is False
+        assert "duplicate" in response.json()["error"].lower()
+        assert "id" in response.json()["error"].lower()
+        assert not FormDefinition.objects.filter(slug="form").exists()
+
     def test_rejects_duplicate_persisted_field_ids_on_update(self, client, superuser):
         client.force_login(superuser)
         form = FormDefinition.objects.create(name="Form", slug="form")
-        field = FormField.objects.create(form_definition=form, field_name="field_0")
+        field = FormField.objects.create(
+            form_definition=form,
+            field_name="field_0",
+            field_label="Field 0",
+            field_type="text",
+        )
 
         response = client.post(
             _fb_url("builder/api/save/"),
@@ -4120,8 +4161,18 @@ class TestFormBuilderSavePayloadValidation:
                     "name": form.name,
                     "slug": form.slug,
                     "fields": [
-                        {"id": field.id, "field_name": "field_0"},
-                        {"id": field.id, "field_name": "field_0_dup"},
+                        {
+                            "id": field.id,
+                            "field_name": "field_0",
+                            "field_label": "Field 0",
+                            "field_type": "text",
+                        },
+                        {
+                            "id": field.id,
+                            "field_name": "field_0_dup",
+                            "field_label": "Field 0 dup",
+                            "field_type": "text",
+                        },
                     ],
                 }
             ),
@@ -4130,6 +4181,8 @@ class TestFormBuilderSavePayloadValidation:
 
         assert response.status_code == 400
         assert response.json()["success"] is False
+        assert "duplicate" in response.json()["error"].lower()
+        assert "id" in response.json()["error"].lower()
         assert FormField.objects.filter(form_definition=form).count() == 1
 
     @pytest.mark.parametrize(

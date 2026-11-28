@@ -1392,12 +1392,20 @@ export class WorkflowBuilder {
                             </div>
                             <div class="mb-3">
                                 <label class="form-label form-label-sm" for="${ruleInputId('event')}">Event</label>
-                                <select id="${ruleInputId('event')}" class="form-select form-select-sm" name="notification_rule_event"
+                                <select id="${ruleInputId('event')}" class="form-select form-select-sm ${state.event && !eventOptions.some(([value]) => value === state.event) ? 'is-invalid' : ''}" name="notification_rule_event"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
+                                    ${state.event && !eventOptions.some(([value]) => value === state.event) ? `
+                                        <option value="${this.escapeHtmlAttribute(state.event)}" selected>(unsupported event) ${this.escapeHtml(state.event)}</option>
+                                    ` : ''}
                                     ${eventOptions.map(([value, label]) => `
                                         <option value="${value}" ${state.event === value ? 'selected' : ''}>${label}</option>
                                     `).join('')}
                                 </select>
+                                ${state.event && !eventOptions.some(([value]) => value === state.event) ? `
+                                    <div class="invalid-feedback d-block">
+                                        The saved event "${this.escapeHtml(state.event)}" is no longer supported. Please choose a supported event.
+                                    </div>
+                                ` : ''}
                             </div>
                             <div class="mb-3">
                                 <label class="form-label form-label-sm" for="${ruleInputId('subject_template')}">Subject Template</label>

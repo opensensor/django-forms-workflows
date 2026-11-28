@@ -277,6 +277,7 @@ def form_builder_clone(request, form_id):
                 cloned_wf = WorkflowDefinition.objects.create(
                     form_definition=cloned_form,
                     name_label=wf.name_label,
+                    start_trigger=wf.start_trigger,
                     requires_approval=wf.requires_approval,
                     approval_deadline_days=wf.approval_deadline_days,
                     send_reminder_after_days=wf.send_reminder_after_days,

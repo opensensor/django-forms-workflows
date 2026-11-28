@@ -4438,7 +4438,9 @@ class TestFormBuilderViews:
         form_with_fields.api_enabled = True
         form_with_fields.allow_resubmit = True
         form_with_fields.save(update_fields=["api_enabled", "allow_resubmit"])
-        workflow = WorkflowDefinition.objects.create(form_definition=form_with_fields)
+        workflow = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, start_trigger="on_all_complete"
+        )
         stage = WorkflowStage.objects.create(workflow=workflow, name="Review", order=1)
         StageApprovalGroup.objects.create(
             stage=stage,
@@ -4470,6 +4472,7 @@ class TestFormBuilderViews:
         assert cloned.api_enabled is True
         assert cloned.allow_resubmit is True
         cloned_workflow = cloned.workflows.get()
+        assert cloned_workflow.start_trigger == "on_all_complete"
         cloned_rule = cloned_workflow.notification_rules.get()
         cloned_stage = cloned_workflow.stages.get()
         assert cloned_rule.stage == cloned_stage

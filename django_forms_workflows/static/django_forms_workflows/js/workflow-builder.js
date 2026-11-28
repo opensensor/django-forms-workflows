@@ -3038,6 +3038,8 @@ export class WorkflowBuilder {
                     '<small class="text-muted">Default settings</small>';
             case 'stage':
                 const stageParts = [];
+                const parsedStageOrder = Number.parseInt(node.data.order, 10);
+                const safeStageOrder = Number.isFinite(parsedStageOrder) ? parsedStageOrder : '?';
                 if (node.data.requires_manager_approval) stageParts.push('Manager');
                 if (node.data.allow_send_back) stageParts.push('Send Back target');
                 if (node.data.allow_reassign) stageParts.push('Reassign');
@@ -3051,8 +3053,8 @@ export class WorkflowBuilder {
                 }
                 const label = node.data.approve_label ? ` • "${this.escapeHtml(node.data.approve_label)}"` : '';
                 return stageParts.length > 0 ?
-                    `<span class="badge bg-warning">Stage ${node.data.order || '?'}</span><br><small class="text-muted">${stageParts.join(' + ')}${label}</small>` :
-                    `<span class="badge bg-secondary">Stage ${node.data.order || '?'}</span><br><small class="text-muted">No approvers configured</small>`;
+                    `<span class="badge bg-warning">Stage ${safeStageOrder}</span><br><small class="text-muted">${stageParts.join(' + ')}${label}</small>` :
+                    `<span class="badge bg-secondary">Stage ${safeStageOrder}</span><br><small class="text-muted">No approvers configured</small>`;
             case 'condition':
                 if (node.data.field && node.data.operator) {
                     const operatorSymbols = {

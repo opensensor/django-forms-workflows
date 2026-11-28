@@ -438,6 +438,7 @@ describe('apiMethods.loadTemplate', () => {
     expect(ctx.fields).toEqual([{ field_name: 'text_1' }]);
     expect(ctx.toggleMultiStepMode).toHaveBeenCalledWith(false);
     expect(window.alert).toHaveBeenCalledWith('Template loaded successfully! You can now customize the form.');
+    expect(ctx.updatePreview).toHaveBeenCalledTimes(1);
   });
 
   it('loads template step configuration into multi-step mode', async () => {

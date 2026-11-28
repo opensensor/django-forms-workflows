@@ -355,6 +355,8 @@ def form_builder_clone(request, form_id):
                     label_template=swc.label_template,
                     trigger=swc.trigger,
                     data_prefix=swc.data_prefix,
+                    detached=swc.detached,
+                    reject_parent=swc.reject_parent,
                 )
 
             # Clone workflow notification rules (including stage-scoped rules) and

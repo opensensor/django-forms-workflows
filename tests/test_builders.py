@@ -4964,11 +4964,12 @@ class TestFormBuilderViews:
             form_definition=target_form, start_trigger="on_all_complete"
         )
         sub_workflow = SubWorkflowDefinition.objects.create(
-            workflow=source_workflow,
+            parent_workflow=source_workflow,
             sub_workflow=target_workflow,
-            trigger_status="approved",
-            copy_uploaded_files=True,
-            copy_data=True,
+            count_field="number_of_items",
+            trigger="on_submission",
+            detached=True,
+            reject_parent=True,
         )
 
         client.force_login(superuser)
@@ -4977,18 +4978,18 @@ class TestFormBuilderViews:
         assert response.status_code == 200
         cloned_form = FormDefinition.objects.get(pk=response.json()["form_id"])
         cloned_workflow = WorkflowDefinition.objects.get(form_definition=cloned_form)
-        cloned_sub_workflow = SubWorkflowDefinition.objects.get(workflow=cloned_workflow)
+        cloned_sub_workflow = SubWorkflowDefinition.objects.get(
+            parent_workflow=cloned_workflow
+        )
 
         assert cloned_sub_workflow.pk != sub_workflow.pk
-        assert cloned_sub_workflow.workflow == cloned_workflow
-        assert cloned_sub_workflow.workflow != source_workflow
+        assert cloned_sub_workflow.parent_workflow == cloned_workflow
+        assert cloned_sub_workflow.parent_workflow != source_workflow
         assert cloned_sub_workflow.sub_workflow == target_workflow
-        assert cloned_sub_workflow.trigger_status == sub_workflow.trigger_status
-        assert (
-            cloned_sub_workflow.copy_uploaded_files
-            == sub_workflow.copy_uploaded_files
-        )
-        assert cloned_sub_workflow.copy_data == sub_workflow.copy_data
+        assert cloned_sub_workflow.count_field == sub_workflow.count_field
+        assert cloned_sub_workflow.trigger == sub_workflow.trigger
+        assert cloned_sub_workflow.detached == sub_workflow.detached
+        assert cloned_sub_workflow.reject_parent == sub_workflow.reject_parent
 
     def test_clone_copies_automation_and_settings(
         self, client, superuser, form_with_fields, approval_group

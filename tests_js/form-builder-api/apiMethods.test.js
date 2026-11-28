@@ -63,12 +63,15 @@ function createContext({ fields = [], formSteps = [], config = {} } = {}) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
   setupFormDOM();
   vi.stubGlobal('alert', vi.fn());
   vi.stubGlobal('bootstrap', { Modal: function () { return { show: vi.fn(), hide: vi.fn() }; } });
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
   document.body.innerHTML = '';
   vi.unstubAllGlobals();
   vi.restoreAllMocks();

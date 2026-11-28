@@ -724,7 +724,12 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     success_redirect_url = _optional_text("success_redirect_url")
     success_redirect_rules = data.get("success_redirect_rules") or None
     close_date = _optional_date_text("close_date")
-    max_submissions = data.get("max_submissions") or None
+    max_submissions_raw = data.get("max_submissions")
+    max_submissions = (
+        None
+        if max_submissions_raw is None or max_submissions_raw == ""
+        else max_submissions_raw
+    )
     one_per_user = data.get("one_per_user", False)
     payment_enabled = data.get("payment_enabled", False)
     payment_provider = data.get("payment_provider", "")

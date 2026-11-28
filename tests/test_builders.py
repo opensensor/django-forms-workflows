@@ -3992,6 +3992,67 @@ class TestSaveFormDefinitionFromBuilderData:
         assert form_with_fields.version == original_version
         assert first.field_label == original_label
 
+    def test_direct_save_rolls_back_after_partial_field_updates(
+        self, user, form_with_fields, monkeypatch
+    ):
+        first = form_with_fields.fields.get(field_name="full_name")
+        second = form_with_fields.fields.get(field_name="email")
+        original_name = form_with_fields.name
+        original_version = form_with_fields.version
+        original_first_label = first.field_label
+        original_second_label = second.field_label
+        original_field_ids = set(
+            form_with_fields.fields.values_list("id", flat=True)
+        )
+
+        save_calls = {"count": 0}
+        original_save = FormField.save
+
+        def flaky_save(instance, *args, **kwargs):
+            if instance.form_definition_id == form_with_fields.id:
+                save_calls["count"] += 1
+                if save_calls["count"] == 2:
+                    raise ValidationError("Injected failure after partial save")
+            return original_save(instance, *args, **kwargs)
+
+        monkeypatch.setattr(FormField, "save", flaky_save)
+
+        data = {
+            "name": "Changed form",
+            "slug": form_with_fields.slug,
+            "fields": [
+                {
+                    "id": first.id,
+                    "field_name": first.field_name,
+                    "field_label": "Changed first label",
+                    "field_type": first.field_type,
+                    "order": first.order,
+                },
+                {
+                    "id": second.id,
+                    "field_name": second.field_name,
+                    "field_label": "Changed second label",
+                    "field_type": second.field_type,
+                    "order": second.order,
+                },
+            ],
+        }
+
+        with pytest.raises(ValidationError):
+            save_form_definition_from_builder_data(
+                data, user, form_definition=form_with_fields
+            )
+
+        form_with_fields.refresh_from_db()
+        first.refresh_from_db()
+        second.refresh_from_db()
+
+        assert form_with_fields.name == original_name
+        assert form_with_fields.version == original_version
+        assert first.field_label == original_first_label
+        assert second.field_label == original_second_label
+        assert set(form_with_fields.fields.values_list("id", flat=True)) == original_field_ids
+
     def test_deletes_fields_absent_from_the_payload(self, user, form_with_fields):
         assert form_with_fields.fields.count() == 5
         data = {

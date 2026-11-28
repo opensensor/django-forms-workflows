@@ -2427,7 +2427,13 @@ export class WorkflowBuilder {
         });
 
         if (!rows.length) {
-            return null;
+            if (!operatorElement) {
+                return null;
+            }
+            return {
+                operator: operatorElement.value,
+                conditions: [],
+            };
         }
 
         return {

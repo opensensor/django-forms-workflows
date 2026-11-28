@@ -202,9 +202,9 @@
                     // any form whose response is a file rather than a page load.
                     if (form.hasAttribute('data-no-spinner')) return;
 
-                    // Defer until synchronous submit handlers finish; if any of
-                    // them canceled submission, don't show the overlay.
-                    queueMicrotask(function() {
+                    // Defer until submit event dispatch completes; if any handler
+                    // canceled submission, don't show the overlay.
+                    setTimeout(function() {
                         if (event.defaultPrevented) return;
                         showLoadingOverlay(form);
                     }, 0);

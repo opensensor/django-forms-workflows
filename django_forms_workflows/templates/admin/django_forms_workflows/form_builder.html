@@ -1190,17 +1190,53 @@
                 docTemplates.forEach(tpl => {
                     const el = document.createElement('div');
                     el.className = 'doc-tpl-item d-flex justify-content-between align-items-center border rounded p-2 mb-2';
-                    el.innerHTML = `
-                        <div>
-                            <strong>${tpl.name}</strong>
-                            ${tpl.is_default ? '<span class="badge bg-primary ms-1">Default</span>' : ''}
-                            ${!tpl.is_active ? '<span class="badge bg-secondary ms-1">Inactive</span>' : ''}
-                            <small class="text-muted ms-2">${tpl.page_size}</small>
-                        </div>
-                        <div>
-                            <button class="btn btn-sm btn-outline-primary" onclick="editDocTemplate(${tpl.id})"><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteDocTemplate(${tpl.id}, '${tpl.name.replace(/'/g, "\\'")}')"><i class="bi bi-trash"></i></button>
-                        </div>`;
+
+                    const left = document.createElement('div');
+                    const nameStrong = document.createElement('strong');
+                    nameStrong.textContent = tpl.name || '';
+                    left.appendChild(nameStrong);
+
+                    if (tpl.is_default) {
+                        const defaultBadge = document.createElement('span');
+                        defaultBadge.className = 'badge bg-primary ms-1';
+                        defaultBadge.textContent = 'Default';
+                        left.appendChild(defaultBadge);
+                    }
+
+                    if (!tpl.is_active) {
+                        const inactiveBadge = document.createElement('span');
+                        inactiveBadge.className = 'badge bg-secondary ms-1';
+                        inactiveBadge.textContent = 'Inactive';
+                        left.appendChild(inactiveBadge);
+                    }
+
+                    const sizeSmall = document.createElement('small');
+                    sizeSmall.className = 'text-muted ms-2';
+                    sizeSmall.textContent = tpl.page_size || '';
+                    left.appendChild(sizeSmall);
+
+                    const right = document.createElement('div');
+
+                    const editBtn = document.createElement('button');
+                    editBtn.type = 'button';
+                    editBtn.className = 'btn btn-sm btn-outline-primary';
+                    editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+                    editBtn.addEventListener('click', function() {
+                        window.editDocTemplate(tpl.id);
+                    });
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.type = 'button';
+                    deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                    deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                    deleteBtn.addEventListener('click', function() {
+                        window.deleteDocTemplate(tpl.id, tpl.name);
+                    });
+
+                    right.appendChild(editBtn);
+                    right.appendChild(deleteBtn);
+                    el.appendChild(left);
+                    el.appendChild(right);
                     docContainer.appendChild(el);
                 });
             }
@@ -1240,7 +1276,18 @@
                 } catch (e) { alert('Error deleting template: ' + e.message); }
             };
 
-            document.getElementById('btnAddDocTemplate').addEventListener('click', () => {
+            const btnAddDocTemplate = document.getElementById('btnAddDocTemplate');
+
+            if (!formBuilderData.formId && btnAddDocTemplate) {
+                btnAddDocTemplate.disabled = true;
+                btnAddDocTemplate.title = 'Save the form before adding document templates';
+            }
+
+            if (btnAddDocTemplate) btnAddDocTemplate.addEventListener('click', () => {
+                if (!formBuilderData.formId || !docUrls.docTemplateSave) {
+                    alert('Please save the form before adding document templates.');
+                    return;
+                }
                 document.getElementById('docTemplateId').value = '';
                 document.getElementById('docTemplateName').value = '';
                 document.getElementById('docTemplateHtml').value = '';
@@ -1251,6 +1298,10 @@
             });
 
             document.getElementById('btnSaveDocTemplate').addEventListener('click', async () => {
+                if (!formBuilderData.formId || !docUrls.docTemplateSave) {
+                    alert('Please save the form before saving document templates.');
+                    return;
+                }
                 const name = document.getElementById('docTemplateName').value.trim();
                 if (!name) { alert('Template name is required'); return; }
                 const payload = {

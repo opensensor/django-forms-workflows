@@ -2101,32 +2101,69 @@ export class WorkflowBuilder {
         node.data.notification_cadence_time = container.querySelector('input[name="notification_cadence_time"]').value;
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
-        node.data.trigger_conditions = this.readNodeTriggerConditions(container);
+        node.data.trigger_conditions = this.readNodeTriggerConditions(container, nodeId);
 
         this.render();
         this.selectNode(nodeId);
     }
 
-    readConditionsFromEditor(editorElement) {
+    getSupportedConditionOperators() {
+        return ['equals', 'not_equals', 'contains', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'not_empty'];
+    }
+
+    addNodeValidationError(nodeId, message) {
+        if (!nodeId || !this.store || typeof this.store.getState !== 'function' || typeof this.store.setState !== 'function') {
+            return;
+        }
+        const state = this.store.getState();
+        const validationErrors = Array.isArray(state.validationErrors) ? state.validationErrors.slice() : [];
+        validationErrors.push({ nodeId, message });
+        this.store.setState({ validationErrors });
+    }
+
+    parseAndValidateConditionRow(row, ownerNodeId, contextLabel) {
+        const fieldElement = row.querySelector('select[name="condition_field"]');
+        const operatorElement = row.querySelector('select[name="condition_operator"]');
+        const valueElement = row.querySelector('input[name="condition_value"]');
+
+        const field = fieldElement ? fieldElement.value : '';
+        const operator = operatorElement ? operatorElement.value : '';
+        const supportedOperators = this.getSupportedConditionOperators();
+
+        if (!field) {
+            this.addNodeValidationError(ownerNodeId, `${contextLabel}: condition field is required.`);
+            return null;
+        }
+        if (!supportedOperators.includes(operator)) {
+            this.addNodeValidationError(ownerNodeId, `${contextLabel}: unsupported condition operator "${operator}".`);
+            return null;
+        }
+
+        const condition = { field, operator };
+        if (!['is_empty', 'not_empty'].includes(operator)) {
+            const value = valueElement ? valueElement.value : '';
+            if (value === '') {
+                this.addNodeValidationError(ownerNodeId, `${contextLabel}: condition value is required for operator "${operator}".`);
+                return null;
+            }
+            condition.value = value;
+        }
+
+        return condition;
+    }
+
+    readConditionsFromEditor(editorElement, ownerNodeId = null, contextLabel = 'Condition') {
         if (!editorElement) {
             return null;
         }
 
         const operatorElement = editorElement.querySelector('select[name="condition_group_operator"]');
         const rows = Array.from(editorElement.querySelectorAll('.trigger-condition-row'));
-        const conditions = rows.map(row => {
-            const operator = row.querySelector('select[name="condition_operator"]').value;
-            const condition = {
-                field: row.querySelector('select[name="condition_field"]').value,
-                operator,
-            };
-            if (!['is_empty', 'not_empty'].includes(operator)) {
-                condition.value = row.querySelector('input[name="condition_value"]').value;
-            }
-            return condition;
-        });
+        const conditions = rows
+            .map(row => this.parseAndValidateConditionRow(row, ownerNodeId, contextLabel))
+            .filter(condition => condition !== null);
 
-        if (!rows.length) {
+        if (!conditions.length) {
             return null;
         }
 
@@ -2136,9 +2173,11 @@ export class WorkflowBuilder {
         };
     }
 
-    readNodeTriggerConditions(container) {
+    readNodeTriggerConditions(container, nodeId) {
         return this.readConditionsFromEditor(
-            container.querySelector('.conditions-editor[data-editor-kind="node-trigger"]')
+            container.querySelector('.conditions-editor[data-editor-kind="node-trigger"]'),
+            nodeId,
+            'Node trigger condition'
         );
     }
 

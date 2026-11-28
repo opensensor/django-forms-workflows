@@ -133,7 +133,7 @@ describe('apiMethods.generatePreview', () => {
     const first = ctx.generatePreview();
     await ctx.generatePreview();
     rejectFirst(new Error('stale failure'));
-    await first.catch(() => {});
+    await expect(first).resolves.toBeUndefined();
 
     expect(document.getElementById('formPreview').innerHTML).toBe('<p>new</p>');
   });

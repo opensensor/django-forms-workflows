@@ -146,6 +146,21 @@ describe('WorkflowBuilder stage editor', () => {
     expect(node.data.approval_groups.map(group => group.role)).toEqual(['approval', 'validation']);
     expect(node.data.approval_fields.map(field => field.id)).toEqual([2]);
   });
+
+  it('selects an approval field restored by field name', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: { name: 'Review', approval_fields: [{ field_name: 'notes' }] },
+    };
+    instance.nodes = [node];
+    instance.fields = [{ id: 2, field_name: 'notes', field_label: 'Notes' }];
+    instance.groups = [];
+
+    instance.showNodeProperties(node);
+
+    expect(document.querySelector('select[name="approval_fields"] option[value="2"]').selected).toBe(true);
+  });
 });
 
 describe('WorkflowBuilder workflow settings editor', () => {

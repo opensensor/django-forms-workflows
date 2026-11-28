@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { WorkflowBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder.js';
 import { createWorkflowBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder-store.js';
 
-function renderRules(rules) {
+function renderRules(rules, renderConditions = false) {
   const builder = Object.create(WorkflowBuilder.prototype);
   builder.store = createWorkflowBuilderStore();
   builder.nodes = [];
   builder.fields = [];
   builder.groups = [];
-  builder.buildConditionsEditor = vi.fn(() => '');
+  if (!renderConditions) builder.buildConditionsEditor = vi.fn(() => '');
   const wrapper = document.createElement('div');
   wrapper.innerHTML = builder.buildNotificationRulesEditor({
     id: 'settings',
@@ -18,6 +18,21 @@ function renderRules(rules) {
 }
 
 describe('notification rule controls', () => {
+  it('uses unique condition control IDs across multiple rules', () => {
+    const conditions = { operator: 'AND', conditions: [{ field: '', operator: 'equals', value: '' }] };
+    const { wrapper } = renderRules([
+      { event: 'approval_request', conditions },
+      { event: 'stage_decision', conditions },
+    ], true);
+    const controls = [...wrapper.querySelectorAll('.conditions-editor [id]')];
+
+    expect(controls.length).toBeGreaterThan(2);
+    expect(new Set(controls.map(control => control.id)).size).toBe(controls.length);
+    controls.forEach(control => {
+      expect(wrapper.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
+    });
+  });
+
   it('associates each checkbox label with its own rule', () => {
     const { wrapper } = renderRules([{ event: 'approval_request' }, { event: 'stage_decision' }]);
     const boxes = [...wrapper.querySelectorAll('input[name^="notification_rule_notify_"]')];

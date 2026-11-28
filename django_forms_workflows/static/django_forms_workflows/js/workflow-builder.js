@@ -970,7 +970,21 @@ export class WorkflowBuilder {
         const data = node.data || {};
         const orderedApprovalGroups = this.getNormalizedStageApprovalGroups(data.approval_groups || []);
         const selectedGroupIds = orderedApprovalGroups.map(g => g.id);
-        const selectedApprovalFieldIds = new Set((data.approval_fields || []).map(field => field.id));
+        const approvalFieldIdByName = new Map(
+            this.fields
+                .filter(field => field && field.id != null && field.field_name)
+                .map(field => [field.field_name, String(field.id)])
+        );
+        const selectedApprovalFieldIds = new Set(
+            (data.approval_fields || [])
+                .map(field => {
+                    if (!field) return null;
+                    if (field.id != null) return String(field.id);
+                    if (field.field_name) return approvalFieldIdByName.get(field.field_name) ?? null;
+                    return null;
+                })
+                .filter(id => id != null)
+        );
 
         const basicsSection = `
             <div class="mb-3">
@@ -1078,7 +1092,7 @@ export class WorkflowBuilder {
                 <select class="form-select builder-multiselect-lg" id="stage_fields_${this.escapeHtmlAttribute(node.id)}" name="approval_fields" multiple size="6"
                         >
                     ${this.fields.map(field => `
-                        <option value="${field.id}" ${selectedApprovalFieldIds.has(field.id) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
+                        <option value="${field.id}" ${selectedApprovalFieldIds.has(String(field.id)) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                     `).join('')}
                 </select>
                 <small class="text-muted d-block mt-1">Selected fields become editable approval-step fields for this stage only.</small>
@@ -1432,6 +1446,7 @@ export class WorkflowBuilder {
                                 conditions: state.conditions,
                                 onChangeHandler: `workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})`,
                                 editorKind: 'notification-rule',
+                                editorId: `notification-${node.id}-${index}`,
                                 extraAttributes: `data-rule-index="${index}"`,
                                 removeConditionHandler: `workflowBuilder.removeNotificationRuleCondition(${this.inlineNodeId(node.id)}, ${index}, __INDEX__)`,
                             })}
@@ -1484,7 +1499,7 @@ export class WorkflowBuilder {
         return { operator: 'AND', conditions: [] };
     }
 
-    buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
+    buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, editorId = editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
         const state = this.getNormalizedTriggerConditions(conditions);
         const operatorOptions = [
             ['equals', 'Equals'],
@@ -1498,16 +1513,20 @@ export class WorkflowBuilder {
             ['is_empty', 'Is empty'],
             ['not_empty', 'Is not empty'],
         ];
+        const editorIdBase = this.escapeHtmlAttribute(`conditions-${String(editorId || 'editor')}`);
 
         let rowsHtml = '';
         state.conditions.forEach((condition, index) => {
             const operator = condition.operator || 'equals';
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
+            const fieldId = `${editorIdBase}-row-${index}-field`;
+            const operatorId = `${editorIdBase}-row-${index}-operator`;
+            const valueId = `${editorIdBase}-row-${index}-value`;
             rowsHtml += `
                 <div class="border rounded p-2 mb-2 trigger-condition-row" data-index="${index}">
                     <div class="mb-2">
-                        <label class="form-label form-label-sm mb-1">Field</label>
-                        <select class="form-select form-select-sm" name="condition_field"
+                        <label class="form-label form-label-sm mb-1" for="${fieldId}">Field</label>
+                        <select class="form-select form-select-sm" id="${fieldId}" name="condition_field"
                                 onchange="${onChangeHandler}">
                             <option value="">-- Select field --</option>
                             ${this.fields.map(field => `
@@ -1516,8 +1535,8 @@ export class WorkflowBuilder {
                         </select>
                     </div>
                     <div class="mb-2">
-                        <label class="form-label form-label-sm mb-1">Operator</label>
-                        <select class="form-select form-select-sm" name="condition_operator"
+                        <label class="form-label form-label-sm mb-1" for="${operatorId}">Operator</label>
+                        <select class="form-select form-select-sm" id="${operatorId}" name="condition_operator"
                                 onchange="${onChangeHandler}">
                             ${operatorOptions.map(([value, label]) => `
                                 <option value="${value}" ${operator === value ? 'selected' : ''}>${label}</option>
@@ -1525,8 +1544,8 @@ export class WorkflowBuilder {
                         </select>
                     </div>
                     <div class="mb-2">
-                        <label class="form-label form-label-sm mb-1">Value</label>
-                        <input type="text" class="form-control form-control-sm" name="condition_value"
+                        <label class="form-label form-label-sm mb-1" for="${valueId}">Value</label>
+                        <input type="text" class="form-control form-control-sm" id="${valueId}" name="condition_value"
                                value="${this.escapeHtmlAttribute(condition.value ?? '')}"
                                placeholder="${operator === 'in' ? 'Comma-separated values' : 'Comparison value'}"
                                ${needsValue ? '' : 'disabled'}
@@ -1552,8 +1571,8 @@ export class WorkflowBuilder {
             ${showHeader ? `<hr /><h6>${this.escapeHtml(title)}</h6>` : ''}
             <div class="conditions-editor" data-editor-kind="${editorKind}" ${extraAttributes}>
             <div class="mb-2">
-                <label class="form-label form-label-sm">Match mode</label>
-                <select class="form-select form-select-sm" name="condition_group_operator"
+                <label class="form-label form-label-sm" for="${editorIdBase}-group-operator">Match mode</label>
+                <select class="form-select form-select-sm" id="${editorIdBase}-group-operator" name="condition_group_operator"
                         onchange="${onChangeHandler}">
                     <option value="AND" ${state.operator === 'AND' ? 'selected' : ''}>All conditions must match (AND)</option>
                     <option value="OR" ${state.operator === 'OR' ? 'selected' : ''}>Any condition may match (OR)</option>
@@ -1571,6 +1590,7 @@ export class WorkflowBuilder {
                 conditions: node.data.trigger_conditions,
                 onChangeHandler: `workflowBuilder.updateNodeTriggerConditions(${this.inlineNodeId(node.id)})`,
                 editorKind: 'node-trigger',
+                editorId: `node-${node.id}`,
                 removeConditionHandler: `workflowBuilder.removeTriggerCondition(${this.inlineNodeId(node.id)}, __INDEX__)`,
                 showHeader: false,
             })}
@@ -2527,10 +2547,12 @@ export class WorkflowBuilder {
                 const fieldId = field?.id;
                 const fieldName = field?.field_name;
                 const label = field?.field_label || fieldName || fieldId;
-                const resolvedField = (this.fields || []).find(candidate =>
-                    (fieldId && candidate.id === fieldId) ||
-                    (fieldName && (candidate.name === fieldName || candidate.field_name === fieldName))
-                );
+                const fieldCandidates = this.fields || [];
+                const resolvedField = fieldId
+                    ? fieldCandidates.find(candidate => candidate.id === fieldId)
+                    : fieldCandidates.find(candidate =>
+                        fieldName && (candidate.name === fieldName || candidate.field_name === fieldName)
+                    );
                 const resolvedFieldId = resolvedField?.id;
 
                 if (!resolvedFieldId) {

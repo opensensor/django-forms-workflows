@@ -228,6 +228,29 @@ describe('WorkflowBuilder stage editor', () => {
     expect(node.data.approval_fields).toEqual([savedField]);
   });
 
+  it('resolves a name-only approval field while keeping its saved label', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: {
+        name: 'Review', order: 1,
+        approval_fields: [{ field_name: 'notes', field_label: 'Saved notes label' }],
+      },
+    };
+    instance.nodes = [node];
+    instance.fields = [{ id: 5, field_name: 'notes', field_label: 'Current notes label' }];
+    instance.groups = [];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    instance.updateStageConfig(node.id);
+
+    expect(node.data.approval_fields).toEqual([{
+      id: 5, field_name: 'notes', field_label: 'Saved notes label',
+      field_type: '', order: 0,
+    }]);
+  });
+
   it('moves a stage group when its button supplies the ID as a string', () => {
     const instance = createInstance();
     const node = {

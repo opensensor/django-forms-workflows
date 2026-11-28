@@ -2580,8 +2580,11 @@ export class WorkflowBuilder {
 
         return Array.from(fieldSelect.selectedOptions).map(option => {
             const selectedId = option.value;
-            const existing = existingById.get(selectedId) || existingByName.get(selectedId);
             const field = this.fields.find(entry => String(entry.id) === selectedId);
+            const existingByIdMatch = existingById.get(selectedId);
+            const existingByFieldName = field?.field_name ? existingByName.get(`name:${field.field_name}`) : null;
+            const existingBySelectedName = existingByName.get(selectedId);
+            const existing = existingByIdMatch || existingByFieldName || existingBySelectedName;
 
             if (existing && field) {
                 return {
@@ -2896,7 +2899,11 @@ export class WorkflowBuilder {
             firstErrorNodeId: null,
         };
         const fieldNames = new Set(this.fields.map(field => field.field_name));
-        const groupIds = new Set(this.groups.map(group => group.id));
+        const normalizedGroupIds = new Set(
+            this.groups
+                .filter(group => group.id !== null && group.id !== undefined)
+                .map(group => String(group.id))
+        );
         const stageNodes = this.nodes.filter(node => node.type === 'stage');
         const settingsNode = this.nodes.find(node => node.type === 'workflow_settings');
         const stageNodeIds = new Set(stageNodes.map(node => node.id));
@@ -2937,7 +2944,8 @@ export class WorkflowBuilder {
             }
 
             groups.forEach(group => {
-                if (!groupIds.has(group.id)) {
+                const normalizedGroupId = group?.id !== null && group?.id !== undefined ? String(group.id) : null;
+                if (!normalizedGroupId || !normalizedGroupIds.has(normalizedGroupId)) {
                     this.addNodeIssue(result, node.id, 'errors', `${stageLabel} references an unknown approval group: ${group.id}.`);
                 }
             });
@@ -2948,7 +2956,11 @@ export class WorkflowBuilder {
                 const label = field?.field_label || fieldName || fieldId;
                 const fieldCandidates = this.fields || [];
                 const resolvedField = fieldId
-                    ? fieldCandidates.find(candidate => candidate.id === fieldId)
+                    ? fieldCandidates.find(candidate =>
+                        candidate?.id !== undefined &&
+                        candidate?.id !== null &&
+                        String(candidate.id) === String(fieldId)
+                    )
                     : fieldCandidates.find(candidate =>
                         fieldName && (candidate.name === fieldName || candidate.field_name === fieldName)
                     );

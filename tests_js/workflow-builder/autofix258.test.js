@@ -53,7 +53,7 @@ describe('notification rule controls', () => {
     expect(wrapper.querySelector('img')).toBeNull();
     const selectedEmailOption = wrapper.querySelector('select[name="notification_rule_email_field"] option[selected]');
     expect(selectedEmailOption.value).toBe(fieldName);
-    expect(selectedEmailOption.textContent).toBe(fieldName);
+    expect(selectedEmailOption.textContent).toBe(`${fieldName} (${fieldName})`);
   });
 
   it('uses unique condition control IDs across multiple rules', () => {
@@ -67,7 +67,7 @@ describe('notification rule controls', () => {
     expect(controls.length).toBeGreaterThan(2);
     expect(new Set(controls.map(control => control.id)).size).toBe(controls.length);
     controls.forEach(control => {
-      const rule = control.closest('.notification-rule');
+      const rule = control.closest('.notification-rule-card');
       expect(rule).not.toBeNull();
       expect(rule.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
     });
@@ -80,7 +80,7 @@ describe('notification rule controls', () => {
     expect(boxes).toHaveLength(6);
     expect(new Set(boxes.map(box => box.id)).size).toBe(boxes.length);
     boxes.forEach(box => {
-      const rule = box.closest('.notification-rule');
+      const rule = box.closest('.notification-rule-card');
       expect(rule).not.toBeNull();
       expect(rule.querySelector(`label[for="${box.id}"]`)).not.toBeNull();
     });
@@ -93,7 +93,7 @@ describe('notification rule controls', () => {
       expect(controls).toHaveLength(2);
       expect(new Set(controls.map(control => control.id)).size).toBe(2);
       controls.forEach(control => {
-        const rule = control.closest('.notification-rule');
+        const rule = control.closest('.notification-rule-card');
         expect(rule).not.toBeNull();
         expect(rule.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
       });

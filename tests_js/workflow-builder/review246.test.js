@@ -71,6 +71,16 @@ describe('workflow builder review fixes', () => {
     expect(button.querySelector('i').getAttribute('aria-hidden')).toBe('true');
   });
 
+  it('keeps untrusted node types inside the icon class attribute', () => {
+    const instance = createInstance();
+    const element = instance.createNodeElement({
+      id: 'stage-1', type: 'stage" onmouseover="alert(1)', x: 0, y: 0,
+      data: { name: 'Review' },
+    });
+
+    expect(element.querySelector('.node-icon').hasAttribute('onmouseover')).toBe(false);
+  });
+
   it('keeps a scrolled canvas cursor fixed while zooming', () => {
     document.body.innerHTML = '<div id="workflowCanvas"><svg id="connectionsSvg"></svg></div>';
     const instance = createInstance();

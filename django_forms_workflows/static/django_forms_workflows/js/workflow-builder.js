@@ -1510,7 +1510,7 @@ export class WorkflowBuilder {
                                 onchange="${onChangeHandler}">
                             <option value="">-- Select field --</option>
                             ${this.fields.map(field => `
-                                <option value="${field.field_name}" ${condition.field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
+                                <option value="${this.escapeHtmlAttribute(field.field_name)}" ${condition.field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                             `).join('')}
                         </select>
                     </div>
@@ -2766,10 +2766,9 @@ export class WorkflowBuilder {
         const outputHandleTitle = directionalHandles
             ? 'Drag to next step'
             : 'Drag to connect next step';
-
         div.innerHTML = `
             <div class="node-header">
-                <div class="node-icon ${node.type}">
+                <div class="node-icon ${this.escapeHtmlAttribute(node.type)}">
                     <i class="bi bi-${icon}"></i>
                 </div>
                 <span>${this.escapeHtml(label)}</span>

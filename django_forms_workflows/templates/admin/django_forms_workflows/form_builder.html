@@ -1387,7 +1387,7 @@
                 saveBtn.disabled = true;
                 const controlsToDisable = Array.from(
                     docTemplateModalEl.querySelectorAll('input, textarea, select, button')
-                ).filter((el) => el !== saveBtn);
+                ).filter((el) => el !== saveBtn && !el.disabled);
                 controlsToDisable.forEach((el) => { el.disabled = true; });
                 const modalInstance = bootstrap.Modal.getOrCreateInstance(docTemplateModalEl);
                 try {

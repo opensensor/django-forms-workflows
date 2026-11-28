@@ -406,11 +406,14 @@ describe('apiMethods.saveWorkflow', () => {
     expect(document.getElementById('saveStatus').textContent).toBe('Unsaved changes');
   });
 
-  it('reports an error status and does not throw when the save request fails', async () => {
+  it('reports an error status when HTTP succeeds but the application reports failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false, json: async () => ({ success: false, error: 'Server exploded' }),
+      ok: true, json: async () => ({ success: false, error: 'Server exploded' }),
     }));
-    const ctx = createContext();
+    const ctx = createContext({ nodes: [{ id: 'node_1' }] });
+    ctx.syncSavedWorkflowSnapshot();
+    ctx.deletedActionIds = [17];
+    ctx.updateDirtyState();
 
     await expect(ctx.saveWorkflow()).resolves.toBeUndefined();
 
@@ -418,6 +421,28 @@ describe('apiMethods.saveWorkflow', () => {
     expect(ctx.setBuilderMessage).toHaveBeenCalledWith(
       'danger', 'Failed to save workflow: Server exploded', []
     );
+    expect(ctx.deletedActionIds).toEqual([17]);
+    expect(ctx.isDirty).toBe(true);
+    expect(document.getElementById('btnSave').disabled).toBe(false);
+  });
+
+  it('reports an error status when HTTP fails even if the application payload reports success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, json: async () => ({ success: true, error: 'Server exploded' }),
+    }));
+    const ctx = createContext({ nodes: [{ id: 'node_1' }] });
+    ctx.syncSavedWorkflowSnapshot();
+    ctx.deletedActionIds = [17];
+    ctx.updateDirtyState();
+
+    await expect(ctx.saveWorkflow()).resolves.toBeUndefined();
+
+    expect(document.getElementById('saveStatus').textContent).toBe('Error saving');
+    expect(ctx.setBuilderMessage).toHaveBeenCalledWith(
+      'danger', 'Failed to save workflow: Server exploded', []
+    );
+    expect(ctx.deletedActionIds).toEqual([17]);
+    expect(ctx.isDirty).toBe(true);
     expect(document.getElementById('btnSave').disabled).toBe(false);
   });
 

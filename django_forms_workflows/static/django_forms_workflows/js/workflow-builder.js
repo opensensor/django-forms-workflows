@@ -2303,14 +2303,15 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
 
-        // Numeric fields (empty → null), otherwise must be positive safe integers
+        // Validate every numeric field before changing the node.
+        const numericUpdates = {};
         for (const key of ['approval_deadline_days', 'send_reminder_after_days', 'auto_approve_after_days']) {
             const input = container.querySelector(`input[name="${key}"]`);
             const raw = input.value.trim();
 
             if (raw === '') {
                 input.setCustomValidity('');
-                node.data[key] = null;
+                numericUpdates[key] = null;
                 continue;
             }
 
@@ -2323,29 +2324,33 @@ export class WorkflowBuilder {
             }
 
             input.setCustomValidity('');
-            node.data[key] = parsed;
+            numericUpdates[key] = parsed;
         }
 
-        node.data.name_label = container.querySelector('input[name="name_label"]').value;
-        node.data.notification_cadence = container.querySelector('select[name="notification_cadence"]').value;
-
+        const cadence = container.querySelector('select[name="notification_cadence"]').value;
         const cadenceDayInput = container.querySelector('input[name="notification_cadence_day"]');
         const cadenceDayRaw = cadenceDayInput.value.trim();
+        let cadenceDay = null;
         if (cadenceDayRaw === '') {
             cadenceDayInput.setCustomValidity('');
-            node.data.notification_cadence_day = null;
         } else {
             const parsedCadenceDay = Number(cadenceDayRaw);
-            if (!Number.isSafeInteger(parsedCadenceDay) || parsedCadenceDay < 1 || parsedCadenceDay > 31) {
-                cadenceDayInput.setCustomValidity('Notification cadence day must be a whole number between 1 and 31.');
+            const minimumDay = cadence === 'monthly' ? 1 : 0;
+            const maximumDay = cadence === 'weekly' ? 6 : 31;
+            if (!Number.isSafeInteger(parsedCadenceDay) || parsedCadenceDay < minimumDay || parsedCadenceDay > maximumDay) {
+                cadenceDayInput.setCustomValidity(`Notification cadence day must be a whole number between ${minimumDay} and ${maximumDay}.`);
                 cadenceDayInput.reportValidity();
                 cadenceDayInput.focus();
                 return;
             }
             cadenceDayInput.setCustomValidity('');
-            node.data.notification_cadence_day = parsedCadenceDay;
+            cadenceDay = parsedCadenceDay;
         }
 
+        Object.assign(node.data, numericUpdates);
+        node.data.name_label = container.querySelector('input[name="name_label"]').value;
+        node.data.notification_cadence = cadence;
+        node.data.notification_cadence_day = cadenceDay;
         node.data.notification_cadence_time = container.querySelector('input[name="notification_cadence_time"]').value;
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);

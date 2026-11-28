@@ -188,6 +188,27 @@ describe('WorkflowBuilder stage editor', () => {
 });
 
 describe('WorkflowBuilder workflow settings editor', () => {
+  it('does not partly update settings when a digest day is invalid', () => {
+    const instance = createInstance();
+    instance.fields = [];
+    instance.groups = [];
+    const node = { id: 'settings', type: 'workflow_settings', data: {
+      notification_cadence: 'weekly', notification_cadence_day: 0,
+      approval_deadline_days: 2,
+    } };
+    instance.nodes = [node];
+    instance.selectNode = vi.fn();
+    instance.showNodeProperties(node);
+
+    document.querySelector('[name="approval_deadline_days"]').value = '5';
+    document.querySelector('[name="notification_cadence_day"]').value = '7';
+    instance.updateWorkflowSettings(node.id);
+
+    expect(node.data.approval_deadline_days).toBe(2);
+    expect(node.data.notification_cadence_day).toBe(0);
+    expect(instance.selectNode).not.toHaveBeenCalled();
+  });
+
   it('keeps weekly day zero visible and omits unsupported daily cadence', () => {
     const instance = createInstance();
     instance.fields = [];

@@ -795,11 +795,11 @@
                     <div class="col-md-9" id="paymentSettings" style="display:none;">
                         <div class="row g-2">
                             <div class="col-md-4">
-                                <label class="form-label small">Provider</label>
+                                <label class="form-label small" for="formPaymentProvider">Provider</label>
                                 <select class="form-select form-select-sm" id="formPaymentProvider"></select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label small">Amount Type</label>
+                                <label class="form-label small" for="formPaymentAmountType">Amount Type</label>
                                 <select class="form-select form-select-sm" id="formPaymentAmountType"
                                         onchange="document.getElementById('paymentFixedGroup').style.display = this.value==='fixed' ? '' : 'none'; document.getElementById('paymentFieldGroup').style.display = this.value==='field' ? '' : 'none';">
                                     <option value="fixed">Fixed Amount</option>
@@ -807,18 +807,18 @@
                                 </select>
                             </div>
                             <div class="col-md-4" id="paymentFixedGroup">
-                                <label class="form-label small">Amount</label>
+                                <label class="form-label small" for="formPaymentFixedAmount">Amount</label>
                                 <div class="input-group input-group-sm">
                                     <span class="input-group-text">$</span>
                                     <input type="number" class="form-control" id="formPaymentFixedAmount" step="0.01" min="0.01">
                                 </div>
                             </div>
                             <div class="col-md-4" id="paymentFieldGroup" style="display:none;">
-                                <label class="form-label small">Amount Field</label>
+                                <label class="form-label small" for="formPaymentAmountField">Amount Field</label>
                                 <input type="text" class="form-control form-control-sm" id="formPaymentAmountField" placeholder="field_name">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label small">Currency</label>
+                                <label class="form-label small" for="formPaymentCurrency">Currency</label>
                                 <select class="form-select form-select-sm" id="formPaymentCurrency">
                                     <option value="usd">USD</option>
                                     <option value="cad">CAD</option>
@@ -827,7 +827,7 @@
                                 </select>
                             </div>
                             <div class="col-md-9">
-                                <label class="form-label small">Description</label>
+                                <label class="form-label small" for="formPaymentDescription">Description</label>
                                 <input type="text" class="form-control form-control-sm" id="formPaymentDescription"
                                        placeholder="{form_name} - {student_id}">
                             </div>

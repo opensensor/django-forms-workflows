@@ -970,7 +970,22 @@ export class WorkflowBuilder {
         const data = node.data || {};
         const orderedApprovalGroups = this.getNormalizedStageApprovalGroups(data.approval_groups || []);
         const selectedGroupIds = orderedApprovalGroups.map(g => g.id);
-        const selectedApprovalFieldIds = new Set((data.approval_fields || []).map(field => field.id));
+        const availableApprovalFields = this.store?.getState?.().approvalFields || [];
+        const approvalFieldIdByName = new Map(
+            availableApprovalFields
+                .filter(field => field && field.id != null && field.name)
+                .map(field => [String(field.name).toLowerCase(), field.id])
+        );
+        const selectedApprovalFieldIds = new Set(
+            (data.approval_fields || [])
+                .map(field => {
+                    if (!field) return null;
+                    if (field.id != null) return field.id;
+                    if (field.name) return approvalFieldIdByName.get(String(field.name).toLowerCase()) ?? null;
+                    return null;
+                })
+                .filter(id => id != null)
+        );
 
         const basicsSection = `
             <div class="mb-3">

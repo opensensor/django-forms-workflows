@@ -893,12 +893,16 @@ class TestConvertWorkflowToVisual:
                     {
                         "id": "email",
                         "type": "email",
+                        "x": 120,
+                        "y": 80,
                         "data": {"action_id": f" {email.id} "},
                     },
-                    {"id": "end", "type": "end", "data": {}},
+                    {"id": "end", "type": "end", "x": 420, "y": 80, "data": {}},
                     {
                         "id": "database",
                         "type": "action",
+                        "x": 240,
+                        "y": 220,
                         "data": {"action_id": str(action.id)},
                     },
                 ],
@@ -915,6 +919,14 @@ class TestConvertWorkflowToVisual:
         ]
         assert visual["nodes"][0]["data"]["action_id"] == email.id
         assert visual["nodes"][2]["data"]["action_id"] == action.id
+
+        nodes_by_id = {node["id"]: node for node in visual["nodes"]}
+        assert (nodes_by_id["email"]["x"], nodes_by_id["email"]["y"]) == (120, 80)
+        assert (nodes_by_id["end"]["x"], nodes_by_id["end"]["y"]) == (420, 80)
+        assert (nodes_by_id["database"]["x"], nodes_by_id["database"]["y"]) == (
+            240,
+            220,
+        )
 
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition

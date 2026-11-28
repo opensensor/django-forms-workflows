@@ -5319,6 +5319,13 @@ class TestFormBuilderTemplateAPI:
         template.refresh_from_db()
         assert template.usage_count == 1
 
+        resp_second = client.get(url)
+        assert resp_second.status_code == 200
+        data_second = resp_second.json()
+        assert data_second["success"] is True
+        template.refresh_from_db()
+        assert template.usage_count == 2
+
 
 # ── Shared option list API endpoints ────────────────────────────────────────
 

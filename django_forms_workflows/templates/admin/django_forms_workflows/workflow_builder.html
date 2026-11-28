@@ -974,30 +974,30 @@
             <i class="bi bi-box"></i> Workflow Nodes
         </div>
 
-        <div class="palette-node stage" draggable="true" data-node-type="stage">
+        <button type="button" class="palette-node stage" draggable="true" data-node-type="stage" aria-label="Add Approval Stage node">
             <i class="bi bi-layers"></i>
             <span>Approval Stage</span>
-        </div>
+        </button>
 
-        <div class="palette-node action" draggable="true" data-node-type="action">
+        <button type="button" class="palette-node action" draggable="true" data-node-type="action" aria-label="Add Action node">
             <i class="bi bi-lightning"></i>
             <span>Action</span>
-        </div>
+        </button>
 
-        <div class="palette-node email" draggable="true" data-node-type="email">
+        <button type="button" class="palette-node email" draggable="true" data-node-type="email" aria-label="Add Email node">
             <i class="bi bi-envelope"></i>
             <span>Email</span>
-        </div>
+        </button>
 
-        <div class="palette-node sub_workflow" draggable="true" data-node-type="sub_workflow">
+        <button type="button" class="palette-node sub_workflow" draggable="true" data-node-type="sub_workflow" aria-label="Add Sub-Workflow node">
             <i class="bi bi-diagram-2"></i>
             <span>Sub-Workflow</span>
-        </div>
+        </button>
 
-        <div class="palette-node end" draggable="true" data-node-type="end">
+        <button type="button" class="palette-node end" draggable="true" data-node-type="end" aria-label="Add End node">
             <i class="bi bi-flag"></i>
             <span>End</span>
-        </div>
+        </button>
     </div>
     
     <!-- Workflow Canvas -->
@@ -1143,6 +1143,41 @@
         console.log('DOM loaded, initializing workflow builder...');
         console.log('WORKFLOW_CONFIG:', WORKFLOW_CONFIG);
         window.workflowBuilder = new WorkflowBuilder(WORKFLOW_CONFIG);
+
+        const getDefaultNodePosition = () => {
+            const canvasHost = document.querySelector('.workflow-canvas, .canvas-container, .builder-panel') || document.body;
+            const rect = canvasHost.getBoundingClientRect();
+            return {
+                x: Math.round(rect.left + rect.width / 2),
+                y: Math.round(rect.top + rect.height / 2)
+            };
+        };
+
+        const dispatchCreateNode = (nodeType) => {
+            const { x, y } = getDefaultNodePosition();
+            document.dispatchEvent(new CustomEvent('workflowbuilder:create-node', {
+                detail: { nodeType, x, y }
+            }));
+        };
+
+        document.querySelectorAll('.palette-node[data-node-type]').forEach((entry) => {
+            entry.addEventListener('click', function() {
+                dispatchCreateNode(this.dataset.nodeType);
+            });
+            entry.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    dispatchCreateNode(this.dataset.nodeType);
+                }
+            });
+        });
+
+        document.addEventListener('workflowbuilder:create-node', function(event) {
+            const detail = event.detail || {};
+            if (window.workflowBuilder && typeof window.workflowBuilder.createNode === 'function') {
+                window.workflowBuilder.createNode(detail.nodeType, detail.x, detail.y);
+            }
+        });
     });
 </script>
 {% endblock %}

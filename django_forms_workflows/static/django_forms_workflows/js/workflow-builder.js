@@ -1498,16 +1498,20 @@ export class WorkflowBuilder {
             ['is_empty', 'Is empty'],
             ['not_empty', 'Is not empty'],
         ];
+        const editorIdBase = `conditions-${String(editorKind || 'editor').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 
         let rowsHtml = '';
         state.conditions.forEach((condition, index) => {
             const operator = condition.operator || 'equals';
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
+            const fieldId = `${editorIdBase}-row-${index}-field`;
+            const operatorId = `${editorIdBase}-row-${index}-operator`;
+            const valueId = `${editorIdBase}-row-${index}-value`;
             rowsHtml += `
                 <div class="border rounded p-2 mb-2 trigger-condition-row" data-index="${index}">
                     <div class="mb-2">
-                        <label class="form-label form-label-sm mb-1">Field</label>
-                        <select class="form-select form-select-sm" name="condition_field"
+                        <label class="form-label form-label-sm mb-1" for="${fieldId}">Field</label>
+                        <select class="form-select form-select-sm" id="${fieldId}" name="condition_field"
                                 onchange="${onChangeHandler}">
                             <option value="">-- Select field --</option>
                             ${this.fields.map(field => `
@@ -1516,8 +1520,8 @@ export class WorkflowBuilder {
                         </select>
                     </div>
                     <div class="mb-2">
-                        <label class="form-label form-label-sm mb-1">Operator</label>
-                        <select class="form-select form-select-sm" name="condition_operator"
+                        <label class="form-label form-label-sm mb-1" for="${operatorId}">Operator</label>
+                        <select class="form-select form-select-sm" id="${operatorId}" name="condition_operator"
                                 onchange="${onChangeHandler}">
                             ${operatorOptions.map(([value, label]) => `
                                 <option value="${value}" ${operator === value ? 'selected' : ''}>${label}</option>
@@ -1525,8 +1529,8 @@ export class WorkflowBuilder {
                         </select>
                     </div>
                     <div class="mb-2">
-                        <label class="form-label form-label-sm mb-1">Value</label>
-                        <input type="text" class="form-control form-control-sm" name="condition_value"
+                        <label class="form-label form-label-sm mb-1" for="${valueId}">Value</label>
+                        <input type="text" class="form-control form-control-sm" id="${valueId}" name="condition_value"
                                value="${this.escapeHtmlAttribute(condition.value ?? '')}"
                                placeholder="${operator === 'in' ? 'Comma-separated values' : 'Comparison value'}"
                                ${needsValue ? '' : 'disabled'}
@@ -1552,8 +1556,8 @@ export class WorkflowBuilder {
             ${showHeader ? `<hr /><h6>${this.escapeHtml(title)}</h6>` : ''}
             <div class="conditions-editor" data-editor-kind="${editorKind}" ${extraAttributes}>
             <div class="mb-2">
-                <label class="form-label form-label-sm">Match mode</label>
-                <select class="form-select form-select-sm" name="condition_group_operator"
+                <label class="form-label form-label-sm" for="${editorIdBase}-group-operator">Match mode</label>
+                <select class="form-select form-select-sm" id="${editorIdBase}-group-operator" name="condition_group_operator"
                         onchange="${onChangeHandler}">
                     <option value="AND" ${state.operator === 'AND' ? 'selected' : ''}>All conditions must match (AND)</option>
                     <option value="OR" ${state.operator === 'OR' ? 'selected' : ''}>Any condition may match (OR)</option>

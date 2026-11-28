@@ -824,7 +824,7 @@
                             <div class="col-md-4" id="paymentFixedGroup">
                                 <label class="form-label small" for="formPaymentFixedAmount">Amount</label>
                                 <div class="input-group input-group-sm">
-                                    <span class="input-group-text">$</span>
+                                    <span class="input-group-text" id="formPaymentCurrencyPrefix">USD</span>
                                     <input type="number" class="form-control" id="formPaymentFixedAmount" step="0.01" min="0.01">
                                 </div>
                             </div>
@@ -834,7 +834,8 @@
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small" for="formPaymentCurrency">Currency</label>
-                                <select class="form-select form-select-sm" id="formPaymentCurrency">
+                                <select class="form-select form-select-sm" id="formPaymentCurrency"
+                                        onchange="document.getElementById('formPaymentCurrencyPrefix').textContent = this.value.toUpperCase();">
                                     <option value="usd">USD</option>
                                     <option value="cad">CAD</option>
                                     <option value="eur">EUR</option>

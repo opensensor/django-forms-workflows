@@ -2661,6 +2661,7 @@ class TestConvertVisualToWorkflow:
 
         action = PostSubmissionAction.objects.get(name="Notify Submitter")
         assert action.action_type == "email"
+        assert action.trigger == "on_submit"
         assert action.email_to == "ops@example.com"
         assert action.email_to_field == "email"
         assert action.email_cc == "manager@example.com"

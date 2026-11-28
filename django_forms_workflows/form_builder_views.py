@@ -997,15 +997,12 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         if wf_stage_id is None or wf_stage_id == "":
             field_props["workflow_stage_id"] = None
         else:
-            try:
-                parsed_wf_stage_id = _positive_integer_id(
-                    wf_stage_id, "workflow_stage_id"
-                )
-            except (ValidationError, ValueError, TypeError) as exc:
+            parsed_wf_stage_id = _positive_integer_id(wf_stage_id)
+            if parsed_wf_stage_id is None:
                 raise FormBuilderPayloadError(
                     "Invalid workflow_stage_id for field "
                     f"'{field_data.get('field_name', '')}'"
-                ) from exc
+                )
 
             if parsed_wf_stage_id not in allowed_workflow_stage_ids:
                 raise FormBuilderPayloadError(
@@ -1219,7 +1216,7 @@ def form_builder_preview(request):
                         "step_number": field_data.get("step_number", 1),
                     }
 
-                    # Add optional FK fields only when they are valid positive integers
+                    # Use the same ID syntax as the save endpoint.
                     reference_fields = (
                         ("prefill_source_id", "prefill_source_config_id"),
                         ("shared_option_list_id", "shared_option_list_id"),
@@ -1229,11 +1226,8 @@ def form_builder_preview(request):
                         raw_reference = field_data.get(source_key)
                         if raw_reference in (None, ""):
                             continue
-                        if (
-                            isinstance(raw_reference, bool)
-                            or not isinstance(raw_reference, int)
-                            or raw_reference <= 0
-                        ):
+                        parsed_reference = _positive_integer_id(raw_reference)
+                        if parsed_reference is None:
                             return JsonResponse(
                                 {
                                     "success": False,
@@ -1241,7 +1235,7 @@ def form_builder_preview(request):
                                 },
                                 status=400,
                             )
-                        field_kwargs[target_key] = raw_reference
+                        field_kwargs[target_key] = parsed_reference
 
                     if validation.get("min_value") is not None:
                         field_kwargs["min_value"] = validation.get("min_value")

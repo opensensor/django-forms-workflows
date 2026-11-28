@@ -2227,12 +2227,23 @@ export class WorkflowBuilder {
             'equals', 'not_equals', 'contains', 'in',
             'gt', 'gte', 'lt', 'lte', 'is_empty', 'not_empty'
         ]);
+        const availableFieldNames = new Set(
+            (Array.isArray(this.fields) ? this.fields : [])
+                .map((field) => (field && field.name !== undefined && field.name !== null ? String(field.name).trim() : ''))
+                .filter((name) => Boolean(name))
+        );
 
         const conditions = hasConditionList ? group.conditions : [group];
         conditions.forEach((condition, index) => {
             const rowNumber = index + 1;
-            if (!condition || !condition.field || !String(condition.field).trim()) {
+            const fieldName = condition && condition.field !== undefined && condition.field !== null
+                ? String(condition.field).trim()
+                : '';
+
+            if (!fieldName) {
                 errors.push(`${ownerLabel}: condition row ${rowNumber} has no field selected.`);
+            } else if (!availableFieldNames.has(fieldName)) {
+                errors.push(`${ownerLabel}: condition row ${rowNumber} references unknown field "${fieldName}".`);
             }
 
             const operator = condition && (condition.operator === undefined ? 'equals' : condition.operator);

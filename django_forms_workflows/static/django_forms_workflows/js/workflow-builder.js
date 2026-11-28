@@ -1995,6 +1995,7 @@ export class WorkflowBuilder {
 
     buildEmailProperties(node) {
         const data = node.data || {};
+        const nodeIdSuffix = this.escapeHtmlAttribute(String(node.id ?? ''));
         const fieldOptions = this.fields.map(f => `
             <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.email_to_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
         `).join('');
@@ -2003,29 +2004,29 @@ export class WorkflowBuilder {
         `).join('');
         return `
             <div class="mb-3">
-                <label class="form-label">Email Name</label>
-                <input type="text" class="form-control" name="name" value="${this.escapeHtmlAttribute(data.name || '')}" placeholder="e.g., Approval Notification" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-name-${nodeIdSuffix}">Email Name</label>
+                <input id="email-name-${nodeIdSuffix}" type="text" class="form-control" name="name" value="${this.escapeHtmlAttribute(data.name || '')}" placeholder="e.g., Approval Notification" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Static Recipients</label>
-                <input type="text" class="form-control" name="email_to" value="${this.escapeHtmlAttribute(data.email_to || '')}" placeholder="email@example.com, approver@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-to-${nodeIdSuffix}">Static Recipients</label>
+                <input id="email-to-${nodeIdSuffix}" type="text" class="form-control" name="email_to" value="${this.escapeHtmlAttribute(data.email_to || '')}" placeholder="email@example.com, approver@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Comma-separated email addresses.</small>
             </div>
             <div class="mb-3">
-                <label class="form-label">Recipient Field</label>
-                <select class="form-select" name="email_to_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
+                <label class="form-label" for="email-to-field-${nodeIdSuffix}">Recipient Field</label>
+                <select id="email-to-field-${nodeIdSuffix}" class="form-select" name="email_to_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
                     <option value="">-- None --</option>
                     ${fieldOptions}
                 </select>
                 <small class="text-muted">Optional form field that contains the recipient email address.</small>
             </div>
             <div class="mb-3">
-                <label class="form-label">CC Addresses</label>
-                <input type="text" class="form-control" name="email_cc" value="${this.escapeHtmlAttribute(data.email_cc || '')}" placeholder="manager@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-cc-${nodeIdSuffix}">CC Addresses</label>
+                <input id="email-cc-${nodeIdSuffix}" type="text" class="form-control" name="email_cc" value="${this.escapeHtmlAttribute(data.email_cc || '')}" placeholder="manager@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
-                <label class="form-label">CC Field</label>
-                <select class="form-select" name="email_cc_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
+                <label class="form-label" for="email-cc-field-${nodeIdSuffix}">CC Field</label>
+                <select id="email-cc-field-${nodeIdSuffix}" class="form-select" name="email_cc_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
                     <option value="">-- None --</option>
                     ${ccFieldOptions}
                 </select>
@@ -2040,16 +2041,16 @@ export class WorkflowBuilder {
                 </select>
             </div>
             <div class="mb-3">
-                <label class="form-label">Subject Template</label>
-                <input type="text" class="form-control" name="email_subject_template" value="${this.escapeHtmlAttribute(data.email_subject_template || '')}" placeholder="Form {form_name} approved" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-subject-template-${nodeIdSuffix}">Subject Template</label>
+                <input id="email-subject-template-${nodeIdSuffix}" type="text" class="form-control" name="email_subject_template" value="${this.escapeHtmlAttribute(data.email_subject_template || '')}" placeholder="Form {form_name} approved" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Body Template</label>
-                <textarea class="form-control" name="email_body_template" rows="5" placeholder="Submission by {submitter} has been approved." onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">${this.escapeHtml(data.email_body_template || '')}</textarea>
+                <label class="form-label" for="email-body-template-${nodeIdSuffix}">Body Template</label>
+                <textarea id="email-body-template-${nodeIdSuffix}" class="form-control" name="email_body_template" rows="5" placeholder="Submission by {submitter} has been approved." onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">${this.escapeHtml(data.email_body_template || '')}</textarea>
             </div>
             <div class="mb-3">
-                <label class="form-label">HTML Template Path</label>
-                <input type="text" class="form-control" name="email_template_name" value="${this.escapeHtmlAttribute(data.email_template_name || '')}" placeholder="emails/approval.html" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-template-name-${nodeIdSuffix}">HTML Template Path</label>
+                <input id="email-template-name-${nodeIdSuffix}" type="text" class="form-control" name="email_template_name" value="${this.escapeHtmlAttribute(data.email_template_name || '')}" placeholder="emails/approval.html" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
         `;
     }
@@ -2237,6 +2238,9 @@ export class WorkflowBuilder {
             node.data.field_count = 0;
             node.data.fields = [];
             node.data.has_more_fields = false;
+            node.data.enable_multi_step = false;
+            node.data.step_count = 0;
+            node.data.form_steps = [];
         } else {
             // Update node with selected form data
             node.data.form_id = selectedForm.id;
@@ -2247,6 +2251,9 @@ export class WorkflowBuilder {
             // The backend will load them when needed
             node.data.fields = [];
             node.data.has_more_fields = selectedForm.field_count > 0;
+            node.data.enable_multi_step = Boolean(selectedForm.enable_multi_step);
+            node.data.step_count = Number(selectedForm.step_count) || 0;
+            node.data.form_steps = Array.isArray(selectedForm.form_steps) ? selectedForm.form_steps : [];
         }
 
         // Re-render to update the node display and properties panel
@@ -2296,16 +2303,54 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
 
-        // Numeric fields (empty → null)
-        ['approval_deadline_days', 'send_reminder_after_days', 'auto_approve_after_days'].forEach(key => {
-            const val = container.querySelector(`input[name="${key}"]`).value;
-            node.data[key] = val ? parseInt(val) : null;
-        });
+        // Validate every numeric field before changing the node.
+        const numericUpdates = {};
+        for (const key of ['approval_deadline_days', 'send_reminder_after_days', 'auto_approve_after_days']) {
+            const input = container.querySelector(`input[name="${key}"]`);
+            const raw = input.value.trim();
 
+            if (raw === '') {
+                input.setCustomValidity('');
+                numericUpdates[key] = null;
+                continue;
+            }
+
+            const parsed = Number(raw);
+            if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+                input.setCustomValidity('Please enter a positive whole number.');
+                input.reportValidity();
+                input.focus();
+                return;
+            }
+
+            input.setCustomValidity('');
+            numericUpdates[key] = parsed;
+        }
+
+        const cadence = container.querySelector('select[name="notification_cadence"]').value;
+        const cadenceDayInput = container.querySelector('input[name="notification_cadence_day"]');
+        const cadenceDayRaw = cadenceDayInput.value.trim();
+        let cadenceDay = null;
+        if (cadenceDayRaw === '') {
+            cadenceDayInput.setCustomValidity('');
+        } else {
+            const parsedCadenceDay = Number(cadenceDayRaw);
+            const minimumDay = cadence === 'monthly' ? 1 : 0;
+            const maximumDay = cadence === 'weekly' ? 6 : 31;
+            if (!Number.isSafeInteger(parsedCadenceDay) || parsedCadenceDay < minimumDay || parsedCadenceDay > maximumDay) {
+                cadenceDayInput.setCustomValidity(`Notification cadence day must be a whole number between ${minimumDay} and ${maximumDay}.`);
+                cadenceDayInput.reportValidity();
+                cadenceDayInput.focus();
+                return;
+            }
+            cadenceDayInput.setCustomValidity('');
+            cadenceDay = parsedCadenceDay;
+        }
+
+        Object.assign(node.data, numericUpdates);
         node.data.name_label = container.querySelector('input[name="name_label"]').value;
-        node.data.notification_cadence = container.querySelector('select[name="notification_cadence"]').value;
-        const cadenceDay = container.querySelector('input[name="notification_cadence_day"]').value;
-        node.data.notification_cadence_day = cadenceDay ? parseInt(cadenceDay) : null;
+        node.data.notification_cadence = cadence;
+        node.data.notification_cadence_day = cadenceDay;
         node.data.notification_cadence_time = container.querySelector('input[name="notification_cadence_time"]').value;
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
@@ -3496,10 +3541,24 @@ export class WorkflowBuilder {
         // Remove existing connections
         this.svg.querySelectorAll('.connection-line:not([stroke-dasharray]), .connection-backdrop, .connection-hitbox').forEach(l => l.remove());
 
+        // Read phase: collect and cache connection endpoint positions before any SVG writes
+        const connectionPointCache = new Map();
+        this.connections.forEach((conn) => {
+            const fromKey = `${conn.from}::output`;
+            const toKey = `${conn.to}::input`;
+
+            if (!connectionPointCache.has(fromKey)) {
+                connectionPointCache.set(fromKey, this.getConnectionPointPosition(conn.from, 'output'));
+            }
+            if (!connectionPointCache.has(toKey)) {
+                connectionPointCache.set(toKey, this.getConnectionPointPosition(conn.to, 'input'));
+            }
+        });
+
         // Render each connection
         this.connections.forEach((conn, index) => {
-            const fromPoint = this.getConnectionPointPosition(conn.from, 'output');
-            const toPoint = this.getConnectionPointPosition(conn.to, 'input');
+            const fromPoint = connectionPointCache.get(`${conn.from}::output`);
+            const toPoint = connectionPointCache.get(`${conn.to}::input`);
             if (!fromPoint || !toPoint) return;
 
             const path = this.createConnectionPath(

@@ -188,6 +188,56 @@ describe('WorkflowBuilder stage editor', () => {
     expect(node.data.order).toBe(2);
     expect(order.validationMessage).toBe('');
   });
+
+  it('preserves an unavailable approval group and focus when updating a stage', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: {
+        name: 'Review', order: 1,
+        approval_groups: [{ id: '99', name: 'Former group', role: 'approval' }],
+      },
+    };
+    instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    const name = document.querySelector('input[name="name"]');
+    name.focus();
+    name.value = 'Updated review';
+    instance.updateStageConfig(node.id);
+
+    expect(node.data.name).toBe('Updated review');
+    expect(node.data.approval_groups).toEqual([
+      { id: '99', name: 'Former group', role: 'approval', position: 0 },
+    ]);
+    expect(document.activeElement).toBe(document.querySelector('input[name="name"]'));
+    expect(document.querySelector('option[data-unavailable="true"]').selected).toBe(true);
+  });
+
+  it('keeps a selected group when its saved ID is a string', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: {
+        name: 'Review', order: 1,
+        approval_groups: [{ id: '5', name: 'Reviewers', role: 'validation' }],
+      },
+    };
+    instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [{ id: 5, name: 'Reviewers' }];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    expect(document.querySelector('option[value="5"]').selected).toBe(true);
+    instance.updateStageConfig(node.id);
+    expect(node.data.approval_groups).toEqual([
+      { id: '5', name: 'Reviewers', role: 'validation', position: 0 },
+    ]);
+  });
 });
 
 describe('WorkflowBuilder workflow settings editor', () => {

@@ -970,7 +970,7 @@ export class WorkflowBuilder {
     buildStageProperties(node) {
         const data = node.data || {};
         const orderedApprovalGroups = this.getNormalizedStageApprovalGroups(data.approval_groups || []);
-        const selectedGroupIds = orderedApprovalGroups.map(g => g.id);
+        const selectedGroupIds = orderedApprovalGroups.map(g => String(g.id));
         const approvalFieldIdByName = new Map(
             this.fields
                 .filter(field => field && field.id != null && field.field_name)
@@ -1066,11 +1066,11 @@ export class WorkflowBuilder {
 
         const availableGroupIds = new Set(this.groups.map(group => String(group.id)));
         this.groups.forEach(group => {
-            const selected = selectedGroupIds.includes(group.id) ? 'selected' : '';
+            const selected = selectedGroupIds.includes(String(group.id)) ? 'selected' : '';
             routingSection += `<option value="${this.escapeHtmlAttribute(group.id)}" ${selected}>${this.escapeHtml(group.name)}</option>`;
         });
         selectedGroupIds.forEach(groupId => {
-            if (!availableGroupIds.has(String(groupId))) {
+            if (!availableGroupIds.has(groupId)) {
                 const safeGroupId = this.escapeHtmlAttribute(groupId);
                 routingSection += `<option value="${safeGroupId}" selected data-unavailable="true">Unavailable group (ID: ${this.escapeHtml(String(groupId))})</option>`;
             }
@@ -1202,12 +1202,12 @@ export class WorkflowBuilder {
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary" ${index === 0 ? 'disabled' : ''}
                                         aria-label="${this.escapeHtmlAttribute(`Move ${group.name || 'group'} (${group.role || 'approval'}) up`)}"
-                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="-1">
+                                        data-stage-group-id="${this.escapeHtmlAttribute(group.id)}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="-1">
                                     <i class="bi bi-arrow-up"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" ${index === orderedGroups.length - 1 ? 'disabled' : ''}
                                         aria-label="${this.escapeHtmlAttribute(`Move ${group.name || 'group'} (${group.role || 'approval'}) down`)}"
-                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="1">
+                                        data-stage-group-id="${this.escapeHtmlAttribute(group.id)}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="1">
                                     <i class="bi bi-arrow-down"></i>
                                 </button>
                             </div>
@@ -2315,10 +2315,13 @@ export class WorkflowBuilder {
             const refreshedContainer = document.getElementById('propertiesContent');
             let focusTarget = null;
             if (focusState.id) {
-                focusTarget = refreshedContainer.querySelector(`#${CSS.escape(focusState.id)}`);
+                focusTarget = Array.from(refreshedContainer.querySelectorAll('[id]'))
+                    .find(element => element.id === focusState.id);
             }
             if (!focusTarget && focusState.name) {
-                focusTarget = refreshedContainer.querySelector(`${focusState.tagName}[name="${focusState.name}"]`);
+                focusTarget = Array.from(refreshedContainer.querySelectorAll('[name]'))
+                    .find(element => element.tagName.toLowerCase() === focusState.tagName
+                        && element.getAttribute('name') === focusState.name);
             }
             if (focusTarget) {
                 focusTarget.focus();
@@ -2523,17 +2526,13 @@ export class WorkflowBuilder {
     readStageApprovalGroupsFromPanel(container, nodeId, existingGroups) {
         const groupSelect = container.querySelector('[name="approval_groups"]');
         if (!groupSelect) return [];
-        const selected = Array.from(groupSelect.selectedOptions).map(opt => ({
-            id: parseInt(opt.value, 10),
-            name: opt.text,
-        })).filter(group => !Number.isNaN(group.id));
-        const selectedIds = new Set(selected.map(group => group.id));
+        const selectedIds = new Set(Array.from(groupSelect.selectedOptions, opt => opt.value));
         const existingOrdered = this.getNormalizedStageApprovalGroups(existingGroups || []);
-        const existingMap = new Map(existingOrdered.map(group => [group.id, group]));
+        const existingIds = new Set(existingOrdered.map(group => String(group.id)));
 
-        const kept = existingOrdered.filter(group => selectedIds.has(group.id));
-        const appended = selected
-            .filter(group => !existingMap.has(group.id))
+        const kept = existingOrdered.filter(group => selectedIds.has(String(group.id)));
+        const appended = (this.groups || [])
+            .filter(group => selectedIds.has(String(group.id)) && !existingIds.has(String(group.id)))
             .map(group => ({ id: group.id, name: group.name, role: 'approval' }));
 
         return [...kept, ...appended].map((group, index) => ({

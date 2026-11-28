@@ -1043,7 +1043,7 @@ export class WorkflowBuilder {
 
         let routingSection = `
             <div class="mb-3">
-                <label class="form-label"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
+                <label class="form-label" for="stage_groups_${this.escapeHtmlAttribute(node.id)}"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
                 <select class="form-select builder-multiselect-lg" id="stage_groups_${this.escapeHtmlAttribute(node.id)}" name="approval_groups" multiple size="6"
                         >
         `;
@@ -1061,8 +1061,8 @@ export class WorkflowBuilder {
             ${this.buildStageApprovalOrderEditor(node, orderedApprovalGroups)}
 
             <div class="mb-3">
-                <label class="form-label">Approval Logic</label>
-                <select class="form-select" name="approval_logic"
+                <label class="form-label" for="stage_logic_${this.escapeHtmlAttribute(node.id)}">Approval Logic</label>
+                <select class="form-select" id="stage_logic_${this.escapeHtmlAttribute(node.id)}" name="approval_logic"
                         >
                     <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>Any (OR)</option>
                     <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
@@ -1073,7 +1073,7 @@ export class WorkflowBuilder {
 
         const approvalFieldsSection = `
             <div class="mb-3">
-                <label class="form-label"><strong>Fields shown during this stage</strong></label>
+                <label class="form-label" for="stage_fields_${this.escapeHtmlAttribute(node.id)}"><strong>Fields shown during this stage</strong></label>
                 <select class="form-select builder-multiselect-lg" id="stage_fields_${this.escapeHtmlAttribute(node.id)}" name="approval_fields" multiple size="6"
                         >
                     ${this.fields.map(field => `

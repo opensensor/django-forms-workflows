@@ -1365,15 +1365,29 @@ export class WorkflowBuilder {
                                 <label class="form-label form-label-sm" for="${ruleInputId('stage')}">Scope</label>
                                 <select id="${ruleInputId('stage')}" class="form-select form-select-sm" name="notification_rule_stage"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                    <option value="">Workflow-level</option>
-                                    ${stageOptions.map(option => {
-                                        const numericOrder = Number(option.order);
-                                        const safeOrder = option.order !== null && option.order !== '' &&
-                                            Number.isSafeInteger(numericOrder) && numericOrder >= 1 ? numericOrder : '?';
-                                        return `
+                                    ${(() => {
+                                        const hasSavedStageReference = state.stage_node_id !== null &&
+                                            state.stage_node_id !== undefined &&
+                                            state.stage_node_id !== '';
+                                        const stageExists = hasSavedStageReference &&
+                                            stageOptions.some(option => option.nodeId === state.stage_node_id);
+                                        const missingStageOption = hasSavedStageReference && !stageExists
+                                            ? `<option value="${this.escapeHtmlAttribute(state.stage_node_id)}" selected>Missing stage (id: ${this.escapeHtml(state.stage_node_id)})</option>`
+                                            : '';
+                                        const availableStageOptions = stageOptions.map(option => {
+                                            const numericOrder = Number(option.order);
+                                            const safeOrder = option.order !== null && option.order !== '' &&
+                                                Number.isSafeInteger(numericOrder) && numericOrder >= 1 ? numericOrder : '?';
+                                            return `
                                         <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
                                     `;
-                                    }).join('')}
+                                        }).join('');
+                                        return `
+                                    <option value="">Workflow-level</option>
+                                    ${missingStageOption}
+                                    ${availableStageOptions}
+                                `;
+                                    })()}
                                 </select>
                             </div>
                             <div class="mb-3">

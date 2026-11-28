@@ -1333,7 +1333,7 @@ export class WorkflowBuilder {
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">Workflow-level</option>
                                     ${stageOptions.map(option => `
-                                        <option value="${option.nodeId}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
+                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
                                     `).join('')}
                                 </select>
                             </div>

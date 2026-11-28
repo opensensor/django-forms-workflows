@@ -1081,7 +1081,7 @@ export class WorkflowBuilder {
                         >
                     <option value="">-- Use approval groups --</option>
                     ${this.fields.map(f => `
-                        <option value="${f.field_name}" ${data.assignee_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+                        <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.assignee_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
                     `).join('')}
                 </select>
                 <small class="text-muted">When selected, the stage resolves the approver from a submitted form field before falling back to approval groups.</small>

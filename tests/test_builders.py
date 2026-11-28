@@ -61,6 +61,18 @@ class TestConvertWorkflowToVisual:
     def test_saved_form_node_refreshes_current_form_data(
         self, form_definition, form_with_fields
     ):
+        existing_count = form_definition.fields.count()
+        if existing_count < 12:
+            for index in range(existing_count, 12):
+                FormField.objects.create(
+                    form_definition=form_definition,
+                    field_name=f"extra_field_{index}",
+                    field_label=f"Extra field {index}",
+                    field_type="text",
+                    order=index,
+                    required=False,
+                )
+
         form_definition.enable_multi_step = True
         form_definition.form_steps = [{"name": "Details"}]
         form_definition.save(update_fields=["enable_multi_step", "form_steps"])
@@ -83,11 +95,13 @@ class TestConvertWorkflowToVisual:
         )
 
         data = convert_workflow_to_visual(workflow, form_definition)["nodes"][0]["data"]
+        ordered_fields = list(form_definition.fields.order_by("order"))
         assert data["form_name"] == form_definition.name
-        assert data["field_count"] == form_definition.fields.count()
+        assert data["field_count"] == len(ordered_fields)
         assert data["enable_multi_step"] is True
         assert data["form_steps"] == [{"name": "Details"}]
         assert data["step_count"] == 1
+        assert len(data["fields"]) == 10
         assert data["fields"] == [
             {
                 "name": field.field_name,
@@ -96,7 +110,7 @@ class TestConvertWorkflowToVisual:
                 "required": field.required,
                 "prefill_source": field.get_prefill_source_key(),
             }
-            for field in form_definition.fields.order_by("order")[:10]
+            for field in ordered_fields[:10]
         ]
 
     def test_returns_saved_visual_data_if_present(self, workflow, form_definition):

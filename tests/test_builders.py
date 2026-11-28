@@ -4,12 +4,13 @@ Tests for the form builder and workflow builder admin views.
 
 import copy
 import json
-from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 
 from django_forms_workflows.form_builder_views import (
     FormBuilderPayloadError,
@@ -692,7 +693,8 @@ class TestConvertWorkflowToVisual:
         self, form_definition, saved_stage_id
     ):
         workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
-        stage = workflow.stages.create(name="Review", order=1)
+        stage_kwargs = {"id": 1} if saved_stage_id is True else {}
+        stage = workflow.stages.create(name="Review", order=1, **stage_kwargs)
         workflow.visual_workflow_data = {
             "nodes": [
                 {
@@ -2605,19 +2607,23 @@ class TestWorkflowBuilderViews:
         resp = client.get(url)
         assert resp.status_code == 200
 
-    def test_form_admin_change_template_has_analytics_shortcut(self):
-        template_path = (
-            Path(__file__).resolve().parents[1]
-            / "django_forms_workflows/templates/admin/django_forms_workflows/formdef_change_form.html"
+    def test_form_admin_change_template_has_analytics_shortcut(
+        self, client, superuser, form_definition
+    ):
+        client.force_login(superuser)
+        response = client.get(
+            reverse(
+                "admin:django_forms_workflows_formdefinition_change",
+                args=[form_definition.id],
+            )
         )
 
-        content = template_path.read_text()
-
+        assert response.status_code == 200
+        content = response.content.decode()
+        analytics_url = reverse("forms_workflows:analytics_dashboard")
+        expected_link = f"{analytics_url}?form={quote(form_definition.slug, safe='')}"
         assert "View Analytics" in content
-        assert (
-            "{% url 'forms_workflows:analytics_dashboard' %}?form={{ original.slug|urlencode }}"
-            in content
-        )
+        assert expected_link in content
 
     def test_builder_view_selects_requested_workflow_track(
         self, client, superuser, form_definition

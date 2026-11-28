@@ -17,6 +17,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "crispy_forms",
     "crispy_bootstrap5",
+    "nested_admin",
     "django_forms_workflows.apps.DjangoFormsWorkflowsConfig",
     "tests.ldap_lookup_test_app.apps.LDAPLookupTestAppConfig",
 ]

@@ -1476,10 +1476,19 @@ export class WorkflowBuilder {
         }
 
         if (Array.isArray(rawConditions.conditions)) {
-            const normalizedGroupOperator =
-                typeof rawConditions.operator === 'string' && rawConditions.operator.toUpperCase() === 'OR'
-                    ? 'OR'
-                    : 'AND';
+            const rawGroupOperator =
+                typeof rawConditions.operator === 'string' ? rawConditions.operator.trim() : '';
+            let normalizedGroupOperator = 'AND';
+
+            if (rawGroupOperator) {
+                const upperGroupOperator = rawGroupOperator.toUpperCase();
+                if (upperGroupOperator === 'AND' || upperGroupOperator === 'OR') {
+                    normalizedGroupOperator = upperGroupOperator;
+                } else {
+                    // Preserve unsupported values so validation/UI can surface them explicitly.
+                    normalizedGroupOperator = rawGroupOperator;
+                }
+            }
 
             return {
                 operator: normalizedGroupOperator,

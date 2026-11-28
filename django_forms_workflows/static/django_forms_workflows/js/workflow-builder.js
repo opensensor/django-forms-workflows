@@ -1393,7 +1393,7 @@ export class WorkflowBuilder {
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">-- None --</option>
                                     ${this.fields.map(field => `
-                                        <option value="${field.field_name}" ${state.email_field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
+                                        <option value="${this.escapeHtmlAttribute(field.field_name)}" ${state.email_field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                                     `).join('')}
                                 </select>
                             </div>

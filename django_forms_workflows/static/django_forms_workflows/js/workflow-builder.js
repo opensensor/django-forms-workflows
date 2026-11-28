@@ -1350,8 +1350,8 @@ export class WorkflowBuilder {
                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})" />
                             </div>
                             <div class="mb-3">
-                                <label class="form-label form-label-sm">Email Field</label>
-                                <select class="form-select form-select-sm" name="notification_rule_email_field"
+                                <label class="form-label form-label-sm" for="${ruleInputId('email_field')}">Email Field</label>
+                                <select id="${ruleInputId('email_field')}" class="form-select form-select-sm" name="notification_rule_email_field"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">-- None --</option>
                                     ${this.fields.map(field => `
@@ -1360,8 +1360,8 @@ export class WorkflowBuilder {
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label form-label-sm">Static Emails</label>
-                                <input type="text" class="form-control form-control-sm" name="notification_rule_static_emails"
+                                <label class="form-label form-label-sm" for="${ruleInputId('static_emails')}">Static Emails</label>
+                                <input id="${ruleInputId('static_emails')}" type="text" class="form-control form-control-sm" name="notification_rule_static_emails"
                                        value="${this.escapeHtmlAttribute(state.static_emails)}"
                                        placeholder="ops@example.com, owner@example.com"
                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})" />

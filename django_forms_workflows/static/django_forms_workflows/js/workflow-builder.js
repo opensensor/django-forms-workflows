@@ -1833,10 +1833,10 @@ export class WorkflowBuilder {
     buildEmailProperties(node) {
         const data = node.data || {};
         const fieldOptions = this.fields.map(f => `
-            <option value="${f.field_name}" ${data.email_to_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+            <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.email_to_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
         `).join('');
         const ccFieldOptions = this.fields.map(f => `
-            <option value="${f.field_name}" ${data.email_cc_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+            <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.email_cc_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
         `).join('');
         return `
             <div class="mb-3">

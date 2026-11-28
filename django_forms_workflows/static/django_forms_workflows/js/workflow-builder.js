@@ -28,6 +28,7 @@ export class WorkflowBuilder {
         this.isDirty = false;
         this.isSaving = false;
         this.lastSavedWorkflowSnapshot = null;
+        this.deletedActionIds = [];
         this.nodeStackOrder = new Map();
         this.nextNodeStackOrder = 1;
         this.draggingNodeId = null;
@@ -796,6 +797,12 @@ export class WorkflowBuilder {
 
     deleteNode(nodeId) {
         if (confirm('Delete this node?')) {
+            const nodeToDelete = this.nodes.find(n => n.id === nodeId);
+            if (nodeToDelete && (nodeToDelete.type === 'action' || nodeToDelete.type === 'email') && nodeToDelete.action_id) {
+                if (!this.deletedActionIds.includes(nodeToDelete.action_id)) {
+                    this.deletedActionIds.push(nodeToDelete.action_id);
+                }
+            }
             this.nodes = this.nodes.filter(n => n.id !== nodeId);
             this.connections = this.connections.filter(c => c.from !== nodeId && c.to !== nodeId);
             this.deselectAll();

@@ -5531,6 +5531,61 @@ class TestFormBuilderViews:
         assert response.status_code == 200
         assert saved_rules == [rules]
 
+    @pytest.mark.parametrize(
+        "reference_key",
+        ["prefill_source_id", "shared_option_list_id", "workflow_stage_id"],
+    )
+    @pytest.mark.parametrize("invalid_id", [True, 1.5, "²"])
+    def test_preview_rejects_invalid_field_reference(
+        self, client, superuser, reference_key, invalid_id
+    ):
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps(
+                {
+                    "name": "Reference Preview",
+                    "fields": [
+                        {
+                            "field_name": "answer",
+                            "field_label": "Answer",
+                            "field_type": "text",
+                            reference_key: invalid_id,
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"] == "Invalid preview field data"
+
+    def test_preview_accepts_numeric_shared_list_reference(self, client, superuser):
+        shared_list = SharedOptionList.objects.create(
+            name="Colors", slug="preview-colors", items=["red"]
+        )
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps(
+                {
+                    "name": "Color Preview",
+                    "fields": [
+                        {
+                            "field_name": "color",
+                            "field_label": "Color",
+                            "field_type": "text",
+                            "shared_option_list_id": str(shared_list.pk),
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)
         url = _fb_url("builder/api/preview/")

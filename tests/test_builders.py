@@ -10,6 +10,7 @@ from urllib.parse import quote
 import pytest
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
+from django.core.management.color import no_style
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -2672,11 +2673,18 @@ class TestConvertVisualToWorkflow:
 
     @pytest.mark.parametrize("target_id", ["not-an-id", "²", "9" * 5000, 1.0, True])
     def test_sub_workflow_rejects_malformed_target_id(self, form_definition, target_id):
-        if target_id is True and not WorkflowDefinition.objects.filter(pk=1).exists():
-            target_form = FormDefinition.objects.create(
-                name="Lookup Target", slug="lookup-target"
-            )
-            WorkflowDefinition.objects.create(pk=1, form_definition=target_form)
+        if target_id is True:
+            if not WorkflowDefinition.objects.filter(pk=1).exists():
+                target_form = FormDefinition.objects.create(
+                    name="Lookup Target", slug="lookup-target"
+                )
+                WorkflowDefinition.objects.create(pk=1, form_definition=target_form)
+            # Keep PostgreSQL's sequence ahead of the explicitly assigned ID.
+            with connection.cursor() as cursor:
+                for sql in connection.ops.sequence_reset_sql(
+                    no_style(), [WorkflowDefinition]
+                ):
+                    cursor.execute(sql)
 
         visual = self._make_visual()
         visual["nodes"].insert(

@@ -2237,7 +2237,9 @@ export class WorkflowBuilder {
 
     readNotificationRulesFromPanel(container) {
         return Array.from(container.querySelectorAll('.notification-rule-card')).map(card => {
-            const stageNodeId = card.querySelector('select[name="notification_rule_stage"]').value;
+            const stageNodeValue = card.querySelector('select[name="notification_rule_stage"]').value;
+            const stageNode = this.nodes.find(node => String(node.id) === stageNodeValue);
+            const stageNodeId = stageNode ? stageNode.id : stageNodeValue;
             const eventValue = card.querySelector('select[name="notification_rule_event"]').value;
             const notifyGroups = Array.from(card.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions).map(opt => ({
                 id: parseInt(opt.value),

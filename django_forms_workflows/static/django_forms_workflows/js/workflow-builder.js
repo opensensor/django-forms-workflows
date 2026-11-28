@@ -912,7 +912,8 @@ export class WorkflowBuilder {
     }
 
     buildPropertiesForm(node) {
-        let html = `<h6 class="mb-3">${this.getNodeTypeLabel(node.type)}</h6>`;
+        const nodeTypeLabel = this.getNodeTypeLabel(node.type);
+        let html = `<h6 class="mb-3">${this.escapeHtml(nodeTypeLabel)}</h6>`;
         html += this.buildNodeIssuesAlert(node);
 
         switch (node.type) {
@@ -1043,7 +1044,7 @@ export class WorkflowBuilder {
 
         let routingSection = `
             <div class="mb-3">
-                <label class="form-label"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
+                <label class="form-label" for="stage_groups_${this.escapeHtmlAttribute(node.id)}"><i class="bi bi-people"></i> <strong>Approval Groups</strong></label>
                 <select class="form-select builder-multiselect-lg" id="stage_groups_${this.escapeHtmlAttribute(node.id)}" name="approval_groups" multiple size="6"
                         >
         `;
@@ -1061,8 +1062,8 @@ export class WorkflowBuilder {
             ${this.buildStageApprovalOrderEditor(node, orderedApprovalGroups)}
 
             <div class="mb-3">
-                <label class="form-label">Approval Logic</label>
-                <select class="form-select" name="approval_logic"
+                <label class="form-label" for="stage_logic_${this.escapeHtmlAttribute(node.id)}">Approval Logic</label>
+                <select class="form-select" id="stage_logic_${this.escapeHtmlAttribute(node.id)}" name="approval_logic"
                         >
                     <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>Any (OR)</option>
                     <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
@@ -1073,11 +1074,11 @@ export class WorkflowBuilder {
 
         const approvalFieldsSection = `
             <div class="mb-3">
-                <label class="form-label"><strong>Fields shown during this stage</strong></label>
+                <label class="form-label" for="stage_fields_${this.escapeHtmlAttribute(node.id)}"><strong>Fields shown during this stage</strong></label>
                 <select class="form-select builder-multiselect-lg" id="stage_fields_${this.escapeHtmlAttribute(node.id)}" name="approval_fields" multiple size="6"
                         >
                     ${this.fields.map(field => `
-                        <option value="${field.id}" ${selectedApprovalFieldIds.has(field.id) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${field.field_name})</option>
+                        <option value="${field.id}" ${selectedApprovalFieldIds.has(field.id) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                     `).join('')}
                 </select>
                 <small class="text-muted d-block mt-1">Selected fields become editable approval-step fields for this stage only.</small>
@@ -2237,10 +2238,22 @@ export class WorkflowBuilder {
             return;
         }
 
+        const movedGroupId = groups[currentIndex].id;
+        const movedGroupRole = groups[currentIndex].role || 'approval';
+
         [groups[currentIndex], groups[targetIndex]] = [groups[targetIndex], groups[currentIndex]];
         node.data.approval_groups = groups.map((group, index) => ({ ...group, position: index }));
         this.render();
         this.selectNode(nodeId);
+
+        const groupButtons = Array.from(
+            document.querySelectorAll('#propertiesContent [data-stage-group-id]')
+        ).filter(button => button.dataset.stageGroupId === String(movedGroupId)
+            && button.dataset.stageGroupRole === movedGroupRole);
+        const focusButton = groupButtons.find(button =>
+            Number(button.dataset.stageGroupDirection) === direction && !button.disabled
+        ) || groupButtons.find(button => !button.disabled);
+        focusButton?.focus({ preventScroll: true });
     }
 
     readNotificationRulesFromPanel(container) {

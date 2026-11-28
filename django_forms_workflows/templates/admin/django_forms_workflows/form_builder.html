@@ -1408,12 +1408,15 @@
                         body: JSON.stringify(payload),
                     });
                     const data = await resp.json();
-                    if (data.success) {
+                    if (resp.ok && data.success === true) {
                         if ((docTemplateModalEl.dataset.editorSession || '') === requestEditorSession) {
                             modalInstance.hide();
                         }
                         loadDocTemplates();
-                    } else { alert(data.error || 'Error saving template'); }
+                    } else {
+                        const errorMessage = data.error || (resp.ok ? 'Error saving template' : `Request failed (${resp.status})`);
+                        alert(errorMessage);
+                    }
                 } catch (e) { alert('Error: ' + e.message); }
                 finally {
                     controlsToDisable.forEach((el) => { el.disabled = false; });

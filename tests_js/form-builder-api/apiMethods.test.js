@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiMethods } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder-api.js';
+import { canvasMethods } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder-canvas.js';
 import { createBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/form-builder-store.js';
 
 // Every input/checkbox/select loadForm/saveForm touch, plus the containers
@@ -36,6 +37,9 @@ function setupFormDOM() {
     <input type="checkbox" id="formEnableAutoSave" checked>
     <input id="formAutoSaveInterval" value="30">
     <input type="checkbox" id="formEnableMultiStep">
+    <div id="singleStepCanvas"></div>
+    <div id="multiStepCanvas"></div>
+    <div id="stepTabsControls"></div>
     <button id="btnSave">Save</button>
     <span id="saveStatus"></span>
     <div id="formPreview"></div>
@@ -432,11 +436,14 @@ describe('apiMethods.loadTemplate', () => {
     }));
     const ctx = createContext({ config: { apiUrls: { loadTemplate: '/templates/{id}/' } } });
     ctx.updatePreview = vi.fn();
+    ctx.toggleMultiStepMode = canvasMethods.toggleMultiStepMode;
+    ctx.moveAllFieldsToMainCanvas = canvasMethods.moveAllFieldsToMainCanvas;
 
     await ctx.loadTemplate('1');
 
     expect(ctx.fields).toEqual([{ field_name: 'text_1' }]);
-    expect(ctx.toggleMultiStepMode).toHaveBeenCalledWith(false);
+    expect(document.getElementById('singleStepCanvas').style.display).toBe('block');
+    expect(ctx.renderCanvas).toHaveBeenCalledTimes(1);
     expect(window.alert).toHaveBeenCalledWith('Template loaded successfully! You can now customize the form.');
     expect(ctx.updatePreview).toHaveBeenCalledTimes(1);
   });

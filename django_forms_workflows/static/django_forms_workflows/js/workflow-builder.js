@@ -1476,8 +1476,31 @@ export class WorkflowBuilder {
     }
 
     getNormalizedTriggerConditions(rawConditions) {
-        if (!rawConditions || typeof rawConditions !== 'object') {
+        const emptyGroup = () => ({ operator: 'AND', conditions: [] });
+        const malformedGroup = () => ({ operator: 'AND', conditions: [], malformed: true, raw: rawConditions });
+        if (rawConditions === null || rawConditions === undefined || rawConditions === '') {
+            return emptyGroup();
+        }
+        if (typeof rawConditions === 'string') {
+            try {
+                const parsed = JSON.parse(rawConditions);
+                return typeof parsed === 'string' ? malformedGroup() : this.getNormalizedTriggerConditions(parsed);
+            } catch (_) {
+                return malformedGroup();
+            }
+        }
+        if (Array.isArray(rawConditions)) {
+            return this.getNormalizedTriggerConditions({ operator: 'AND', conditions: rawConditions });
+        }
+        if (typeof rawConditions !== 'object') {
+            return malformedGroup();
+        }
+        if (Object.keys(rawConditions).length === 0) {
             return { operator: 'AND', conditions: [] };
+        }
+        if (Object.prototype.hasOwnProperty.call(rawConditions, 'conditions') &&
+            !Array.isArray(rawConditions.conditions)) {
+            return malformedGroup();
         }
 
         if (Array.isArray(rawConditions.conditions)) {
@@ -1526,11 +1549,26 @@ export class WorkflowBuilder {
             };
         }
 
-        return { operator: 'AND', conditions: [] };
+        return malformedGroup();
     }
 
     buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, editorId = editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
         const state = this.getNormalizedTriggerConditions(conditions);
+        if (state.malformed) {
+            return `
+                ${showHeader ? `<hr /><h6>${this.escapeHtml(title)}</h6>` : ''}
+                <div class="conditions-editor" data-editor-kind="${this.escapeHtmlAttribute(editorKind)}" ${extraAttributes}
+                     data-malformed="true" data-raw-conditions="${this.escapeHtmlAttribute(JSON.stringify(state.raw))}">
+                    <div class="alert alert-warning" role="alert">
+                        Saved conditions are malformed. They will be kept until you remove them.
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            onclick="this.closest('.conditions-editor').dataset.malformed='removed'; ${onChangeHandler}">
+                        Remove invalid conditions
+                    </button>
+                </div>
+            `;
+        }
         const hasSupportedGroupOperator = ['AND', 'OR'].includes(state.operator);
         const operatorOptions = [
             ['equals', 'Equals'],
@@ -2227,12 +2265,26 @@ export class WorkflowBuilder {
 
     validateConditionGroup(group, ownerLabel) {
         const errors = [];
-        if (!group) {
+        if (group === null || group === undefined || group === '' ||
+            (Array.isArray(group) && group.length === 0) ||
+            (typeof group === 'object' && !Array.isArray(group) && Object.keys(group).length === 0)) {
             return errors;
         }
+        if (typeof group === 'string') {
+            try {
+                const parsed = JSON.parse(group);
+                return typeof parsed === 'string'
+                    ? [`${ownerLabel}: conditions must be a list.`]
+                    : this.validateConditionGroup(parsed, ownerLabel);
+            } catch (_) {
+                return [`${ownerLabel}: conditions must be valid JSON.`];
+            }
+        }
 
-        const hasConditionList = Array.isArray(group.conditions);
+        const isConditionList = Array.isArray(group);
+        const hasConditionList = isConditionList || Array.isArray(group.conditions);
         const isLegacySingleCondition = !hasConditionList &&
+            !Object.prototype.hasOwnProperty.call(group, 'conditions') &&
             Object.prototype.hasOwnProperty.call(group, 'field');
 
         if (!hasConditionList && !isLegacySingleCondition) {
@@ -2253,7 +2305,7 @@ export class WorkflowBuilder {
                 .filter((name) => Boolean(name))
         );
 
-        const conditions = hasConditionList ? group.conditions : [group];
+        const conditions = isConditionList ? group : hasConditionList ? group.conditions : [group];
         conditions.forEach((condition, index) => {
             const rowNumber = index + 1;
             const fieldName = condition && condition.field !== undefined && condition.field !== null
@@ -2292,6 +2344,16 @@ export class WorkflowBuilder {
 
     readConditionsFromEditor(editorElement) {
         if (!editorElement) {
+            return null;
+        }
+        if (editorElement.dataset.malformed === 'true') {
+            try {
+                return JSON.parse(editorElement.dataset.rawConditions);
+            } catch (_) {
+                return { conditions: editorElement.dataset.rawConditions };
+            }
+        }
+        if (editorElement.dataset.malformed === 'removed') {
             return null;
         }
 
@@ -3046,13 +3108,26 @@ export class WorkflowBuilder {
     }
 
     getNodeDescription(node) {
+        const safeInteger = (value, minimum) => {
+            if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') {
+                return null;
+            }
+            const parsed = Number(value);
+            return Number.isSafeInteger(parsed) && parsed >= minimum ? parsed : null;
+        };
+        const conditionSummary = (rawConditions) => {
+            const state = this.getNormalizedTriggerConditions(rawConditions);
+            if (state.malformed) return 'Invalid conditions';
+            return state.conditions.length > 0 ? 'Conditional' : null;
+        };
         switch (node.type) {
             case 'start':
                 return 'Workflow starts here';
             case 'form':
-                const fieldCount = node.data.field_count || 0;
+                const fieldCount = safeInteger(node.data.field_count, 0) ?? 0;
                 const isInitial = node.data.is_initial !== false;
-                const isMultiStep = node.data.enable_multi_step && node.data.step_count > 0;
+                const stepCount = safeInteger(node.data.step_count, 1) ?? 0;
+                const isMultiStep = node.data.enable_multi_step && stepCount > 0;
 
                 // Show different description for initial vs additional forms
                 if (!isInitial && !node.data.form_id) {
@@ -3064,7 +3139,7 @@ export class WorkflowBuilder {
                     badges += '<span class="badge bg-info">Additional Step</span> ';
                 }
                 if (isMultiStep) {
-                    badges += `<span class="badge bg-success"><i class="bi bi-list-ol"></i> ${node.data.step_count} Steps</span> `;
+                    badges += `<span class="badge bg-success"><i class="bi bi-list-ol"></i> ${stepCount} Steps</span> `;
                 }
 
                 const badgeHtml = badges ? `${badges}<br>` : '';
@@ -3073,11 +3148,13 @@ export class WorkflowBuilder {
             case 'workflow_settings':
                 const parts_ws = [];
                 if (node.data.name_label) parts_ws.push(this.escapeHtml(node.data.name_label));
-                if (node.data.approval_deadline_days) parts_ws.push(`Deadline: ${node.data.approval_deadline_days}d`);
+                const deadlineDays = safeInteger(node.data.approval_deadline_days, 1);
+                if (deadlineDays !== null) parts_ws.push(`Deadline: ${deadlineDays}d`);
                 if (node.data.notification_cadence && node.data.notification_cadence !== 'immediate') parts_ws.push(`Cadence: ${this.escapeHtml(node.data.notification_cadence)}`);
                 if (node.data.notification_cadence_form_field && node.data.notification_cadence === 'form_field_date') parts_ws.push(`Date field: ${this.escapeHtml(node.data.notification_cadence_form_field)}`);
                 if (node.data.notification_rules && node.data.notification_rules.length > 0) parts_ws.push(`Notifications: ${node.data.notification_rules.length}`);
-                if (node.data.trigger_conditions && node.data.trigger_conditions.conditions && node.data.trigger_conditions.conditions.length > 0) parts_ws.push('Conditional');
+                const workflowConditionSummary = conditionSummary(node.data.trigger_conditions);
+                if (workflowConditionSummary) parts_ws.push(workflowConditionSummary);
                 return parts_ws.length > 0 ?
                     `<small class="text-muted">${parts_ws.join(' • ')}</small>` :
                     '<small class="text-muted">Default settings</small>';
@@ -3086,7 +3163,7 @@ export class WorkflowBuilder {
                 const rawStageOrder = node.data.order;
                 const parsedStageOrder = Number(rawStageOrder);
                 const safeStageOrder = rawStageOrder !== null && rawStageOrder !== '' &&
-                    Number.isSafeInteger(parsedStageOrder) && parsedStageOrder >= 0
+                    Number.isSafeInteger(parsedStageOrder) && parsedStageOrder >= 1
                     ? parsedStageOrder : '?';
                 if (node.data.requires_manager_approval) stageParts.push('Manager');
                 if (node.data.allow_send_back) stageParts.push('Send Back target');
@@ -3094,7 +3171,8 @@ export class WorkflowBuilder {
                 if (node.data.allow_edit_form_data) stageParts.push('Editable');
                 if (node.data.assignee_form_field) stageParts.push(`Dynamic: ${this.escapeHtml(node.data.assignee_form_field)}`);
                 if (node.data.approval_fields && node.data.approval_fields.length > 0) stageParts.push(`Stage fields: ${node.data.approval_fields.length}`);
-                if (node.data.trigger_conditions && node.data.trigger_conditions.conditions && node.data.trigger_conditions.conditions.length > 0) stageParts.push('Conditional');
+                const stageConditionSummary = conditionSummary(node.data.trigger_conditions);
+                if (stageConditionSummary) stageParts.push(stageConditionSummary);
                 if (node.data.approval_groups && node.data.approval_groups.length > 0) {
                     const gc = node.data.approval_groups.length;
                     stageParts.push(`${gc} group${gc > 1 ? 's' : ''} (${this.escapeHtml(node.data.approval_logic || 'all')})`);

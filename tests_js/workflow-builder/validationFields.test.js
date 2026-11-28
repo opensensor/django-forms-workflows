@@ -14,7 +14,7 @@ describe('approval field validation', () => {
       {
         id: 'stage-1', type: 'stage', data: {
           name: 'First', requires_manager_approval: true,
-          approval_fields: [{ id: 7, field_name: 'notes' }],
+          approval_fields: [{ id: 7 }],
         },
       },
       {
@@ -32,6 +32,54 @@ describe('approval field validation', () => {
 });
 
 describe('condition validation', () => {
+  it('keeps malformed saved conditions until explicitly removed', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    const raw = { operator: 'AND', conditions: 'broken', note: '<img src=x>' };
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = builder.buildConditionsEditor({
+      title: 'Trigger conditions', conditions: raw, onChangeHandler: '', editorKind: 'node-trigger',
+    });
+    const editor = wrapper.querySelector('.conditions-editor');
+
+    expect(editor.textContent).toContain('Saved conditions are malformed');
+    expect(editor.textContent).toContain('Remove invalid conditions');
+    expect(editor.textContent).not.toContain('Always run');
+    expect(wrapper.querySelector('img')).toBeNull();
+    expect(builder.readConditionsFromEditor(editor)).toEqual(raw);
+    expect(builder.validateConditionGroup(raw, 'Trigger conditions')).not.toEqual([]);
+    expect(builder.getNormalizedTriggerConditions({ field: 'notes', conditions: null }).malformed)
+      .toBe(true);
+
+    editor.dataset.malformed = 'removed';
+    expect(builder.readConditionsFromEditor(editor)).toBeNull();
+  });
+
+  it('describes legacy single conditions on settings and stages', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    const trigger_conditions = { field: 'notes', value: 'ready' };
+
+    expect(builder.getNodeDescription({ type: 'workflow_settings', data: { trigger_conditions } }))
+      .toContain('Conditional');
+    expect(builder.getNodeDescription({ type: 'stage', data: { order: 1, trigger_conditions } }))
+      .toContain('Conditional');
+  });
+
+  it('does not insert malformed numeric descriptions as HTML', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    const form = builder.getNodeDescription({ type: 'form', data: {
+      field_count: '<img src=x>', step_count: '2<script>', enable_multi_step: true,
+    } });
+    const settings = builder.getNodeDescription({ type: 'workflow_settings', data: {
+      approval_deadline_days: '<script>alert(1)</script>',
+    } });
+
+    expect(form).toContain('0 fields');
+    expect(form).not.toContain('<img');
+    expect(form).not.toContain('<script>');
+    expect(settings).not.toContain('<script>');
+    expect(settings).not.toContain('Deadline:');
+  });
+
   it('keeps unknown saved fields visible for correction', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     builder.fields = [{ field_name: 'known', field_label: 'Known' }];

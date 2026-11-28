@@ -1518,16 +1518,22 @@ export class WorkflowBuilder {
         }
 
         if (Array.isArray(rawConditions.conditions)) {
-            const rawGroupOperator =
-                typeof rawConditions.operator === 'string' ? rawConditions.operator.trim() : '';
+            const hasGroupOperator = Object.prototype.hasOwnProperty.call(rawConditions, 'operator');
+            const rawGroupOperator = rawConditions.operator;
             let normalizedGroupOperator = 'AND';
 
-            if (rawGroupOperator) {
-                const upperGroupOperator = rawGroupOperator.toUpperCase();
-                if (upperGroupOperator === 'AND' || upperGroupOperator === 'OR') {
-                    normalizedGroupOperator = upperGroupOperator;
+            if (hasGroupOperator) {
+                if (typeof rawGroupOperator === 'string') {
+                    const trimmedGroupOperator = rawGroupOperator.trim();
+                    const upperGroupOperator = trimmedGroupOperator.toUpperCase();
+                    if (upperGroupOperator === 'AND' || upperGroupOperator === 'OR') {
+                        normalizedGroupOperator = upperGroupOperator;
+                    } else {
+                        // Preserve explicitly supplied unsupported values so validation/UI can surface them.
+                        normalizedGroupOperator = trimmedGroupOperator;
+                    }
                 } else {
-                    // Preserve unsupported values so validation/UI can surface them explicitly.
+                    // Preserve explicitly supplied unsupported non-string values (for example: 7).
                     normalizedGroupOperator = rawGroupOperator;
                 }
             }

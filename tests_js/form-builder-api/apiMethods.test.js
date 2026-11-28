@@ -20,7 +20,9 @@ function setupFormDOM() {
     <input type="checkbox" id="formPaymentEnabled">
     <div id="paymentSettings" style="display:none"></div>
     <select id="formPaymentProvider"></select>
-    <select id="formPaymentAmountType"><option value="fixed">fixed</option></select>
+    <select id="formPaymentAmountType"><option value="fixed">fixed</option><option value="field">field</option></select>
+    <div id="paymentFixedGroup"></div>
+    <div id="paymentFieldGroup" style="display:none"></div>
     <input id="formPaymentFixedAmount" value="">
     <input id="formPaymentAmountField" value="">
     <input id="formPaymentCurrency" value="usd">
@@ -158,6 +160,17 @@ describe('apiMethods.loadForm', () => {
     }));
   }
 
+  it('shows the saved payment amount input type', async () => {
+    stubLoadResponse({ payment_amount_type: 'field' });
+    const ctx = createContext();
+    ctx.updatePreview = vi.fn();
+
+    await ctx.loadForm();
+
+    expect(document.getElementById('paymentFixedGroup').style.display).toBe('none');
+    expect(document.getElementById('paymentFieldGroup').style.display).toBe('');
+  });
+
   it('updates the amount prefix from a saved currency', async () => {
     stubLoadResponse({ payment_currency: 'cad' });
     const ctx = createContext();
@@ -226,6 +239,26 @@ describe('apiMethods.loadForm', () => {
 });
 
 describe('apiMethods.saveForm', () => {
+  it('allows another save after an in-flight save finishes', async () => {
+    document.getElementById('formName').value = 'My Form';
+    document.getElementById('formSlug').value = 'my-form';
+    let finishFirst;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise(resolve => { finishFirst = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const ctx = createContext();
+
+    const first = ctx.saveForm();
+    await ctx.saveForm();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    finishFirst({ ok: true, json: async () => ({ success: true }) });
+    await first;
+    await ctx.saveForm();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('does not save malformed success redirect rules', async () => {
     document.getElementById('formName').value = 'My Form';
     document.getElementById('formSlug').value = 'my-form';

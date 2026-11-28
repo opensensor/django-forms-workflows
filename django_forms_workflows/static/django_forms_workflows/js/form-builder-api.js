@@ -340,6 +340,7 @@ export const apiMethods = {
             alert('Failed to save form: ' + error.message);
             document.getElementById('saveStatus').textContent = 'Error saving';
         } finally {
+            this._saveInFlight = false;
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
         }

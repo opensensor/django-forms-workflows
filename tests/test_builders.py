@@ -3506,7 +3506,7 @@ class TestWorkflowBuilderViews:
 class TestSaveFormDefinitionFromBuilderData:
     """Tests for the form builder's save logic, factored out of
     form_builder_save so it can be called directly — mirrors the
-    convert_visual_to_workflow/form_builder_save split above."""
+    convert_visual_to_workflow/workflow_builder_save split above."""
 
     def test_creates_a_new_form_definition(self, user):
         data = {

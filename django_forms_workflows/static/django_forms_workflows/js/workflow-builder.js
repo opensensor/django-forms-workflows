@@ -2609,9 +2609,22 @@ export class WorkflowBuilder {
             const data = node.data || {};
             const groups = (data.approval_groups || []).filter(group => group && group.id);
             const stageLabel = data.name || `Stage ${index + 1}`;
+            const rawOrder = data.order;
+            const normalizedOrder = (typeof rawOrder === 'string') ? rawOrder.trim() : rawOrder;
+            const parsedOrder = Number(normalizedOrder);
 
             if (!String(data.name || '').trim()) {
                 this.addNodeIssue(result, node.id, 'errors', `Stage ${index + 1} is missing a name.`);
+            }
+            if (
+                normalizedOrder === undefined ||
+                normalizedOrder === null ||
+                normalizedOrder === '' ||
+                Number.isNaN(parsedOrder) ||
+                !Number.isInteger(parsedOrder) ||
+                parsedOrder < 1
+            ) {
+                this.addNodeIssue(result, node.id, 'errors', `${stageLabel} has an invalid order. Stage order must be an integer greater than or equal to 1.`);
             }
             if (!(groups.length || data.requires_manager_approval || data.assignee_form_field)) {
                 this.addNodeIssue(result, node.id, 'errors', `${stageLabel} needs approval groups, manager approval, or a dynamic assignee field.`);

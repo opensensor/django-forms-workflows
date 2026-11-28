@@ -1367,8 +1367,8 @@ export class WorkflowBuilder {
                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})" />
                             </div>
                             <div class="mb-3">
-                                <label class="form-label form-label-sm">Additional Groups</label>
-                                <select class="form-select form-select-sm" name="notification_rule_notify_groups" multiple size="4"
+                                <label class="form-label form-label-sm" for="${ruleInputId('notify_groups')}">Additional Groups</label>
+                                <select id="${ruleInputId('notify_groups')}" class="form-select form-select-sm" name="notification_rule_notify_groups" multiple size="4"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     ${this.groups.map(group => `
                                         <option value="${group.id}" ${selectedGroupIds.has(group.id) ? 'selected' : ''}>${this.escapeHtml(group.name)}</option>

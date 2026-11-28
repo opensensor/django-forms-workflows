@@ -20,12 +20,27 @@ function renderRules(rules, renderConditions = false, fields = [], nodes = []) {
 describe('notification rule controls', () => {
   it('keeps unsupported events and missing groups visible for correction', () => {
     const { builder, wrapper } = renderRules([{
-      event: 'retired_event',
+    const availableStageId = 7;
+    const { builder, wrapper } = renderRules(
+      [{ stage_node_id: stageId }],
+      false,
+      [],
+      [{ id: availableStageId, type: 'stage', data: { name: 'Review', order: 1 } }],
+    );
       notify_groups: [{ id: 'missing-group', name: 'Gone' }],
     }]);
 
     expect(wrapper.querySelector('select[name="notification_rule_event"]').value).toBe('retired_event');
     expect(wrapper.textContent).toContain('no longer supported');
+
+    const [preservedRule] = builder.readNotificationRulesFromPanel(wrapper);
+    expect(preservedRule.stage_node_id).toBe(stageId);
+
+    stageSelect.value = String(availableStageId);
+    stageSelect.dispatchEvent(new Event('change'));
+
+    const [editedRule] = builder.readNotificationRulesFromPanel(wrapper);
+    expect(editedRule.stage_node_id).toBe(availableStageId);
     expect(wrapper.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions[0].value)
       .toBe('missing-group');
     expect(builder.readNotificationRulesFromPanel(wrapper)[0].notify_groups[0].id)

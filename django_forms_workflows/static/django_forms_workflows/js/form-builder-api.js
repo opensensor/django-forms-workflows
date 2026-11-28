@@ -338,7 +338,7 @@ export const apiMethods = {
         } catch (error) {
             console.error('Error saving form:', error);
             alert('Failed to save form: ' + error.message);
-            document.getElementById('saveStatus').textContent = 'Error saving';
+                const grouped = Object.create(null);
         } finally {
             this._saveInFlight = false;
             saveBtn.disabled = false;

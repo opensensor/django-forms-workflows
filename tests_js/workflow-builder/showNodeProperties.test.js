@@ -165,6 +165,45 @@ describe('WorkflowBuilder stage editor', () => {
     expect(document.querySelector('select[name="approval_fields"] option[value="2"]').selected).toBe(true);
   });
 
+  it('preserves an unavailable approval field when updating a stage', () => {
+    const instance = createInstance();
+    const savedField = {
+      id: '9x', field_name: 'legacy', field_label: 'Legacy field',
+      field_type: 'text', order: 4,
+    };
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: { name: 'Review', order: 1, approval_fields: [savedField] },
+    };
+    instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    expect(document.querySelector('option[data-unavailable="true"]').selected).toBe(true);
+    instance.updateStageConfig(node.id);
+    expect(node.data.approval_fields).toEqual([savedField]);
+  });
+
+  it('moves a stage group when its button supplies the ID as a string', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: { approval_groups: [
+        { id: 5, name: 'First', position: 0 },
+        { id: 6, name: 'Second', position: 1 },
+      ] },
+    };
+    instance.nodes = [node];
+    instance.selectNode = vi.fn();
+
+    instance.moveStageApprovalGroup(node.id, '5', 1);
+
+    expect(node.data.approval_groups.map(group => group.id)).toEqual([6, 5]);
+    expect(node.data.approval_groups.map(group => group.position)).toEqual([0, 1]);
+  });
+
   it('rejects invalid stage order without changing node data', () => {
     const instance = createInstance();
     const node = { id: 'stage_1', type: 'stage', data: { name: 'Review', order: 1 } };

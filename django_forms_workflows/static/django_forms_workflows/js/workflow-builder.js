@@ -2316,7 +2316,10 @@ export class WorkflowBuilder {
             nodeId,
             node.data.approval_groups || []
         );
-        node.data.approval_fields = this.readStageApprovalFieldsFromPanel(container, nodeId);
+        node.data.approval_fields = this.readStageApprovalFieldsFromPanel(
+            container,
+            node.data.approval_fields || []
+        );
         node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
 
         this.selectNode(nodeId);
@@ -2553,23 +2556,25 @@ export class WorkflowBuilder {
         }));
     }
 
-    readStageApprovalFieldsFromPanel(container, nodeId) {
+    readStageApprovalFieldsFromPanel(container, existingFields) {
         const fieldSelect = container.querySelector('[name="approval_fields"]');
         if (!fieldSelect) {
             return [];
         }
 
         return Array.from(fieldSelect.selectedOptions).map(option => {
-            const fieldId = parseInt(option.value);
-            const field = this.fields.find(entry => entry.id === fieldId);
+            const field = this.fields.find(entry => String(entry.id) === option.value);
+            if (!field) {
+                return existingFields.find(entry => entry && String(entry.id) === option.value);
+            }
             return {
-                id: fieldId,
-                field_name: field?.field_name || option.text,
-                field_label: field?.field_label || option.text,
-                field_type: field?.field_type || '',
-                order: field?.order ?? 0,
+                id: field.id,
+                field_name: field.field_name || option.text,
+                field_label: field.field_label || option.text,
+                field_type: field.field_type || '',
+                order: field.order ?? 0,
             };
-        });
+        }).filter(Boolean);
     }
 
     moveStageApprovalGroup(nodeId, groupId, direction, groupRole = null) {

@@ -140,12 +140,14 @@ describe('WorkflowBuilder stage editor', () => {
     expect(nameInput.hasAttribute('onfocus')).toBe(false);
     expect(nameInput.hasAttribute('onclick')).toBe(false);
 
-    const panelRoot = document.querySelector('.node-properties') || document.body;
-    expect(panelRoot.querySelector('[onclick]')).toBeNull();
-
-    const idBoundAction = panelRoot.querySelector(`[data-node-id="${CSS.escape(node.id)}"]`);
-    expect(idBoundAction).not.toBeNull();
-    expect(idBoundAction.getAttribute('data-node-id')).toBe(node.id);
+    const panelRoot = document.getElementById('propertiesContent');
+    expect(panelRoot.querySelector('[autofocus], [onfocus]')).toBeNull();
+    const action = Array.from(panelRoot.querySelectorAll('button[onclick]'))
+      .find(button => button.getAttribute('onclick').startsWith('workflowBuilder.addTriggerCondition('));
+    expect(action).toBeDefined();
+    const handler = action.getAttribute('onclick');
+    const argument = handler.slice('workflowBuilder.addTriggerCondition('.length, -1);
+    expect(JSON.parse(argument)).toBe(node.id);
   });
 
   it('preserves group roles and approval field arrays on a stage change', () => {

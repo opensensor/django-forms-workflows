@@ -26,6 +26,17 @@ export const apiMethods = {
         fieldGroup.style.display = isField ? '' : 'none';
     },
 
+    updatePaymentAmountTypeVisibility() {
+        const amountType = document.getElementById('formPaymentAmountType');
+        const fixedGroup = document.getElementById('paymentFixedGroup');
+        const fieldGroup = document.getElementById('paymentFieldGroup');
+        if (!amountType || !fixedGroup || !fieldGroup) return;
+
+        const isField = amountType.value === 'field';
+        fixedGroup.style.display = isField ? 'none' : '';
+        fieldGroup.style.display = isField ? '' : 'none';
+    },
+
     updatePreview() {
         // Debounce preview updates to avoid too many API calls
         if (this.previewTimeout) {
@@ -155,6 +166,7 @@ export const apiMethods = {
             // Load payment settings
             document.getElementById('formPaymentEnabled').checked = data.payment_enabled || false;
             if (data.payment_enabled) document.getElementById('paymentSettings').style.display = '';
+            this.updatePaymentAmountTypeVisibility();
             // Populate provider dropdown
             const providerSelect = document.getElementById('formPaymentProvider');
             providerSelect.innerHTML = '<option value="">-- Select --</option>';

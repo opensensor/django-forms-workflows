@@ -2556,27 +2556,46 @@ class TestConvertVisualToWorkflow:
         assert not form_definition.post_actions.exists()
         assert not form_definition.workflows.exists()
 
-    def test_action_id_from_another_form_is_rejected(self, form_definition):
+    @pytest.mark.parametrize("target_kind", ["action", "email"])
+    def test_action_id_from_another_form_is_rejected(self, form_definition, target_kind):
         other_form = FormDefinition.objects.create(name="Other", slug="other")
         foreign_action = PostSubmissionAction.objects.create(
             form_definition=other_form,
             name="Foreign",
             action_type="database",
         )
-        visual = self._make_visual(
-            actions=[
+        if target_kind == "action":
+            visual = self._make_visual(
+                actions=[
+                    {
+                        "action_id": foreign_action.id,
+                        "name": "Foreign",
+                        "action_type": "database",
+                        "config": {},
+                    }
+                ]
+            )
+        else:
+            visual = self._make_visual()
+            visual["nodes"].insert(
+                1,
                 {
-                    "action_id": foreign_action.id,
-                    "name": "Foreign",
-                    "action_type": "database",
-                    "config": {},
-                }
-            ]
-        )
+                    "type": "email",
+                    "data": {
+                        "action_id": foreign_action.id,
+                        "name": "Foreign",
+                        "email_to": "recipient@example.com",
+                    },
+                },
+            )
 
         with pytest.raises(ValidationError, match="does not belong"):
             convert_visual_to_workflow(visual, form_definition)
         assert not form_definition.post_actions.exists()
+        foreign_action.refresh_from_db()
+        assert foreign_action.form_definition_id == other_form.id
+        assert foreign_action.name == "Foreign"
+        assert foreign_action.action_type == "database"
 
     def test_workflow_from_another_form_is_rejected(self, form_definition):
         other_form = FormDefinition.objects.create(name="Other", slug="other-workflow")

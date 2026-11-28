@@ -4178,7 +4178,9 @@ class TestSaveFormDefinitionFromBuilderData:
         def flaky_save(instance, *args, **kwargs):
             if instance.form_definition_id == form_with_fields.id:
                 save_calls["count"] += 1
-                if save_calls["count"] == 2:
+                if instance.id == second.id and instance.field_label == "Changed second label":
+                    first_in_db = FormField.objects.get(id=first.id)
+                    assert first_in_db.field_label == "Changed first label"
                     raise ValidationError("Injected failure after partial save")
             return original_save(instance, *args, **kwargs)
 

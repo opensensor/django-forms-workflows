@@ -1068,6 +1068,7 @@ export class WorkflowBuilder {
             routingSection += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
         });
 
+        const approvalLogic = data.approval_logic || 'all';
         routingSection += `
                 </select>
                 <small class="text-muted d-block mt-1">Hold Ctrl/Cmd to select multiple groups.</small>
@@ -1079,9 +1080,9 @@ export class WorkflowBuilder {
                 <label class="form-label" for="stage_logic_${this.escapeHtmlAttribute(node.id)}">Approval Logic</label>
                 <select class="form-select" id="stage_logic_${this.escapeHtmlAttribute(node.id)}" name="approval_logic"
                         >
-                    <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>Any (OR)</option>
-                    <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
-                    <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>Sequential</option>
+                    <option value="any" ${approvalLogic === 'any' ? 'selected' : ''}>Any (OR)</option>
+                    <option value="all" ${approvalLogic === 'all' ? 'selected' : ''}>All (AND)</option>
+                    <option value="sequence" ${approvalLogic === 'sequence' ? 'selected' : ''}>Sequential</option>
                 </select>
             </div>
         `;
@@ -1228,19 +1229,19 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label">Approval Deadline (days)</label>
                 <input type="number" class="form-control" name="approval_deadline_days" min="1"
-                       value="${data.approval_deadline_days || ''}" placeholder="No deadline"
+                       value="${this.escapeHtmlAttribute(data.approval_deadline_days || '')}" placeholder="No deadline"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Send Reminder After (days)</label>
                 <input type="number" class="form-control" name="send_reminder_after_days" min="1"
-                       value="${data.send_reminder_after_days || ''}" placeholder="No reminder"
+                       value="${this.escapeHtmlAttribute(data.send_reminder_after_days || '')}" placeholder="No reminder"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Auto-Approve After (days)</label>
                 <input type="number" class="form-control" name="auto_approve_after_days" min="1"
-                       value="${data.auto_approve_after_days || ''}" placeholder="Never"
+                       value="${this.escapeHtmlAttribute(data.auto_approve_after_days || '')}" placeholder="Never"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
@@ -1257,7 +1258,7 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label">Digest Day</label>
                 <input type="number" class="form-control" name="notification_cadence_day" min="0" max="31"
-                       value="${data.notification_cadence_day ?? ''}" placeholder="Weekly: 0-6, Monthly: 1-31"
+                       value="${this.escapeHtmlAttribute(data.notification_cadence_day ?? '')}" placeholder="Weekly: 0-6, Monthly: 1-31"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Used for weekly and monthly cadences only.</small>
             </div>
@@ -2118,8 +2119,17 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const container = document.getElementById('propertiesContent');
+        const orderInput = container.querySelector('input[name="order"]');
+        const parsedOrder = Number(orderInput.value);
+        if (!Number.isInteger(parsedOrder) || parsedOrder < 1) {
+            orderInput.setCustomValidity('Stage order must be an integer greater than or equal to 1.');
+            orderInput.reportValidity();
+            orderInput.focus();
+            return;
+        }
+        orderInput.setCustomValidity('');
         node.data.name = container.querySelector('input[name="name"]').value;
-        node.data.order = parseInt(container.querySelector('input[name="order"]').value) || 1;
+        node.data.order = parsedOrder;
         node.data.approve_label = container.querySelector('input[name="approve_label"]').value;
         node.data.requires_manager_approval = container.querySelector('[name="requires_manager_approval"]').checked;
         node.data.allow_send_back = container.querySelector('[name="allow_send_back"]').checked;
@@ -2160,8 +2170,54 @@ export class WorkflowBuilder {
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
-
         this.selectNode(nodeId);
+    }
+
+    validateConditionGroup(group, ownerLabel) {
+        const errors = [];
+        if (!group) {
+            return errors;
+        }
+        if (!Array.isArray(group.conditions)) {
+            return [`${ownerLabel}: conditions must be a list.`];
+        }
+        if (group.operator && !['AND', 'OR'].includes(String(group.operator).toUpperCase())) {
+            errors.push(`${ownerLabel}: match mode must be AND or OR.`);
+        }
+
+        const allowedOperators = new Set([
+            'equals', 'not_equals', 'contains', 'in',
+            'gt', 'gte', 'lt', 'lte', 'is_empty', 'not_empty'
+        ]);
+
+        group.conditions.forEach((condition, index) => {
+            const rowNumber = index + 1;
+            if (!condition || !condition.field || !String(condition.field).trim()) {
+                errors.push(`${ownerLabel}: condition row ${rowNumber} has no field selected.`);
+            }
+
+            const operator = condition && condition.operator;
+            if (!operator || !allowedOperators.has(operator)) {
+                errors.push(`${ownerLabel}: condition row ${rowNumber} has an unknown operator.`);
+                return;
+            }
+
+        });
+
+        return errors;
+    }
+
+    validateNodeConditions(node) {
+        const errors = [];
+        errors.push(...this.validateConditionGroup(node.data && node.data.trigger_conditions, 'Trigger conditions'));
+
+        const rules = (node.data && node.data.notification_rules) || [];
+        rules.forEach((rule, index) => {
+            const label = `Notification rule ${index + 1}`;
+            errors.push(...this.validateConditionGroup(rule && rule.conditions, label));
+        });
+
+        return errors;
     }
 
     readConditionsFromEditor(editorElement) {
@@ -2659,6 +2715,12 @@ export class WorkflowBuilder {
             if (data.detached && data.reject_parent) {
                 this.addNodeIssue(result, node.id, 'warnings', `${label} is detached, so “Reject Parent on Failure” may not have any effect.`);
             }
+        });
+
+        this.nodes.forEach(node => {
+            this.validateNodeConditions(node).forEach(message => {
+                this.addNodeIssue(result, node.id, 'errors', message);
+            });
         });
 
         return result;

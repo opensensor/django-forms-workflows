@@ -51,8 +51,9 @@ describe('notification rule controls', () => {
     );
 
     expect(wrapper.querySelector('img')).toBeNull();
-    expect(wrapper.querySelector('select[name="notification_rule_email_field"] option[selected]').value)
-      .toBe(fieldName);
+    const selectedEmailOption = wrapper.querySelector('select[name="notification_rule_email_field"] option[selected]');
+    expect(selectedEmailOption.value).toBe(fieldName);
+    expect(selectedEmailOption.textContent).toBe(fieldName);
   });
 
   it('uses unique condition control IDs across multiple rules', () => {

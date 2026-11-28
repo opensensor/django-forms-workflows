@@ -96,7 +96,7 @@ export const apiMethods = {
                         <i class="bi bi-exclamation-triangle"></i>
                         <strong>Preview unavailable</strong><br>
                         ${this.fields.length} field(s) configured<br>
-                        <small class="text-muted">${error.message}</small>
+                        <small class="text-muted">${this.escapeHtml(error.message)}</small>
                     </div>
                 `;
             }

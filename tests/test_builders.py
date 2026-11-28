@@ -2557,7 +2557,9 @@ class TestConvertVisualToWorkflow:
         assert not form_definition.workflows.exists()
 
     @pytest.mark.parametrize("target_kind", ["action", "email"])
-    def test_action_id_from_another_form_is_rejected(self, form_definition, target_kind):
+    def test_action_id_from_another_form_is_rejected(
+        self, form_definition, target_kind
+    ):
         other_form = FormDefinition.objects.create(name="Other", slug="other")
         foreign_action = PostSubmissionAction.objects.create(
             form_definition=other_form,
@@ -4020,9 +4022,7 @@ class TestSaveFormDefinitionFromBuilderData:
         original_version = form_with_fields.version
         original_first_label = first.field_label
         original_second_label = second.field_label
-        original_field_ids = set(
-            form_with_fields.fields.values_list("id", flat=True)
-        )
+        original_field_ids = set(form_with_fields.fields.values_list("id", flat=True))
 
         save_calls = {"count": 0}
         original_save = FormField.save
@@ -4057,10 +4057,14 @@ class TestSaveFormDefinitionFromBuilderData:
             ],
         }
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(
+            ValidationError, match="Injected failure after partial save"
+        ):
             save_form_definition_from_builder_data(
                 data, user, form_definition=form_with_fields
             )
+
+        assert save_calls["count"] == 2
 
         form_with_fields.refresh_from_db()
         first.refresh_from_db()
@@ -4070,7 +4074,10 @@ class TestSaveFormDefinitionFromBuilderData:
         assert form_with_fields.version == original_version
         assert first.field_label == original_first_label
         assert second.field_label == original_second_label
-        assert set(form_with_fields.fields.values_list("id", flat=True)) == original_field_ids
+        assert (
+            set(form_with_fields.fields.values_list("id", flat=True))
+            == original_field_ids
+        )
 
     def test_deletes_fields_absent_from_the_payload(self, user, form_with_fields):
         assert form_with_fields.fields.count() == 5

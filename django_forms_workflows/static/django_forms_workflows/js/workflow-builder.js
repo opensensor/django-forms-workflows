@@ -2180,11 +2180,8 @@ export class WorkflowBuilder {
         }
 
         const hasConditionList = Array.isArray(group.conditions);
-        const isLegacySingleCondition = !hasConditionList && (
-            Object.prototype.hasOwnProperty.call(group, 'field') ||
-            Object.prototype.hasOwnProperty.call(group, 'operator') ||
-            Object.prototype.hasOwnProperty.call(group, 'value')
-        );
+        const isLegacySingleCondition = !hasConditionList &&
+            Object.prototype.hasOwnProperty.call(group, 'field');
 
         if (!hasConditionList && !isLegacySingleCondition) {
             return [`${ownerLabel}: conditions must be a list.`];
@@ -2206,7 +2203,7 @@ export class WorkflowBuilder {
                 errors.push(`${ownerLabel}: condition row ${rowNumber} has no field selected.`);
             }
 
-            const operator = condition && condition.operator;
+            const operator = condition && (condition.operator === undefined ? 'equals' : condition.operator);
             if (!operator || !allowedOperators.has(operator)) {
                 errors.push(`${ownerLabel}: condition row ${rowNumber} has an unknown operator.`);
                 return;

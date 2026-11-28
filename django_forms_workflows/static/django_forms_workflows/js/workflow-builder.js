@@ -2719,7 +2719,6 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2733,7 +2732,6 @@ export class WorkflowBuilder {
         node.data.trigger = container.querySelector('select[name="trigger"]').value;
         node.data.config = container.querySelector('textarea[name="config"]').value;
 
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2752,7 +2750,6 @@ export class WorkflowBuilder {
         node.data.email_template_name = container.querySelector('input[name="email_template_name"]').value;
         node.data.trigger = container.querySelector('select[name="trigger"]').value;
 
-        this.render();
         this.selectNode(nodeId);
     }
 

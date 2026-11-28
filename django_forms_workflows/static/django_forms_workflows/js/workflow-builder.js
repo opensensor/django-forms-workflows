@@ -2119,7 +2119,15 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
         node.data.name = container.querySelector('input[name="name"]').value;
-        node.data.order = parseInt(container.querySelector('input[name="order"]').value) || 1;
+        const orderInput = container.querySelector('input[name="order"]');
+        const parsedOrder = Number.parseInt(orderInput.value, 10);
+        if (!Number.isInteger(parsedOrder) || parsedOrder < 1) {
+            window.alert('Stage order must be an integer greater than or equal to 1.');
+            orderInput.focus();
+            orderInput.select();
+            return;
+        }
+        node.data.order = parsedOrder;
         node.data.approve_label = container.querySelector('input[name="approve_label"]').value;
         node.data.requires_manager_approval = container.querySelector('[name="requires_manager_approval"]').checked;
         node.data.allow_send_back = container.querySelector('[name="allow_send_back"]').checked;

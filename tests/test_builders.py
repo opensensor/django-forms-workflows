@@ -2452,6 +2452,9 @@ class TestConvertVisualToWorkflow:
 
         action.refresh_from_db()
         assert action.description == "Custom explanation"
+        assert list(form_definition.post_actions.values_list("id", flat=True)) == [
+            action.id
+        ]
 
     @pytest.mark.parametrize("node_name", ["Notice", " Notice "])
     def test_legacy_email_node_preserves_description_by_name(
@@ -5318,6 +5321,13 @@ class TestFormBuilderTemplateAPI:
         assert data["template_data"] == {"fields": [{"field_name": "email"}]}
         template.refresh_from_db()
         assert template.usage_count == 1
+
+        resp_second = client.get(url)
+        assert resp_second.status_code == 200
+        data_second = resp_second.json()
+        assert data_second["success"] is True
+        template.refresh_from_db()
+        assert template.usage_count == 2
 
 
 # ── Shared option list API endpoints ────────────────────────────────────────

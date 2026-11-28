@@ -1028,6 +1028,7 @@ class TestConvertWorkflowToVisual:
         self, staged_workflow, approval_group, second_approval_group, form_definition
     ):
         stage = staged_workflow.stages.order_by("order").first()
+        second_stage = staged_workflow.stages.order_by("order")[1]
         rule = NotificationRule.objects.create(
             workflow=staged_workflow,
             stage=stage,
@@ -1052,16 +1053,36 @@ class TestConvertWorkflowToVisual:
             },
         )
         rule.notify_groups.set([approval_group, second_approval_group])
+        NotificationRule.objects.create(
+            workflow=staged_workflow,
+            stage=second_stage,
+            event="approval_request",
+            subject_template="Second Stage Approval Needed",
+            body_template="<p>Second stage body</p>",
+        )
 
         result = convert_workflow_to_visual(staged_workflow, form_definition)
 
         settings_node = next(
             n for n in result["nodes"] if n["type"] == "workflow_settings"
         )
-        assert len(settings_node["data"]["notification_rules"]) == 1
-        loaded_rule = settings_node["data"]["notification_rules"][0]
+        assert len(settings_node["data"]["notification_rules"]) == 2
+
+        stage_id_to_node_id = {
+            int(node["data"]["stage_id"]): node["id"]
+            for node in result["nodes"]
+            if node["type"] == "stage"
+            and node.get("data", {}).get("stage_id") is not None
+        }
+
+        rules_by_stage_id = {
+            loaded["stage_id"]: loaded
+            for loaded in settings_node["data"]["notification_rules"]
+        }
+
+        loaded_rule = rules_by_stage_id[stage.id]
         assert loaded_rule["stage_id"] == stage.id
-        assert loaded_rule["stage_node_id"]
+        assert loaded_rule["stage_node_id"] == stage_id_to_node_id[stage.id]
         assert loaded_rule["email_field"] == "manager_email"
         assert loaded_rule["body_template"] == "<p>Custom body</p>"
         assert loaded_rule["cc_static_emails"] == "copy@example.com"
@@ -1070,6 +1091,11 @@ class TestConvertWorkflowToVisual:
             approval_group.id,
             second_approval_group.id,
         }
+
+        second_loaded_rule = rules_by_stage_id[second_stage.id]
+        assert (
+            second_loaded_rule["stage_node_id"] == stage_id_to_node_id[second_stage.id]
+        )
 
     def test_saved_numeric_string_stage_id_keeps_notification_rule_node(
         self, form_definition
@@ -2804,6 +2830,77 @@ class TestWorkflowBuilderViews:
         ).count()
         assert view_only_after_count == view_only_before_count
 
+        # Add permission creates the first workflow, but cannot update it.
+        add_only_perms = Permission.objects.filter(
+            content_type__in=[ct, form_ct],
+            codename__in=[
+                "change_formdefinition",
+                "add_workflowdefinition",
+            ],
+        )
+        staff.user_permissions.add(*add_only_perms)
+
+        add_only_load = client.get(load_url)
+        assert add_only_load.status_code == 200
+        add_only_before_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        add_only_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert add_only_save.status_code == 200
+        add_only_after_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        assert add_only_after_count == add_only_before_count + 1
+        add_only_update = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert add_only_update.status_code in (302, 403)
+        assert (
+            WorkflowDefinition.objects.filter(form_definition=form_definition).count()
+            == add_only_after_count
+        )
+
+        # Change permission updates the existing workflow, but cannot create one.
+        staff.user_permissions.remove(*add_only_perms)
+        change_only_perms = Permission.objects.filter(
+            content_type__in=[ct, form_ct],
+            codename__in=[
+                "change_formdefinition",
+                "change_workflowdefinition",
+            ],
+        )
+        staff.user_permissions.add(*change_only_perms)
+
+        change_only_load = client.get(load_url)
+        assert change_only_load.status_code == 200
+        change_only_before_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        change_only_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert change_only_save.status_code == 200
+        change_only_after_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+
+        assert change_only_after_count == change_only_before_count
+
+        other_form = FormDefinition.objects.create(
+            name="No workflow yet", slug="no-workflow-yet", description=""
+        )
+        other_payload = {**payload, "form_id": other_form.id}
+        change_only_create = client.post(
+            save_url, data=json.dumps(other_payload), content_type="application/json"
+        )
+        assert change_only_create.status_code in (302, 403)
+        assert not WorkflowDefinition.objects.filter(
+            form_definition=other_form
+        ).exists()
+
+        # combined write permissions should allow save
         write_perms = Permission.objects.filter(
             content_type__in=[ct, form_ct],
             codename__in=[

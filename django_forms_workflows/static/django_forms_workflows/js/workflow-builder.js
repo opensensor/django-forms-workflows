@@ -2528,14 +2528,19 @@ export class WorkflowBuilder {
             (data.approval_fields || []).forEach(field => {
                 const fieldId = field?.id;
                 const fieldName = field?.field_name;
-                const lookupKey = fieldId ? `id:${fieldId}` : `name:${fieldName}`;
                 const label = field?.field_label || fieldName || fieldId;
-                const exists = (fieldId && fieldIds.has(fieldId)) || (fieldName && fieldNames.has(fieldName));
+                const resolvedField = (this.fields || []).find(candidate =>
+                    (fieldId && candidate.id === fieldId) ||
+                    (fieldName && (candidate.name === fieldName || candidate.field_name === fieldName))
+                );
+                const resolvedFieldId = resolvedField?.id;
 
-                if (!exists) {
+                if (!resolvedFieldId) {
                     this.addNodeIssue(result, node.id, 'errors', `${stageLabel} references an unknown approval-only field: ${label}.`);
                     return;
                 }
+
+                const lookupKey = `id:${resolvedFieldId}`;
 
                 if (assignedApprovalFields.has(lookupKey) && assignedApprovalFields.get(lookupKey) !== node.id) {
                     const otherStage = this.nodes.find(candidate => candidate.id === assignedApprovalFields.get(lookupKey));

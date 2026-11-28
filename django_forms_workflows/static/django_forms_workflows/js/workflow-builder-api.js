@@ -90,6 +90,9 @@ export const apiMethods = {
     },
 
     async saveWorkflow() {
+        if (this.isSaving) {
+            return;
+        }
         if (this.saveStatusResetTimer) {
             clearTimeout(this.saveStatusResetTimer);
             this.saveStatusResetTimer = null;

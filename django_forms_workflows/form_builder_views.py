@@ -745,27 +745,32 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         max_submissions = None
     elif isinstance(max_submissions_raw, bool):
         raise FormBuilderPayloadError(
-            '"max_submissions" must be an integer or null.'
+            '"max_submissions" must be a nonnegative integer or null.'
         )
     elif isinstance(max_submissions_raw, int):
         max_submissions = max_submissions_raw
-    elif isinstance(max_submissions_raw, float):
-        raise FormBuilderPayloadError(
-            '"max_submissions" must be an integer or null.'
-        )
     elif isinstance(max_submissions_raw, str):
         value = max_submissions_raw.strip()
         if not value:
             max_submissions = None
-        elif re.fullmatch(r"-?\d+", value):
-            max_submissions = int(value)
+        elif value.isascii() and value.isdecimal():
+            try:
+                max_submissions = int(value)
+            except ValueError as exc:
+                raise FormBuilderPayloadError(
+                    '"max_submissions" must be a nonnegative integer or null.'
+                ) from exc
         else:
             raise FormBuilderPayloadError(
-                '"max_submissions" must be an integer or null.'
+                '"max_submissions" must be a nonnegative integer or null.'
             )
     else:
         raise FormBuilderPayloadError(
-            '"max_submissions" must be an integer or null.'
+            '"max_submissions" must be a nonnegative integer or null.'
+        )
+    if max_submissions is not None and max_submissions < 0:
+        raise FormBuilderPayloadError(
+            '"max_submissions" must be a nonnegative integer or null.'
         )
     one_per_user = data.get("one_per_user", False)
     payment_enabled = data.get("payment_enabled", False)

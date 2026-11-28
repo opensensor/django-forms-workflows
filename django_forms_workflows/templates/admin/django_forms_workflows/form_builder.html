@@ -1218,6 +1218,7 @@
                     const right = document.createElement('div');
 
                     const editBtn = document.createElement('button');
+                    editBtn.type = 'button';
                     editBtn.className = 'btn btn-sm btn-outline-primary';
                     editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
                     editBtn.addEventListener('click', function() {
@@ -1225,6 +1226,7 @@
                     });
 
                     const deleteBtn = document.createElement('button');
+                    deleteBtn.type = 'button';
                     deleteBtn.className = 'btn btn-sm btn-outline-danger';
                     deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
                     deleteBtn.addEventListener('click', function() {
@@ -1281,7 +1283,7 @@
                 btnAddDocTemplate.title = 'Save the form before adding document templates';
             }
 
-            btnAddDocTemplate.addEventListener('click', () => {
+            if (btnAddDocTemplate) btnAddDocTemplate.addEventListener('click', () => {
                 if (!formBuilderData.formId || !docUrls.docTemplateSave) {
                     alert('Please save the form before adding document templates.');
                     return;

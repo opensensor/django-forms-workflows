@@ -752,12 +752,12 @@
                         </h6>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small">Close Date</label>
+                        <label class="form-label small" for="formCloseDate">Close Date</label>
                         <input type="datetime-local" class="form-control form-control-sm" id="formCloseDate">
                         <small class="text-muted">Stop accepting submissions after this date</small>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small">Max Submissions</label>
+                        <label class="form-label small" for="formMaxSubmissions">Max Submissions</label>
                         <input type="number" class="form-control form-control-sm" id="formMaxSubmissions" min="1" placeholder="Unlimited">
                     </div>
                     <div class="col-md-2">
@@ -872,7 +872,8 @@
             <div class="panel-header">
                 <i class="bi bi-grid-3x3-gap"></i> Field Types
                 <div class="mt-2">
-                    <input type="text" class="form-control form-control-sm" id="paletteSearch" placeholder="Search fields..." autocomplete="off">
+                    <label for="paletteSearch" class="visually-hidden">Search field types</label>
+                    <input type="text" class="form-control form-control-sm" id="paletteSearch" placeholder="Search fields..." autocomplete="off" aria-label="Search field types">
                 </div>
             </div>
             <div class="panel-content" id="fieldPalette">
@@ -1178,7 +1179,10 @@
             const docEmpty = document.getElementById('docTemplatesEmpty');
             let docTemplates = [];
 
+            let docTemplatesLoadSeq = 0;
+
             async function loadDocTemplates() {
+                const requestSeq = ++docTemplatesLoadSeq;
                 if (!docUrls.docTemplates) { docEmpty.style.display = 'block'; return; }
 
                 let docLoadError = docContainer.querySelector('.doc-templates-load-error');
@@ -1197,9 +1201,17 @@
                         throw new Error('Invalid templates payload');
                     }
 
+                    if (requestSeq !== docTemplatesLoadSeq) {
+                        return;
+                    }
+
                     docTemplates = data.templates;
                     renderDocTemplates();
                 } catch (e) {
+                    if (requestSeq !== docTemplatesLoadSeq) {
+                        return;
+                    }
+
                     console.error('Error loading doc templates:', e);
                     docTemplates = [];
                     const list = docContainer.querySelectorAll('.doc-tpl-item');

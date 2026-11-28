@@ -2296,16 +2296,49 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
 
-        // Numeric fields (empty → null)
-        ['approval_deadline_days', 'send_reminder_after_days', 'auto_approve_after_days'].forEach(key => {
-            const val = container.querySelector(`input[name="${key}"]`).value;
-            node.data[key] = val ? parseInt(val) : null;
-        });
+        // Numeric fields (empty → null), otherwise must be positive safe integers
+        for (const key of ['approval_deadline_days', 'send_reminder_after_days', 'auto_approve_after_days']) {
+            const input = container.querySelector(`input[name="${key}"]`);
+            const raw = input.value.trim();
+
+            if (raw === '') {
+                input.setCustomValidity('');
+                node.data[key] = null;
+                continue;
+            }
+
+            const parsed = Number(raw);
+            if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+                input.setCustomValidity('Please enter a positive whole number.');
+                input.reportValidity();
+                input.focus();
+                return;
+            }
+
+            input.setCustomValidity('');
+            node.data[key] = parsed;
+        }
 
         node.data.name_label = container.querySelector('input[name="name_label"]').value;
         node.data.notification_cadence = container.querySelector('select[name="notification_cadence"]').value;
-        const cadenceDay = container.querySelector('input[name="notification_cadence_day"]').value;
-        node.data.notification_cadence_day = cadenceDay ? parseInt(cadenceDay) : null;
+
+        const cadenceDayInput = container.querySelector('input[name="notification_cadence_day"]');
+        const cadenceDayRaw = cadenceDayInput.value.trim();
+        if (cadenceDayRaw === '') {
+            cadenceDayInput.setCustomValidity('');
+            node.data.notification_cadence_day = null;
+        } else {
+            const parsedCadenceDay = Number(cadenceDayRaw);
+            if (!Number.isSafeInteger(parsedCadenceDay) || parsedCadenceDay < 1 || parsedCadenceDay > 31) {
+                cadenceDayInput.setCustomValidity('Notification cadence day must be a whole number between 1 and 31.');
+                cadenceDayInput.reportValidity();
+                cadenceDayInput.focus();
+                return;
+            }
+            cadenceDayInput.setCustomValidity('');
+            node.data.notification_cadence_day = parsedCadenceDay;
+        }
+
         node.data.notification_cadence_time = container.querySelector('input[name="notification_cadence_time"]').value;
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);

@@ -175,7 +175,7 @@ describe('WorkflowBuilder stage editor', () => {
     const order = document.querySelector('input[name="order"]');
     order.value = '0';
 
-    instance.updateStageConfig(node.id);
+    dispatchChange(order);
 
     expect(node.data.name).toBe('Review');
     expect(node.data.order).toBe(1);
@@ -202,8 +202,9 @@ describe('WorkflowBuilder workflow settings editor', () => {
     instance.showNodeProperties(node);
 
     document.querySelector('[name="approval_deadline_days"]').value = '5';
-    document.querySelector('[name="notification_cadence_day"]').value = '7';
-    instance.updateWorkflowSettings(node.id);
+    const digestDay = document.querySelector('[name="notification_cadence_day"]');
+    digestDay.value = '7';
+    dispatchChange(digestDay);
 
     expect(node.data.approval_deadline_days).toBe(2);
     expect(node.data.notification_cadence_day).toBe(0);

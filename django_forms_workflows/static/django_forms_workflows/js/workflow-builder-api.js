@@ -136,10 +136,9 @@ export const apiMethods = {
         console.log('Nodes:', this.nodes);
         console.log('Connections:', this.connections);
 
+        const requestSnapshot = this.getWorkflowSnapshot();
+        const requestedDeletedActionIds = [...this.deletedActionIds];
         try {
-            const requestSnapshot = this.getWorkflowSnapshot();
-            const workflowData = requestSnapshot;
-
             const response = await fetch(this.config.apiUrls.save, {
                 method: 'POST',
                 headers: {
@@ -165,10 +164,15 @@ export const apiMethods = {
                 this.config.currentWorkflowId = result.workflow_id;
             }
 
-            this.deletedActionIds = [];
-            this.store.setSavedSnapshot(requestSnapshot);
+            this.deletedActionIds = this.deletedActionIds.filter(
+                actionId => !requestedDeletedActionIds.includes(actionId)
+            );
+            this.lastSavedWorkflowSnapshot = requestSnapshot;
             this.updateDirtyState();
-            this.setSaveStatus('Saved successfully', 'success');
+            this.setSaveStatus(
+                this.isDirty ? 'Unsaved changes' : 'Saved successfully',
+                this.isDirty ? 'warning' : 'success'
+            );
             this.setBuilderMessage(
                 'success',
                 'Workflow saved successfully.',

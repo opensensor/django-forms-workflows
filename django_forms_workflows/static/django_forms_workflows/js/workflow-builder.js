@@ -912,7 +912,14 @@ export class WorkflowBuilder {
     }
 
     buildPropertiesForm(node) {
-        let html = `<h6 class="mb-3">${this.getNodeTypeLabel(node.type)}</h6>`;
+        const nodeTypeLabel = this.getNodeTypeLabel(node.type);
+        const escapedNodeTypeLabel = String(nodeTypeLabel)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        let html = `<h6 class="mb-3">${escapedNodeTypeLabel}</h6>`;
         html += this.buildNodeIssuesAlert(node);
 
         switch (node.type) {

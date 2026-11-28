@@ -804,7 +804,7 @@ export class WorkflowBuilder {
     }
 
     selectNode(nodeId) {
-        this.deselectAll();
+        this.clearSelectionState();
         this.selectedNode = nodeId;
         this.selectedConnection = null;
         const node = this.nodes.find(n => n.id === nodeId);
@@ -816,11 +816,15 @@ export class WorkflowBuilder {
         this.render();
     }
 
-    deselectAll() {
+    clearSelectionState() {
         this.selectedNode = null;
         this.selectedConnection = null;
         this.showEmptyProperties();
         this.updateConnectionSelectionUI();
+    }
+
+    deselectAll() {
+        this.clearSelectionState();
         this.render();
     }
 
@@ -1714,8 +1718,17 @@ export class WorkflowBuilder {
             return '#';
         }
 
+        const trimmedUrl = url.trim();
+        if (!trimmedUrl) {
+            return '#';
+        }
+
+        if (trimmedUrl.startsWith('#')) {
+            return trimmedUrl;
+        }
+
         try {
-            const parsed = new URL(url, window.location.origin);
+            const parsed = new URL(trimmedUrl, window.location.origin);
             const isHttp = parsed.protocol === 'http:' || parsed.protocol === 'https:';
             const isSameOrigin = parsed.origin === window.location.origin;
             const hasProtocolRelativePath = parsed.pathname.startsWith('//');
@@ -2777,13 +2790,39 @@ export class WorkflowBuilder {
             });
         }
 
-        // Make node draggable
+        // Keep the selection target separate from the node's interactive controls.
+        const header = div.querySelector('.node-header');
+        const headerId = `workflow-node-select-${node.id}`;
+        header.id = headerId;
+        header.tabIndex = 0;
+        header.setAttribute('role', 'button');
+        header.setAttribute('aria-label', `Select ${label} to edit properties`);
+
+        // Keyboard activation for selection
+        header.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            this.selectNode(node.id);
+            const refreshedNode = document.getElementById(headerId);
+            if (refreshedNode) {
+                refreshedNode.focus({ preventScroll: true });
+            }
+        });
+
+        // Make node draggable (mouse only)
         div.addEventListener('mousedown', (e) => {
             if (e.target.closest('.node-actions')) return;
             if (e.target.closest('.connection-point')) return;
             if (e.target.closest('.form-edit-link')) return; // Don't interfere with form edit link
 
+            const shouldRestoreFocus = e.target.closest('.node-header') !== null;
             this.selectNode(node.id);
+            if (shouldRestoreFocus) {
+                const refreshedNode = document.getElementById(headerId);
+                if (refreshedNode) {
+                    refreshedNode.focus({ preventScroll: true });
+                }
+            }
             this.startDragNode(e, node);
         });
 

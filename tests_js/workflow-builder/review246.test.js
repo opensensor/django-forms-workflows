@@ -19,6 +19,25 @@ beforeEach(() => {
 });
 
 describe('workflow builder review fixes', () => {
+  it('selects a node by keyboard and restores focus to its new header', () => {
+    const instance = createInstance();
+    const node = { id: 'stage-1', type: 'stage', x: 0, y: 0, data: { name: 'Review' } };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(instance.createNodeElement(node));
+    instance.selectNode = vi.fn(() => {
+      host.replaceChildren(instance.createNodeElement(node));
+    });
+
+    const header = host.querySelector('.node-header');
+    expect(header.getAttribute('role')).toBe('button');
+    expect(header.getAttribute('aria-label')).toBe('Select Review to edit properties');
+    header.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(instance.selectNode).toHaveBeenCalledWith(node.id);
+    expect(document.activeElement).toBe(host.querySelector('.node-header'));
+  });
+
   it('labels the delete action with the escaped node name', () => {
     const instance = createInstance();
     const element = instance.createNodeElement({
@@ -93,6 +112,7 @@ describe('workflow builder review fixes', () => {
     expect(renderLink('https://example.com/edit').getAttribute('href')).toBe('#');
     expect(renderLink(`${window.location.origin}//example.com/edit`).getAttribute('href')).toBe('#');
     expect(renderLink('/admin/forms/1/edit/').getAttribute('href')).toBe('/admin/forms/1/edit/');
+    expect(renderLink('#details').getAttribute('href')).toBe('#details');
     const injected = renderLink('/admin/forms/?q=" onmouseover="alert(1)');
     expect(injected.hasAttribute('onmouseover')).toBe(false);
   });

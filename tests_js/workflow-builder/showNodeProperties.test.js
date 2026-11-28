@@ -269,6 +269,35 @@ describe('WorkflowBuilder stage editor', () => {
     expect(node.data.approval_groups.map(group => group.position)).toEqual([0, 1]);
   });
 
+  it('moves the intended stage group entry when duplicate IDs exist across roles', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: { approval_groups: [
+        { id: 5, role: 'approver', name: 'Approver A', position: 0 },
+        { id: 5, role: 'reviewer', name: 'Reviewer A', position: 1 },
+        { id: 6, role: 'approver', name: 'Approver B', position: 2 },
+      ] },
+    };
+    instance.nodes = [node];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    const moveDownButton = document.querySelector(
+      'button[data-stage-group-id="5"][data-stage-group-role="approver"][data-direction="1"]',
+    );
+    expect(moveDownButton).not.toBeNull();
+
+    moveDownButton.click();
+
+    expect(node.data.approval_groups.map(group => `${group.id}:${group.role}`)).toEqual([
+      '5:reviewer',
+      '5:approver',
+      '6:approver',
+    ]);
+    expect(node.data.approval_groups.map(group => group.position)).toEqual([0, 1, 2]);
+  });
+
   it('rejects invalid stage order without changing node data', () => {
     const instance = createInstance();
     const node = { id: 'stage_1', type: 'stage', data: { name: 'Review', order: 1 } };

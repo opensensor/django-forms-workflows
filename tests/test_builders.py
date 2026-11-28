@@ -2627,10 +2627,11 @@ class TestConvertVisualToWorkflow:
 
     @pytest.mark.parametrize("target_id", ["not-an-id", "²", "9" * 5000, 1.0, True])
     def test_sub_workflow_rejects_malformed_target_id(self, form_definition, target_id):
-        target_form = FormDefinition.objects.create(name="Lookup Target", slug="lookup-target")
-        target_workflow = WorkflowDefinition.objects.create(form_definition=target_form)
-        if target_workflow.id != 1:
-            pytest.skip("Requires a valid workflow with ID 1 to disambiguate malformed ID coercion")
+        if target_id is True and not WorkflowDefinition.objects.filter(pk=1).exists():
+            target_form = FormDefinition.objects.create(
+                name="Lookup Target", slug="lookup-target"
+            )
+            WorkflowDefinition.objects.create(pk=1, form_definition=target_form)
 
         visual = self._make_visual()
         visual["nodes"].insert(
@@ -4365,20 +4366,16 @@ class TestFormBuilderViews:
         resp = client.get(url)
         assert resp.status_code == 200
 
-    def test_builder_view_embeds_data_as_json(self, client, form_definition, superuser):
+    def test_builder_view_embeds_data_as_json(
+        self, client, form_definition, superuser, monkeypatch
+    ):
         client.force_login(superuser)
         dangerous_label = "label with </script> inside"
-        form_field = FormField.objects.filter(form=form_definition).first()
-        if form_field is None:
-            form_field = FormField.objects.create(
-                form=form_definition,
-                order=1,
-                label=dangerous_label,
-                type="text",
-            )
-        else:
-            form_field.label = dangerous_label
-            form_field.save(update_fields=["label"])
+        monkeypatch.setattr(
+            FormField,
+            "FIELD_TYPES",
+            [*FormField.FIELD_TYPES, ("test_type", dangerous_label)],
+        )
 
         response = client.get(_fb_url(f"builder/{form_definition.id}/"))
 
@@ -4395,8 +4392,11 @@ class TestFormBuilderViews:
             parsed_payloads[script_id] = json.loads(match.group(1))
             assert isinstance(parsed_payloads[script_id], list)
 
-        field_types_json = json.dumps(parsed_payloads["field-types-data"])
-        assert dangerous_label in field_types_json
+        assert {"value": "test_type", "label": dangerous_label} in parsed_payloads[
+            "field-types-data"
+        ]
+        assert dangerous_label not in html
+        assert "\\u003C/script\\u003E" in html
 
     def test_builder_new_view_requires_staff(self, client, user):
         client.force_login(user)

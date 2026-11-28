@@ -2790,17 +2790,20 @@ export class WorkflowBuilder {
             });
         }
 
-        // Make node keyboard-focusable/selectable (selection only; drag remains mouse-specific)
-        div.setAttribute('tabindex', '0');
-        div.setAttribute('role', 'button');
-        div.setAttribute('aria-label', `${node.name || node.type || 'Workflow node'}: select to edit properties`);
+        // Keep the selection target separate from the node's interactive controls.
+        const header = div.querySelector('.node-header');
+        const headerId = `workflow-node-select-${node.id}`;
+        header.id = headerId;
+        header.tabIndex = 0;
+        header.setAttribute('role', 'button');
+        header.setAttribute('aria-label', `Select ${label} to edit properties`);
 
         // Keyboard activation for selection
-        div.addEventListener('keydown', (e) => {
+        header.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter' && e.key !== ' ') return;
             e.preventDefault();
             this.selectNode(node.id);
-            const refreshedNode = document.getElementById(`node-${node.id}`);
+            const refreshedNode = document.getElementById(headerId);
             if (refreshedNode) {
                 refreshedNode.focus({ preventScroll: true });
             }
@@ -2812,10 +2815,10 @@ export class WorkflowBuilder {
             if (e.target.closest('.connection-point')) return;
             if (e.target.closest('.form-edit-link')) return; // Don't interfere with form edit link
 
-            const shouldRestoreFocus = div.contains(document.activeElement);
+            const shouldRestoreFocus = e.target.closest('.node-header') !== null;
             this.selectNode(node.id);
             if (shouldRestoreFocus) {
-                const refreshedNode = document.getElementById(`node-${node.id}`);
+                const refreshedNode = document.getElementById(headerId);
                 if (refreshedNode) {
                     refreshedNode.focus({ preventScroll: true });
                 }
@@ -3066,8 +3069,8 @@ export class WorkflowBuilder {
                 from: this.connectionStart.nodeId,
                 to: toNodeId
             }];
-            const newConnectionIndex = this.connections.length - 1;
-            this.selectConnection(newConnectionIndex);
+            this.selectedConnection = this.connections.length - 1;
+            this.updateConnectionSelectionUI();
             this.render();
         } else {
             console.log('Connection already exists');

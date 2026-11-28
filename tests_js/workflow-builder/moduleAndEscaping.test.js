@@ -124,6 +124,25 @@ describe('WorkflowBuilder#getNodeDescription — escaping regression', () => {
 });
 
 describe('WorkflowBuilder#buildFormProperties — escaping regression', () => {
+  it('does not render saved numeric metadata as markup', () => {
+    const instance = createInstance();
+    instance.forms = [{ id: 2, name: 'Other', field_count: '<script>alert(1)</script>' }];
+    const node = { id: 'form_1', data: {
+      is_initial: false,
+      field_count: '"><img src=x>',
+      step_count: '2<script>alert(1)</script>',
+      enable_multi_step: true,
+      fields: [],
+    } };
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = instance.buildFormProperties(node);
+
+    expect(wrapper.querySelector('img, script')).toBeNull();
+    expect(wrapper.querySelector('input[disabled][value="0"]')).not.toBeNull();
+    expect(wrapper.textContent).not.toContain('2<script>');
+  });
+
   it('escapes field.name, field.type, and field.prefill_source in the field list', () => {
     const instance = createInstance();
     const payload = '"><script>alert(1)</script>';

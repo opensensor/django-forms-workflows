@@ -1717,7 +1717,9 @@ export class WorkflowBuilder {
 
             this.forms.forEach(form => {
                 const selected = data.form_id == form.id ? 'selected' : '';
-                html += `<option value="${form.id}" ${selected}>${this.escapeHtml(form.name)} (${form.field_count} fields)</option>`;
+                const count = Number(form.field_count);
+                const safeCount = Number.isSafeInteger(count) && count >= 0 ? count : 0;
+                html += `<option value="${this.escapeHtmlAttribute(form.id)}" ${selected}>${this.escapeHtml(form.name)} (${safeCount} fields)</option>`;
             });
 
             html += `
@@ -1737,6 +1739,8 @@ export class WorkflowBuilder {
 
         const parsedFieldCount = Number(data.field_count);
         const safeFieldCount = Number.isSafeInteger(parsedFieldCount) && parsedFieldCount >= 0 ? parsedFieldCount : 0;
+        const parsedStepCount = Number(data.step_count);
+        const safeStepCount = Number.isSafeInteger(parsedStepCount) && parsedStepCount > 0 ? parsedStepCount : 0;
 
         html += `
             <div class="mb-3">
@@ -1746,11 +1750,11 @@ export class WorkflowBuilder {
         `;
 
         // Show multi-step information if enabled
-        if (data.enable_multi_step && data.step_count > 0) {
+        if (data.enable_multi_step && safeStepCount > 0) {
             html += `
                 <div class="alert alert-success">
                     <i class="bi bi-list-ol"></i> <strong>Multi-Step Form</strong>
-                    <br><small class="text-muted">${data.step_count} step${data.step_count > 1 ? 's' : ''} configured</small>
+                    <br><small class="text-muted">${safeStepCount} step${safeStepCount > 1 ? 's' : ''} configured</small>
                 </div>
             `;
 
@@ -2557,6 +2561,7 @@ export class WorkflowBuilder {
         const rules = [...(node.data.notification_rules || [])];
         const rule = this.getNotificationRuleState(rules[ruleIndex] || {});
         const state = this.getNormalizedTriggerConditions(rule.conditions);
+        if (state.malformed) return;
         state.conditions.splice(conditionIndex, 1);
         rules[ruleIndex] = { ...rule, conditions: state.conditions.length ? state : null };
         node.data.notification_rules = rules;
@@ -2588,6 +2593,7 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
+        if (state.malformed) return;
         state.conditions.splice(index, 1);
         node.data.trigger_conditions = state.conditions.length ? state : null;
         this.selectNode(nodeId);

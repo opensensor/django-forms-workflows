@@ -2107,6 +2107,42 @@ export class WorkflowBuilder {
         this.selectNode(nodeId);
     }
 
+    validateConditionGroup(conditionGroup, options = {}) {
+        if (!conditionGroup || !Array.isArray(conditionGroup.conditions) || !conditionGroup.conditions.length) {
+            return [];
+        }
+
+        const errors = [];
+        const context = options.context || 'conditions';
+        const allowedGroupOperators = ['AND', 'OR'];
+        const allowedConditionOperators = ['equals', 'not_equals', 'contains', 'not_contains', 'is_empty', 'not_empty'];
+
+        if (conditionGroup.operator && !allowedGroupOperators.includes(conditionGroup.operator)) {
+            errors.push(`${context}: invalid condition group operator.`);
+        }
+
+        conditionGroup.conditions.forEach((condition, index) => {
+            const label = `${context}: condition ${index + 1}`;
+            if (!condition || !condition.field || !String(condition.field).trim()) {
+                errors.push(`${label} is missing a field.`);
+            }
+
+            if (!condition || !condition.operator || !allowedConditionOperators.includes(condition.operator)) {
+                errors.push(`${label} has an invalid operator.`);
+                return;
+            }
+
+            if (!['is_empty', 'not_empty'].includes(condition.operator)) {
+                const value = condition.value;
+                if (value === null || value === undefined || String(value).trim() === '') {
+                    errors.push(`${label} is missing a comparison value.`);
+                }
+            }
+        });
+
+        return errors;
+    }
+
     readConditionsFromEditor(editorElement) {
         if (!editorElement) {
             return null;

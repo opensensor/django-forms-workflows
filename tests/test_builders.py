@@ -4083,10 +4083,8 @@ class TestFormBuilderSavePayloadValidation:
         assert response.status_code == 400
         assert set(form_with_fields.fields.values_list("id", flat=True)) == original_ids
 
-    def test_rejects_malformed_field_ids(self, client, superuser):
-        client.force_login(superuser)
-        field_ids = [[]]
-        response = client.post(
+    @pytest.mark.parametrize("field_ids", [[[], []]])
+    def test_rejects_malformed_field_ids(self, client, superuser, field_ids):
             _fb_url("builder/api/save/"),
             data=json.dumps(
                 {
@@ -4095,7 +4093,12 @@ class TestFormBuilderSavePayloadValidation:
                     "fields": [
                         {
                             "id": field_id,
+                        {
+                            "id": field_id,
                             "field_name": f"field_{index}",
+                            "field_label": f"Field {index}",
+                            "field_type": "text",
+                        }
                             "field_label": f"Field {index}",
                             "field_type": "text",
                         }
@@ -4107,9 +4110,6 @@ class TestFormBuilderSavePayloadValidation:
         )
 
         assert response.status_code == 400
-        assert response.json()["success"] is False
-        assert not FormDefinition.objects.filter(slug="form").exists()
-
     def test_rejects_duplicate_new_field_ids(self, client, superuser):
         client.force_login(superuser)
         response = client.post(
@@ -4130,6 +4130,59 @@ class TestFormBuilderSavePayloadValidation:
                             "field_name": "field_1",
                             "field_label": "Field 1",
                             "field_type": "text",
+                        },
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["success"] is False
+        assert "duplicate" in response.json()["error"].lower()
+        assert "id" in response.json()["error"].lower()
+        assert not FormDefinition.objects.filter(slug="form").exists()
+
+        assert response.json()["success"] is False
+        assert not FormDefinition.objects.filter(slug="form").exists()
+
+        field = FormField.objects.create(
+            form_definition=form,
+            field_name="field_0",
+            field_label="Field 0",
+            field_type="text",
+        )
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/save/"),
+            data=json.dumps(
+                {
+                    "name": "Form",
+                    "slug": "form",
+                    "fields": [
+                        {
+                        {
+                            "id": field.id,
+                            "field_name": "field_0",
+                            "field_label": "Field 0",
+                            "field_type": "text",
+                        },
+                        {
+                            "id": field.id,
+                            "field_name": "field_0_dup",
+                            "field_label": "Field 0 dup",
+                            "field_type": "text",
+                        },
+                            "field_label": "Field 0",
+                            "field_type": "text",
+                        },
+                        {
+                            "id": "new_1",
+                            "field_name": "field_1",
+                            "field_label": "Field 1",
+                            "field_type": "text",
+        assert "duplicate" in response.json()["error"].lower()
+        assert "id" in response.json()["error"].lower()
                         },
                     ],
                 }

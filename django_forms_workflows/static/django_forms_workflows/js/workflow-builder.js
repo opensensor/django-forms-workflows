@@ -3084,7 +3084,14 @@ export class WorkflowBuilder {
             return;
         }
 
-        const toNodeId = target.dataset.nodeId;
+        const targetNodeDomId = target.dataset.nodeId;
+        const targetNode = this.nodes.find(node => String(node.id) === targetNodeDomId);
+        if (!targetNode) {
+            console.log('Target node not found for DOM id:', targetNodeDomId);
+            return;
+        }
+
+        const toNodeId = targetNode.id;
         console.log('Connecting to node:', toNodeId);
 
         if (toNodeId === this.connectionStart.nodeId) {

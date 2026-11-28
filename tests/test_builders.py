@@ -4942,6 +4942,119 @@ class TestDocumentTemplateAPI:
         assert resp.status_code in (302, 403)
         assert not DocumentTemplate.objects.filter(name="Guarded").exists()
 
+    def test_staff_without_permissions_cannot_list_templates(
+        self, client, django_user_model, form_definition
+    ):
+        staff_user = django_user_model.objects.create_user(
+            username="staff_no_doctemplate_list_perm",
+            email="staff-no-list@example.com",
+            password="password",
+            is_staff=True,
+        )
+        client.force_login(staff_user)
+
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
+        resp = client.get(url)
+
+        assert resp.status_code in (302, 403)
+
+    def test_staff_without_permissions_cannot_save_template(
+        self, client, django_user_model, form_definition
+    ):
+        staff_user = django_user_model.objects.create_user(
+            username="staff_no_doctemplate_save_perm",
+            email="staff-no-save@example.com",
+            password="password",
+            is_staff=True,
+        )
+        client.force_login(staff_user)
+
+        url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        resp = client.post(
+            url,
+            data=json.dumps({"name": "GuardedStaff", "html_content": "<p>guarded</p>"}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code in (302, 403)
+        assert not DocumentTemplate.objects.filter(
+            form_definition=form_definition, name="GuardedStaff"
+        ).exists()
+
+    def test_staff_without_permissions_cannot_delete_template(
+        self, client, django_user_model, form_definition
+    ):
+        template = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="DeleteProtected",
+            html_content="<p>delete me</p>",
+        )
+        staff_user = django_user_model.objects.create_user(
+            username="staff_no_doctemplate_delete_perm",
+            email="staff-no-delete@example.com",
+            password="password",
+            is_staff=True,
+        )
+        client.force_login(staff_user)
+
+        url = _fb_url(
+            f"builder/api/doc-templates/{form_definition.id}/delete/{template.id}/"
+        )
+        resp = client.post(url)
+
+        assert resp.status_code in (302, 403)
+        assert DocumentTemplate.objects.filter(id=template.id).exists()
+
+    def test_staff_with_permissions_can_list_save_delete_templates(
+        self, client, django_user_model, form_definition
+    ):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        staff_user = django_user_model.objects.create_user(
+            username="staff_with_doctemplate_perms",
+            email="staff-with-perms@example.com",
+            password="password",
+            is_staff=True,
+        )
+
+        content_type = ContentType.objects.get_for_model(DocumentTemplate)
+        required_codenames = [
+            "view_documenttemplate",
+            "add_documenttemplate",
+            "change_documenttemplate",
+            "delete_documenttemplate",
+        ]
+        perms = Permission.objects.filter(
+            content_type=content_type, codename__in=required_codenames
+        )
+        staff_user.user_permissions.add(*perms)
+
+        client.force_login(staff_user)
+
+        list_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
+        list_resp = client.get(list_url)
+        assert list_resp.status_code == 200
+
+        save_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        save_resp = client.post(
+            save_url,
+            data=json.dumps(
+                {"name": "PermittedTemplate", "html_content": "<p>ok</p>"}
+            ),
+            content_type="application/json",
+        )
+        assert save_resp.status_code == 200
+        saved_id = save_resp.json().get("id")
+        assert DocumentTemplate.objects.filter(id=saved_id).exists()
+
+        delete_url = _fb_url(
+            f"builder/api/doc-templates/{form_definition.id}/delete/{saved_id}/"
+        )
+        delete_resp = client.post(delete_url)
+        assert delete_resp.status_code == 200
+        assert not DocumentTemplate.objects.filter(id=saved_id).exists()
+
     def test_save_template_requires_name(self, client, superuser, form_definition):
         client.force_login(superuser)
         url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")

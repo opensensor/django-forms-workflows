@@ -2164,9 +2164,10 @@ class TestConvertVisualToWorkflow:
 
     def test_saves_visual_workflow_data(self, form_definition):
         visual = self._make_visual()
+        expected_visual = copy.deepcopy(visual)
         wf = convert_visual_to_workflow(visual, form_definition)
         wf.refresh_from_db()
-        assert wf.visual_workflow_data == visual
+        assert wf.visual_workflow_data == expected_visual
 
     def test_creates_actions(self, form_definition):
         visual = self._make_visual(
@@ -4765,6 +4766,7 @@ class TestDocumentTemplateAPI:
         assert resp.status_code == 200
         tpl.refresh_from_db()
         assert tpl.name == "Updated"
+        assert tpl.html_content == "<p>new</p>"
         assert tpl.page_size == "legal"
 
     def test_delete_template(self, client, superuser, form_definition):

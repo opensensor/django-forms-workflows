@@ -123,6 +123,21 @@ describe('apiMethods.generatePreview', () => {
     expect(document.getElementById('formPreview').innerHTML).toBe('<p>new</p>');
   });
 
+  it('ignores a rejection from an older preview request after a newer preview renders', async () => {
+    let rejectFirst;
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, html: '<p>new</p>' }) }));
+    const ctx = createContext();
+
+    const first = ctx.generatePreview();
+    await ctx.generatePreview();
+    rejectFirst(new Error('stale failure'));
+    await first.catch(() => {});
+
+    expect(document.getElementById('formPreview').innerHTML).toBe('<p>new</p>');
+  });
+
   it('renders the returned HTML on success', async () => {
     const ctx = createContext({ fields: [{ field_name: 'a' }] });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({

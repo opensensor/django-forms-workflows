@@ -1328,7 +1328,7 @@ export class WorkflowBuilder {
                 id: typeof group === 'object' ? group.id : group,
                 name: typeof group === 'object' ? group.name : String(group),
             })).filter(group => group.id),
-            conditions: rule?.conditions || null,
+            conditions: rule?.conditions ?? null,
         };
     }
 

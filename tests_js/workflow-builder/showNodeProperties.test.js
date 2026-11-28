@@ -209,6 +209,7 @@ describe('WorkflowBuilder stage editor', () => {
   it('preserves a name-only approval field when its definition is unavailable', () => {
     const instance = createInstance();
     const savedField = { field_name: 'legacy', field_label: 'Legacy field' };
+    const savedFieldSnapshot = structuredClone(savedField);
     const node = {
       id: 'stage_1', type: 'stage',
       data: { name: 'Review', order: 1, approval_fields: [savedField] },
@@ -224,7 +225,7 @@ describe('WorkflowBuilder stage editor', () => {
     expect(unavailable.selected).toBe(true);
     instance.updateStageConfig(node.id);
 
-    expect(node.data.approval_fields).toEqual([savedField]);
+    expect(node.data.approval_fields).toEqual([savedFieldSnapshot]);
   });
 
   it('keeps saved approval field metadata when the field is still available', () => {
@@ -233,6 +234,7 @@ describe('WorkflowBuilder stage editor', () => {
       id: 5, field_name: 'old_name', field_label: 'Saved label',
       field_type: 'text', order: 3,
     };
+    const savedFieldSnapshot = structuredClone(savedField);
     const node = {
       id: 'stage_1', type: 'stage',
       data: { name: 'Review', order: 1, approval_fields: [savedField] },
@@ -245,7 +247,7 @@ describe('WorkflowBuilder stage editor', () => {
 
     instance.updateStageConfig(node.id);
 
-    expect(node.data.approval_fields).toEqual([savedField]);
+    expect(node.data.approval_fields).toEqual([savedFieldSnapshot]);
   });
 
   it('resolves a name-only approval field while keeping its saved label', () => {

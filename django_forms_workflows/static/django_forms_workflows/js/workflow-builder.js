@@ -849,7 +849,7 @@ export class WorkflowBuilder {
         if (this.selectedConnection === null || !this.connections[this.selectedConnection]) return;
         const selectedIndex = this.selectedConnection;
         const updatedConnections = this.connections.filter((_, index) => index !== selectedIndex);
-        this.setConnections(updatedConnections);
+        this.connections = updatedConnections;
         this.selectedConnection = null;
         this.updateConnectionSelectionUI();
         this.render();
@@ -3240,7 +3240,12 @@ export class WorkflowBuilder {
         }
 
         if (pointType === 'input' && this.isConnecting && this.connectionStart) {
-            this.finishConnection(nodeId, 'input');
+            this.finishConnection({ target: e.currentTarget });
+            this.cancelKeyboardConnection();
+            const renderedNode = Array.from(
+                this.transformWrapper?.querySelectorAll('.workflow-node') || []
+            ).find(element => element.dataset.nodeId === String(nodeId));
+            renderedNode?.querySelector('.connection-point.input')?.focus({ preventScroll: true });
         }
     }
 

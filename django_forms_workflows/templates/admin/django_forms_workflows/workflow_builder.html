@@ -420,6 +420,7 @@
     .connection-point {
         width: 12px;
         height: 12px;
+        padding: 0;
         background: var(--wb-primary);
         border: 2px solid var(--wb-surface);
         border-radius: 50%;
@@ -433,6 +434,11 @@
         background: var(--wb-success);
         transform: translateY(-50%) scale(1.3);
         box-shadow: 0 0 8px rgba(40, 167, 69, 0.5);
+    }
+
+    .connection-point:focus-visible {
+        outline: 2px solid var(--wb-primary);
+        outline-offset: 3px;
     }
 
     .connection-point.is-connect-target {

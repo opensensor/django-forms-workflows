@@ -2714,17 +2714,38 @@ class TestWorkflowBuilderViews:
 
         ct = ContentType.objects.get_for_model(WorkflowDefinition)
         form_ct = ContentType.objects.get_for_model(FormDefinition)
-        perms = Permission.objects.filter(
+        view_perms = Permission.objects.filter(
             content_type__in=[ct, form_ct],
             codename__in=[
                 "view_formdefinition",
-                "change_formdefinition",
                 "view_workflowdefinition",
+            ],
+        )
+        staff.user_permissions.add(*view_perms)
+
+        view_only_load = client.get(load_url)
+        assert view_only_load.status_code == 200
+        view_only_before_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        view_only_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert view_only_save.status_code in (302, 403)
+        view_only_after_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        assert view_only_after_count == view_only_before_count
+
+        write_perms = Permission.objects.filter(
+            content_type__in=[ct, form_ct],
+            codename__in=[
+                "change_formdefinition",
                 "add_workflowdefinition",
                 "change_workflowdefinition",
             ],
         )
-        staff.user_permissions.add(*perms)
+        staff.user_permissions.add(*write_perms)
 
         allowed_load = client.get(load_url)
         assert allowed_load.status_code == 200

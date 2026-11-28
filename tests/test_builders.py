@@ -2714,17 +2714,38 @@ class TestWorkflowBuilderViews:
 
         ct = ContentType.objects.get_for_model(WorkflowDefinition)
         form_ct = ContentType.objects.get_for_model(FormDefinition)
-        perms = Permission.objects.filter(
+        view_perms = Permission.objects.filter(
             content_type__in=[ct, form_ct],
             codename__in=[
                 "view_formdefinition",
-                "change_formdefinition",
                 "view_workflowdefinition",
+            ],
+        )
+        staff.user_permissions.add(*view_perms)
+
+        view_only_load = client.get(load_url)
+        assert view_only_load.status_code == 200
+        view_only_before_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        view_only_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert view_only_save.status_code in (302, 403)
+        view_only_after_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        assert view_only_after_count == view_only_before_count
+
+        write_perms = Permission.objects.filter(
+            content_type__in=[ct, form_ct],
+            codename__in=[
+                "change_formdefinition",
                 "add_workflowdefinition",
                 "change_workflowdefinition",
             ],
         )
-        staff.user_permissions.add(*perms)
+        staff.user_permissions.add(*write_perms)
 
         allowed_load = client.get(load_url)
         assert allowed_load.status_code == 200
@@ -4517,25 +4538,29 @@ class TestFormBuilderViews:
         assert loaded_field["step_number"] == field.step_number
 
     def test_clone_copies_all_permission_groups(
-        self, client, superuser, form_with_fields, approval_group
+        self, client, superuser, form_with_fields
     ):
-        for groups in (
-            form_with_fields.submit_groups,
-            form_with_fields.view_groups,
-            form_with_fields.reviewer_groups,
-            form_with_fields.admin_groups,
-        ):
-            groups.set([approval_group])
+        from django.contrib.auth.models import Group
+
+        submit_group = Group.objects.create(name="Submit Group")
+        view_group = Group.objects.create(name="View Group")
+        reviewer_group = Group.objects.create(name="Reviewer Group")
+        admin_group = Group.objects.create(name="Admin Group")
+
+        form_with_fields.submit_groups.set([submit_group])
+        form_with_fields.view_groups.set([view_group])
+        form_with_fields.reviewer_groups.set([reviewer_group])
+        form_with_fields.admin_groups.set([admin_group])
         client.force_login(superuser)
 
         resp = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
 
         assert resp.status_code == 200
         cloned = FormDefinition.objects.get(id=resp.json()["form_id"])
-        assert list(cloned.submit_groups.all()) == [approval_group]
-        assert list(cloned.view_groups.all()) == [approval_group]
-        assert list(cloned.reviewer_groups.all()) == [approval_group]
-        assert list(cloned.admin_groups.all()) == [approval_group]
+        assert list(cloned.submit_groups.all()) == [submit_group]
+        assert list(cloned.view_groups.all()) == [view_group]
+        assert list(cloned.reviewer_groups.all()) == [reviewer_group]
+        assert list(cloned.admin_groups.all()) == [admin_group]
 
     def test_clone_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

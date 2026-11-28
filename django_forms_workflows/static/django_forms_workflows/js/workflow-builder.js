@@ -913,13 +913,7 @@ export class WorkflowBuilder {
 
     buildPropertiesForm(node) {
         const nodeTypeLabel = this.getNodeTypeLabel(node.type);
-        const escapedNodeTypeLabel = String(nodeTypeLabel)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-        let html = `<h6 class="mb-3">${escapedNodeTypeLabel}</h6>`;
+        let html = `<h6 class="mb-3">${this.escapeHtml(nodeTypeLabel)}</h6>`;
         html += this.buildNodeIssuesAlert(node);
 
         switch (node.type) {
@@ -2246,27 +2240,20 @@ export class WorkflowBuilder {
 
         const movedGroupId = groups[currentIndex].id;
         const movedGroupRole = groups[currentIndex].role || 'approval';
-        const focusAction = direction < 0 ? 'move-up' : 'move-down';
 
         [groups[currentIndex], groups[targetIndex]] = [groups[targetIndex], groups[currentIndex]];
         node.data.approval_groups = groups.map((group, index) => ({ ...group, position: index }));
         this.render();
         this.selectNode(nodeId);
 
-        const propertiesPanel = document.querySelector('.workflow-properties-panel');
-        if (!propertiesPanel) return;
-
-        const groupRow = propertiesPanel.querySelector(
-            `[data-group-id="${String(movedGroupId)}"][data-group-role="${movedGroupRole}"]`
-        );
-        if (!groupRow) return;
-
-        const focusButton = groupRow.querySelector(
-            `[data-action="${focusAction}"]:not([disabled]):not([aria-disabled="true"])`
-        );
-        if (focusButton && typeof focusButton.focus === 'function') {
-            focusButton.focus();
-        }
+        const groupButtons = Array.from(
+            document.querySelectorAll('#propertiesContent [data-stage-group-id]')
+        ).filter(button => button.dataset.stageGroupId === String(movedGroupId)
+            && button.dataset.stageGroupRole === movedGroupRole);
+        const focusButton = groupButtons.find(button =>
+            Number(button.dataset.stageGroupDirection) === direction && !button.disabled
+        ) || groupButtons.find(button => !button.disabled);
+        focusButton?.focus({ preventScroll: true });
     }
 
     readNotificationRulesFromPanel(container) {

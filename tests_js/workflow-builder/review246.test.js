@@ -181,10 +181,14 @@ describe('workflow builder review fixes', () => {
     };
     instance.nodes = [node];
     instance.groups = [{ id: 1, name: 'Reviewers' }];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
 
     instance.showNodeProperties(node);
     document.querySelector('[data-stage-group-role="validation"][data-stage-group-direction="-1"]').click();
 
     expect(node.data.approval_groups.map(group => group.role)).toEqual(['validation', 'approval']);
+    expect(document.activeElement).toBe(document.querySelector(
+      '[data-stage-group-role="validation"][data-stage-group-direction="1"]'
+    ));
   });
 });

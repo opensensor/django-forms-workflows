@@ -2772,8 +2772,8 @@ export class WorkflowBuilder {
                     </button>
                 </div>
             ` : ''}
-            <div class="connection-point input ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${this.escapeHtmlAttribute(node.id)}" data-point="input" title="${inputHandleTitle}"></div>
-            <div class="connection-point output ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${this.escapeHtmlAttribute(node.id)}" data-point="output" title="${outputHandleTitle}"></div>
+            <button type="button" class="connection-point input ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${this.escapeHtmlAttribute(node.id)}" data-point="input" title="${inputHandleTitle}" aria-label="Input connection handle for ${this.escapeHtmlAttribute(label)}"></button>
+            <button type="button" class="connection-point output ${directionalHandles ? 'directional-handle' : ''}" data-node-id="${this.escapeHtmlAttribute(node.id)}" data-point="output" title="${outputHandleTitle}" aria-label="Output connection handle for ${this.escapeHtmlAttribute(label)}"></button>
         `;
 
         // Add connection point event listeners
@@ -2784,6 +2784,15 @@ export class WorkflowBuilder {
             outputPoint.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 this.startConnection(e, node.id, 'output');
+            });
+            outputPoint.addEventListener('keydown', (e) => {
+                this.handleConnectionHandleKeydown(e, node.id, 'output');
+            });
+        }
+
+        if (inputPoint) {
+            inputPoint.addEventListener('keydown', (e) => {
+                this.handleConnectionHandleKeydown(e, node.id, 'input');
             });
         }
 
@@ -3207,6 +3216,42 @@ export class WorkflowBuilder {
         const cx2 = x2 - curve;
 
         return `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`;
+    }
+    handleConnectionHandleKeydown(e, nodeId, pointType) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            this.cancelKeyboardConnection();
+            return;
+        }
+
+        if (e.key !== 'Enter' && e.key !== ' ') {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (pointType === 'output') {
+            this.isConnecting = true;
+            this.connectionStart = { nodeId, point: 'output' };
+            return;
+        }
+
+        if (pointType === 'input' && this.isConnecting && this.connectionStart) {
+            this.finishConnection(nodeId, 'input');
+        }
+    }
+
+    cancelKeyboardConnection() {
+        if (!this.isConnecting) {
+            return;
+        }
+        this.isConnecting = false;
+        this.connectionStart = null;
+        if (this.tempLine && this.tempLine.parentNode) {
+            this.tempLine.parentNode.removeChild(this.tempLine);
+        }
+        this.tempLine = null;
     }
 }
 

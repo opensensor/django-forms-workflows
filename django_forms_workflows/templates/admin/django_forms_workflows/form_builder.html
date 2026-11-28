@@ -1240,7 +1240,18 @@
                 } catch (e) { alert('Error deleting template: ' + e.message); }
             };
 
-            document.getElementById('btnAddDocTemplate').addEventListener('click', () => {
+            const btnAddDocTemplate = document.getElementById('btnAddDocTemplate');
+
+            if (!formBuilderData.formId && btnAddDocTemplate) {
+                btnAddDocTemplate.disabled = true;
+                btnAddDocTemplate.title = 'Save the form before adding document templates';
+            }
+
+            btnAddDocTemplate.addEventListener('click', () => {
+                if (!formBuilderData.formId || !docUrls.docTemplateSave) {
+                    alert('Please save the form before adding document templates.');
+                    return;
+                }
                 document.getElementById('docTemplateId').value = '';
                 document.getElementById('docTemplateName').value = '';
                 document.getElementById('docTemplateHtml').value = '';
@@ -1251,6 +1262,10 @@
             });
 
             document.getElementById('btnSaveDocTemplate').addEventListener('click', async () => {
+                if (!formBuilderData.formId || !docUrls.docTemplateSave) {
+                    alert('Please save the form before saving document templates.');
+                    return;
+                }
                 const name = document.getElementById('docTemplateName').value.trim();
                 if (!name) { alert('Template name is required'); return; }
                 const payload = {

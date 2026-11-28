@@ -378,6 +378,25 @@ describe('apiMethods.loadTemplate', () => {
     expect(ctx.fields).toEqual([{ field_name: 'new' }]);
   });
 
+  it('ignores an older template failure after a newer selection loads', async () => {
+    let rejectFirst;
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        success: true, template_data: { name: 'New', fields: [{ field_name: 'new' }] },
+      }) }));
+    const ctx = createContext({ config: { apiUrls: { loadTemplate: '/templates/{id}/' } } });
+    ctx.updatePreview = vi.fn();
+
+    const first = ctx.loadTemplate('old');
+    await ctx.loadTemplate('new');
+    rejectFirst(new Error('stale request failed'));
+    await first.catch(() => {});
+
+    expect(ctx.fields).toEqual([{ field_name: 'new' }]);
+    expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('Failed to load template'));
+  });
+
   it('populates fields from the template and refreshes the canvas/preview', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

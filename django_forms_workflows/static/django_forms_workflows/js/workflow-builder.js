@@ -2237,10 +2237,29 @@ export class WorkflowBuilder {
             return;
         }
 
+        const movedGroupId = groups[currentIndex].id;
+        const movedGroupRole = groups[currentIndex].role || 'approval';
+        const focusAction = direction < 0 ? 'move-up' : 'move-down';
+
         [groups[currentIndex], groups[targetIndex]] = [groups[targetIndex], groups[currentIndex]];
         node.data.approval_groups = groups.map((group, index) => ({ ...group, position: index }));
         this.render();
         this.selectNode(nodeId);
+
+        const propertiesPanel = document.querySelector('.workflow-properties-panel');
+        if (!propertiesPanel) return;
+
+        const groupRow = propertiesPanel.querySelector(
+            `[data-group-id="${String(movedGroupId)}"][data-group-role="${movedGroupRole}"]`
+        );
+        if (!groupRow) return;
+
+        const focusButton = groupRow.querySelector(
+            `[data-action="${focusAction}"]:not([disabled]):not([aria-disabled="true"])`
+        );
+        if (focusButton && typeof focusButton.focus === 'function') {
+            focusButton.focus();
+        }
     }
 
     readNotificationRulesFromPanel(container) {

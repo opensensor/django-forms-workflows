@@ -2580,8 +2580,11 @@ export class WorkflowBuilder {
 
         return Array.from(fieldSelect.selectedOptions).map(option => {
             const selectedId = option.value;
-            const existing = existingById.get(selectedId) || existingByName.get(selectedId);
             const field = this.fields.find(entry => String(entry.id) === selectedId);
+            const existingByIdMatch = existingById.get(selectedId);
+            const existingByFieldName = field?.field_name ? existingByName.get(`name:${field.field_name}`) : null;
+            const existingBySelectedName = existingByName.get(`name:${option.text}`);
+            const existing = existingByIdMatch || existingByFieldName || existingBySelectedName;
 
             if (existing && field) {
                 return {

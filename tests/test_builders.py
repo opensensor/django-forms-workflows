@@ -574,7 +574,9 @@ class TestConvertWorkflowToVisual:
 
         visual = convert_workflow_to_visual(workflow, form_definition)
 
-        assert [node["id"] for node in visual["nodes"][:2]] == ["start", "live"]
+        node_ids = [node["id"] for node in visual["nodes"]]
+        assert node_ids[:2] == ["start", "live"]
+        assert "stale" not in node_ids
         assert visual["nodes"][-1]["type"] == "workflow_settings"
         assert visual["connections"] == [{"from": "start", "to": "live"}]
 
@@ -2720,7 +2722,13 @@ class TestWorkflowBuilderViews:
         allowed_save = client.post(
             save_url, data=json.dumps(payload), content_type="application/json"
         )
-        assert allowed_save.status_code not in (302, 403)
+        assert allowed_save.status_code == 200
+        allowed_save_data = allowed_save.json()
+        assert allowed_save_data["success"] is True
+        final_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        assert final_count > before_count
 
     def test_load_returns_requested_workflow_track(
         self, client, superuser, form_definition

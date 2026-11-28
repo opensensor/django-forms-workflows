@@ -451,6 +451,8 @@ describe('apiMethods.showTemplateSelection', () => {
         success: true,
         templates: [
           { id: 1, name: 'Contact', description: 'A contact form', category_display: 'General', usage_count: 3 },
+          { id: 2, name: 'Feedback', description: 'A feedback form', category_display: 'General', usage_count: 2 },
+          { id: 3, name: 'Support Ticket', description: 'A support form', category_display: 'Support', usage_count: 5 },
         ],
       }),
     }));
@@ -458,8 +460,18 @@ describe('apiMethods.showTemplateSelection', () => {
 
     await ctx.showTemplateSelection();
 
-    expect(document.getElementById('templateList').innerHTML).toContain('Contact');
-    expect(document.getElementById('templateList').innerHTML).toContain('General');
+    const templateList = document.getElementById('templateList');
+    const html = templateList.innerHTML;
+
+    expect(html.match(/General/g)?.length ?? 0).toBe(1);
+    expect(html.match(/Support/g)?.length ?? 0).toBe(1);
+
+    const generalSectionMatch = html.match(/General[\s\S]*?(?=Support|$)/);
+    expect(generalSectionMatch?.[0]).toContain('Contact');
+    expect(generalSectionMatch?.[0]).toContain('Feedback');
+
+    const supportSectionMatch = html.match(/Support[\s\S]*$/);
+    expect(supportSectionMatch?.[0]).toContain('Support Ticket');
   });
 
   it('shows an empty-state message when there are no templates', async () => {

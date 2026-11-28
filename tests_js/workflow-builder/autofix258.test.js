@@ -188,6 +188,22 @@ describe('condition editor', () => {
     });
     expect(builder.validateConditionGroup(state, 'Trigger conditions'))
       .toContain('Trigger conditions: match mode must be AND or OR.');
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = builder.buildConditionsEditor({
+      title: 'Trigger conditions',
+      conditions: state,
+      onChangeHandler: '',
+      editorKind: 'node-trigger',
+    });
+
+    const rows = wrapper.querySelectorAll('.trigger-condition-row');
+    expect(rows).toHaveLength(2);
+    rows.forEach((row) => {
+      expect(row.querySelector('select[name="condition_field"]')).not.toBeNull();
+      expect(row.querySelector('select[name="condition_operator"]')).not.toBeNull();
+      expect(row.querySelector('input[name="condition_value"]')).not.toBeNull();
+    });
   });
 
   it('retains a partially filled row for validation', () => {

@@ -825,8 +825,13 @@ class TestConvertWorkflowToVisual:
 
         visual = convert_workflow_to_visual(workflow, form_definition)
 
-        ids = [str(node["id"]).strip() for node in visual["nodes"]]
-        assert len(ids) == len(set(ids))
+        start_nodes = [node for node in visual["nodes"] if node["type"] == "start"]
+        email_nodes = [node for node in visual["nodes"] if node["type"] == "email"]
+
+        assert len(start_nodes) == 1
+        assert len(email_nodes) == 1
+        assert email_nodes[0]["data"]["action_id"] == action.id
+        assert str(start_nodes[0]["id"]).strip() != str(email_nodes[0]["id"]).strip()
 
     def test_restored_mixed_actions_follow_saved_order(self, form_definition):
         email = PostSubmissionAction.objects.create(

@@ -494,10 +494,11 @@ class TestConvertWorkflowToVisual:
         with CaptureQueriesContext(connection) as queries:
             visual = convert_workflow_to_visual(workflow, form_definition)
 
+        quoted_stage_table = connection.ops.quote_name(WorkflowStage._meta.db_table)
         stage_reads = [
             query["sql"]
             for query in queries
-            if 'FROM "django_forms_workflows_workflowstage"' in query["sql"]
+            if f"FROM {quoted_stage_table}" in query["sql"]
         ]
         assert len(stage_reads) == 1
         assert any(node["type"] == "stage" for node in visual["nodes"])

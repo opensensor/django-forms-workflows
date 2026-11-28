@@ -1250,7 +1250,7 @@
                 document.getElementById('docTemplatePageSize').value = tpl.page_size;
                 document.getElementById('docTemplateIsDefault').checked = tpl.is_default;
                 document.getElementById('docTemplateIsActive').checked = tpl.is_active;
-                new bootstrap.Modal(document.getElementById('docTemplateModal')).show();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('docTemplateModal')).show();
             };
 
             window.deleteDocTemplate = async function(id, name) {

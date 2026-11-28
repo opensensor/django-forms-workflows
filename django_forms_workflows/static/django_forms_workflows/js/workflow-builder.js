@@ -2948,7 +2948,11 @@ export class WorkflowBuilder {
                 const label = field?.field_label || fieldName || fieldId;
                 const fieldCandidates = this.fields || [];
                 const resolvedField = fieldId
-                    ? fieldCandidates.find(candidate => candidate.id === fieldId)
+                    ? fieldCandidates.find(candidate =>
+                        candidate?.id !== undefined &&
+                        candidate?.id !== null &&
+                        String(candidate.id) === String(fieldId)
+                    )
                     : fieldCandidates.find(candidate =>
                         fieldName && (candidate.name === fieldName || candidate.field_name === fieldName)
                     );

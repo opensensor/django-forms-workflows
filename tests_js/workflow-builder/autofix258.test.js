@@ -29,8 +29,15 @@ describe('notification rule controls', () => {
   });
 
   it('preserves numeric zero as a stage reference in the editor', () => {
-    const { builder } = renderRules([{ stage_node_id: 0 }]);
+    const { builder, wrapper } = renderRules([{ stage_node_id: 0 }]);
+    const stageSelect = wrapper.querySelector('select[name="notification_rule_stage"]');
+
     expect(builder.getNotificationRuleState({ stage_node_id: 0 }).stage_node_id).toBe(0);
+    expect(stageSelect).not.toBeNull();
+    expect(stageSelect.value).toBe('0');
+
+    const [rule] = builder.readNotificationRulesFromPanel(wrapper);
+    expect(rule.stage_node_id).toBe(0);
   });
 
   it('renders email field names as text and attribute values', () => {

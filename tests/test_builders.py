@@ -3059,7 +3059,13 @@ class TestWorkflowBuilderViews:
             data=json.dumps(
                 {
                     "form_id": form_definition.id,
-                    "workflow": {"nodes": [], "connections": connections},
+                    "workflow": {
+                        "nodes": [
+                            {"id": "start", "type": "start", "data": {}},
+                            {"id": "end", "type": "end", "data": {}},
+                        ],
+                        "connections": connections,
+                    },
                 }
             ),
             content_type="application/json",

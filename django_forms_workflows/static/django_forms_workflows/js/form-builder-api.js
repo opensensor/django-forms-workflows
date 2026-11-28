@@ -449,8 +449,15 @@ export const apiMethods = {
                 document.getElementById('formAllowDraft').checked = templateData.allow_save_draft !== false;
                 document.getElementById('formAllowWithdrawal').checked = templateData.allow_withdrawal !== false;
 
-                // Load fields
+                // Load fields and step configuration
                 this.fields = templateData.fields || [];
+                this.formSteps = Array.isArray(templateData.form_steps) ? templateData.form_steps : [];
+
+                const isMultiStep = this.formSteps.length > 0;
+                const isMultiStepCheckbox = document.getElementById('formIsMultiStep');
+                if (isMultiStepCheckbox) isMultiStepCheckbox.checked = isMultiStep;
+                this.toggleMultiStepMode();
+
                 this.store.seedFieldIdCounterFromFields(this.fields);
                 this.renderCanvas();
                 this.updatePreview();

@@ -893,12 +893,16 @@ class TestConvertWorkflowToVisual:
                     {
                         "id": "email",
                         "type": "email",
+                        "x": 120,
+                        "y": 80,
                         "data": {"action_id": f" {email.id} "},
                     },
-                    {"id": "end", "type": "end", "data": {}},
+                    {"id": "end", "type": "end", "x": 420, "y": 80, "data": {}},
                     {
                         "id": "database",
                         "type": "action",
+                        "x": 240,
+                        "y": 220,
                         "data": {"action_id": str(action.id)},
                     },
                 ],
@@ -915,6 +919,14 @@ class TestConvertWorkflowToVisual:
         ]
         assert visual["nodes"][0]["data"]["action_id"] == email.id
         assert visual["nodes"][2]["data"]["action_id"] == action.id
+
+        nodes_by_id = {node["id"]: node for node in visual["nodes"]}
+        assert (nodes_by_id["email"]["x"], nodes_by_id["email"]["y"]) == (120, 80)
+        assert (nodes_by_id["end"]["x"], nodes_by_id["end"]["y"]) == (420, 80)
+        assert (nodes_by_id["database"]["x"], nodes_by_id["database"]["y"]) == (
+            240,
+            220,
+        )
 
     def test_saved_email_nodes_keep_order_without_synthesized_connections(
         self, form_definition
@@ -2414,19 +2426,19 @@ class TestConvertVisualToWorkflow:
         )
         workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
         visual = self._make_visual()
-        visual["nodes"].insert(
-            1,
-            {
-                "type": "email",
-                "data": {"name": node_name, "email_to": "recipient@example.com"},
-            },
-        )
+        legacy_email_node = {
+            "type": "email",
+            "data": {"name": node_name, "email_to": "recipient@example.com"},
+        }
+        visual["nodes"].insert(1, legacy_email_node)
 
         convert_visual_to_workflow(visual, form_definition, workflow=workflow)
 
         action.refresh_from_db()
         assert action.description == "Keep this description"
         assert action.name == "Notice"
+        assert action.email_to == "recipient@example.com"
+        assert legacy_email_node["data"]["action_id"] == action.id
         assert form_definition.post_actions.count() == 1
 
     @pytest.mark.parametrize("node_name", [None, 7, [], "", "   "])

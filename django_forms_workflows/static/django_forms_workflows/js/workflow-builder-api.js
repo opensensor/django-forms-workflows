@@ -25,12 +25,18 @@ export const apiMethods = {
 
     syncSavedWorkflowSnapshot() {
         this.lastSavedWorkflowSnapshot = this.getWorkflowSnapshot();
+        this.lastSavedDeletedActionIdsSnapshot = JSON.stringify(this.deletedActionIds || []);
         this.updateDirtyState();
     },
 
     updateDirtyState() {
-        this.isDirty = this.lastSavedWorkflowSnapshot !== null
+        const hasWorkflowChanges = this.lastSavedWorkflowSnapshot !== null
             && this.getWorkflowSnapshot() !== this.lastSavedWorkflowSnapshot;
+        const currentDeletedActionIdsSnapshot = JSON.stringify(this.deletedActionIds || []);
+        const hasPendingDeletionChanges = this.lastSavedDeletedActionIdsSnapshot !== undefined
+            && currentDeletedActionIdsSnapshot !== this.lastSavedDeletedActionIdsSnapshot;
+
+        this.isDirty = hasWorkflowChanges || hasPendingDeletionChanges;
         this.updateDirtyIndicator();
     },
 
@@ -90,6 +96,9 @@ export const apiMethods = {
     },
 
     async saveWorkflow() {
+        if (this.isSaving) {
+            return;
+        }
         if (this.saveStatusResetTimer) {
             clearTimeout(this.saveStatusResetTimer);
             this.saveStatusResetTimer = null;

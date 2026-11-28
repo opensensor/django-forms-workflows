@@ -119,6 +119,17 @@ describe('apiMethods.syncSavedWorkflowSnapshot / updateDirtyState', () => {
     expect(document.getElementById('saveStatus').textContent).toBe('Unsaved changes');
   });
 
+  it('marks dirty when only pending action deletions change', () => {
+    const ctx = createContext();
+    ctx.syncSavedWorkflowSnapshot();
+
+    ctx.deletedActionIds.push(17);
+    ctx.updateDirtyState();
+
+    expect(ctx.isDirty).toBe(true);
+    expect(document.getElementById('dirtyIndicator').hidden).toBe(false);
+  });
+
   it('does not overwrite the save status while a save is in flight', () => {
     const ctx = createContext({ nodes: [{ id: 'node_1' }] });
     ctx.syncSavedWorkflowSnapshot();
@@ -236,6 +247,23 @@ describe('apiMethods.loadWorkflow', () => {
 });
 
 describe('apiMethods.saveWorkflow', () => {
+  it('does not start a second save while the first request is in flight', async () => {
+    let resolveRequest;
+    const fetchMock = vi.fn().mockImplementation(() => new Promise(resolve => {
+      resolveRequest = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const ctx = createContext();
+
+    const firstSave = ctx.saveWorkflow();
+    await ctx.saveWorkflow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveRequest({ ok: true, json: async () => ({ success: true }) });
+    await firstSave;
+    expect(ctx.isSaving).toBe(false);
+  });
+
   it('restores the dirty status after the success message if the graph changes', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({

@@ -32,6 +32,29 @@ describe('approval field validation', () => {
 });
 
 describe('condition validation', () => {
+  it('keeps unknown saved fields visible for correction', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.fields = [{ field_name: 'known', field_label: 'Known' }];
+    const markup = builder.buildConditionsEditor({
+      title: 'Trigger conditions',
+      conditions: { field: 'removed', operator: 'equals', value: 'ready' },
+      onChangeHandler: '',
+      editorKind: 'trigger',
+    });
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = markup;
+
+    expect(wrapper.querySelector('select[name="condition_field"]').value).toBe('removed');
+    expect(wrapper.querySelector('option[data-invalid="true"]').textContent).toContain('removed');
+  });
+
+  it('does not render malformed stage order as markup', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+
+    expect(builder.getNodeDescription({ type: 'stage', data: { order: '1<script>' } }))
+      .toContain('Stage ?');
+  });
+
   it('accepts saved single conditions, including the server default operator', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
 

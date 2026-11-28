@@ -3039,8 +3039,11 @@ export class WorkflowBuilder {
                     '<small class="text-muted">Default settings</small>';
             case 'stage':
                 const stageParts = [];
-                const parsedStageOrder = Number.parseInt(node.data.order, 10);
-                const safeStageOrder = Number.isFinite(parsedStageOrder) ? parsedStageOrder : '?';
+                const rawStageOrder = node.data.order;
+                const parsedStageOrder = Number(rawStageOrder);
+                const safeStageOrder = rawStageOrder !== null && rawStageOrder !== '' &&
+                    Number.isSafeInteger(parsedStageOrder) && parsedStageOrder >= 0
+                    ? parsedStageOrder : '?';
                 if (node.data.requires_manager_approval) stageParts.push('Manager');
                 if (node.data.allow_send_back) stageParts.push('Send Back target');
                 if (node.data.allow_reassign) stageParts.push('Reassign');

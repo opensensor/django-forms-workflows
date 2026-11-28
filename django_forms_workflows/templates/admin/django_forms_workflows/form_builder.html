@@ -1178,7 +1178,10 @@
             const docEmpty = document.getElementById('docTemplatesEmpty');
             let docTemplates = [];
 
+            let docTemplatesLoadSeq = 0;
+
             async function loadDocTemplates() {
+                const requestSeq = ++docTemplatesLoadSeq;
                 if (!docUrls.docTemplates) { docEmpty.style.display = 'block'; return; }
 
                 let docLoadError = docContainer.querySelector('.doc-templates-load-error');
@@ -1197,9 +1200,17 @@
                         throw new Error('Invalid templates payload');
                     }
 
+                    if (requestSeq !== docTemplatesLoadSeq) {
+                        return;
+                    }
+
                     docTemplates = data.templates;
                     renderDocTemplates();
                 } catch (e) {
+                    if (requestSeq !== docTemplatesLoadSeq) {
+                        return;
+                    }
+
                     console.error('Error loading doc templates:', e);
                     docTemplates = [];
                     const list = docContainer.querySelectorAll('.doc-tpl-item');

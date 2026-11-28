@@ -1180,12 +1180,38 @@
 
             async function loadDocTemplates() {
                 if (!docUrls.docTemplates) { docEmpty.style.display = 'block'; return; }
+
+                let docLoadError = docContainer.querySelector('.doc-templates-load-error');
+                if (docLoadError) {
+                    docLoadError.remove();
+                }
+
                 try {
                     const resp = await fetch(docUrls.docTemplates);
+                    if (!resp.ok) {
+                        throw new Error(`HTTP ${resp.status}`);
+                    }
+
                     const data = await resp.json();
-                    docTemplates = data.templates || [];
+                    if (!data || !Array.isArray(data.templates)) {
+                        throw new Error('Invalid templates payload');
+                    }
+
+                    docTemplates = data.templates;
                     renderDocTemplates();
-                } catch (e) { console.error('Error loading doc templates:', e); }
+                } catch (e) {
+                    console.error('Error loading doc templates:', e);
+                    docTemplates = [];
+                    const list = docContainer.querySelectorAll('.doc-tpl-item');
+                    list.forEach(el => el.remove());
+                    docEmpty.style.display = 'none';
+
+                    docLoadError = document.createElement('div');
+                    docLoadError.className = 'doc-templates-load-error alert alert-danger mb-2';
+                    docLoadError.setAttribute('role', 'alert');
+                    docLoadError.textContent = 'Unable to load document templates. Please try again.';
+                    docContainer.appendChild(docLoadError);
+                }
             }
 
             function renderDocTemplates() {

@@ -342,6 +342,26 @@ describe('WorkflowBuilder stage editor', () => {
       { id: '5', name: 'Reviewers', role: 'validation', position: 0 },
     ]);
   });
+
+  it('preserves an unavailable assignee field during an unrelated stage edit', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: { name: 'Review', order: 1, assignee_form_field: 'former_assignee' },
+    };
+    instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    const missing = document.querySelector('select[name="assignee_form_field"] option[data-unavailable="true"]');
+    expect(missing.value).toBe('former_assignee');
+    expect(missing.selected).toBe(true);
+    instance.updateStageConfig(node.id);
+
+    expect(node.data.assignee_form_field).toBe('former_assignee');
+  });
 });
 
 describe('WorkflowBuilder workflow settings editor', () => {
@@ -385,5 +405,26 @@ describe('WorkflowBuilder workflow settings editor', () => {
     label.value = 'Updated track';
     instance.updateWorkflowSettings(node.id);
     expect(node.data.notification_cadence_day).toBe(0);
+  });
+
+  it('preserves an unavailable date field during an unrelated settings edit', () => {
+    const instance = createInstance();
+    instance.fields = [];
+    instance.groups = [];
+    const node = { id: 'settings', type: 'workflow_settings', data: {
+      notification_cadence: 'form_field_date',
+      notification_cadence_form_field: 'former_date',
+    } };
+    instance.nodes = [node];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    const missing = document.querySelector('select[name="notification_cadence_form_field"] option[data-unavailable="true"]');
+    expect(missing.value).toBe('former_date');
+    expect(missing.selected).toBe(true);
+    document.querySelector('[name="name_label"]').value = 'Updated track';
+    instance.updateWorkflowSettings(node.id);
+
+    expect(node.data.notification_cadence_form_field).toBe('former_date');
   });
 });

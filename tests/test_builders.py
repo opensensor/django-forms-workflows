@@ -4732,6 +4732,12 @@ class TestFormBuilderViews:
         assert response.status_code == 200
         cloned = FormDefinition.objects.get(pk=response.json()["form_id"])
         assert cloned.workflows.count() == 2
+        expected_triggers = {"on_submission", "on_all_complete"}
+        cloned_tracks = {
+            (workflow.start_trigger, workflow.name_label)
+            for workflow in cloned.workflows.all()
+        }
+        assert cloned_tracks == {(trigger, trigger) for trigger in expected_triggers}
         for workflow in cloned.workflows.all():
             rule = workflow.notification_rules.get()
             assert rule.stage.workflow_id == workflow.pk

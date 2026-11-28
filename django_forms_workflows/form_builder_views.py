@@ -1219,9 +1219,9 @@ def form_builder_preview(request):
                         "step_number": field_data.get("step_number", 1),
                     }
 
-                    # Add optional fields only if they have values
-                    if field_data.get("prefill_source_id"):
-                        field_kwargs["prefill_source_config_id"] = field_data.get(
+                    cond_rules = conditional.get("conditional_rules")
+                    if cond_rules is None:
+                        cond_rules = field_data.get("conditional_rules")
                             "prefill_source_id"
                         )
 

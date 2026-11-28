@@ -1238,21 +1238,17 @@ def form_builder_preview(request):
                         "step_number": field_data.get("step_number", 1),
                     }
 
-                    # Add optional fields only if they have values
-                    if field_data.get("prefill_source_id"):
-                        field_kwargs["prefill_source_config_id"] = field_data.get(
-                            "prefill_source_id"
+                    # Validate optional foreign keys before model construction.
+                    for payload_key, model_key in (
+                        ("prefill_source_id", "prefill_source_config_id"),
+                        ("shared_option_list_id", "shared_option_list_id"),
+                        ("workflow_stage_id", "workflow_stage_id"),
+                    ):
+                        reference_id = _optional_field_reference_id(
+                            field_data, payload_key
                         )
-
-                    if field_data.get("shared_option_list_id"):
-                        field_kwargs["shared_option_list_id"] = field_data.get(
-                            "shared_option_list_id"
-                        )
-
-                    if field_data.get("workflow_stage_id"):
-                        field_kwargs["workflow_stage_id"] = field_data.get(
-                            "workflow_stage_id"
-                        )
+                        if reference_id is not None:
+                            field_kwargs[model_key] = reference_id
 
                     if validation.get("min_value") is not None:
                         field_kwargs["min_value"] = validation.get("min_value")
@@ -1273,7 +1269,7 @@ def form_builder_preview(request):
                     preview_field = FormField(**field_kwargs)
                     preview_field.full_clean()
                     preview_field.save()
-            except ValidationError:
+            except (ValidationError, FormBuilderPayloadError):
                 transaction.set_rollback(True)
                 return JsonResponse(
                     {"success": False, "error": "Invalid preview field data"},

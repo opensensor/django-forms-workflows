@@ -3845,7 +3845,9 @@ class TestSaveFormDefinitionFromBuilderData:
     @pytest.mark.parametrize(
         "field_name", ["prefill_source_id", "shared_option_list_id"]
     )
-    @pytest.mark.parametrize("invalid_value", [True, 1.5, 0, -1, "²", "9" * 5000])
+    @pytest.mark.parametrize(
+        "invalid_value", [True, 1.5, 0, -1, "²", "9" * 5000, [1], {"id": 1}]
+    )
     def test_rejects_invalid_optional_field_reference(
         self, user, field_name, invalid_value
     ):
@@ -5401,6 +5403,30 @@ class TestFormBuilderViews:
         assert response.status_code == 400
         assert response.json()["error"] == "Invalid preview field data"
         assert FormDefinition.objects.count() == form_count_before
+
+    @pytest.mark.parametrize(
+        "reference_name",
+        ["prefill_source_id", "shared_option_list_id", "workflow_stage_id"],
+    )
+    @pytest.mark.parametrize("invalid_value", [True, [1], {"id": 1}])
+    def test_preview_rejects_invalid_optional_reference_ids(
+        self, client, superuser, reference_name, invalid_value
+    ):
+        client.force_login(superuser)
+        form_count_before = FormDefinition.objects.count()
+        field_count_before = FormField.objects.count()
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps(
+                {"fields": [{"field_name": "answer", reference_name: invalid_value}]}
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"] == "Invalid preview field data"
+        assert FormDefinition.objects.count() == form_count_before
+        assert FormField.objects.count() == field_count_before
 
     def test_preview_rejects_invalid_form_values_without_saving(
         self, client, superuser

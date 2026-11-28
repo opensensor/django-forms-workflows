@@ -453,14 +453,11 @@ export const apiMethods = {
                 this.fields = templateData.fields || [];
                 this.formSteps = Array.isArray(templateData.form_steps) ? templateData.form_steps : [];
 
-                const isMultiStep = this.formSteps.length > 0;
-                const isMultiStepCheckbox = document.getElementById('formIsMultiStep');
-                if (isMultiStepCheckbox) isMultiStepCheckbox.checked = isMultiStep;
-                this.toggleMultiStepMode();
+                const isMultiStep = templateData.enable_multi_step === true || this.formSteps.length > 0;
+                document.getElementById('formEnableMultiStep').checked = isMultiStep;
 
                 this.store.seedFieldIdCounterFromFields(this.fields);
-                this.renderCanvas();
-                this.updatePreview();
+                this.toggleMultiStepMode(isMultiStep);
 
                 // Show success message
                 alert('Template loaded successfully! You can now customize the form.');

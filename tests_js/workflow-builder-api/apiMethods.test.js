@@ -411,7 +411,9 @@ describe('apiMethods.saveWorkflow', () => {
       ok: true, json: async () => ({ success: false, error: 'Server exploded' }),
     }));
     const ctx = createContext({ nodes: [{ id: 'node_1' }] });
+    ctx.syncSavedWorkflowSnapshot();
     ctx.deletedActionIds = [17];
+    ctx.updateDirtyState();
 
     await expect(ctx.saveWorkflow()).resolves.toBeUndefined();
 
@@ -429,7 +431,9 @@ describe('apiMethods.saveWorkflow', () => {
       ok: false, json: async () => ({ success: true, error: 'Server exploded' }),
     }));
     const ctx = createContext({ nodes: [{ id: 'node_1' }] });
+    ctx.syncSavedWorkflowSnapshot();
     ctx.deletedActionIds = [17];
+    ctx.updateDirtyState();
 
     await expect(ctx.saveWorkflow()).resolves.toBeUndefined();
 

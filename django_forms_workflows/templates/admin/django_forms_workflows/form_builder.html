@@ -1220,7 +1220,8 @@
                     const editBtn = document.createElement('button');
                     editBtn.type = 'button';
                     editBtn.className = 'btn btn-sm btn-outline-primary';
-                    editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+                    editBtn.setAttribute('aria-label', `Edit document template${tpl.name ? `: ${tpl.name}` : ''}`);
+                    editBtn.innerHTML = '<i class="bi bi-pencil" aria-hidden="true"></i>';
                     editBtn.addEventListener('click', function() {
                         window.editDocTemplate(tpl.id);
                     });
@@ -1228,7 +1229,8 @@
                     const deleteBtn = document.createElement('button');
                     deleteBtn.type = 'button';
                     deleteBtn.className = 'btn btn-sm btn-outline-danger';
-                    deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                    deleteBtn.setAttribute('aria-label', `Delete document template${tpl.name ? `: ${tpl.name}` : ''}`);
+                    deleteBtn.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i>';
                     deleteBtn.addEventListener('click', function() {
                         window.deleteDocTemplate(tpl.id, tpl.name);
                     });

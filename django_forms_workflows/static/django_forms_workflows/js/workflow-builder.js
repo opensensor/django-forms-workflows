@@ -2160,8 +2160,57 @@ export class WorkflowBuilder {
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
+        node.data.validation_errors = this.validateNodeConditions(node);
 
         this.selectNode(nodeId);
+    }
+
+    validateConditionGroup(group, ownerLabel) {
+        const errors = [];
+        if (!group || !Array.isArray(group.conditions)) {
+            return errors;
+        }
+
+        const allowedOperators = new Set([
+            'equals', 'not_equals', 'contains', 'not_contains',
+            'greater_than', 'less_than', 'is_empty', 'not_empty'
+        ]);
+        const noValueOperators = new Set(['is_empty', 'not_empty']);
+
+        group.conditions.forEach((condition, index) => {
+            const rowNumber = index + 1;
+            if (!condition || !condition.field || !String(condition.field).trim()) {
+                errors.push(`${ownerLabel}: condition row ${rowNumber} has no field selected.`);
+            }
+
+            const operator = condition && condition.operator;
+            if (!operator || !allowedOperators.has(operator)) {
+                errors.push(`${ownerLabel}: condition row ${rowNumber} has an unknown operator.`);
+                return;
+            }
+
+            if (!noValueOperators.has(operator)) {
+                const value = condition.value;
+                if (value === undefined || value === null || String(value).trim() === '') {
+                    errors.push(`${ownerLabel}: condition row ${rowNumber} requires a value.`);
+                }
+            }
+        });
+
+        return errors;
+    }
+
+    validateNodeConditions(node) {
+        const errors = [];
+        errors.push(...this.validateConditionGroup(node.data && node.data.trigger_conditions, 'Trigger conditions'));
+
+        const rules = (node.data && node.data.notification_rules) || [];
+        rules.forEach((rule, index) => {
+            const label = `Notification rule ${index + 1}`;
+            errors.push(...this.validateConditionGroup(rule && rule.conditions, label));
+        });
+
+        return errors;
     }
 
     readConditionsFromEditor(editorElement) {

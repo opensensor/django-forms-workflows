@@ -298,8 +298,11 @@ describe('apiMethods.saveForm', () => {
     await ctx.saveForm();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     rejectFirst(new Error('network error'));
-    await expect(first).rejects.toThrow('network error');
+    await expect(first).resolves.toBeUndefined();
+    expect(window.alert).toHaveBeenCalledWith('Failed to save form: network error');
+    expect(document.getElementById('saveStatus').textContent).toBe('Error saving');
     expect(document.getElementById('btnSave').disabled).toBe(false);
 
     await ctx.saveForm();
@@ -502,17 +505,14 @@ describe('apiMethods.showTemplateSelection', () => {
     await ctx.showTemplateSelection();
 
     const templateList = document.getElementById('templateList');
-    const html = templateList.innerHTML;
-
-    expect(html.match(/General/g)?.length ?? 0).toBe(1);
-    expect(html.match(/Support/g)?.length ?? 0).toBe(1);
-
-    const generalSectionMatch = html.match(/General[\s\S]*?(?=Support|$)/);
-    expect(generalSectionMatch?.[0]).toContain('Contact');
-    expect(generalSectionMatch?.[0]).toContain('Feedback');
-
-    const supportSectionMatch = html.match(/Support[\s\S]*$/);
-    expect(supportSectionMatch?.[0]).toContain('Support Ticket');
+    const renderedItems = Array.from(templateList.children).map(element =>
+      element.matches('.col-12')
+        ? `group:${element.textContent.trim()}`
+        : `card:${element.querySelector('.card-title').textContent}`);
+    expect(renderedItems).toEqual([
+      'group:General', 'card:Contact', 'card:Feedback',
+      'group:Support', 'card:Support Ticket',
+    ]);
   });
 
   it('shows an empty-state message when there are no templates', async () => {

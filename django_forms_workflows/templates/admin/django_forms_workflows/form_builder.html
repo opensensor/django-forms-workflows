@@ -664,8 +664,8 @@
         <div class="form-settings">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0"><i class="bi bi-gear"></i> Form Settings</h5>
-                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#formSettings">
-                    <i class="bi bi-chevron-down"></i>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#formSettings" aria-label="Toggle form settings" aria-controls="formSettings" aria-expanded="true">
+                    <i class="bi bi-chevron-down" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="collapse show" id="formSettings">
@@ -1001,12 +1001,12 @@
     </div>
 
     <!-- Document Template Modal -->
-    <div class="modal fade" id="docTemplateModal" tabindex="-1">
+    <div class="modal fade" id="docTemplateModal" tabindex="-1" aria-labelledby="docTemplateModalTitle">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-file-earmark-pdf"></i> Document Template</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title" id="docTemplateModalTitle"><i class="bi bi-file-earmark-pdf"></i> Document Template</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="docTemplateId">

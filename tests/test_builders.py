@@ -2188,8 +2188,8 @@ class TestConvertVisualToWorkflow:
         assert action.name == "Update DB"
         assert action.action_type == "database"
         assert action.trigger == "on_approve"
-        assert action.config["db_alias"] == "default"
-        assert action.config["db_table"] == "users"
+        assert action.db_alias == "default"
+        assert action.db_table == "users"
         assert (
             form_definition.workflows.get().visual_workflow_data["nodes"][1]["data"][
                 "action_id"
@@ -4773,8 +4773,8 @@ class TestDocumentTemplateAPI:
 
     def test_update_template_rejects_foreign_template_id(self, client, superuser):
         client.force_login(superuser)
-        owner_form = FormDefinition.objects.create(name="Owner Form")
-        other_form = FormDefinition.objects.create(name="Other Form")
+        owner_form = FormDefinition.objects.create(name="Owner Form", slug="owner-form")
+        other_form = FormDefinition.objects.create(name="Other Form", slug="other-form")
         foreign_tpl = DocumentTemplate.objects.create(
             form_definition=other_form,
             name="Foreign",
@@ -4846,8 +4846,8 @@ class TestDocumentTemplateAPI:
 
     def test_delete_template_rejects_foreign_template_id(self, client, superuser):
         client.force_login(superuser)
-        owner_form = FormDefinition.objects.create(name="Owner Form")
-        other_form = FormDefinition.objects.create(name="Other Form")
+        owner_form = FormDefinition.objects.create(name="Owner Form", slug="owner-form")
+        other_form = FormDefinition.objects.create(name="Other Form", slug="other-form")
         foreign_tpl = DocumentTemplate.objects.create(
             form_definition=other_form,
             name="Foreign Delete",

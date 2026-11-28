@@ -166,6 +166,7 @@ class TestConvertWorkflowToVisual:
         assert "stage" in types
         assert "end" in types
         # Should NOT contain legacy approval_config or approval nodes
+        assert "approval" not in types
         assert "approval_config" not in types
 
         stage_nodes = [n for n in result["nodes"] if n["type"] == "stage"]

@@ -2426,7 +2426,7 @@ export class WorkflowBuilder {
         });
 
         if (!rows.length) {
-            if (!operatorElement) {
+            if (!operatorElement || ['AND', 'OR'].includes(operatorElement.value)) {
                 return null;
             }
             return {

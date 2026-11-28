@@ -168,6 +168,21 @@ describe('approval properties', () => {
 });
 
 describe('condition editor', () => {
+  it('preserves unsupported empty match modes while keeping normal empty editors unconditional', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.fields = [];
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = builder.buildConditionsEditor({
+      title: 'Conditions', conditions: { operator: 'XOR', conditions: [] },
+      onChangeHandler: '', editorKind: 'node-trigger',
+    });
+
+    const editor = wrapper.querySelector('.conditions-editor');
+    expect(builder.readConditionsFromEditor(editor)).toEqual({ operator: 'XOR', conditions: [] });
+    editor.querySelector('[name="condition_group_operator"]').value = 'AND';
+    expect(builder.readConditionsFromEditor(editor)).toBeNull();
+  });
+
   it('shows an unsupported saved operator for correction', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     builder.fields = [];

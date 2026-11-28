@@ -48,6 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = '';
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -233,6 +234,38 @@ describe('apiMethods.loadWorkflow', () => {
 });
 
 describe('apiMethods.saveWorkflow', () => {
+  it('restores the dirty status after the success message if the graph changes', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ success: true }),
+    }));
+    const ctx = createContext({ nodes: [{ id: 'node_1' }] });
+
+    await ctx.saveWorkflow();
+    ctx.nodes = [{ id: 'node_1' }, { id: 'node_2' }];
+    vi.advanceTimersByTime(2000);
+
+    expect(ctx.isDirty).toBe(true);
+    expect(document.getElementById('saveStatus').textContent).toBe('Unsaved changes');
+  });
+
+  it('does not let a prior success timer overwrite validation errors', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ success: true }),
+    }));
+    const ctx = createContext();
+
+    await ctx.saveWorkflow();
+    ctx.refreshValidationState.mockReturnValue({
+      errors: ['Invalid graph'], warnings: [], firstErrorNodeId: null,
+    });
+    await ctx.saveWorkflow();
+    vi.advanceTimersByTime(2000);
+
+    expect(document.getElementById('saveStatus').textContent).toBe('Fix validation errors');
+  });
+
   it('blocks the save, reports status, and selects the first offending node on validation errors', async () => {
     const ctx = createContext({
       validation: { errors: ['Stage missing an approver'], warnings: [], firstErrorNodeId: 'node_2' },

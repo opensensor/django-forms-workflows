@@ -90,9 +90,12 @@ export const apiMethods = {
     },
 
     async saveWorkflow() {
+        if (this.saveStatusResetTimer) {
+            clearTimeout(this.saveStatusResetTimer);
+            this.saveStatusResetTimer = null;
+        }
         const validation = this.refreshValidationState();
         if (validation.errors.length) {
-            this.setSaveStatus('Fix validation errors', 'danger');
             this.setBuilderMessage(
                 'danger',
                 'Fix validation errors before saving.',
@@ -101,6 +104,7 @@ export const apiMethods = {
             if (validation.firstErrorNodeId) {
                 this.selectNode(validation.firstErrorNodeId);
             }
+            this.setSaveStatus('Fix validation errors', 'danger');
             return;
         }
 
@@ -167,8 +171,9 @@ export const apiMethods = {
                 validation.warnings.length ? ['Saved with non-blocking warnings shown below.'] : [],
                 true
             );
-            setTimeout(() => {
-                this.setSaveStatus('Ready', 'neutral');
+            this.saveStatusResetTimer = setTimeout(() => {
+                this.saveStatusResetTimer = null;
+                if (!this.isSaving) this.updateDirtyState();
             }, 2000);
         } catch (error) {
             console.error('Error saving workflow:', error);

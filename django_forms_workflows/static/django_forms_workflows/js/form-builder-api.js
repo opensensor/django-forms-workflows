@@ -154,7 +154,7 @@ export const apiMethods = {
 
             // Load payment settings
             document.getElementById('formPaymentEnabled').checked = data.payment_enabled || false;
-            if (data.payment_enabled) document.getElementById('paymentSettings').style.display = '';
+            document.getElementById('paymentSettings').style.display = data.payment_enabled ? '' : 'none';
             // Populate provider dropdown
             const providerSelect = document.getElementById('formPaymentProvider');
             providerSelect.innerHTML = '<option value="">-- Select --</option>';
@@ -167,15 +167,15 @@ export const apiMethods = {
             });
             document.getElementById('formPaymentAmountType').value = data.payment_amount_type || 'fixed';
             this.updatePaymentAmountTypeVisibility();
-            if (data.payment_fixed_amount) document.getElementById('formPaymentFixedAmount').value = data.payment_fixed_amount;
-            if (data.payment_amount_field) document.getElementById('formPaymentAmountField').value = data.payment_amount_field;
+            document.getElementById('formPaymentFixedAmount').value = data.payment_fixed_amount || '';
+            document.getElementById('formPaymentAmountField').value = data.payment_amount_field || '';
             document.getElementById('formPaymentCurrency').value = data.payment_currency || 'usd';
             this.updatePaymentCurrencyPrefix();
-            if (data.payment_description_template) document.getElementById('formPaymentDescription').value = data.payment_description_template;
+            document.getElementById('formPaymentDescription').value = data.payment_description_template || '';
 
             // Load submission controls
-            if (data.close_date) document.getElementById('formCloseDate').value = data.close_date.slice(0, 16);
-            if (data.max_submissions) document.getElementById('formMaxSubmissions').value = data.max_submissions;
+            document.getElementById('formCloseDate').value = data.close_date ? data.close_date.slice(0, 16) : '';
+            document.getElementById('formMaxSubmissions').value = data.max_submissions || '';
             document.getElementById('formOnePerUser').checked = data.one_per_user || false;
             document.getElementById('formEnableCaptcha').checked = data.enable_captcha || false;
             document.getElementById('formEmbedEnabled').checked = data.embed_enabled || false;

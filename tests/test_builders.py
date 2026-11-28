@@ -546,9 +546,7 @@ class TestConvertWorkflowToVisual:
         ]
         assert len(stage_reads) == 1
         stage_names = {
-            node["data"]["name"]
-            for node in visual["nodes"]
-            if node["type"] == "stage"
+            node["data"]["name"] for node in visual["nodes"] if node["type"] == "stage"
         }
         assert stage_names == {"Review", "Approval"}
 

@@ -320,8 +320,10 @@ export const apiMethods = {
 
             document.getElementById('saveStatus').textContent = 'Saved successfully';
 
-            // If this was a new form, redirect to edit mode
+            // If this was a new form, switch to edit mode immediately and redirect
             if (this.config.isNew && result.form_id) {
+                this.config.formId = result.form_id;
+                this.config.isNew = false;
                 setTimeout(() => {
                     const redirectUrl = result.builder_url ||
                         (this.config.builderUrlTemplate

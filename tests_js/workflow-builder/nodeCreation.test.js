@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder.js';
 import { createWorkflowBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder-store.js';
 
-// createStartNode/createNode still live directly on WorkflowBuilder.prototype
+// createStartNode/createNode/deleteNode still live directly on WorkflowBuilder.prototype
 // (not yet extracted into their own module), same instantiation pattern as
 // moduleAndEscaping.test.js — a bare instance with just enough stubbed state
-// for these two methods to run without touching the real DOM/canvas.
+// for these methods to run without touching the real DOM/canvas.
 function createInstance() {
   const instance = Object.create(WorkflowBuilder.prototype);
   instance.store = createWorkflowBuilderStore();
@@ -70,6 +70,19 @@ describe('WorkflowBuilder#deleteNode', () => {
 
     expect(instance.nodes).toEqual([]);
     expect(instance.deletedActionIds).toEqual([17]);
+  });
+
+  it('does not delete the node or record action id when confirmation is canceled', () => {
+    const instance = createInstance();
+    instance.deletedActionIds = [99];
+    instance.nodes = [{ id: 'action-1', type: 'action', data: { action_id: 17 } }];
+    instance.deselectAll = vi.fn();
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+
+    instance.deleteNode('action-1');
+
+    expect(instance.nodes).toEqual([{ id: 'action-1', type: 'action', data: { action_id: 17 } }]);
+    expect(instance.deletedActionIds).toEqual([99]);
   });
 });
 

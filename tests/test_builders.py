@@ -5575,7 +5575,7 @@ class TestFormBuilderViews:
                         {
                             "field_name": "color",
                             "field_label": "Color",
-                            "field_type": "text",
+                            "field_type": "select",
                             "shared_option_list_id": str(shared_list.pk),
                         }
                     ],
@@ -5585,6 +5585,7 @@ class TestFormBuilderViews:
         )
 
         assert response.status_code == 200
+        assert "red" in response.content.decode()
 
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

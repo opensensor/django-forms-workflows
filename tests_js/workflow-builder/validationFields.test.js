@@ -32,6 +32,24 @@ describe('approval field validation', () => {
 });
 
 describe('condition validation', () => {
+  it('does not replace malformed conditions through row controls', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
+    const raw = { operator: 'AND', conditions: 'broken' };
+    builder.nodes = [{ id: 'stage-1', type: 'stage', data: {
+      trigger_conditions: raw,
+      notification_rules: [{ conditions: raw }],
+    } }];
+
+    builder.addTriggerCondition('stage-1');
+    builder.removeTriggerCondition('stage-1', 0);
+    builder.addNotificationRuleCondition('stage-1', 0);
+    builder.removeNotificationRuleCondition('stage-1', 0, 0);
+
+    expect(builder.nodes[0].data.trigger_conditions).toBe(raw);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toBe(raw);
+  });
+
   it('keeps malformed saved conditions until explicitly removed', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     const raw = { operator: 'AND', conditions: 'broken', note: '<img src=x>' };

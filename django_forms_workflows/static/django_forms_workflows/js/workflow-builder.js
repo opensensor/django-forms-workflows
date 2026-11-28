@@ -2428,7 +2428,7 @@ export class WorkflowBuilder {
     }
 
     inlineNodeId(nodeId) {
-        return this.escapeHtmlAttribute(JSON.stringify(String(nodeId)));
+        return this.escapeHtmlAttribute(JSON.stringify(nodeId));
     }
 
     addNodeIssue(result, nodeId, severity, message) {

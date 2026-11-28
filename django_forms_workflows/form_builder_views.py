@@ -741,11 +741,37 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
     success_redirect_rules = data.get("success_redirect_rules") or None
     close_date = _optional_date_text("close_date")
     max_submissions_raw = data.get("max_submissions")
-    max_submissions = (
-        None
-        if max_submissions_raw is None or max_submissions_raw == ""
-        else max_submissions_raw
-    )
+    if max_submissions_raw is None or max_submissions_raw == "":
+        max_submissions = None
+    elif isinstance(max_submissions_raw, bool):
+        raise FormBuilderPayloadError(
+            '"max_submissions" must be a nonnegative integer or null.'
+        )
+    elif isinstance(max_submissions_raw, int):
+        max_submissions = max_submissions_raw
+    elif isinstance(max_submissions_raw, str):
+        value = max_submissions_raw.strip()
+        if not value:
+            max_submissions = None
+        elif value.isascii() and value.isdecimal():
+            try:
+                max_submissions = int(value)
+            except ValueError as exc:
+                raise FormBuilderPayloadError(
+                    '"max_submissions" must be a nonnegative integer or null.'
+                ) from exc
+        else:
+            raise FormBuilderPayloadError(
+                '"max_submissions" must be a nonnegative integer or null.'
+            )
+    else:
+        raise FormBuilderPayloadError(
+            '"max_submissions" must be a nonnegative integer or null.'
+        )
+    if max_submissions is not None and max_submissions < 0:
+        raise FormBuilderPayloadError(
+            '"max_submissions" must be a nonnegative integer or null.'
+        )
     one_per_user = data.get("one_per_user", False)
     payment_enabled = data.get("payment_enabled", False)
     payment_provider = data.get("payment_provider", "")
@@ -1219,9 +1245,9 @@ def form_builder_preview(request):
                         field_kwargs["max_length"] = validation.get("max_length")
 
                     # Conditional rules
-                    cond_rules = conditional.get(
-                        "conditional_rules", field_data.get("conditional_rules")
-                    )
+                    cond_rules = conditional.get("conditional_rules")
+                    if cond_rules is None:
+                        cond_rules = field_data.get("conditional_rules")
                     if cond_rules:
                         field_kwargs["conditional_rules"] = cond_rules
 

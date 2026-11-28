@@ -3813,6 +3813,35 @@ class TestSaveFormDefinitionFromBuilderData:
 
         assert form_definition.max_submissions == 0
 
+    def test_accepts_numeric_max_submissions_text(self, user):
+        form_definition, _ = save_form_definition_from_builder_data(
+            {
+                "name": "Limited Form",
+                "slug": "limited-form",
+                "max_submissions": " 12 ",
+                "fields": [],
+            },
+            user,
+        )
+
+        assert form_definition.max_submissions == 12
+
+    @pytest.mark.parametrize(
+        "invalid_value", [True, False, 1.5, -1, "1.5", "²", "9" * 5000, {"value": 1}]
+    )
+    def test_rejects_invalid_max_submissions(self, user, invalid_value):
+        data = {
+            "name": "Invalid Limit",
+            "slug": "invalid-limit",
+            "max_submissions": invalid_value,
+            "fields": [],
+        }
+
+        with pytest.raises(FormBuilderPayloadError, match="max_submissions"):
+            save_form_definition_from_builder_data(data, user)
+
+        assert not FormDefinition.objects.filter(slug="invalid-limit").exists()
+
     def test_creates_a_new_form_definition(self, user):
         data = {
             "name": "New Form",
@@ -5337,6 +5366,42 @@ class TestFormBuilderViews:
         assert "&lt;script&gt;" in html
         assert "&lt;img src=x" in html
         assert "&lt;img src=x onerror=alert(2)&gt;" in html
+
+    def test_preview_uses_top_level_conditions_when_nested_conditions_are_null(
+        self, client, superuser, monkeypatch
+    ):
+        rules = {"operator": "AND", "conditions": []}
+        saved_rules = []
+        original_save = FormField.save
+
+        def capture_save(field, *args, **kwargs):
+            if field.field_name == "answer":
+                saved_rules.append(field.conditional_rules)
+            return original_save(field, *args, **kwargs)
+
+        monkeypatch.setattr(FormField, "save", capture_save)
+        client.force_login(superuser)
+        response = client.post(
+            _fb_url("builder/api/preview/"),
+            data=json.dumps(
+                {
+                    "name": "Conditional Preview",
+                    "fields": [
+                        {
+                            "field_name": "answer",
+                            "field_label": "Answer",
+                            "field_type": "text",
+                            "conditional": {"conditional_rules": None},
+                            "conditional_rules": rules,
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        assert saved_rules == [rules]
 
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

@@ -1261,7 +1261,7 @@ export class WorkflowBuilder {
                         onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})">
                     <option value="">-- Select a date field --</option>
                     ${this.fields.map(f => `
-                        <option value="${f.field_name}" ${data.notification_cadence_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+                        <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.notification_cadence_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
                     `).join('')}
                 </select>
                 <small class="text-muted">Used only when cadence is “On Date From Form Field”.</small>
@@ -2117,7 +2117,6 @@ export class WorkflowBuilder {
         node.data.approval_fields = this.readStageApprovalFieldsFromPanel(container, nodeId);
         node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
 
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2142,7 +2141,6 @@ export class WorkflowBuilder {
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
 
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2528,14 +2526,19 @@ export class WorkflowBuilder {
             (data.approval_fields || []).forEach(field => {
                 const fieldId = field?.id;
                 const fieldName = field?.field_name;
-                const lookupKey = fieldId ? `id:${fieldId}` : `name:${fieldName}`;
                 const label = field?.field_label || fieldName || fieldId;
-                const exists = (fieldId && fieldIds.has(fieldId)) || (fieldName && fieldNames.has(fieldName));
+                const resolvedField = (this.fields || []).find(candidate =>
+                    (fieldId && candidate.id === fieldId) ||
+                    (fieldName && (candidate.name === fieldName || candidate.field_name === fieldName))
+                );
+                const resolvedFieldId = resolvedField?.id;
 
-                if (!exists) {
+                if (!resolvedFieldId) {
                     this.addNodeIssue(result, node.id, 'errors', `${stageLabel} references an unknown approval-only field: ${label}.`);
                     return;
                 }
+
+                const lookupKey = `id:${resolvedFieldId}`;
 
                 if (assignedApprovalFields.has(lookupKey) && assignedApprovalFields.get(lookupKey) !== node.id) {
                     const otherStage = this.nodes.find(candidate => candidate.id === assignedApprovalFields.get(lookupKey));

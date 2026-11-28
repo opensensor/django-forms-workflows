@@ -176,6 +176,7 @@ export const apiMethods = {
             this.deletedActionIds = this.deletedActionIds.filter(
                 actionId => !requestedDeletedActionIds.includes(actionId)
             );
+            this.lastSavedDeletedActionIdsSnapshot = JSON.stringify([]);
             this.lastSavedWorkflowSnapshot = requestSnapshot;
             this.updateDirtyState();
             this.setSaveStatus(

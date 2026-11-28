@@ -1316,7 +1316,7 @@ export class WorkflowBuilder {
         return {
             rule_id: rule?.rule_id || null,
             stage_id: rule?.stage_id || null,
-            stage_node_id: rule?.stage_node_id || '',
+            stage_node_id: rule?.stage_node_id ?? '',
             event: rule?.event || 'approval_request',
             subject_template: rule?.subject_template || '',
             notify_submitter: !!rule?.notify_submitter,
@@ -1370,7 +1370,7 @@ export class WorkflowBuilder {
                                             state.stage_node_id !== undefined &&
                                             state.stage_node_id !== '';
                                         const stageExists = hasSavedStageReference &&
-                                            stageOptions.some(option => option.nodeId === state.stage_node_id);
+                                            stageOptions.some(option => String(option.nodeId) === String(state.stage_node_id));
                                         const missingStageOption = hasSavedStageReference && !stageExists
                                             ? `<option value="${this.escapeHtmlAttribute(state.stage_node_id)}" selected>Missing stage (id: ${this.escapeHtml(state.stage_node_id)})</option>`
                                             : '';
@@ -1379,7 +1379,7 @@ export class WorkflowBuilder {
                                             const safeOrder = option.order !== null && option.order !== '' &&
                                                 Number.isSafeInteger(numericOrder) && numericOrder >= 1 ? numericOrder : '?';
                                             return `
-                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
+                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${String(state.stage_node_id) === String(option.nodeId) ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
                                     `;
                                         }).join('');
                                         return `
@@ -1547,9 +1547,7 @@ export class WorkflowBuilder {
 
                     return {
                         field: typeof condition.field === 'string' ? condition.field : '',
-                        operator: hasOperator
-                            ? (typeof condition.operator === 'string' ? condition.operator : condition.operator)
-                            : 'equals',
+                        operator: hasOperator ? condition.operator : 'equals',
                         value: condition.value ?? ''
                     };
                 })
@@ -1563,11 +1561,7 @@ export class WorkflowBuilder {
                 operator: 'AND',
                 conditions: [{
                     field: typeof rawConditions.field === 'string' ? rawConditions.field : '',
-                    operator: hasLegacyOperator
-                        ? (typeof rawConditions.operator === 'string'
-                            ? rawConditions.operator
-                            : rawConditions.operator)
-                        : 'equals',
+                    operator: hasLegacyOperator ? rawConditions.operator : 'equals',
                     value: rawConditions.value ?? ''
                 }]
             };
@@ -1610,7 +1604,7 @@ export class WorkflowBuilder {
 
         let rowsHtml = '';
         state.conditions.forEach((condition, index) => {
-            const operator = condition.operator || 'equals';
+            const operator = condition.operator === undefined ? 'equals' : String(condition.operator);
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
             const hasSupportedOperator = operatorOptions.some(([value]) => value === operator);
             const conditionField = condition.field || '';
@@ -2850,7 +2844,8 @@ export class WorkflowBuilder {
                 if (rule.email_field && !fieldNames.has(rule.email_field)) {
                     this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references an unknown email field: ${rule.email_field}.`);
                 }
-                if (rule.stage_node_id && !stageNodeIds.has(rule.stage_node_id)) {
+                if (rule.stage_node_id !== null && rule.stage_node_id !== undefined &&
+                    rule.stage_node_id !== '' && !stageNodeIds.has(rule.stage_node_id)) {
                     this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references a stage that is not present in the builder graph.`);
                 }
                 if ((rule.notify_stage_assignees || rule.notify_stage_groups) && !stageNodes.length) {

@@ -18,6 +18,21 @@ function renderRules(rules, renderConditions = false, fields = []) {
 }
 
 describe('notification rule controls', () => {
+  it('keeps missing stage references visible until explicitly changed', () => {
+    const stageId = '"><img src=x>';
+    const { wrapper } = renderRules([{ stage_node_id: stageId }]);
+    const stageSelect = wrapper.querySelector('select[name="notification_rule_stage"]');
+
+    expect(wrapper.querySelector('img')).toBeNull();
+    expect(stageSelect.value).toBe(stageId);
+    expect(stageSelect.selectedOptions[0].textContent).toContain('Missing stage');
+  });
+
+  it('preserves numeric zero as a stage reference in the editor', () => {
+    const { builder } = renderRules([{ stage_node_id: 0 }]);
+    expect(builder.getNotificationRuleState({ stage_node_id: 0 }).stage_node_id).toBe(0);
+  });
+
   it('renders email field names as text and attribute values', () => {
     const fieldName = 'email"><img src=x onerror=alert(1)>';
     const { wrapper } = renderRules(
@@ -122,6 +137,22 @@ describe('approval properties', () => {
 });
 
 describe('condition editor', () => {
+  it('shows an unsupported saved operator for correction', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.fields = [];
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = builder.buildConditionsEditor({
+      title: 'Conditions',
+      conditions: { operator: 'AND', conditions: [{ field: 'notes', operator: false, value: 'ready' }] },
+      onChangeHandler: '',
+      editorKind: 'node-trigger',
+    });
+
+    const selected = wrapper.querySelector('select[name="condition_operator"] option[selected]');
+    expect(selected.dataset.invalid).toBe('true');
+    expect(selected.textContent).toContain('false');
+  });
+
   it('keeps malformed saved condition rows editable without throwing', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     const state = builder.getNormalizedTriggerConditions({
@@ -133,7 +164,7 @@ describe('condition editor', () => {
       operator: 'AND',
       conditions: [
         { field: '', operator: 'equals', value: '' },
-        { field: '', operator: 'equals', value: 'ready' },
+        { field: '', operator: false, value: 'ready' },
       ],
     });
   });

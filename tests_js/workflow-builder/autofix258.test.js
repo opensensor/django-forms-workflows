@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { WorkflowBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder.js';
 import { createWorkflowBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder-store.js';
 
-function renderRules(rules, renderConditions = false) {
+function renderRules(rules, renderConditions = false, fields = []) {
   const builder = Object.create(WorkflowBuilder.prototype);
   builder.store = createWorkflowBuilderStore();
   builder.nodes = [];
-  builder.fields = [];
+  builder.fields = fields;
   builder.groups = [];
   if (!renderConditions) builder.buildConditionsEditor = vi.fn(() => '');
   const wrapper = document.createElement('div');
@@ -18,6 +18,18 @@ function renderRules(rules, renderConditions = false) {
 }
 
 describe('notification rule controls', () => {
+  it('renders email field names as text and attribute values', () => {
+    const fieldName = 'email"><img src=x onerror=alert(1)>';
+    const { wrapper } = renderRules(
+      [{ event: 'approval_request', email_field: fieldName }], false,
+      [{ field_name: fieldName, field_label: fieldName }],
+    );
+
+    expect(wrapper.querySelector('img')).toBeNull();
+    expect(wrapper.querySelector('select[name="notification_rule_email_field"] option[selected]').value)
+      .toBe(fieldName);
+  });
+
   it('uses unique condition control IDs across multiple rules', () => {
     const conditions = { operator: 'AND', conditions: [{ field: '', operator: 'equals', value: '' }] };
     const { wrapper } = renderRules([
@@ -92,6 +104,22 @@ describe('approval properties', () => {
 });
 
 describe('condition editor', () => {
+  it('keeps malformed saved condition rows editable without throwing', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    const state = builder.getNormalizedTriggerConditions({
+      operator: 7,
+      conditions: [null, { field: 123, operator: false, value: 'ready' }],
+    });
+
+    expect(state).toEqual({
+      operator: 'AND',
+      conditions: [
+        { field: '', operator: 'equals', value: '' },
+        { field: '', operator: 'equals', value: 'ready' },
+      ],
+    });
+  });
+
   it('retains a partially filled row for validation', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     const editor = document.createElement('div');

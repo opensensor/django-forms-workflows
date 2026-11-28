@@ -123,6 +123,27 @@ describe('apiMethods.generatePreview', () => {
     expect(document.getElementById('formPreview').innerHTML).toBe('<p>new</p>');
   });
 
+  it('ignores an older preview whose fetch resolves first but json resolves last', async () => {
+    let resolveFirstJson;
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => new Promise(resolve => { resolveFirstJson = resolve; }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, html: '<p>new</p>' }),
+      }));
+    const ctx = createContext();
+
+    const first = ctx.generatePreview();
+    await ctx.generatePreview();
+    resolveFirstJson({ success: true, html: '<p>old</p>' });
+    await first;
+
+    expect(document.getElementById('formPreview').innerHTML).toBe('<p>new</p>');
+  });
+
   it('ignores a rejection from an older preview request after a newer preview renders', async () => {
     let rejectFirst;
     vi.stubGlobal('fetch', vi.fn()

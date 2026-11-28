@@ -1501,11 +1501,11 @@ export class WorkflowBuilder {
             };
         }
 
-        if (typeof rawConditions.field === 'string' && rawConditions.field) {
+        if (Object.prototype.hasOwnProperty.call(rawConditions, 'field')) {
             return {
                 operator: 'AND',
                 conditions: [{
-                    field: rawConditions.field || '',
+                    field: typeof rawConditions.field === 'string' ? rawConditions.field : '',
                     operator: typeof rawConditions.operator === 'string' ? rawConditions.operator : 'equals',
                     value: rawConditions.value ?? ''
                 }]
@@ -1536,6 +1536,8 @@ export class WorkflowBuilder {
             const operator = condition.operator || 'equals';
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
             const hasSupportedOperator = operatorOptions.some(([value]) => value === operator);
+            const conditionField = condition.field || '';
+            const hasSupportedField = this.fields.some(field => field.field_name === conditionField);
             const fieldId = `${editorIdBase}-row-${index}-field`;
             const operatorId = `${editorIdBase}-row-${index}-operator`;
             const valueId = `${editorIdBase}-row-${index}-value`;
@@ -1546,8 +1548,13 @@ export class WorkflowBuilder {
                         <select class="form-select form-select-sm" id="${fieldId}" name="condition_field"
                                 onchange="${onChangeHandler}">
                             <option value="">-- Select field --</option>
+                            ${!hasSupportedField && conditionField ? `
+                                <option value="${this.escapeHtmlAttribute(conditionField)}" selected data-invalid="true">
+                                    Unsupported field: ${this.escapeHtml(conditionField)}
+                                </option>
+                            ` : ''}
                             ${this.fields.map(field => `
-                                <option value="${this.escapeHtmlAttribute(field.field_name)}" ${condition.field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
+                                <option value="${this.escapeHtmlAttribute(field.field_name)}" ${conditionField === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                             `).join('')}
                         </select>
                     </div>
@@ -2427,7 +2434,6 @@ export class WorkflowBuilder {
         const rules = [...(node.data.notification_rules || [])];
         rules.splice(index, 1);
         node.data.notification_rules = rules;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2441,7 +2447,6 @@ export class WorkflowBuilder {
         state.conditions.push({ field: '', operator: 'equals', value: '' });
         rules[ruleIndex] = { ...rule, conditions: state };
         node.data.notification_rules = rules;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2455,7 +2460,6 @@ export class WorkflowBuilder {
         state.conditions.splice(conditionIndex, 1);
         rules[ruleIndex] = { ...rule, conditions: state.conditions.length ? state : null };
         node.data.notification_rules = rules;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2465,7 +2469,6 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2476,7 +2479,6 @@ export class WorkflowBuilder {
         const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
         state.conditions.push({ field: '', operator: 'equals', value: '' });
         node.data.trigger_conditions = state;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2487,7 +2489,6 @@ export class WorkflowBuilder {
         const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
         state.conditions.splice(index, 1);
         node.data.trigger_conditions = state.conditions.length ? state : null;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -3038,6 +3039,11 @@ export class WorkflowBuilder {
                     '<small class="text-muted">Default settings</small>';
             case 'stage':
                 const stageParts = [];
+                const rawStageOrder = node.data.order;
+                const parsedStageOrder = Number(rawStageOrder);
+                const safeStageOrder = rawStageOrder !== null && rawStageOrder !== '' &&
+                    Number.isSafeInteger(parsedStageOrder) && parsedStageOrder >= 0
+                    ? parsedStageOrder : '?';
                 if (node.data.requires_manager_approval) stageParts.push('Manager');
                 if (node.data.allow_send_back) stageParts.push('Send Back target');
                 if (node.data.allow_reassign) stageParts.push('Reassign');
@@ -3051,8 +3057,8 @@ export class WorkflowBuilder {
                 }
                 const label = node.data.approve_label ? ` • "${this.escapeHtml(node.data.approve_label)}"` : '';
                 return stageParts.length > 0 ?
-                    `<span class="badge bg-warning">Stage ${node.data.order || '?'}</span><br><small class="text-muted">${stageParts.join(' + ')}${label}</small>` :
-                    `<span class="badge bg-secondary">Stage ${node.data.order || '?'}</span><br><small class="text-muted">No approvers configured</small>`;
+                    `<span class="badge bg-warning">Stage ${safeStageOrder}</span><br><small class="text-muted">${stageParts.join(' + ')}${label}</small>` :
+                    `<span class="badge bg-secondary">Stage ${safeStageOrder}</span><br><small class="text-muted">No approvers configured</small>`;
             case 'condition':
                 if (node.data.field && node.data.operator) {
                     const operatorSymbols = {

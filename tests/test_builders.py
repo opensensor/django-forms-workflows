@@ -4722,7 +4722,13 @@ class TestFormBuilderViews:
         add_form_perm = Permission.objects.get(
             content_type=content_type, codename="add_formdefinition"
         )
+        view_form_perm = Permission.objects.get(
+            content_type=content_type, codename="view_formdefinition"
+        )
         staff_user.user_permissions.add(add_form_perm)
+        assert client.post(url).status_code == 403
+        assert FormDefinition.objects.count() == before_count
+        staff_user.user_permissions.add(view_form_perm)
 
         allowed_resp = client.post(url)
         assert allowed_resp.status_code == 200

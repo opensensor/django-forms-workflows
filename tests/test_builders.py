@@ -4362,11 +4362,24 @@ class TestFormBuilderViews:
 
     def test_builder_view_embeds_data_as_json(self, client, form_definition, superuser):
         client.force_login(superuser)
+        dangerous_label = "label with </script> inside"
+        form_field = FormField.objects.filter(form=form_definition).first()
+        if form_field is None:
+            form_field = FormField.objects.create(
+                form=form_definition,
+                order=1,
+                label=dangerous_label,
+                type="text",
+            )
+        else:
+            form_field.label = dangerous_label
+            form_field.save(update_fields=["label"])
 
         response = client.get(_fb_url(f"builder/{form_definition.id}/"))
 
         assert response.status_code == 200
         html = response.content.decode()
+        parsed_payloads = {}
         for script_id in ("field-types-data", "payment-providers-data"):
             match = re.search(
                 rf'<script id="{script_id}" type="application/json">(.*?)</script>',
@@ -4374,7 +4387,11 @@ class TestFormBuilderViews:
                 re.DOTALL,
             )
             assert match is not None
-            assert isinstance(json.loads(match.group(1)), list)
+            parsed_payloads[script_id] = json.loads(match.group(1))
+            assert isinstance(parsed_payloads[script_id], list)
+
+        field_types_json = json.dumps(parsed_payloads["field-types-data"])
+        assert dangerous_label in field_types_json
 
     def test_builder_new_view_requires_staff(self, client, user):
         client.force_login(user)

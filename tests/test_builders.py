@@ -3021,6 +3021,9 @@ class TestWorkflowBuilderViews:
         )
 
         assert response.status_code == 200
+        workflow = form_definition.workflows.get()
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        assert visual["connections"] == [{"from": "start", "to": "end"}]
 
     def test_save_rejects_connection_to_unknown_node(
         self, client, superuser, form_definition
@@ -3059,7 +3062,13 @@ class TestWorkflowBuilderViews:
             data=json.dumps(
                 {
                     "form_id": form_definition.id,
-                    "workflow": {"nodes": [], "connections": connections},
+                    "workflow": {
+                        "nodes": [
+                            {"id": "start", "type": "start", "data": {}},
+                            {"id": "end", "type": "end", "data": {}},
+                        ],
+                        "connections": connections,
+                    },
                 }
             ),
             content_type="application/json",
@@ -4747,6 +4756,14 @@ class TestDocumentTemplateAPI:
         data = resp.json()
         assert data["success"] is True
         assert data["id"] is not None
+
+        template = DocumentTemplate.objects.get(id=data["id"])
+        assert template.form_definition_id == form_definition.id
+        assert template.name == "Test Cert"
+        assert template.html_content == "<h1>{form_name}</h1>"
+        assert template.page_size == "a4"
+        assert template.is_default is True
+        assert template.is_active is True
 
     def test_save_requires_staff(self, client, user, form_definition):
         from django_forms_workflows.models import DocumentTemplate

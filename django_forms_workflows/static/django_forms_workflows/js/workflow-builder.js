@@ -1995,6 +1995,7 @@ export class WorkflowBuilder {
 
     buildEmailProperties(node) {
         const data = node.data || {};
+        const nodeIdSuffix = this.escapeHtmlAttribute(String(node.id ?? ''));
         const fieldOptions = this.fields.map(f => `
             <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.email_to_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
         `).join('');
@@ -2003,29 +2004,29 @@ export class WorkflowBuilder {
         `).join('');
         return `
             <div class="mb-3">
-                <label class="form-label">Email Name</label>
-                <input type="text" class="form-control" name="name" value="${this.escapeHtmlAttribute(data.name || '')}" placeholder="e.g., Approval Notification" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-name-${nodeIdSuffix}">Email Name</label>
+                <input id="email-name-${nodeIdSuffix}" type="text" class="form-control" name="name" value="${this.escapeHtmlAttribute(data.name || '')}" placeholder="e.g., Approval Notification" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Static Recipients</label>
-                <input type="text" class="form-control" name="email_to" value="${this.escapeHtmlAttribute(data.email_to || '')}" placeholder="email@example.com, approver@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-to-${nodeIdSuffix}">Static Recipients</label>
+                <input id="email-to-${nodeIdSuffix}" type="text" class="form-control" name="email_to" value="${this.escapeHtmlAttribute(data.email_to || '')}" placeholder="email@example.com, approver@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Comma-separated email addresses.</small>
             </div>
             <div class="mb-3">
-                <label class="form-label">Recipient Field</label>
-                <select class="form-select" name="email_to_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
+                <label class="form-label" for="email-to-field-${nodeIdSuffix}">Recipient Field</label>
+                <select id="email-to-field-${nodeIdSuffix}" class="form-select" name="email_to_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
                     <option value="">-- None --</option>
                     ${fieldOptions}
                 </select>
                 <small class="text-muted">Optional form field that contains the recipient email address.</small>
             </div>
             <div class="mb-3">
-                <label class="form-label">CC Addresses</label>
-                <input type="text" class="form-control" name="email_cc" value="${this.escapeHtmlAttribute(data.email_cc || '')}" placeholder="manager@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-cc-${nodeIdSuffix}">CC Addresses</label>
+                <input id="email-cc-${nodeIdSuffix}" type="text" class="form-control" name="email_cc" value="${this.escapeHtmlAttribute(data.email_cc || '')}" placeholder="manager@example.com" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
-                <label class="form-label">CC Field</label>
-                <select class="form-select" name="email_cc_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
+                <label class="form-label" for="email-cc-field-${nodeIdSuffix}">CC Field</label>
+                <select id="email-cc-field-${nodeIdSuffix}" class="form-select" name="email_cc_field" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">
                     <option value="">-- None --</option>
                     ${ccFieldOptions}
                 </select>
@@ -2040,16 +2041,16 @@ export class WorkflowBuilder {
                 </select>
             </div>
             <div class="mb-3">
-                <label class="form-label">Subject Template</label>
-                <input type="text" class="form-control" name="email_subject_template" value="${this.escapeHtmlAttribute(data.email_subject_template || '')}" placeholder="Form {form_name} approved" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-subject-template-${nodeIdSuffix}">Subject Template</label>
+                <input id="email-subject-template-${nodeIdSuffix}" type="text" class="form-control" name="email_subject_template" value="${this.escapeHtmlAttribute(data.email_subject_template || '')}" placeholder="Form {form_name} approved" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Body Template</label>
-                <textarea class="form-control" name="email_body_template" rows="5" placeholder="Submission by {submitter} has been approved." onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">${this.escapeHtml(data.email_body_template || '')}</textarea>
+                <label class="form-label" for="email-body-template-${nodeIdSuffix}">Body Template</label>
+                <textarea id="email-body-template-${nodeIdSuffix}" class="form-control" name="email_body_template" rows="5" placeholder="Submission by {submitter} has been approved." onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})">${this.escapeHtml(data.email_body_template || '')}</textarea>
             </div>
             <div class="mb-3">
-                <label class="form-label">HTML Template Path</label>
-                <input type="text" class="form-control" name="email_template_name" value="${this.escapeHtmlAttribute(data.email_template_name || '')}" placeholder="emails/approval.html" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
+                <label class="form-label" for="email-template-name-${nodeIdSuffix}">HTML Template Path</label>
+                <input id="email-template-name-${nodeIdSuffix}" type="text" class="form-control" name="email_template_name" value="${this.escapeHtmlAttribute(data.email_template_name || '')}" placeholder="emails/approval.html" onchange="workflowBuilder.updateEmailConfig(${this.inlineNodeId(node.id)})" />
             </div>
         `;
     }

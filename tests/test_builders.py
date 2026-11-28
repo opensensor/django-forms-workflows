@@ -3518,8 +3518,8 @@ class TestSaveFormDefinitionFromBuilderData:
             "fields": [],
         }
 
-        form_definition.refresh_from_db()
         form_definition, _ = save_form_definition_from_builder_data(data, user)
+        form_definition.refresh_from_db()
 
         assert form_definition.max_submissions == 0
 

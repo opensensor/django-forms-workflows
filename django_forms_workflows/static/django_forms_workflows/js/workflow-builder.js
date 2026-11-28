@@ -577,13 +577,15 @@ export class WorkflowBuilder {
 
     normalizeParallelStageGroups() {
         const verticalGap = 220;
+        const topMargin = 16;
 
         this.getParallelStageGroups().forEach((group) => {
             const anchorX = Math.min(...group.map((node) => node.x));
             const centerY = Math.round(
                 group.reduce((total, node) => total + node.y, 0) / group.length,
             );
-            const startY = centerY - ((group.length - 1) * verticalGap) / 2;
+            const centeredStartY = centerY - ((group.length - 1) * verticalGap) / 2;
+            const startY = Math.max(topMargin, centeredStartY);
 
             group.forEach((node, index) => {
                 node.x = anchorX;

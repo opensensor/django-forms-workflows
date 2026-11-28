@@ -88,3 +88,58 @@ describe('WorkflowBuilder#finishConnection', () => {
     expect(instance.connections).toEqual([{ from: 1, to: 2 }]);
   });
 });
+
+describe('keyboard connection handles', () => {
+  it('connects two nodes and restores focus to the input after rendering', () => {
+    const instance = createInstance();
+    instance.nodes = [
+      { id: 'node_1', type: 'stage', x: 0, y: 0, data: { name: 'First' } },
+      { id: 'node_2', type: 'stage', x: 100, y: 0, data: { name: 'Second' } },
+    ];
+    instance.fields = [];
+    instance.groups = [];
+    instance.forms = [];
+    instance.validationState = { nodeIssues: {} };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    instance.transformWrapper = host;
+    instance.render = vi.fn(() => host.replaceChildren(...instance.nodes.map(node => instance.createNodeElement(node))));
+    instance.render();
+
+    host.querySelector('[data-node-id="node_1"] .connection-point.output')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(instance.connectionStart).toEqual({ nodeId: 'node_1', point: 'output' });
+    host.querySelector('[data-node-id="node_2"] .connection-point.input')
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(instance.connections).toEqual([{ from: 'node_1', to: 'node_2' }]);
+    expect(instance.isConnecting).toBe(false);
+    expect(instance.connectionStart).toBe(null);
+    expect(document.activeElement).toBe(host.querySelector('[data-node-id="node_2"] .connection-point.input'));
+  });
+
+  it('cancels a keyboard connection with Escape', () => {
+    const instance = createInstance();
+    instance.isConnecting = true;
+    instance.connectionStart = { nodeId: 'node_1', point: 'output' };
+
+    instance.handleConnectionHandleKeydown(new KeyboardEvent('keydown', { key: 'Escape' }), 'node_1', 'output');
+
+    expect(instance.isConnecting).toBe(false);
+    expect(instance.connectionStart).toBe(null);
+  });
+
+  it('deletes the selected connection through the store setter', () => {
+    const instance = createInstance();
+    instance.connections = [{ from: 'node_1', to: 'node_2' }];
+    instance.selectedConnection = 0;
+    const listener = vi.fn();
+    instance.store.addEventListener('connections-changed', listener);
+
+    instance.deleteSelectedConnection();
+
+    expect(instance.connections).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(instance.selectedConnection).toBe(null);
+  });
+});

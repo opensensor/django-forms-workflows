@@ -3731,6 +3731,7 @@ class TestSaveFormDefinitionFromBuilderData:
             data, user, form_definition=form_definition
         )
         assert result.pk == form_definition.pk
+        result.refresh_from_db()
         assert result.name == "Renamed Form"
         assert result.description == "Updated description"
 

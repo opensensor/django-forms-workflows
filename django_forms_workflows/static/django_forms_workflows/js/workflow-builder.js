@@ -2777,13 +2777,36 @@ export class WorkflowBuilder {
             });
         }
 
-        // Make node draggable
+        // Make node keyboard-focusable/selectable (selection only; drag remains mouse-specific)
+        div.setAttribute('tabindex', '0');
+        div.setAttribute('role', 'button');
+        div.setAttribute('aria-label', `${node.name || node.type || 'Workflow node'}: select to edit properties`);
+
+        // Keyboard activation for selection
+        div.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            this.selectNode(node.id);
+            const refreshedNode = document.getElementById(`node-${node.id}`);
+            if (refreshedNode) {
+                refreshedNode.focus({ preventScroll: true });
+            }
+        });
+
+        // Make node draggable (mouse only)
         div.addEventListener('mousedown', (e) => {
             if (e.target.closest('.node-actions')) return;
             if (e.target.closest('.connection-point')) return;
             if (e.target.closest('.form-edit-link')) return; // Don't interfere with form edit link
 
+            const shouldRestoreFocus = div.contains(document.activeElement);
             this.selectNode(node.id);
+            if (shouldRestoreFocus) {
+                const refreshedNode = document.getElementById(`node-${node.id}`);
+                if (refreshedNode) {
+                    refreshedNode.focus({ preventScroll: true });
+                }
+            }
             this.startDragNode(e, node);
         });
 

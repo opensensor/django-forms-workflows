@@ -65,6 +65,26 @@ describe('WorkflowBuilder#showNodeProperties generic change listener', () => {
     expect(node.data.allow_send_back).toBe(false);
   });
 
+  it('stores stage checkbox values as booleans via the stage config path', () => {
+    const instance = createInstance();
+    const node = { id: 'node_1', type: 'stage', data: { order: 1, allow_send_back: false } };
+    instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+
+    instance.showNodeProperties(node);
+    const checkbox = () => document.querySelector('input[type="checkbox"][name="allow_send_back"]');
+
+    checkbox().checked = true;
+    dispatchChange(checkbox());
+    expect(node.data.allow_send_back).toBe(true);
+
+    checkbox().checked = false;
+    dispatchChange(checkbox());
+    expect(node.data.allow_send_back).toBe(false);
+  });
+
   it('still forwards the typed value for non-checkbox inputs', () => {
     const instance = createInstance();
     const node = { id: 'node_1', type: 'condition', data: { approve_label: '' } };
@@ -267,6 +287,37 @@ describe('WorkflowBuilder stage editor', () => {
 
     expect(node.data.approval_groups.map(group => group.id)).toEqual([6, 5]);
     expect(node.data.approval_groups.map(group => group.position)).toEqual([0, 1]);
+  });
+
+  it('moves the intended stage group entry when duplicate IDs exist across roles', () => {
+    const instance = createInstance();
+    const node = {
+      id: 'stage_1', type: 'stage',
+      data: { approval_groups: [
+        { id: 5, role: 'approver', name: 'Approver A', position: 0 },
+        { id: 5, role: 'reviewer', name: 'Reviewer A', position: 1 },
+        { id: 6, role: 'approver', name: 'Approver B', position: 2 },
+      ] },
+    };
+    instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
+    instance.showNodeProperties(node);
+
+    const moveDownButton = document.querySelector(
+      'button[data-stage-group-id="5"][data-stage-group-role="approver"][data-stage-group-direction="1"]',
+    );
+    expect(moveDownButton).not.toBeNull();
+
+    moveDownButton.click();
+
+    expect(node.data.approval_groups.map(group => `${group.id}:${group.role}`)).toEqual([
+      '5:reviewer',
+      '5:approver',
+      '6:approver',
+    ]);
+    expect(node.data.approval_groups.map(group => group.position)).toEqual([0, 1, 2]);
   });
 
   it('rejects invalid stage order without changing node data', () => {

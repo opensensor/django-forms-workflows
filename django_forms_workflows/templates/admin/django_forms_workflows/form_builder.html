@@ -1221,9 +1221,22 @@
             window.deleteDocTemplate = async function(id, name) {
                 if (!confirm(`Delete template "${name}"?`)) return;
                 try {
-                    await fetch(docUrls.docTemplateDelete.replace('{id}', id), {
+                    const resp = await fetch(docUrls.docTemplateDelete.replace('{id}', id), {
                         method: 'POST', headers: { 'X-CSRFToken': formBuilderData.csrfToken }
                     });
+
+                    let payload = null;
+                    try {
+                        payload = await resp.json();
+                    } catch (_) {
+                        payload = null;
+                    }
+
+                    if (!resp.ok || (payload && payload.success === false)) {
+                        const errorMessage = (payload && (payload.error || payload.message)) || `HTTP ${resp.status}`;
+                        throw new Error(errorMessage);
+                    }
+
                     loadDocTemplates();
                 } catch (e) { alert('Error deleting template: ' + e.message); }
             };

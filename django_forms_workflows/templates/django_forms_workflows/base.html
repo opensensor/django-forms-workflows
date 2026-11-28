@@ -204,7 +204,7 @@
 
                     // Defer until synchronous submit handlers finish; if any of
                     // them canceled submission, don't show the overlay.
-                    setTimeout(function() {
+                    queueMicrotask(function() {
                         if (event.defaultPrevented) return;
                         showLoadingOverlay(form);
                     }, 0);

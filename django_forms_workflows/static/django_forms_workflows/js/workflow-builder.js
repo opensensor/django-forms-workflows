@@ -2961,7 +2961,8 @@ export class WorkflowBuilder {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            this.render();
+            this.updateDraggedNodePosition(node);
+            this.updateIncidentConnections(node.id);
         };
 
         const onMouseMove = (e) => {
@@ -2987,6 +2988,46 @@ export class WorkflowBuilder {
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+    }
+
+    updateDraggedNodePosition(node) {
+        const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
+        if (!nodeElement) return;
+        nodeElement.style.transform = `translate(${node.x}px, ${node.y}px)`;
+    }
+
+    updateIncidentConnections(nodeId) {
+        const incidentConnections = this.connections.filter(
+            (connection) => connection.fromNodeId === nodeId || connection.toNodeId === nodeId
+        );
+
+        incidentConnections.forEach((connection) => {
+            const pathElement = document.querySelector(`[data-connection-id="${connection.id}"]`);
+            if (!pathElement) return;
+            const d = this.computeConnectionPath(connection);
+            if (d) {
+                pathElement.setAttribute('d', d);
+            }
+        });
+    }
+
+    computeConnectionPath(connection) {
+        const fromNode = this.nodes.find((n) => n.id === connection.fromNodeId);
+        const toNode = this.nodes.find((n) => n.id === connection.toNodeId);
+        if (!fromNode || !toNode) return null;
+
+        const fromX = fromNode.x + (fromNode.width || 220);
+        const fromY = fromNode.y + ((fromNode.height || 120) / 2);
+        const toX = toNode.x;
+        const toY = toNode.y + ((toNode.height || 120) / 2);
+
+        const dx = Math.max(40, Math.abs(toX - fromX) * 0.5);
+        const c1x = fromX + dx;
+        const c1y = fromY;
+        const c2x = toX - dx;
+        const c2y = toY;
+
+        return `M ${fromX} ${fromY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${toX} ${toY}`;
     }
 
     startConnection(e, nodeId, point) {

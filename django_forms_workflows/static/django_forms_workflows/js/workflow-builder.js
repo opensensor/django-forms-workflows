@@ -1350,7 +1350,7 @@ export class WorkflowBuilder {
                 const selectedGroupIds = new Set((state.notify_groups || []).map(group => group.id));
                 const ruleInputId = (name) => `notification_rule_${this.escapeHtmlAttribute(String(node.id))}_${index}_${name}`;
                 return `
-                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${state.rule_id || ''}" data-placeholder="${!rules.length}">
+                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${this.escapeHtmlAttribute(state.rule_id || '')}" data-placeholder="${!rules.length}">
                         <div class="card-body py-3">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6 class="mb-0">Rule ${index + 1}</h6>

@@ -5087,6 +5087,131 @@ class TestDocumentTemplateAPI:
         assert delete_resp.status_code == 200
         assert not DocumentTemplate.objects.filter(id=saved_id).exists()
 
+    def test_doc_templates_each_operation_requires_matching_permission(
+        self, client, django_user_model, form_definition
+    ):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        doc_ct = ContentType.objects.get_for_model(DocumentTemplate)
+        form_ct = ContentType.objects.get_for_model(FormDefinition)
+        form_perms = Permission.objects.filter(
+            content_type=form_ct,
+            codename__in=["view_formdefinition", "change_formdefinition"],
+        )
+
+        def _make_user(username, doc_perm_codenames):
+            user = django_user_model.objects.create_user(
+                username=username,
+                email=f"{username}@example.com",
+                password="password",
+                is_staff=True,
+            )
+            user.user_permissions.add(*form_perms)
+            if doc_perm_codenames:
+                perms = Permission.objects.filter(
+                    content_type=doc_ct, codename__in=doc_perm_codenames
+                )
+                user.user_permissions.add(*perms)
+            return user
+
+        existing = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="ExistingTemplate",
+            html_content="<p>original</p>",
+        )
+
+        list_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
+        save_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        delete_url = _fb_url(
+            f"builder/api/doc-templates/{form_definition.id}/delete/{existing.id}/"
+        )
+
+        list_ok_user = _make_user("doc_list_ok", ["view_documenttemplate"])
+        client.force_login(list_ok_user)
+        assert client.get(list_url).status_code == 200
+
+        list_bad_user = _make_user("doc_list_bad", ["add_documenttemplate"])
+        client.force_login(list_bad_user)
+        assert client.get(list_url).status_code in (302, 403)
+
+        create_ok_user = _make_user("doc_create_ok", ["add_documenttemplate"])
+        client.force_login(create_ok_user)
+        create_resp = client.post(
+            save_url,
+            data=json.dumps({"name": "CreateAllowed", "html_content": "<p>new</p>"}),
+            content_type="application/json",
+        )
+        assert create_resp.status_code == 200
+
+        create_bad_user = _make_user("doc_create_bad", ["view_documenttemplate"])
+        client.force_login(create_bad_user)
+        create_denied = client.post(
+            save_url,
+            data=json.dumps({"name": "CreateDenied", "html_content": "<p>denied</p>"}),
+            content_type="application/json",
+        )
+        assert create_denied.status_code in (302, 403)
+        assert not DocumentTemplate.objects.filter(
+            form_definition=form_definition, name="CreateDenied"
+        ).exists()
+
+        update_ok_user = _make_user("doc_update_ok", ["change_documenttemplate"])
+        client.force_login(update_ok_user)
+        update_resp = client.post(
+            save_url,
+            data=json.dumps(
+                {
+                    "id": existing.id,
+                    "name": "ExistingTemplateUpdated",
+                    "html_content": "<p>updated</p>",
+                }
+            ),
+            content_type="application/json",
+        )
+        assert update_resp.status_code == 200
+        existing.refresh_from_db()
+        assert existing.name == "ExistingTemplateUpdated"
+        assert existing.html_content == "<p>updated</p>"
+
+        update_bad_user = _make_user("doc_update_bad", ["add_documenttemplate"])
+        client.force_login(update_bad_user)
+        update_denied = client.post(
+            save_url,
+            data=json.dumps(
+                {
+                    "id": existing.id,
+                    "name": "ShouldNotUpdate",
+                    "html_content": "<p>no</p>",
+                }
+            ),
+            content_type="application/json",
+        )
+        assert update_denied.status_code in (302, 403)
+        existing.refresh_from_db()
+        assert existing.name == "ExistingTemplateUpdated"
+        assert existing.html_content == "<p>updated</p>"
+
+        delete_ok_user = _make_user("doc_delete_ok", ["delete_documenttemplate"])
+        client.force_login(delete_ok_user)
+        delete_resp = client.post(delete_url)
+        assert delete_resp.status_code == 200
+        assert not DocumentTemplate.objects.filter(id=existing.id).exists()
+
+        delete_target = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="DeleteDeniedTarget",
+            html_content="<p>x</p>",
+        )
+        delete_bad_user = _make_user("doc_delete_bad", ["change_documenttemplate"])
+        client.force_login(delete_bad_user)
+        delete_bad_url = _fb_url(
+            f"builder/api/doc-templates/{form_definition.id}/delete/{delete_target.id}/"
+        )
+        delete_denied = client.post(delete_bad_url)
+        assert delete_denied.status_code in (302, 403)
+        assert DocumentTemplate.objects.filter(id=delete_target.id).exists()
+
     def test_doc_templates_permissions_partial_form_only_denied(
         self, client, django_user_model, form_definition
     ):

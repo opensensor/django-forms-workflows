@@ -37,6 +37,22 @@ from .security import builder_permission_required
 
 logger = logging.getLogger(__name__)
 
+
+def _normalize_builder_field_properties(field_data):
+    """Normalize builder payload for properties accepted in nested or top-level form."""
+    validation = field_data.get("validation") or {}
+    conditional = field_data.get("conditional") or {}
+
+    validation_rules = validation.get("validation_rules")
+    if validation_rules is None:
+        validation_rules = field_data.get("validation_rules")
+
+    field_dependencies = conditional.get("field_dependencies")
+    if field_dependencies is None:
+        field_dependencies = field_data.get("field_dependencies")
+
+    return validation, conditional, validation_rules, field_dependencies
+
 # Signed 64-bit integer max, compatible with Django BigAutoField/SQLite INTEGER PK range.
 MAX_DB_PRIMARY_KEY = 2**63 - 1
 
@@ -1140,16 +1156,12 @@ def form_builder_preview(request):
             # Create temporary fields
             try:
                 for field_data in fields:
-                    validation = field_data.get("validation") or {}
-                    conditional = field_data.get("conditional") or {}
-
-                    validation_rules = validation.get("validation_rules")
-                    if validation_rules is None:
-                        validation_rules = field_data.get("validation_rules")
-
-                    field_dependencies = conditional.get("field_dependencies")
-                    if field_dependencies is None:
-                        field_dependencies = field_data.get("field_dependencies")
+                    (
+                        validation,
+                        conditional,
+                        validation_rules,
+                        field_dependencies,
+                    ) = _normalize_builder_field_properties(field_data)
 
                     # Build field kwargs
                     field_kwargs = {

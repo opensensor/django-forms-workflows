@@ -3508,6 +3508,18 @@ class TestSaveFormDefinitionFromBuilderData:
     form_builder_save so it can be called directly — mirrors the
     convert_visual_to_workflow/form_builder_save split above."""
 
+    def test_preserves_zero_max_submissions(self, user):
+        data = {
+            "name": "Closed Form",
+            "slug": "closed-form",
+            "max_submissions": 0,
+            "fields": [],
+        }
+
+        form_definition, _ = save_form_definition_from_builder_data(data, user)
+
+        assert form_definition.max_submissions == 0
+
     def test_creates_a_new_form_definition(self, user):
         data = {
             "name": "New Form",

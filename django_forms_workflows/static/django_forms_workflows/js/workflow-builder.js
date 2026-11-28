@@ -824,12 +824,11 @@ export class WorkflowBuilder {
         this.selectedNode = nodeId;
         this.selectedConnection = null;
         const node = this.nodes.find(n => n.id === nodeId);
-        if (node) {
-            this.refreshValidationState();
-            this.showNodeProperties(node);
-        }
         this.updateConnectionSelectionUI();
         this.render();
+        if (node) {
+            this.showNodeProperties(node);
+        }
     }
 
     clearSelectionState() {

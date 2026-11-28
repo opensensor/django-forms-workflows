@@ -78,6 +78,7 @@ describe('workflow builder review fixes', () => {
 
     expect(renderLink('javascript:alert(1)').getAttribute('href')).toBe('#');
     expect(renderLink('https://example.com/edit').getAttribute('href')).toBe('#');
+    expect(renderLink(`${window.location.origin}//example.com/edit`).getAttribute('href')).toBe('#');
     expect(renderLink('/admin/forms/1/edit/').getAttribute('href')).toBe('/admin/forms/1/edit/');
     const injected = renderLink('/admin/forms/?q=" onmouseover="alert(1)');
     expect(injected.hasAttribute('onmouseover')).toBe(false);

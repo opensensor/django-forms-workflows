@@ -29,6 +29,18 @@ describe('notification rule controls', () => {
     });
   });
 
+  it('associates each scope, event, and subject label with its own rule', () => {
+    const { wrapper } = renderRules([{ event: 'approval_request' }, { event: 'stage_decision' }]);
+    for (const name of ['stage', 'event', 'subject_template']) {
+      const controls = [...wrapper.querySelectorAll(`[name="notification_rule_${name}"]`)];
+      expect(controls).toHaveLength(2);
+      expect(new Set(controls.map(control => control.id)).size).toBe(2);
+      controls.forEach(control => {
+        expect(wrapper.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
+      });
+    }
+  });
+
   it('ignores an untouched placeholder and retains it once configured', () => {
     const { builder, wrapper } = renderRules([]);
 
@@ -45,5 +57,23 @@ describe('notification rule controls', () => {
     event.value = 'stage_decision';
 
     expect(builder.readNotificationRulesFromPanel(wrapper)[0].event).toBe('stage_decision');
+  });
+});
+
+describe('condition editor', () => {
+  it('retains a partially filled row for validation', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    const editor = document.createElement('div');
+    editor.innerHTML = `
+      <div class="trigger-condition-row">
+        <select name="condition_field"><option value="" selected>Choose field</option></select>
+        <select name="condition_operator"><option value="equals" selected>Equals</option></select>
+        <input name="condition_value" value="test">
+      </div>`;
+
+    expect(builder.readConditionsFromEditor(editor)).toEqual({
+      operator: 'AND',
+      conditions: [{ field: '', operator: 'equals', value: 'test' }],
+    });
   });
 });

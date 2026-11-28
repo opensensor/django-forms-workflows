@@ -2911,46 +2911,11 @@ export class WorkflowBuilder {
         let pendingCanvasX = startCanvasX;
         let pendingCanvasY = startCanvasY;
 
-        const updateDraggedNodeAndConnections = () => {
-            const nodeEl = this.canvas?.querySelector(`[data-node-id="${node.id}"]`);
-            if (nodeEl) {
-                nodeEl.style.left = `${node.x}px`;
-                nodeEl.style.top = `${node.y}px`;
-            }
-
-            const incidentConnections = this.connections.filter(
-                (connection) => connection.from === node.id || connection.to === node.id
-            );
-
-            incidentConnections.forEach((connection) => {
-                const connectionEl = this.canvas?.querySelector(
-                    `[data-connection-id="${connection.id}"]`
-                );
-                if (!connectionEl) return;
-
-                const fromNode = this.nodes.find((n) => n.id === connection.from);
-                const toNode = this.nodes.find((n) => n.id === connection.to);
-                if (!fromNode || !toNode) return;
-
-                const x1 = fromNode.x + (fromNode.width || 160) / 2;
-                const y1 = fromNode.y + (fromNode.height || 80) / 2;
-                const x2 = toNode.x + (toNode.width || 160) / 2;
-                const y2 = toNode.y + (toNode.height || 80) / 2;
-
-                if (typeof connectionEl.setAttribute === 'function') {
-                    connectionEl.setAttribute('x1', `${x1}`);
-                    connectionEl.setAttribute('y1', `${y1}`);
-                    connectionEl.setAttribute('x2', `${x2}`);
-                    connectionEl.setAttribute('y2', `${y2}`);
-                }
-            });
-        };
-
         const flushDragRender = () => {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            updateDraggedNodeAndConnections();
+            this.render();
         };
 
         const onMouseMove = (e) => {

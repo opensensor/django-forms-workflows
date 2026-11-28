@@ -21,6 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('WorkflowBuilder#createStartNode', () => {
@@ -69,7 +70,6 @@ describe('WorkflowBuilder#deleteNode', () => {
 
     expect(instance.nodes).toEqual([]);
     expect(instance.deletedActionIds).toEqual([17]);
-    vi.unstubAllGlobals();
   });
 });
 

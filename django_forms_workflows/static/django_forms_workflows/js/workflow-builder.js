@@ -2819,7 +2819,6 @@ export class WorkflowBuilder {
             firstErrorNodeId: null,
         };
         const fieldNames = new Set(this.fields.map(field => field.field_name));
-        const fieldIds = new Set(this.fields.map(field => field.id));
         const groupIds = new Set(this.groups.map(group => group.id));
         const stageNodes = this.nodes.filter(node => node.type === 'stage');
         const settingsNode = this.nodes.find(node => node.type === 'workflow_settings');

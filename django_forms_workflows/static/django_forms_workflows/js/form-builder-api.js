@@ -259,6 +259,12 @@ export const apiMethods = {
             payment_amount_field: document.getElementById('formPaymentAmountField').value,
             payment_currency: document.getElementById('formPaymentCurrency').value,
             payment_description_template: document.getElementById('formPaymentDescription').value,
+        // Prevent concurrent save requests from overlapping
+        if (this._saveInFlight) {
+            return;
+        }
+        this._saveInFlight = true;
+
             close_date: document.getElementById('formCloseDate').value || null,
             max_submissions: parseInt(document.getElementById('formMaxSubmissions').value) || null,
             one_per_user: document.getElementById('formOnePerUser').checked,

@@ -1768,7 +1768,7 @@ export class WorkflowBuilder {
         return `
             <div class="alert alert-warning mb-0">
                 <i class="bi bi-exclamation-triangle"></i>
-                Legacy condition nodes are not currently persisted by the workflow builder. Use workflow or stage <strong>trigger_conditions</strong> in Django Admin for conditional routing.
+                Legacy condition nodes are not currently persisted by the workflow builder. Use workflow or stage <strong>trigger condition</strong> editors in this builder for conditional routing.
             </div>
         `;
     }
@@ -2746,8 +2746,8 @@ export class WorkflowBuilder {
             </div>
             ${canDelete ? `
                 <div class="node-actions">
-                    <button class="btn btn-sm btn-outline-danger" onclick="workflowBuilder.deleteNode(${this.inlineNodeId(node.id)})">
-                        <i class="bi bi-trash"></i>
+                    <button type="button" class="btn btn-sm btn-outline-danger" aria-label="Delete node: ${this.escapeHtmlAttribute(label)}" onclick="workflowBuilder.deleteNode(${this.inlineNodeId(node.id)})">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
                     </button>
                 </div>
             ` : ''}

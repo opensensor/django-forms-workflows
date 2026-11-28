@@ -90,6 +90,10 @@ export const apiMethods = {
     },
 
     async saveWorkflow() {
+        if (this.saveStatusResetTimer) {
+            clearTimeout(this.saveStatusResetTimer);
+            this.saveStatusResetTimer = null;
+        }
         const validation = this.refreshValidationState();
         if (validation.errors.length) {
             this.setBuilderMessage(
@@ -132,11 +136,6 @@ export const apiMethods = {
         console.log('Nodes:', this.nodes);
         console.log('Connections:', this.connections);
 
-        if (this.saveStatusResetTimer) {
-            clearTimeout(this.saveStatusResetTimer);
-            this.saveStatusResetTimer = null;
-        }
-
         try {
             const response = await fetch(this.config.apiUrls.save, {
                 method: 'POST',
@@ -174,16 +173,7 @@ export const apiMethods = {
             );
             this.saveStatusResetTimer = setTimeout(() => {
                 this.saveStatusResetTimer = null;
-                if (this.isSaving) {
-                    this.setSaveStatus('Saving...', 'neutral');
-                    return;
-                }
-                const snapshot = this.getWorkflowSnapshot();
-                if (snapshot && snapshot.isDirty) {
-                    this.setSaveStatus('Unsaved changes', 'warning');
-                    return;
-                }
-                this.setSaveStatus('Ready', 'neutral');
+                if (!this.isSaving) this.updateDirtyState();
             }, 2000);
         } catch (error) {
             console.error('Error saving workflow:', error);

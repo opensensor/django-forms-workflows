@@ -1768,7 +1768,7 @@ export class WorkflowBuilder {
         return `
             <div class="alert alert-warning mb-0">
                 <i class="bi bi-exclamation-triangle"></i>
-                Legacy condition nodes are not currently persisted by the workflow builder. Use workflow or stage <strong>trigger_conditions</strong> in Django Admin for conditional routing.
+                Legacy condition nodes are not currently persisted by the workflow builder. Use workflow or stage <strong>trigger condition</strong> editors in this builder for conditional routing.
             </div>
         `;
     }

@@ -6031,14 +6031,23 @@ class TestDocumentTemplateAPI:
             name="Foreign Delete",
             html_content="<p>foreign</p>",
         )
+        other_default = DocumentTemplate.objects.create(
+            form_definition=other_form,
+            name="Other Default",
+            html_content="<p>other</p>",
+            is_default=True,
+        )
 
         url = _fb_url(
             f"builder/api/doc-templates/{owner_form.id}/delete/{foreign_tpl.id}/"
         )
         resp = client.post(url)
 
+        other_default.refresh_from_db()
         assert resp.status_code in (400, 403, 404)
         foreign_tpl.refresh_from_db()
+        assert other_default.is_default is True
+        assert other_default.form_definition_id == other_form.id
         assert foreign_tpl.name == "Foreign Delete"
         assert foreign_tpl.form_definition_id == other_form.id
         assert DocumentTemplate.objects.filter(id=foreign_tpl.id).exists()

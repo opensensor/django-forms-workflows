@@ -50,9 +50,11 @@ describe('condition validation', () => {
 
   it('does not render malformed stage order as markup', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
+    const description = builder.getNodeDescription({ type: 'stage', data: { order: '1<script>' } });
 
-    expect(builder.getNodeDescription({ type: 'stage', data: { order: '1<script>' } }))
-      .toContain('Stage ?');
+    expect(description).toContain('Stage ?');
+    expect(description).not.toContain('<script>');
+    expect(description).not.toContain('1<script>');
   });
 
   it('accepts saved single conditions, including the server default operator', () => {

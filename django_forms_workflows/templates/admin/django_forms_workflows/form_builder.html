@@ -1304,6 +1304,13 @@
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('docTemplateModal')).show();
             });
 
+            let docTemplateEditorSession = 0;
+            const docTemplateModalEl = document.getElementById('docTemplateModal');
+            docTemplateModalEl.addEventListener('show.bs.modal', function () {
+                docTemplateEditorSession += 1;
+                this.dataset.editorSession = String(docTemplateEditorSession);
+            });
+
             document.getElementById('btnSaveDocTemplate').addEventListener('click', async (event) => {
                 const saveBtn = event.currentTarget;
                 if (saveBtn.dataset.submitting === 'true') return;
@@ -1322,8 +1329,10 @@
                     is_active: document.getElementById('docTemplateIsActive').checked,
                 };
                 if (payload.id) payload.id = parseInt(payload.id);
+                const requestEditorSession = docTemplateModalEl.dataset.editorSession || String(docTemplateEditorSession);
                 saveBtn.dataset.submitting = 'true';
                 saveBtn.disabled = true;
+                const modalInstance = bootstrap.Modal.getOrCreateInstance(docTemplateModalEl, { backdrop: 'static', keyboard: false });
                 try {
                     const resp = await fetch(docUrls.docTemplateSave, {
                         method: 'POST',
@@ -1332,13 +1341,16 @@
                     });
                     const data = await resp.json();
                     if (data.success) {
-                        bootstrap.Modal.getInstance(document.getElementById('docTemplateModal')).hide();
+                        if ((docTemplateModalEl.dataset.editorSession || '') === requestEditorSession) {
+                            modalInstance.hide();
+                        }
                         loadDocTemplates();
                     } else { alert(data.error || 'Error saving template'); }
                 } catch (e) { alert('Error: ' + e.message); }
                 finally {
                     delete saveBtn.dataset.submitting;
                     saveBtn.disabled = false;
+                    bootstrap.Modal.getOrCreateInstance(docTemplateModalEl, { backdrop: true, keyboard: true });
                 }
             });
 

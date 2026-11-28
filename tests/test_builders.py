@@ -238,26 +238,24 @@ class TestConvertWorkflowToVisual:
 
         stage_ids = {node["id"] for node in stage_nodes}
         join_id = join_node["id"]
-        edges = result["edges"]
+        connections = result["connections"]
 
         # Parallel branches should both flow into the same join node.
         for stage_id in stage_ids:
             assert any(
-                edge["source"] == stage_id and edge["target"] == join_id
-                for edge in edges
+                edge["from"] == stage_id and edge["to"] == join_id
+                for edge in connections
             )
 
         # Parallel stages must not be connected sequentially to each other.
         assert not any(
-            edge["source"] in stage_ids and edge["target"] in stage_ids
-            for edge in edges
+            edge["from"] in stage_ids and edge["to"] in stage_ids
+            for edge in connections
         )
 
         # Both stages should branch from at least one common predecessor.
         predecessors_by_stage = {
-            stage_id: {
-                edge["source"] for edge in edges if edge["target"] == stage_id
-            }
+            stage_id: {edge["from"] for edge in connections if edge["to"] == stage_id}
             for stage_id in stage_ids
         }
         shared_predecessors = set.intersection(*predecessors_by_stage.values())
@@ -5046,6 +5044,7 @@ class TestDocumentTemplateAPI:
         )
 
         content_type = ContentType.objects.get_for_model(DocumentTemplate)
+        form_content_type = ContentType.objects.get_for_model(FormDefinition)
         required_codenames = [
             "view_documenttemplate",
             "add_documenttemplate",
@@ -5056,6 +5055,11 @@ class TestDocumentTemplateAPI:
             content_type=content_type, codename__in=required_codenames
         )
         staff_user.user_permissions.add(*perms)
+        form_perms = Permission.objects.filter(
+            content_type=form_content_type,
+            codename__in=["view_formdefinition", "change_formdefinition"],
+        )
+        staff_user.user_permissions.add(*form_perms)
 
         client.force_login(staff_user)
 
@@ -5066,9 +5070,7 @@ class TestDocumentTemplateAPI:
         save_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
         save_resp = client.post(
             save_url,
-            data=json.dumps(
-                {"name": "PermittedTemplate", "html_content": "<p>ok</p>"}
-            ),
+            data=json.dumps({"name": "PermittedTemplate", "html_content": "<p>ok</p>"}),
             content_type="application/json",
         )
         assert save_resp.status_code == 200

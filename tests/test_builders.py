@@ -4765,6 +4765,7 @@ class TestDocumentTemplateAPI:
         assert resp.status_code == 200
         tpl.refresh_from_db()
         assert tpl.name == "Updated"
+        assert tpl.html_content == "<p>new</p>"
         assert tpl.page_size == "legal"
 
     def test_delete_template(self, client, superuser, form_definition):

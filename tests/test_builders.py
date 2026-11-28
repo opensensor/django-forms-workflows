@@ -4951,6 +4951,46 @@ class TestFormBuilderViews:
         assert cloned_template.is_default is True
         assert cloned_template.is_active is False
 
+    def test_clone_with_subworkflow_preserves_target_and_updates_parent(
+        self, client, superuser, form_with_fields
+    ):
+        source_workflow = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields, start_trigger="on_all_complete"
+        )
+        target_form = FormDefinition.objects.create(
+            name="Target Form", slug="target-form"
+        )
+        target_workflow = WorkflowDefinition.objects.create(
+            form_definition=target_form, start_trigger="on_all_complete"
+        )
+        sub_workflow = SubWorkflowDefinition.objects.create(
+            parent_workflow=source_workflow,
+            sub_workflow=target_workflow,
+            count_field="number_of_items",
+            trigger="on_submission",
+            detached=True,
+            reject_parent=True,
+        )
+
+        client.force_login(superuser)
+        response = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
+
+        assert response.status_code == 200
+        cloned_form = FormDefinition.objects.get(pk=response.json()["form_id"])
+        cloned_workflow = WorkflowDefinition.objects.get(form_definition=cloned_form)
+        cloned_sub_workflow = SubWorkflowDefinition.objects.get(
+            parent_workflow=cloned_workflow
+        )
+
+        assert cloned_sub_workflow.pk != sub_workflow.pk
+        assert cloned_sub_workflow.parent_workflow == cloned_workflow
+        assert cloned_sub_workflow.parent_workflow != source_workflow
+        assert cloned_sub_workflow.sub_workflow == target_workflow
+        assert cloned_sub_workflow.count_field == sub_workflow.count_field
+        assert cloned_sub_workflow.trigger == sub_workflow.trigger
+        assert cloned_sub_workflow.detached == sub_workflow.detached
+        assert cloned_sub_workflow.reject_parent == sub_workflow.reject_parent
+
     def test_clone_copies_automation_and_settings(
         self, client, superuser, form_with_fields, approval_group
     ):
@@ -5281,7 +5321,7 @@ class TestFormBuilderViews:
                     "fields": [
                         {
                             "field_name": "answer",
-                            "field_label": "Answer",
+                            "field_label": "<img src=x onerror=alert(2)>",
                             "field_type": "text",
                         }
                     ],
@@ -5293,8 +5333,10 @@ class TestFormBuilderViews:
         html = response.json()["html"]
         assert "<script>" not in html
         assert "<img src=x" not in html
+        assert "<img src=x onerror=alert(2)>" not in html
         assert "&lt;script&gt;" in html
         assert "&lt;img src=x" in html
+        assert "&lt;img src=x onerror=alert(2)&gt;" in html
 
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

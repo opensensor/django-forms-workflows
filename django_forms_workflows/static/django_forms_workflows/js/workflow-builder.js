@@ -3168,7 +3168,10 @@ export class WorkflowBuilder {
     }
 
     getConnectionPointPosition(nodeId, pointType) {
-        const nodeElement = this.transformWrapper.querySelector(`.workflow-node[data-node-id="${nodeId}"]`);
+        const escapedNodeId = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
+            ? CSS.escape(String(nodeId))
+            : String(nodeId).replace(/["\\]/g, '\\$&');
+        const nodeElement = this.transformWrapper.querySelector(`.workflow-node[data-node-id="${escapedNodeId}"]`);
         if (!nodeElement) return null;
 
         const pointElement = nodeElement.querySelector(`.connection-point.${pointType}`);

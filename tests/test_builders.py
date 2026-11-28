@@ -6021,13 +6021,6 @@ class TestDocumentTemplateAPI:
         resp = client.post(url)
         assert resp.status_code == 200
         assert not DocumentTemplate.objects.filter(id=tpl.id).exists()
-        other_form = FormDefinition.objects.create(name="Other Form", slug="other-form")
-        other_default = DocumentTemplate.objects.create(
-            form_definition=other_form,
-            name="Other Default",
-            html_content="<p>other</p>",
-            is_default=True,
-        )
 
     def test_delete_template_rejects_foreign_template_id(self, client, superuser):
         client.force_login(superuser)
@@ -6037,6 +6030,12 @@ class TestDocumentTemplateAPI:
             form_definition=other_form,
             name="Foreign Delete",
             html_content="<p>foreign</p>",
+        )
+        other_default = DocumentTemplate.objects.create(
+            form_definition=other_form,
+            name="Other Default",
+            html_content="<p>other</p>",
+            is_default=True,
         )
 
         url = _fb_url(

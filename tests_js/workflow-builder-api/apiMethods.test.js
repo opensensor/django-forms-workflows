@@ -333,6 +333,29 @@ describe('apiMethods.saveWorkflow', () => {
     expect(ctx.deletedActionIds).toEqual([]);
   });
 
+  it('keeps edits made while a save is in flight marked as unsaved', async () => {
+    let resolveRequest;
+    const fetchMock = vi.fn().mockImplementation(() => new Promise(resolve => {
+      resolveRequest = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const ctx = createContext({ nodes: [{ id: 'node_1' }] });
+    ctx.deletedActionIds = [17];
+
+    const saving = ctx.saveWorkflow();
+    ctx.nodes = [{ id: 'node_1' }, { id: 'node_2' }];
+    ctx.deletedActionIds.push(18);
+    resolveRequest({ ok: true, json: async () => ({ success: true }) });
+    await saving;
+
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sent.workflow.nodes).toEqual([{ id: 'node_1' }]);
+    expect(sent.workflow.deleted_action_ids).toEqual([17]);
+    expect(ctx.deletedActionIds).toEqual([18]);
+    expect(ctx.isDirty).toBe(true);
+    expect(document.getElementById('saveStatus').textContent).toBe('Unsaved changes');
+  });
+
   it('reports an error status and does not throw when the save request fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false, json: async () => ({ success: false, error: 'Server exploded' }),

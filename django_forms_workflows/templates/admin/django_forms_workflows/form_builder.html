@@ -1296,7 +1296,7 @@
                 document.getElementById('docTemplatePageSize').value = 'letter';
                 document.getElementById('docTemplateIsDefault').checked = false;
                 document.getElementById('docTemplateIsActive').checked = true;
-                new bootstrap.Modal(document.getElementById('docTemplateModal')).show();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('docTemplateModal')).show();
             });
 
             document.getElementById('btnSaveDocTemplate').addEventListener('click', async (event) => {

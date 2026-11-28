@@ -174,6 +174,17 @@
                 });
             });
         });
+
+        window.addEventListener('pageshow', function() {
+            var overlay = document.getElementById('loadingOverlay');
+            var msg = document.getElementById('loadingMessage');
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
+            if (msg) {
+                msg.textContent = 'Processing...';
+            }
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

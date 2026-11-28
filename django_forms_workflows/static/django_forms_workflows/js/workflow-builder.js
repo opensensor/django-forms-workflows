@@ -2745,7 +2745,7 @@ export class WorkflowBuilder {
     }
 
     addNodeIssue(result, nodeId, severity, message) {
-        if (!nodeId) return;
+        if (nodeId == null) return;
         if (!result.nodeIssues[nodeId]) {
             result.nodeIssues[nodeId] = { errors: [], warnings: [] };
         }

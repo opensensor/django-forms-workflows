@@ -2020,6 +2020,13 @@ export class WorkflowBuilder {
         if (node) {
             node.data[property] = value;
             this.render();
+
+            // Some property editors are conditionally rendered (for example,
+            // approval_type controls whether the group selector is shown).
+            // Re-select the node to rebuild the properties panel when needed.
+            if (property === 'approval_type') {
+                this.selectNode(nodeId);
+            }
         }
     }
 

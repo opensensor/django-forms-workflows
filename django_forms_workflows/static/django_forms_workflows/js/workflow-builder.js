@@ -3030,8 +3030,8 @@ export class WorkflowBuilder {
                 from: this.connectionStart.nodeId,
                 to: toNodeId
             }];
-            this.selectedConnection = this.connections.length - 1;
-            this.updateConnectionSelectionUI();
+            const newConnectionIndex = this.connections.length - 1;
+            this.selectConnection(newConnectionIndex);
             this.render();
         } else {
             console.log('Connection already exists');

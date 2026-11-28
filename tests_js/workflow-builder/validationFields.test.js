@@ -41,9 +41,20 @@ describe('condition validation', () => {
       .toEqual(['Trigger conditions: conditions must be a list.']);
   });
 
-  it('accepts supported operators and empty string comparison values', () => {
+  it.each([
+    { operator: 'contains', condition: { field: 'notes', operator: 'contains', value: '' } },
+    { operator: 'equals', condition: { field: 'notes', operator: 'equals', value: '' } },
+    { operator: 'not_equals', condition: { field: 'notes', operator: 'not_equals', value: '' } },
+    { operator: 'gt', condition: { field: 'notes', operator: 'gt', value: '' } },
+    { operator: 'gte', condition: { field: 'notes', operator: 'gte', value: '' } },
+    { operator: 'lt', condition: { field: 'notes', operator: 'lt', value: '' } },
+    { operator: 'lte', condition: { field: 'notes', operator: 'lte', value: '' } },
+    { operator: 'in', condition: { field: 'notes', operator: 'in', value: '' } },
+    { operator: 'is_empty', condition: { field: 'notes', operator: 'is_empty' } },
+    { operator: 'not_empty', condition: { field: 'notes', operator: 'not_empty' } },
+  ])('accepts supported operator $operator', ({ condition }) => {
     const builder = Object.create(WorkflowBuilder.prototype);
-    const group = { operator: 'AND', conditions: [{ field: 'notes', operator: 'in', value: '' }] };
+    const group = { operator: 'AND', conditions: [condition] };
 
     expect(builder.validateConditionGroup(group, 'Trigger conditions')).toEqual([]);
   });

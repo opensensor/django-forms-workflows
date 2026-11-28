@@ -1471,27 +1471,42 @@ export class WorkflowBuilder {
     }
 
     getNormalizedTriggerConditions(rawConditions) {
-        if (!rawConditions) {
+        if (!rawConditions || typeof rawConditions !== 'object') {
             return { operator: 'AND', conditions: [] };
         }
 
         if (Array.isArray(rawConditions.conditions)) {
+            const normalizedGroupOperator =
+                typeof rawConditions.operator === 'string' && rawConditions.operator.toUpperCase() === 'OR'
+                    ? 'OR'
+                    : 'AND';
+
             return {
-                operator: (rawConditions.operator || 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND',
-                conditions: rawConditions.conditions.map(condition => ({
-                    field: condition.field || '',
-                    operator: condition.operator || 'equals',
-                    value: condition.value ?? ''
-                }))
+                operator: normalizedGroupOperator,
+                conditions: rawConditions.conditions.map(condition => {
+                    if (!condition || typeof condition !== 'object') {
+                        return {
+                            field: '',
+                            operator: 'equals',
+                            value: ''
+                        };
+                    }
+
+                    return {
+                        field: typeof condition.field === 'string' ? condition.field : '',
+                        operator: typeof condition.operator === 'string' ? condition.operator : 'equals',
+                        value: condition.value ?? ''
+                    };
+                })
             };
         }
 
-        if (rawConditions.field) {
+        if (typeof rawConditions.field === 'string' && rawConditions.field) {
             return {
                 operator: 'AND',
                 conditions: [{
                     field: rawConditions.field || '',
-                    operator: rawConditions.operator || 'equals',
+                    operator: typeof rawConditions.operator === 'string' ? rawConditions.operator : 'equals',
                     value: rawConditions.value ?? ''
                 }]
             };

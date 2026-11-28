@@ -2178,10 +2178,16 @@ export class WorkflowBuilder {
         if (!group) {
             return errors;
         }
-        if (!Array.isArray(group.conditions)) {
+
+        const hasConditionList = Array.isArray(group.conditions);
+        const isLegacySingleCondition = !hasConditionList &&
+            Object.prototype.hasOwnProperty.call(group, 'field');
+
+        if (!hasConditionList && !isLegacySingleCondition) {
             return [`${ownerLabel}: conditions must be a list.`];
         }
-        if (group.operator && !['AND', 'OR'].includes(String(group.operator).toUpperCase())) {
+
+        if (hasConditionList && group.operator && !['AND', 'OR'].includes(String(group.operator).toUpperCase())) {
             errors.push(`${ownerLabel}: match mode must be AND or OR.`);
         }
 
@@ -2190,13 +2196,14 @@ export class WorkflowBuilder {
             'gt', 'gte', 'lt', 'lte', 'is_empty', 'not_empty'
         ]);
 
-        group.conditions.forEach((condition, index) => {
+        const conditions = hasConditionList ? group.conditions : [group];
+        conditions.forEach((condition, index) => {
             const rowNumber = index + 1;
             if (!condition || !condition.field || !String(condition.field).trim()) {
                 errors.push(`${ownerLabel}: condition row ${rowNumber} has no field selected.`);
             }
 
-            const operator = condition && condition.operator;
+            const operator = condition && (condition.operator === undefined ? 'equals' : condition.operator);
             if (!operator || !allowedOperators.has(operator)) {
                 errors.push(`${ownerLabel}: condition row ${rowNumber} has an unknown operator.`);
                 return;

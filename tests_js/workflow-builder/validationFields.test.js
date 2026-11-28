@@ -32,6 +32,15 @@ describe('approval field validation', () => {
 });
 
 describe('condition validation', () => {
+  it('accepts saved single conditions, including the server default operator', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+
+    expect(builder.validateConditionGroup({ field: 'notes', value: 'ready' }, 'Trigger conditions')).toEqual([]);
+    expect(builder.validateConditionGroup({ field: 'notes', operator: 'contains', value: 'ready' }, 'Trigger conditions')).toEqual([]);
+    expect(builder.validateConditionGroup({ operator: 'equals', value: 'ready' }, 'Trigger conditions'))
+      .toEqual(['Trigger conditions: conditions must be a list.']);
+  });
+
   it('accepts supported operators and empty string comparison values', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     const group = { operator: 'AND', conditions: [{ field: 'notes', operator: 'in', value: '' }] };

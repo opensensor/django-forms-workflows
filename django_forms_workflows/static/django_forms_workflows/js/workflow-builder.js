@@ -970,18 +970,17 @@ export class WorkflowBuilder {
         const data = node.data || {};
         const orderedApprovalGroups = this.getNormalizedStageApprovalGroups(data.approval_groups || []);
         const selectedGroupIds = orderedApprovalGroups.map(g => g.id);
-        const availableApprovalFields = this.store?.getState?.().approvalFields || [];
         const approvalFieldIdByName = new Map(
-            availableApprovalFields
-                .filter(field => field && field.id != null && field.name)
-                .map(field => [String(field.name).toLowerCase(), field.id])
+            this.fields
+                .filter(field => field && field.id != null && field.field_name)
+                .map(field => [field.field_name, String(field.id)])
         );
         const selectedApprovalFieldIds = new Set(
             (data.approval_fields || [])
                 .map(field => {
                     if (!field) return null;
-                    if (field.id != null) return field.id;
-                    if (field.name) return approvalFieldIdByName.get(String(field.name).toLowerCase()) ?? null;
+                    if (field.id != null) return String(field.id);
+                    if (field.field_name) return approvalFieldIdByName.get(field.field_name) ?? null;
                     return null;
                 })
                 .filter(id => id != null)
@@ -1093,7 +1092,7 @@ export class WorkflowBuilder {
                 <select class="form-select builder-multiselect-lg" id="stage_fields_${this.escapeHtmlAttribute(node.id)}" name="approval_fields" multiple size="6"
                         >
                     ${this.fields.map(field => `
-                        <option value="${field.id}" ${selectedApprovalFieldIds.has(field.id) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
+                        <option value="${field.id}" ${selectedApprovalFieldIds.has(String(field.id)) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                     `).join('')}
                 </select>
                 <small class="text-muted d-block mt-1">Selected fields become editable approval-step fields for this stage only.</small>
@@ -1447,6 +1446,7 @@ export class WorkflowBuilder {
                                 conditions: state.conditions,
                                 onChangeHandler: `workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})`,
                                 editorKind: 'notification-rule',
+                                editorId: `notification-${node.id}-${index}`,
                                 extraAttributes: `data-rule-index="${index}"`,
                                 removeConditionHandler: `workflowBuilder.removeNotificationRuleCondition(${this.inlineNodeId(node.id)}, ${index}, __INDEX__)`,
                             })}
@@ -1499,7 +1499,7 @@ export class WorkflowBuilder {
         return { operator: 'AND', conditions: [] };
     }
 
-    buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
+    buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, editorId = editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
         const state = this.getNormalizedTriggerConditions(conditions);
         const operatorOptions = [
             ['equals', 'Equals'],
@@ -1513,7 +1513,7 @@ export class WorkflowBuilder {
             ['is_empty', 'Is empty'],
             ['not_empty', 'Is not empty'],
         ];
-        const editorIdBase = `conditions-${String(editorKind || 'editor').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        const editorIdBase = this.escapeHtmlAttribute(`conditions-${String(editorId || 'editor')}`);
 
         let rowsHtml = '';
         state.conditions.forEach((condition, index) => {
@@ -1590,6 +1590,7 @@ export class WorkflowBuilder {
                 conditions: node.data.trigger_conditions,
                 onChangeHandler: `workflowBuilder.updateNodeTriggerConditions(${this.inlineNodeId(node.id)})`,
                 editorKind: 'node-trigger',
+                editorId: `node-${node.id}`,
                 removeConditionHandler: `workflowBuilder.removeTriggerCondition(${this.inlineNodeId(node.id)}, __INDEX__)`,
                 showHeader: false,
             })}

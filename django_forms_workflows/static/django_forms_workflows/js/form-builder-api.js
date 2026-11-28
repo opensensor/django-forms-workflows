@@ -338,7 +338,7 @@ export const apiMethods = {
 
             if (data.success && data.templates.length > 0) {
                 // Group templates by category
-                const grouped = {};
+                const grouped = Object.create(null);
                 data.templates.forEach(template => {
                     if (!grouped[template.category_display]) {
                         grouped[template.category_display] = [];

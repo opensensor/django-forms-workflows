@@ -4401,6 +4401,9 @@ class TestFormBuilderViews:
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
+        assert data["builder_url"] == reverse(
+            "admin:form_builder_edit", args=[data["form_id"]]
+        )
         cloned = FormDefinition.objects.get(id=data["form_id"])
         assert cloned.name.startswith(form_with_fields.name)
         assert cloned.id != form_with_fields.id

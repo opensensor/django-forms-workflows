@@ -671,19 +671,19 @@
             <div class="collapse show" id="formSettings">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Form Name <span class="text-danger">*</span></label>
+                        <label class="form-label" for="formName">Form Name <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="formName" placeholder="e.g., Equipment Request" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Form Slug <span class="text-danger">*</span></label>
+                        <label class="form-label" for="formSlug">Form Slug <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="formSlug" placeholder="e.g., equipment-request" required>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Description</label>
+                        <label class="form-label" for="formDescription">Description</label>
                         <textarea class="form-control" id="formDescription" rows="2" placeholder="Brief description shown to users"></textarea>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Instructions</label>
+                        <label class="form-label" for="formInstructions">Instructions</label>
                         <textarea class="form-control" id="formInstructions" rows="3" placeholder="Detailed instructions shown at top of form"></textarea>
                     </div>
                     <div class="col-md-3">
@@ -1153,8 +1153,7 @@
 
                         if (data.success) {
                             alert(data.message);
-                            // Redirect to edit the cloned form
-                            window.location.href = `/admin/django_forms_workflows/formdefinition/${data.form_id}/builder/`;
+                            window.location.href = data.builder_url;
                         } else {
                             alert('Error cloning form: ' + (data.error || 'Unknown error'));
                         }
@@ -1221,9 +1220,22 @@
             window.deleteDocTemplate = async function(id, name) {
                 if (!confirm(`Delete template "${name}"?`)) return;
                 try {
-                    await fetch(docUrls.docTemplateDelete.replace('{id}', id), {
+                    const resp = await fetch(docUrls.docTemplateDelete.replace('{id}', id), {
                         method: 'POST', headers: { 'X-CSRFToken': formBuilderData.csrfToken }
                     });
+
+                    let payload = null;
+                    try {
+                        payload = await resp.json();
+                    } catch (_) {
+                        payload = null;
+                    }
+
+                    if (!resp.ok || (payload && payload.success === false)) {
+                        const errorMessage = (payload && (payload.error || payload.message)) || `HTTP ${resp.status}`;
+                        throw new Error(errorMessage);
+                    }
+
                     loadDocTemplates();
                 } catch (e) { alert('Error deleting template: ' + e.message); }
             };

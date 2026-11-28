@@ -1735,10 +1735,13 @@ export class WorkflowBuilder {
             `;
         }
 
+        const parsedFieldCount = Number(data.field_count);
+        const safeFieldCount = Number.isSafeInteger(parsedFieldCount) && parsedFieldCount >= 0 ? parsedFieldCount : 0;
+
         html += `
             <div class="mb-3">
                 <label class="form-label">Total Fields</label>
-                <input type="text" class="form-control" value="${data.field_count || 0}" disabled />
+                <input type="text" class="form-control" value="${this.escapeHtmlAttribute(String(safeFieldCount))}" disabled />
             </div>
         `;
 

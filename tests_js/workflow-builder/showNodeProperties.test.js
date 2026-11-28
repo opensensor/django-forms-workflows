@@ -67,18 +67,21 @@ describe('WorkflowBuilder#showNodeProperties generic change listener', () => {
 
   it('stores stage checkbox values as booleans via the stage config path', () => {
     const instance = createInstance();
-    const node = { id: 'node_1', type: 'stage', data: { allow_send_back: false } };
+    const node = { id: 'node_1', type: 'stage', data: { order: 1, allow_send_back: false } };
     instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
+    instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
 
     instance.showNodeProperties(node);
-    const checkbox = document.querySelector('input[type="checkbox"][name="allow_send_back"]');
+    const checkbox = () => document.querySelector('input[type="checkbox"][name="allow_send_back"]');
 
-    checkbox.checked = true;
-    dispatchChange(checkbox);
+    checkbox().checked = true;
+    dispatchChange(checkbox());
     expect(node.data.allow_send_back).toBe(true);
 
-    checkbox.checked = false;
-    dispatchChange(checkbox);
+    checkbox().checked = false;
+    dispatchChange(checkbox());
     expect(node.data.allow_send_back).toBe(false);
   });
 
@@ -297,11 +300,13 @@ describe('WorkflowBuilder stage editor', () => {
       ] },
     };
     instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
     instance.selectNode = vi.fn(() => instance.showNodeProperties(node));
     instance.showNodeProperties(node);
 
     const moveDownButton = document.querySelector(
-      'button[data-stage-group-id="5"][data-stage-group-role="approver"][data-direction="1"]',
+      'button[data-stage-group-id="5"][data-stage-group-role="approver"][data-stage-group-direction="1"]',
     );
     expect(moveDownButton).not.toBeNull();
 

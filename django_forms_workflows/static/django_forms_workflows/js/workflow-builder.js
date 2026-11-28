@@ -2427,7 +2427,6 @@ export class WorkflowBuilder {
         const rules = [...(node.data.notification_rules || [])];
         rules.splice(index, 1);
         node.data.notification_rules = rules;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2441,7 +2440,6 @@ export class WorkflowBuilder {
         state.conditions.push({ field: '', operator: 'equals', value: '' });
         rules[ruleIndex] = { ...rule, conditions: state };
         node.data.notification_rules = rules;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2455,7 +2453,6 @@ export class WorkflowBuilder {
         state.conditions.splice(conditionIndex, 1);
         rules[ruleIndex] = { ...rule, conditions: state.conditions.length ? state : null };
         node.data.notification_rules = rules;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2465,7 +2462,6 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2476,7 +2472,6 @@ export class WorkflowBuilder {
         const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
         state.conditions.push({ field: '', operator: 'equals', value: '' });
         node.data.trigger_conditions = state;
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2487,7 +2482,6 @@ export class WorkflowBuilder {
         const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
         state.conditions.splice(index, 1);
         node.data.trigger_conditions = state.conditions.length ? state : null;
-        this.render();
         this.selectNode(nodeId);
     }
 

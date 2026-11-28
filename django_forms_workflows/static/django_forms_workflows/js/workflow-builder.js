@@ -2101,69 +2101,32 @@ export class WorkflowBuilder {
         node.data.notification_cadence_time = container.querySelector('input[name="notification_cadence_time"]').value;
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
-        node.data.trigger_conditions = this.readNodeTriggerConditions(container, nodeId);
+        node.data.trigger_conditions = this.readNodeTriggerConditions(container);
 
         this.render();
         this.selectNode(nodeId);
     }
 
-    getSupportedConditionOperators() {
-        return ['equals', 'not_equals', 'contains', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'not_empty'];
-    }
-
-    addNodeValidationError(nodeId, message) {
-        if (!nodeId || !this.store || typeof this.store.getState !== 'function' || typeof this.store.setState !== 'function') {
-            return;
-        }
-        const state = this.store.getState();
-        const validationErrors = Array.isArray(state.validationErrors) ? state.validationErrors.slice() : [];
-        validationErrors.push({ nodeId, message });
-        this.store.setState({ validationErrors });
-    }
-
-    parseAndValidateConditionRow(row, ownerNodeId, contextLabel) {
-        const fieldElement = row.querySelector('select[name="condition_field"]');
-        const operatorElement = row.querySelector('select[name="condition_operator"]');
-        const valueElement = row.querySelector('input[name="condition_value"]');
-
-        const field = fieldElement ? fieldElement.value : '';
-        const operator = operatorElement ? operatorElement.value : '';
-        const supportedOperators = this.getSupportedConditionOperators();
-
-        if (!field) {
-            this.addNodeValidationError(ownerNodeId, `${contextLabel}: condition field is required.`);
-            return null;
-        }
-        if (!supportedOperators.includes(operator)) {
-            this.addNodeValidationError(ownerNodeId, `${contextLabel}: unsupported condition operator "${operator}".`);
-            return null;
-        }
-
-        const condition = { field, operator };
-        if (!['is_empty', 'not_empty'].includes(operator)) {
-            const value = valueElement ? valueElement.value : '';
-            if (value === '') {
-                this.addNodeValidationError(ownerNodeId, `${contextLabel}: condition value is required for operator "${operator}".`);
-                return null;
-            }
-            condition.value = value;
-        }
-
-        return condition;
-    }
-
-    readConditionsFromEditor(editorElement, ownerNodeId = null, contextLabel = 'Condition') {
+    readConditionsFromEditor(editorElement) {
         if (!editorElement) {
             return null;
         }
 
         const operatorElement = editorElement.querySelector('select[name="condition_group_operator"]');
         const rows = Array.from(editorElement.querySelectorAll('.trigger-condition-row'));
-        const conditions = rows
-            .map(row => this.parseAndValidateConditionRow(row, ownerNodeId, contextLabel))
-            .filter(condition => condition !== null);
+        const conditions = rows.map(row => {
+            const operator = row.querySelector('select[name="condition_operator"]').value;
+            const condition = {
+                field: row.querySelector('select[name="condition_field"]').value,
+                operator,
+            };
+            if (!['is_empty', 'not_empty'].includes(operator)) {
+                condition.value = row.querySelector('input[name="condition_value"]').value;
+            }
+            return condition;
+        });
 
-        if (!conditions.length) {
+        if (!rows.length) {
             return null;
         }
 
@@ -2173,11 +2136,9 @@ export class WorkflowBuilder {
         };
     }
 
-    readNodeTriggerConditions(container, nodeId) {
+    readNodeTriggerConditions(container) {
         return this.readConditionsFromEditor(
-            container.querySelector('.conditions-editor[data-editor-kind="node-trigger"]'),
-            nodeId,
-            'Node trigger condition'
+            container.querySelector('.conditions-editor[data-editor-kind="node-trigger"]')
         );
     }
 
@@ -2935,26 +2896,6 @@ export class WorkflowBuilder {
         }
     }
 
-    updateDraggedNodeFrame(node) {
-        const nodeEl = this.canvas.querySelector(`.workflow-node[data-node-id="${node.id}"]`);
-        if (nodeEl) {
-            nodeEl.style.left = `${node.x}px`;
-            nodeEl.style.top = `${node.y}px`;
-        }
-
-        const affectedConnectionIndices = [];
-        for (let i = 0; i < this.connections.length; i += 1) {
-            const connection = this.connections[i];
-            if (connection.from === node.id || connection.to === node.id) {
-                affectedConnectionIndices.push(i);
-            }
-        }
-
-        if (affectedConnectionIndices.length > 0 && typeof this.renderConnections === 'function') {
-            this.renderConnections(affectedConnectionIndices);
-        }
-    }
-
     startDragNode(e, node) {
         if (e.button !== 0) return;
 
@@ -2974,7 +2915,7 @@ export class WorkflowBuilder {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            this.updateDraggedNodeFrame(node);
+            this.render();
         };
 
         const onMouseMove = (e) => {
@@ -3082,7 +3023,8 @@ export class WorkflowBuilder {
                 from: this.connectionStart.nodeId,
                 to: toNodeId
             }];
-            this.selectConnection(this.connections.length - 1);
+            this.selectedConnection = this.connections.length - 1;
+            this.updateConnectionSelectionUI();
             this.render();
         } else {
             console.log('Connection already exists');

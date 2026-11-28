@@ -31,7 +31,7 @@ describe('notification rule controls', () => {
 
   it('associates each scope, event, and subject label with its own rule', () => {
     const { wrapper } = renderRules([{ event: 'approval_request' }, { event: 'stage_decision' }]);
-    for (const name of ['stage', 'event', 'subject_template']) {
+    for (const name of ['stage', 'event', 'subject_template', 'email_field', 'static_emails']) {
       const controls = [...wrapper.querySelectorAll(`[name="notification_rule_${name}"]`)];
       expect(controls).toHaveLength(2);
       expect(new Set(controls.map(control => control.id)).size).toBe(2);

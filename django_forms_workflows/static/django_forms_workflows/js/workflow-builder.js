@@ -1430,10 +1430,17 @@ export class WorkflowBuilder {
                                 <label class="form-label form-label-sm" for="${ruleInputId('notify_groups')}">Additional Groups</label>
                                 <select id="${ruleInputId('notify_groups')}" class="form-select form-select-sm" name="notification_rule_notify_groups" multiple size="4"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
+                                    ${Array.from(selectedGroupIds).filter(groupId => !this.groups.some(group => group.id === groupId)).map(groupId => `
+                                        <option value="${this.escapeHtmlAttribute(String(groupId))}" selected>(missing group) ${this.escapeHtml(String(groupId))}</option>
+                                    `).join('')}
                                     ${this.groups.map(group => `
                                         <option value="${group.id}" ${selectedGroupIds.has(group.id) ? 'selected' : ''}>${this.escapeHtml(group.name)}</option>
                                     `).join('')}
                                 </select>
+                                ${(() => {
+                                    const missingGroupIds = Array.from(selectedGroupIds).filter(groupId => !this.groups.some(group => group.id === groupId));
+                                    return missingGroupIds.length ? `<div class="form-text text-warning">Some previously selected groups are unavailable and will be preserved until removed: ${this.escapeHtml(missingGroupIds.join(', '))}</div>` : '';
+                                })()}
                             </div>
                             <div class="row g-2 mb-3">
                                 <div class="col-12 col-md-6">

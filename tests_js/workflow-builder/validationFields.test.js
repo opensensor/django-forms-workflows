@@ -64,10 +64,24 @@ describe('condition validation', () => {
     } }];
 
     builder.addTriggerCondition('stage-1');
-    builder.removeTriggerCondition('stage-1', 0);
-    builder.addNotificationRuleCondition('stage-1', 0);
-    builder.removeNotificationRuleCondition('stage-1', 0, 0);
+    expect(builder.nodes[0].data.trigger_conditions).toBe(raw);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toBe(raw);
+    expect(builder.nodes[0].data.trigger_conditions).toEqual(rawSnapshot);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toEqual(rawSnapshot);
 
+    builder.removeTriggerCondition('stage-1', 0);
+    expect(builder.nodes[0].data.trigger_conditions).toBe(raw);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toBe(raw);
+    expect(builder.nodes[0].data.trigger_conditions).toEqual(rawSnapshot);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toEqual(rawSnapshot);
+
+    builder.addNotificationRuleCondition('stage-1', 0);
+    expect(builder.nodes[0].data.trigger_conditions).toBe(raw);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toBe(raw);
+    expect(builder.nodes[0].data.trigger_conditions).toEqual(rawSnapshot);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toEqual(rawSnapshot);
+
+    builder.removeNotificationRuleCondition('stage-1', 0, 0);
     expect(builder.nodes[0].data.trigger_conditions).toBe(raw);
     expect(builder.nodes[0].data.notification_rules[0].conditions).toBe(raw);
     expect(builder.nodes[0].data.trigger_conditions).toEqual(rawSnapshot);

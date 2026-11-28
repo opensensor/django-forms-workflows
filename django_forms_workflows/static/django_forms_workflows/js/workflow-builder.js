@@ -2817,13 +2817,7 @@ export class WorkflowBuilder {
 
             const shouldRestoreFocus = e.target.closest('.node-header') !== null;
             this.selectNode(node.id);
-            if (shouldRestoreFocus) {
-                const refreshedNode = document.getElementById(headerId);
-                if (refreshedNode) {
-                    refreshedNode.focus({ preventScroll: true });
-                }
-            }
-            this.startDragNode(e, node);
+            this.startDragNode(e, node, shouldRestoreFocus);
         });
 
         return div;
@@ -2942,7 +2936,7 @@ export class WorkflowBuilder {
         }
     }
 
-    startDragNode(e, node) {
+    startDragNode(e, node, restoreHeaderFocus = false) {
         if (e.button !== 0) return;
 
         e.preventDefault();
@@ -2950,9 +2944,33 @@ export class WorkflowBuilder {
         this.draggingNodeId = node.id;
         this.bringNodeToFront(node.id);
         this.render();
+
+        const renderedNode = () => Array.from(
+            this.transformWrapper?.querySelectorAll('.workflow-node') || []
+        ).find(element => element.dataset.nodeId === String(node.id));
+        const nodeElement = renderedNode();
+        const focusHeader = () => {
+            if (restoreHeaderFocus) {
+                renderedNode()?.querySelector('.node-header')?.focus({ preventScroll: true });
+            }
+        };
+        focusHeader();
+
         const [startCanvasX, startCanvasY] = this.clientToCanvas(e.clientX, e.clientY);
         const dragOffsetX = startCanvasX - node.x;
         const dragOffsetY = startCanvasY - node.y;
+        const initialX = node.x;
+        const initialY = node.y;
+        const incidentConnections = (this.connections || []).flatMap((connection, index) => {
+            if (connection.from !== node.id && connection.to !== node.id) return [];
+            const fromPoint = this.getConnectionPointPosition(connection.from, 'output');
+            const toPoint = this.getConnectionPointPosition(connection.to, 'input');
+            if (!fromPoint || !toPoint) return [];
+            const paths = Array.from(
+                this.svg?.querySelectorAll(`[data-connection-index="${index}"]`) || []
+            );
+            return [{ connection, fromPoint, toPoint, paths }];
+        });
         let rafId = null;
         let pendingCanvasX = startCanvasX;
         let pendingCanvasY = startCanvasY;
@@ -2961,7 +2979,22 @@ export class WorkflowBuilder {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            this.render();
+            if (nodeElement) {
+                nodeElement.style.left = `${node.x}px`;
+                nodeElement.style.top = `${node.y}px`;
+            }
+            const deltaX = node.x - initialX;
+            const deltaY = node.y - initialY;
+            incidentConnections.forEach(({ connection, fromPoint, toPoint, paths }) => {
+                const from = connection.from === node.id
+                    ? { x: fromPoint.x + deltaX, y: fromPoint.y + deltaY }
+                    : fromPoint;
+                const to = connection.to === node.id
+                    ? { x: toPoint.x + deltaX, y: toPoint.y + deltaY }
+                    : toPoint;
+                const path = this.createConnectionPath(from.x, from.y, to.x, to.y);
+                paths.forEach(element => element.setAttribute('d', path));
+            });
         };
 
         const onMouseMove = (e) => {
@@ -2981,6 +3014,7 @@ export class WorkflowBuilder {
             this.isDraggingNode = false;
             this.draggingNodeId = null;
             this.render();
+            focusHeader();
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
         };
@@ -3069,9 +3103,7 @@ export class WorkflowBuilder {
                 from: this.connectionStart.nodeId,
                 to: toNodeId
             }];
-            this.selectedConnection = this.connections.length - 1;
-            this.updateConnectionSelectionUI();
-            this.render();
+            this.selectConnection(this.connections.length - 1);
         } else {
             console.log('Connection already exists');
         }
@@ -3094,11 +3126,13 @@ export class WorkflowBuilder {
 
             const backdrop = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             backdrop.setAttribute('class', 'connection-backdrop');
+            backdrop.setAttribute('data-connection-index', index);
             backdrop.setAttribute('d', path);
             this.svg.appendChild(backdrop);
 
             const hitbox = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             hitbox.setAttribute('class', 'connection-hitbox');
+            hitbox.setAttribute('data-connection-index', index);
             hitbox.setAttribute('d', path);
 
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');

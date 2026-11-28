@@ -24,6 +24,7 @@ function inputPointEvent(nodeId) {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  document.body.innerHTML = '<div id="propertiesContent">Node properties</div>';
 });
 
 afterEach(() => {
@@ -34,11 +35,14 @@ afterEach(() => {
 describe('WorkflowBuilder#finishConnection', () => {
   it('appends the new connection and selects it', () => {
     const instance = createInstance();
+    instance.selectedNode = 'node_1';
 
     instance.finishConnection(inputPointEvent('node_2'));
 
     expect(instance.connections).toEqual([{ from: 'node_1', to: 'node_2' }]);
     expect(instance.selectedConnection).toBe(0);
+    expect(instance.selectedNode).toBe(null);
+    expect(document.getElementById('propertiesContent').textContent).toContain('Select a node');
     expect(instance.render).toHaveBeenCalledTimes(1);
   });
 

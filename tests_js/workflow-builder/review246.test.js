@@ -38,6 +38,26 @@ describe('workflow builder review fixes', () => {
     expect(document.activeElement).toBe(host.querySelector('.node-header'));
   });
 
+  it('restores header focus after both drag renders', () => {
+    const instance = createInstance();
+    const node = { id: 'stage-1', type: 'stage', x: 0, y: 0, data: { name: 'Review' } };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    instance.transformWrapper = host;
+    instance.render = vi.fn(() => host.replaceChildren(instance.createNodeElement(node)));
+    instance.selectNode = vi.fn(() => instance.render());
+    instance.bringNodeToFront = vi.fn();
+    instance.clientToCanvas = (x, y) => [x, y];
+    instance.render();
+
+    host.querySelector('.node-header').dispatchEvent(new MouseEvent('mousedown', {
+      button: 0, bubbles: true, clientX: 10, clientY: 10,
+    }));
+    expect(document.activeElement).toBe(host.querySelector('.node-header'));
+    document.dispatchEvent(new MouseEvent('mouseup'));
+    expect(document.activeElement).toBe(host.querySelector('.node-header'));
+  });
+
   it('labels the delete action with the escaped node name', () => {
     const instance = createInstance();
     const element = instance.createNodeElement({

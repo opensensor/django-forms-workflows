@@ -1950,7 +1950,9 @@ export class WorkflowBuilder {
         let fieldOptions = '<option value="">-- Select a field --</option>';
         this.fields.forEach(f => {
             const selected = (data.count_field === f.field_name) ? 'selected' : '';
-            fieldOptions += `<option value="${f.field_name}" ${selected}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>`;
+            const escapedFieldNameAttr = this.escapeHtmlAttribute(f.field_name);
+            const escapedFieldNameText = this.escapeHtml(f.field_name);
+            fieldOptions += `<option value="${escapedFieldNameAttr}" ${selected}>${this.escapeHtml(f.field_label)} (${escapedFieldNameText})</option>`;
         });
 
         const targetSection = `

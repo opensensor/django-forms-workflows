@@ -1410,6 +1410,9 @@ export class WorkflowBuilder {
                                 <label class="form-label form-label-sm" for="${ruleInputId('email_field')}">Email Field</label>
                                 <select id="${ruleInputId('email_field')}" class="form-select form-select-sm" name="notification_rule_email_field"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
+                                    ${state.email_field && !this.fields.some(field => field.field_name === state.email_field) ? `
+                                        <option value="${this.escapeHtmlAttribute(state.email_field)}" selected>(missing field) ${this.escapeHtml(state.email_field)}</option>
+                                    ` : ''}
                                     <option value="">-- None --</option>
                                     ${this.fields.map(field => `
                                         <option value="${this.escapeHtmlAttribute(field.field_name)}" ${state.email_field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>

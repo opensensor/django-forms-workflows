@@ -1101,8 +1101,8 @@ export class WorkflowBuilder {
 
         const assigneeSection = `
             <div class="mb-3">
-                <label class="form-label"><strong>Assignee Field</strong></label>
-                <select class="form-select" name="assignee_form_field"
+                <label class="form-label" for="assignee_field_${this.escapeHtmlAttribute(node.id)}"><strong>Assignee Field</strong></label>
+                <select class="form-select" id="assignee_field_${this.escapeHtmlAttribute(node.id)}" name="assignee_form_field"
                         >
                     <option value="">-- Use approval groups --</option>
                     ${this.fields.map(f => `
@@ -1113,8 +1113,8 @@ export class WorkflowBuilder {
             </div>
 
             <div class="mb-3">
-                <label class="form-label"><strong>Lookup Type</strong></label>
-                <select class="form-select" name="assignee_lookup_type"
+                <label class="form-label" for="assignee_lookup_type_${this.escapeHtmlAttribute(node.id)}"><strong>Lookup Type</strong></label>
+                <select class="form-select" id="assignee_lookup_type_${this.escapeHtmlAttribute(node.id)}" name="assignee_lookup_type"
                         >
                     <option value="email" ${data.assignee_lookup_type === 'email' ? 'selected' : ''}>Email address</option>
                     <option value="username" ${data.assignee_lookup_type === 'username' ? 'selected' : ''}>Username</option>

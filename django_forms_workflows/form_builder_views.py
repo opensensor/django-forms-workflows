@@ -691,6 +691,18 @@ def _positive_integer_id(value):
     return None
 
 
+def _optional_field_reference_id(field_data, field_name):
+    raw_id = field_data.get(field_name)
+    if raw_id is None or raw_id == "":
+        return None
+    parsed_id = _positive_integer_id(raw_id)
+    if parsed_id is None:
+        raise FormBuilderPayloadError(
+            f'"{field_name}" must be a positive integer or null.'
+        )
+    return parsed_id
+
+
 @transaction.atomic
 def save_form_definition_from_builder_data(data, user, form_definition=None):
     """
@@ -904,6 +916,13 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
         field_id = field_data.get("id")
         old_id = field_id  # Store original ID for mapping
 
+        prefill_source_id = _optional_field_reference_id(
+            field_data, "prefill_source_id"
+        )
+        shared_option_list_id = _optional_field_reference_id(
+            field_data, "shared_option_list_id"
+        )
+
         # Extract field properties
         field_props = {
             "form_definition": form_definition,
@@ -923,8 +942,8 @@ def save_form_definition_from_builder_data(data, user, form_definition=None):
             "default_value": field_data.get("default_value", ""),
             "allowed_extensions": field_data.get("allowed_extensions", ""),
             "max_file_size_mb": field_data.get("max_file_size_mb"),
-            "prefill_source_config_id": field_data.get("prefill_source_id"),
-            "shared_option_list_id": field_data.get("shared_option_list_id") or None,
+            "prefill_source_config_id": prefill_source_id,
+            "shared_option_list_id": shared_option_list_id,
         }
 
         # Add validation properties

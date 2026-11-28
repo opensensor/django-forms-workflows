@@ -3842,6 +3842,56 @@ class TestSaveFormDefinitionFromBuilderData:
 
         assert not FormDefinition.objects.filter(slug="invalid-limit").exists()
 
+    @pytest.mark.parametrize(
+        "field_name", ["prefill_source_id", "shared_option_list_id"]
+    )
+    @pytest.mark.parametrize("invalid_value", [True, 1.5, 0, -1, "²", "9" * 5000])
+    def test_rejects_invalid_optional_field_reference(
+        self, user, field_name, invalid_value
+    ):
+        data = {
+            "name": "Invalid Reference",
+            "slug": "invalid-reference",
+            "fields": [
+                {
+                    "field_name": "answer",
+                    "field_label": "Answer",
+                    "field_type": "text",
+                    field_name: invalid_value,
+                }
+            ],
+        }
+
+        with pytest.raises(FormBuilderPayloadError, match=field_name):
+            save_form_definition_from_builder_data(data, user)
+
+        assert not FormDefinition.objects.filter(slug="invalid-reference").exists()
+
+    def test_accepts_numeric_shared_option_list_reference(self, user):
+        shared_list = SharedOptionList.objects.create(
+            name="Colors", slug="colors", items=["red"]
+        )
+        form_definition, _ = save_form_definition_from_builder_data(
+            {
+                "name": "Color Form",
+                "slug": "color-form",
+                "fields": [
+                    {
+                        "field_name": "color",
+                        "field_label": "Color",
+                        "field_type": "text",
+                        "shared_option_list_id": str(shared_list.pk),
+                    }
+                ],
+            },
+            user,
+        )
+
+        assert (
+            form_definition.fields.get(field_name="color").shared_option_list_id
+            == shared_list.pk
+        )
+
     def test_creates_a_new_form_definition(self, user):
         data = {
             "name": "New Form",

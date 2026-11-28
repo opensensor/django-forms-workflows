@@ -9,6 +9,12 @@
  * toggleMultiStepMode) that still live on the single FormBuilder instance.
  */
 export const apiMethods = {
+    updatePaymentCurrencyPrefix() {
+        const currency = document.getElementById('formPaymentCurrency');
+        const prefix = document.getElementById('formPaymentCurrencyPrefix');
+        if (currency && prefix) prefix.textContent = currency.value.toUpperCase();
+    },
+
     updatePreview() {
         // Debounce preview updates to avoid too many API calls
         if (this.previewTimeout) {
@@ -144,6 +150,7 @@ export const apiMethods = {
             if (data.payment_fixed_amount) document.getElementById('formPaymentFixedAmount').value = data.payment_fixed_amount;
             if (data.payment_amount_field) document.getElementById('formPaymentAmountField').value = data.payment_amount_field;
             document.getElementById('formPaymentCurrency').value = data.payment_currency || 'usd';
+            this.updatePaymentCurrencyPrefix();
             if (data.payment_description_template) document.getElementById('formPaymentDescription').value = data.payment_description_template;
 
             // Load submission controls

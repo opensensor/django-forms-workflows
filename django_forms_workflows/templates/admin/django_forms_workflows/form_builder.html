@@ -844,7 +844,7 @@
                             <div class="col-md-3">
                                 <label class="form-label small" for="formPaymentCurrency">Currency</label>
                                 <select class="form-select form-select-sm" id="formPaymentCurrency"
-                                        onchange="document.getElementById('formPaymentCurrencyPrefix').textContent = this.value.toUpperCase();">
+                                        onchange="formBuilder.updatePaymentCurrencyPrefix()">
                                     <option value="usd">USD</option>
                                     <option value="cad">CAD</option>
                                     <option value="eur">EUR</option>

@@ -1347,10 +1347,12 @@ export class WorkflowBuilder {
         const content = `
             ${(rules.length ? rules : [null]).map((rule, index) => {
                 const state = this.getNotificationRuleState(rule || {});
-                const selectedGroupIds = new Set((state.notify_groups || []).map(group => group.id));
+                const selectedGroupIds = new Set((state.notify_groups || []).map(group => String(group.id)));
+                const missingGroupIds = Array.from(selectedGroupIds).filter(groupId =>
+                    !this.groups.some(group => String(group.id) === groupId));
                 const ruleInputId = (name) => `notification_rule_${this.escapeHtmlAttribute(String(node.id))}_${index}_${name}`;
                 return `
-                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${state.rule_id || ''}" data-placeholder="${!rules.length}">
+                    <div class="card mb-3 notification-rule-card" data-rule-index="${index}" data-rule-id="${this.escapeHtmlAttribute(state.rule_id || '')}" data-placeholder="${!rules.length}">
                         <div class="card-body py-3">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6 class="mb-0">Rule ${index + 1}</h6>
@@ -1392,12 +1394,20 @@ export class WorkflowBuilder {
                             </div>
                             <div class="mb-3">
                                 <label class="form-label form-label-sm" for="${ruleInputId('event')}">Event</label>
-                                <select id="${ruleInputId('event')}" class="form-select form-select-sm" name="notification_rule_event"
+                                <select id="${ruleInputId('event')}" class="form-select form-select-sm ${state.event && !eventOptions.some(([value]) => value === state.event) ? 'is-invalid' : ''}" name="notification_rule_event"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
+                                    ${state.event && !eventOptions.some(([value]) => value === state.event) ? `
+                                        <option value="${this.escapeHtmlAttribute(state.event)}" selected>(unsupported event) ${this.escapeHtml(state.event)}</option>
+                                    ` : ''}
                                     ${eventOptions.map(([value, label]) => `
                                         <option value="${value}" ${state.event === value ? 'selected' : ''}>${label}</option>
                                     `).join('')}
                                 </select>
+                                ${state.event && !eventOptions.some(([value]) => value === state.event) ? `
+                                    <div class="invalid-feedback d-block">
+                                        The saved event "${this.escapeHtml(state.event)}" is no longer supported. Please choose a supported event.
+                                    </div>
+                                ` : ''}
                             </div>
                             <div class="mb-3">
                                 <label class="form-label form-label-sm" for="${ruleInputId('subject_template')}">Subject Template</label>
@@ -1430,10 +1440,14 @@ export class WorkflowBuilder {
                                 <label class="form-label form-label-sm" for="${ruleInputId('notify_groups')}">Additional Groups</label>
                                 <select id="${ruleInputId('notify_groups')}" class="form-select form-select-sm" name="notification_rule_notify_groups" multiple size="4"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
+                                    ${missingGroupIds.map(groupId => `
+                                        <option value="${this.escapeHtmlAttribute(String(groupId))}" selected>(missing group) ${this.escapeHtml(String(groupId))}</option>
+                                    `).join('')}
                                     ${this.groups.map(group => `
-                                        <option value="${group.id}" ${selectedGroupIds.has(group.id) ? 'selected' : ''}>${this.escapeHtml(group.name)}</option>
+                                        <option value="${this.escapeHtmlAttribute(group.id)}" ${selectedGroupIds.has(String(group.id)) ? 'selected' : ''}>${this.escapeHtml(group.name)}</option>
                                     `).join('')}
                                 </select>
+                                ${missingGroupIds.length ? `<div class="form-text text-warning">Some previously selected groups are unavailable and will be preserved until removed: ${this.escapeHtml(missingGroupIds.join(', '))}</div>` : ''}
                             </div>
                             <div class="row g-2 mb-3">
                                 <div class="col-12 col-md-6">
@@ -2509,10 +2523,13 @@ export class WorkflowBuilder {
             const stageNode = this.nodes.find(node => String(node.id) === stageNodeValue);
             const stageNodeId = stageNode ? stageNode.id : stageNodeValue;
             const eventValue = card.querySelector('select[name="notification_rule_event"]').value;
-            const notifyGroups = Array.from(card.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions).map(opt => ({
-                id: parseInt(opt.value),
-                name: opt.text,
-            }));
+            const notifyGroups = Array.from(card.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions).map(opt => {
+                const numericId = Number(opt.value);
+                return {
+                    id: Number.isSafeInteger(numericId) && numericId > 0 ? numericId : opt.value,
+                    name: opt.text,
+                };
+            });
             const isPlaceholder = card.dataset.placeholder === 'true';
             return {
                 rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
@@ -2870,6 +2887,14 @@ export class WorkflowBuilder {
                 if (rule.email_field && !fieldNames.has(rule.email_field)) {
                     this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references an unknown email field: ${rule.email_field}.`);
                 }
+                if (!['submission_received', 'approval_request', 'stage_decision', 'workflow_approved', 'workflow_denied', 'form_withdrawn'].includes(rule.event)) {
+                    this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} has an unsupported event: ${rule.event}.`);
+                }
+                (rule.notify_groups || []).forEach(group => {
+                    if (!this.groups.some(available => String(available.id) === String(group.id))) {
+                        this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references an unavailable group: ${group.id}.`);
+                    }
+                });
                 if (rule.stage_node_id !== null && rule.stage_node_id !== undefined &&
                     rule.stage_node_id !== '' && !stageNodeIds.has(rule.stage_node_id)) {
                     this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references a stage that is not present in the builder graph.`);

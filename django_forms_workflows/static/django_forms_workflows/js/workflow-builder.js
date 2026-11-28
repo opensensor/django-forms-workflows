@@ -1535,6 +1535,7 @@ export class WorkflowBuilder {
         state.conditions.forEach((condition, index) => {
             const operator = condition.operator || 'equals';
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
+            const hasSupportedOperator = operatorOptions.some(([value]) => value === operator);
             const fieldId = `${editorIdBase}-row-${index}-field`;
             const operatorId = `${editorIdBase}-row-${index}-operator`;
             const valueId = `${editorIdBase}-row-${index}-value`;
@@ -1554,6 +1555,11 @@ export class WorkflowBuilder {
                         <label class="form-label form-label-sm mb-1" for="${operatorId}">Operator</label>
                         <select class="form-select form-select-sm" id="${operatorId}" name="condition_operator"
                                 onchange="${onChangeHandler}">
+                            ${!hasSupportedOperator ? `
+                                <option value="${this.escapeHtmlAttribute(operator)}" selected data-invalid="true">
+                                    Unsupported operator: ${this.escapeHtml(operator)}
+                                </option>
+                            ` : ''}
                             ${operatorOptions.map(([value, label]) => `
                                 <option value="${value}" ${operator === value ? 'selected' : ''}>${label}</option>
                             `).join('')}

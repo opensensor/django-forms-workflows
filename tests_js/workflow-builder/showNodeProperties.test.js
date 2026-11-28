@@ -130,13 +130,15 @@ describe('WorkflowBuilder stage editor', () => {
           { id: 1, name: 'Reviewers', role: 'approval', position: 0 },
           { id: 1, name: 'Reviewers', role: 'validation', position: 1 },
         ],
-        approval_fields: [{ id: 2, field_name: 'notes' }],
+        approval_fields: [{ id: 2, field_name: 'notes', field_label: 'Notes', field_type: '', order: 0 }],
       },
     };
     instance.nodes = [node];
     instance.groups = [{ id: 1, name: 'Reviewers' }];
     instance.fields = [{ id: 2, field_name: 'notes', field_label: 'Notes' }];
     instance.selectNode = vi.fn();
+    const originalApprovalGroups = structuredClone(node.data.approval_groups);
+    const originalApprovalFields = structuredClone(node.data.approval_fields);
 
     instance.showNodeProperties(node);
     const input = document.querySelector('[name="name"]');
@@ -144,8 +146,8 @@ describe('WorkflowBuilder stage editor', () => {
     dispatchChange(input);
 
     expect(node.data.name).toBe('Updated');
-    expect(node.data.approval_groups.map(group => group.role)).toEqual(['approval', 'validation']);
-    expect(node.data.approval_fields.map(field => field.id)).toEqual([2]);
+    expect(node.data.approval_groups).toEqual(originalApprovalGroups);
+    expect(node.data.approval_fields).toEqual(originalApprovalFields);
   });
 
   it('selects an approval field restored by field name', () => {

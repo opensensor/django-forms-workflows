@@ -4578,6 +4578,7 @@ class TestFormBuilderViews:
 
         create_payload = copy.deepcopy(payload)
         create_payload.pop("id", None)
+        create_payload["slug"] = "staff-perm-created"
 
         before_form_count = FormDefinition.objects.count()
         denied_create = client.post(

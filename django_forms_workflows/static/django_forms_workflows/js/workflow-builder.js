@@ -2017,8 +2017,8 @@ export class WorkflowBuilder {
         node.data.label_template = container.querySelector('input[name="label_template"]').value;
         node.data.trigger = container.querySelector('select[name="trigger"]').value;
         node.data.data_prefix = container.querySelector('input[name="data_prefix"]').value;
-        node.data.detached = container.querySelector(`#sub_wf_detached_${nodeId}`).checked;
-        node.data.reject_parent = container.querySelector(`#sub_wf_reject_parent_${nodeId}`).checked;
+        node.data.detached = container.querySelector('input[name="detached"]')?.checked ?? false;
+        node.data.reject_parent = container.querySelector('input[name="reject_parent"]')?.checked ?? false;
 
         this.render();
         this.selectNode(nodeId);

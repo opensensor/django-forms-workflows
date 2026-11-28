@@ -15,6 +15,17 @@ export const apiMethods = {
         if (currency && prefix) prefix.textContent = currency.value.toUpperCase();
     },
 
+    updatePaymentAmountTypeVisibility() {
+        const amountType = document.getElementById('formPaymentAmountType');
+        const fixedGroup = document.getElementById('paymentFixedGroup');
+        const fieldGroup = document.getElementById('paymentFieldGroup');
+        if (!amountType || !fixedGroup || !fieldGroup) return;
+
+        const isField = amountType.value === 'field';
+        fixedGroup.style.display = isField ? 'none' : '';
+        fieldGroup.style.display = isField ? '' : 'none';
+    },
+
     updatePreview() {
         // Debounce preview updates to avoid too many API calls
         if (this.previewTimeout) {
@@ -155,6 +166,7 @@ export const apiMethods = {
                 providerSelect.appendChild(opt);
             });
             document.getElementById('formPaymentAmountType').value = data.payment_amount_type || 'fixed';
+            this.updatePaymentAmountTypeVisibility();
             if (data.payment_fixed_amount) document.getElementById('formPaymentFixedAmount').value = data.payment_fixed_amount;
             if (data.payment_amount_field) document.getElementById('formPaymentAmountField').value = data.payment_amount_field;
             document.getElementById('formPaymentCurrency').value = data.payment_currency || 'usd';

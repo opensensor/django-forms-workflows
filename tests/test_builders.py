@@ -5087,6 +5087,109 @@ class TestDocumentTemplateAPI:
         assert delete_resp.status_code == 200
         assert not DocumentTemplate.objects.filter(id=saved_id).exists()
 
+    def test_doc_templates_permissions_partial_form_only_denied(
+        self, client, django_user_model, form_definition
+    ):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        user = django_user_model.objects.create_user(
+            username="staff_form_only",
+            email="staff-form-only@example.com",
+            password="password",
+            is_staff=True,
+        )
+        form_content_type = ContentType.objects.get_for_model(FormDefinition)
+        form_perms = Permission.objects.filter(
+            content_type=form_content_type,
+            codename__in=["view_formdefinition", "change_formdefinition"],
+        )
+        user.user_permissions.add(*form_perms)
+
+        client.force_login(user)
+
+        list_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
+        list_resp = client.get(list_url)
+        assert list_resp.status_code in (302, 403)
+
+        save_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        before_count = DocumentTemplate.objects.filter(form_definition=form_definition).count()
+        save_resp = client.post(
+            save_url,
+            data=json.dumps({"name": "ShouldNotSave", "html_content": "<p>no</p>"}),
+            content_type="application/json",
+        )
+        assert save_resp.status_code in (302, 403)
+        after_count = DocumentTemplate.objects.filter(form_definition=form_definition).count()
+        assert after_count == before_count
+
+    def test_doc_templates_permissions_partial_doc_only_denied_and_no_write_changes(
+        self, client, django_user_model, form_definition
+    ):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        user = django_user_model.objects.create_user(
+            username="staff_doc_only",
+            email="staff-doc-only@example.com",
+            password="password",
+            is_staff=True,
+        )
+        doc_content_type = ContentType.objects.get_for_model(DocumentTemplate)
+        doc_perms = Permission.objects.filter(
+            content_type=doc_content_type,
+            codename__in=[
+                "view_documenttemplate",
+                "add_documenttemplate",
+                "change_documenttemplate",
+                "delete_documenttemplate",
+            ],
+        )
+        user.user_permissions.add(*doc_perms)
+
+        template = DocumentTemplate.objects.create(
+            form_definition=form_definition,
+            name="OriginalName",
+            html_content="<p>original</p>",
+        )
+
+        client.force_login(user)
+
+        list_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/")
+        list_resp = client.get(list_url)
+        assert list_resp.status_code in (302, 403)
+
+        save_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        save_resp = client.post(
+            save_url,
+            data=json.dumps({"name": "ShouldNotCreate", "html_content": "<p>no</p>"}),
+            content_type="application/json",
+        )
+        assert save_resp.status_code in (302, 403)
+        assert not DocumentTemplate.objects.filter(
+            form_definition=form_definition, name="ShouldNotCreate"
+        ).exists()
+
+        update_url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")
+        update_resp = client.post(
+            update_url,
+            data=json.dumps(
+                {"id": template.id, "name": "ChangedName", "html_content": "<p>changed</p>"}
+            ),
+            content_type="application/json",
+        )
+        assert update_resp.status_code in (302, 403)
+        template.refresh_from_db()
+        assert template.name == "OriginalName"
+        assert template.html_content == "<p>original</p>"
+
+        delete_url = _fb_url(
+            f"builder/api/doc-templates/{form_definition.id}/delete/{template.id}/"
+        )
+        delete_resp = client.post(delete_url)
+        assert delete_resp.status_code in (302, 403)
+        assert DocumentTemplate.objects.filter(id=template.id).exists()
+
     def test_save_template_requires_name(self, client, superuser, form_definition):
         client.force_login(superuser)
         url = _fb_url(f"builder/api/doc-templates/{form_definition.id}/save/")

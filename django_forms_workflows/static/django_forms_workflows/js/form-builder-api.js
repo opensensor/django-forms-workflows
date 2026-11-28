@@ -15,6 +15,17 @@ export const apiMethods = {
         if (currency && prefix) prefix.textContent = currency.value.toUpperCase();
     },
 
+    updatePaymentAmountTypeVisibility() {
+        const amountType = document.getElementById('formPaymentAmountType');
+        const fixedGroup = document.getElementById('paymentFixedGroup');
+        const fieldGroup = document.getElementById('paymentFieldGroup');
+        if (!amountType || !fixedGroup || !fieldGroup) return;
+
+        const isField = amountType.value === 'field';
+        fixedGroup.style.display = isField ? 'none' : '';
+        fieldGroup.style.display = isField ? '' : 'none';
+    },
+
     updatePreview() {
         // Debounce preview updates to avoid too many API calls
         if (this.previewTimeout) {
@@ -155,6 +166,7 @@ export const apiMethods = {
                 providerSelect.appendChild(opt);
             });
             document.getElementById('formPaymentAmountType').value = data.payment_amount_type || 'fixed';
+            this.updatePaymentAmountTypeVisibility();
             if (data.payment_fixed_amount) document.getElementById('formPaymentFixedAmount').value = data.payment_fixed_amount;
             if (data.payment_amount_field) document.getElementById('formPaymentAmountField').value = data.payment_amount_field;
             document.getElementById('formPaymentCurrency').value = data.payment_currency || 'usd';
@@ -259,6 +271,12 @@ export const apiMethods = {
             fields: this.fields
         };
 
+        // Prevent concurrent save requests from overlapping
+        if (this._saveInFlight) {
+            return;
+        }
+        this._saveInFlight = true;
+
         // Show saving status
         const saveBtn = document.getElementById('btnSave');
         const originalText = saveBtn.innerHTML;
@@ -322,6 +340,7 @@ export const apiMethods = {
             alert('Failed to save form: ' + error.message);
             document.getElementById('saveStatus').textContent = 'Error saving';
         } finally {
+            this._saveInFlight = false;
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
         }
@@ -338,7 +357,7 @@ export const apiMethods = {
 
             if (data.success && data.templates.length > 0) {
                 // Group templates by category
-                const grouped = {};
+                const grouped = Object.create(null);
                 data.templates.forEach(template => {
                     if (!grouped[template.category_display]) {
                         grouped[template.category_display] = [];

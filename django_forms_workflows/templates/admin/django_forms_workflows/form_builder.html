@@ -825,7 +825,7 @@
                             <div class="col-md-4">
                                 <label class="form-label small" for="formPaymentAmountType">Amount Type</label>
                                 <select class="form-select form-select-sm" id="formPaymentAmountType"
-                                        onchange="document.getElementById('paymentFixedGroup').style.display = this.value==='fixed' ? '' : 'none'; document.getElementById('paymentFieldGroup').style.display = this.value==='field' ? '' : 'none';">
+                                        onchange="formBuilder.updatePaymentAmountTypeVisibility()">
                                     <option value="fixed">Fixed Amount</option>
                                     <option value="field">From Form Field</option>
                                 </select>

@@ -976,7 +976,6 @@ export class WorkflowBuilder {
                 .filter(field => field && field.id != null && field.field_name)
                 .map(field => [field.field_name, String(field.id)])
         );
-        const unresolvedApprovalFieldNames = new Set();
         const selectedApprovalFieldIds = new Set(
             (data.approval_fields || [])
                 .map(field => {
@@ -986,7 +985,6 @@ export class WorkflowBuilder {
                         const resolvedId = approvalFieldIdByName.get(field.field_name);
                         if (resolvedId != null) return resolvedId;
                         const unresolvedKey = `name:${field.field_name}`;
-                        unresolvedApprovalFieldNames.add(field.field_name);
                         return unresolvedKey;
                     }
                     return null;
@@ -2574,10 +2572,15 @@ export class WorkflowBuilder {
                 .filter(entry => entry && entry.id != null)
                 .map(entry => [String(entry.id), entry])
         );
+        const existingByName = new Map(
+            (existingFields || [])
+                .filter(entry => entry && entry.id == null && entry.field_name)
+                .map(entry => [`name:${entry.field_name}`, entry])
+        );
 
         return Array.from(fieldSelect.selectedOptions).map(option => {
             const selectedId = option.value;
-            const existing = existingById.get(selectedId);
+            const existing = existingById.get(selectedId) || existingByName.get(selectedId);
             const field = this.fields.find(entry => String(entry.id) === selectedId);
 
             if (existing && field) {

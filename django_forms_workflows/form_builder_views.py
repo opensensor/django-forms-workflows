@@ -1238,21 +1238,29 @@ def form_builder_preview(request):
                         "step_number": field_data.get("step_number", 1),
                     }
 
-                    # Add optional fields only if they have values
-                    if field_data.get("prefill_source_id"):
-                        field_kwargs["prefill_source_config_id"] = field_data.get(
-                            "prefill_source_id"
-                        )
-
-                    if field_data.get("shared_option_list_id"):
-                        field_kwargs["shared_option_list_id"] = field_data.get(
-                            "shared_option_list_id"
-                        )
-
-                    if field_data.get("workflow_stage_id"):
-                        field_kwargs["workflow_stage_id"] = field_data.get(
-                            "workflow_stage_id"
-                        )
+                    # Add optional FK fields only when they are valid positive integers
+                    reference_fields = (
+                        ("prefill_source_id", "prefill_source_config_id"),
+                        ("shared_option_list_id", "shared_option_list_id"),
+                        ("workflow_stage_id", "workflow_stage_id"),
+                    )
+                    for source_key, target_key in reference_fields:
+                        raw_reference = field_data.get(source_key)
+                        if raw_reference in (None, ""):
+                            continue
+                        if (
+                            isinstance(raw_reference, bool)
+                            or not isinstance(raw_reference, int)
+                            or raw_reference <= 0
+                        ):
+                            return JsonResponse(
+                                {
+                                    "success": False,
+                                    "error": f"Invalid {source_key}: expected a positive integer",
+                                },
+                                status=400,
+                            )
+                        field_kwargs[target_key] = raw_reference
 
                     if validation.get("min_value") is not None:
                         field_kwargs["min_value"] = validation.get("min_value")

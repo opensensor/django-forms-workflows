@@ -3021,6 +3021,9 @@ class TestWorkflowBuilderViews:
         )
 
         assert response.status_code == 200
+        workflow = form_definition.workflows.get()
+        visual = convert_workflow_to_visual(workflow, form_definition)
+        assert visual["connections"] == [{"from": "start", "to": "end"}]
 
     def test_save_rejects_connection_to_unknown_node(
         self, client, superuser, form_definition

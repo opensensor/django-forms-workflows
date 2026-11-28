@@ -66,7 +66,9 @@ describe('notification rule controls', () => {
     expect(controls.length).toBeGreaterThan(2);
     expect(new Set(controls.map(control => control.id)).size).toBe(controls.length);
     controls.forEach(control => {
-      expect(wrapper.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
+      const rule = control.closest('.notification-rule');
+      expect(rule).not.toBeNull();
+      expect(rule.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
     });
   });
 
@@ -77,7 +79,9 @@ describe('notification rule controls', () => {
     expect(boxes).toHaveLength(6);
     expect(new Set(boxes.map(box => box.id)).size).toBe(boxes.length);
     boxes.forEach(box => {
-      expect(wrapper.querySelector(`label[for="${box.id}"]`)).not.toBeNull();
+      const rule = box.closest('.notification-rule');
+      expect(rule).not.toBeNull();
+      expect(rule.querySelector(`label[for="${box.id}"]`)).not.toBeNull();
     });
   });
 
@@ -88,7 +92,9 @@ describe('notification rule controls', () => {
       expect(controls).toHaveLength(2);
       expect(new Set(controls.map(control => control.id)).size).toBe(2);
       controls.forEach(control => {
-        expect(wrapper.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
+        const rule = control.closest('.notification-rule');
+        expect(rule).not.toBeNull();
+        expect(rule.querySelector(`label[for="${control.id}"]`)).not.toBeNull();
       });
     }
   });

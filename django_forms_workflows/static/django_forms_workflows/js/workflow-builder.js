@@ -1714,8 +1714,17 @@ export class WorkflowBuilder {
             return '#';
         }
 
+        const trimmedUrl = url.trim();
+        if (!trimmedUrl) {
+            return '#';
+        }
+
+        if (trimmedUrl.startsWith('#')) {
+            return trimmedUrl;
+        }
+
         try {
-            const parsed = new URL(url, window.location.origin);
+            const parsed = new URL(trimmedUrl, window.location.origin);
             const isHttp = parsed.protocol === 'http:' || parsed.protocol === 'https:';
             const isSameOrigin = parsed.origin === window.location.origin;
             const hasProtocolRelativePath = parsed.pathname.startsWith('//');

@@ -2537,6 +2537,7 @@ export class WorkflowBuilder {
         const rules = [...(node.data.notification_rules || [])];
         const rule = this.getNotificationRuleState(rules[ruleIndex] || {});
         const state = this.getNormalizedTriggerConditions(rule.conditions);
+        if (state.malformed) return;
         state.conditions.push({ field: '', operator: 'equals', value: '' });
         rules[ruleIndex] = { ...rule, conditions: state };
         node.data.notification_rules = rules;
@@ -2570,6 +2571,7 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const state = this.getNormalizedTriggerConditions(node.data.trigger_conditions);
+        if (state.malformed) return;
         state.conditions.push({ field: '', operator: 'equals', value: '' });
         node.data.trigger_conditions = state;
         this.selectNode(nodeId);

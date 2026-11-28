@@ -718,16 +718,16 @@
                         </h6>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small">Redirect URL <span class="text-muted">(optional)</span></label>
+                        <label class="form-label small" for="formSuccessRedirectUrl">Redirect URL <span class="text-muted">(optional)</span></label>
                         <input type="url" class="form-control form-control-sm" id="formSuccessRedirectUrl" placeholder="https://example.com/thank-you">
                         <small class="text-muted">Redirect here after submission. Supports <code>{field_name}</code> tokens.</small>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small">Conditional Redirects <span class="text-muted">(JSON, optional)</span></label>
+                        <label class="form-label small" for="formSuccessRedirectRules">Conditional Redirects <span class="text-muted">(JSON, optional)</span></label>
                         <input type="text" class="form-control form-control-sm font-monospace" id="formSuccessRedirectRules" placeholder='[{"field":"...", "operator":"equals", "value":"...", "url":"..."}]'>
                     </div>
                     <div class="col-12">
-                        <label class="form-label small">Custom Success Message <span class="text-muted">(HTML, optional)</span></label>
+                        <label class="form-label small" for="formSuccessMessage">Custom Success Message <span class="text-muted">(HTML, optional)</span></label>
                         <textarea class="form-control form-control-sm" id="formSuccessMessage" rows="3" placeholder="Thank you, {first_name}! Your {form_type} request has been submitted."></textarea>
                         <small class="text-muted">Shown after submission. Use <code>{field_name}</code> for answer piping. Leave blank for default.</small>
                     </div>
@@ -1220,7 +1220,8 @@
                     const editBtn = document.createElement('button');
                     editBtn.type = 'button';
                     editBtn.className = 'btn btn-sm btn-outline-primary';
-                    editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+                    editBtn.setAttribute('aria-label', `Edit document template${tpl.name ? `: ${tpl.name}` : ''}`);
+                    editBtn.innerHTML = '<i class="bi bi-pencil" aria-hidden="true"></i>';
                     editBtn.addEventListener('click', function() {
                         window.editDocTemplate(tpl.id);
                     });
@@ -1228,7 +1229,8 @@
                     const deleteBtn = document.createElement('button');
                     deleteBtn.type = 'button';
                     deleteBtn.className = 'btn btn-sm btn-outline-danger';
-                    deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                    deleteBtn.setAttribute('aria-label', `Delete document template${tpl.name ? `: ${tpl.name}` : ''}`);
+                    deleteBtn.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i>';
                     deleteBtn.addEventListener('click', function() {
                         window.deleteDocTemplate(tpl.id, tpl.name);
                     });
@@ -1250,7 +1252,7 @@
                 document.getElementById('docTemplatePageSize').value = tpl.page_size;
                 document.getElementById('docTemplateIsDefault').checked = tpl.is_default;
                 document.getElementById('docTemplateIsActive').checked = tpl.is_active;
-                new bootstrap.Modal(document.getElementById('docTemplateModal')).show();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('docTemplateModal')).show();
             };
 
             window.deleteDocTemplate = async function(id, name) {
@@ -1294,10 +1296,12 @@
                 document.getElementById('docTemplatePageSize').value = 'letter';
                 document.getElementById('docTemplateIsDefault').checked = false;
                 document.getElementById('docTemplateIsActive').checked = true;
-                new bootstrap.Modal(document.getElementById('docTemplateModal')).show();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('docTemplateModal')).show();
             });
 
-            document.getElementById('btnSaveDocTemplate').addEventListener('click', async () => {
+            document.getElementById('btnSaveDocTemplate').addEventListener('click', async (event) => {
+                const saveBtn = event.currentTarget;
+                if (saveBtn.dataset.submitting === 'true') return;
                 if (!formBuilderData.formId || !docUrls.docTemplateSave) {
                     alert('Please save the form before saving document templates.');
                     return;
@@ -1313,6 +1317,8 @@
                     is_active: document.getElementById('docTemplateIsActive').checked,
                 };
                 if (payload.id) payload.id = parseInt(payload.id);
+                saveBtn.dataset.submitting = 'true';
+                saveBtn.disabled = true;
                 try {
                     const resp = await fetch(docUrls.docTemplateSave, {
                         method: 'POST',
@@ -1325,6 +1331,10 @@
                         loadDocTemplates();
                     } else { alert(data.error || 'Error saving template'); }
                 } catch (e) { alert('Error: ' + e.message); }
+                finally {
+                    delete saveBtn.dataset.submitting;
+                    saveBtn.disabled = false;
+                }
             });
 
             // Load templates on page load (only for existing forms)

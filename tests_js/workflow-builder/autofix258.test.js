@@ -31,7 +31,7 @@ describe('notification rule controls', () => {
 
   it('associates each scope, event, and subject label with its own rule', () => {
     const { wrapper } = renderRules([{ event: 'approval_request' }, { event: 'stage_decision' }]);
-    for (const name of ['stage', 'event', 'subject_template', 'email_field', 'static_emails']) {
+    for (const name of ['stage', 'event', 'subject_template', 'email_field', 'static_emails', 'notify_groups']) {
       const controls = [...wrapper.querySelectorAll(`[name="notification_rule_${name}"]`)];
       expect(controls).toHaveLength(2);
       expect(new Set(controls.map(control => control.id)).size).toBe(2);
@@ -57,6 +57,22 @@ describe('notification rule controls', () => {
     event.value = 'stage_decision';
 
     expect(builder.readNotificationRulesFromPanel(wrapper)[0].event).toBe('stage_decision');
+  });
+});
+
+describe('approval properties', () => {
+  it('refreshes the panel when the approval type changes', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
+    const node = { id: 'approval-1', type: 'approval', data: { approval_type: 'manager' } };
+    builder.nodes = [node];
+    builder.render = vi.fn();
+    builder.selectNode = vi.fn();
+
+    builder.updateNodeProperty(node.id, 'approval_type', 'group');
+
+    expect(node.data.approval_type).toBe('group');
+    expect(builder.selectNode).toHaveBeenCalledWith(node.id);
   });
 });
 

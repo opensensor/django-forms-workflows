@@ -1095,14 +1095,24 @@ export class WorkflowBuilder {
             </div>
         `;
 
+        const availableFieldIds = new Set(this.fields.map(field => String(field.id)));
+        let unavailableApprovalFieldOptions = '';
+        selectedApprovalFieldIds.forEach(fieldId => {
+            if (!availableFieldIds.has(fieldId)) {
+                const safeFieldId = this.escapeHtmlAttribute(fieldId);
+                unavailableApprovalFieldOptions += `<option value="${safeFieldId}" selected data-unavailable="true">Unavailable field (ID: ${this.escapeHtml(String(fieldId))})</option>`;
+            }
+        });
+
         const approvalFieldsSection = `
             <div class="mb-3">
                 <label class="form-label" for="stage_fields_${this.escapeHtmlAttribute(node.id)}"><strong>Fields shown during this stage</strong></label>
                 <select class="form-select builder-multiselect-lg" id="stage_fields_${this.escapeHtmlAttribute(node.id)}" name="approval_fields" multiple size="6"
                         >
                     ${this.fields.map(field => `
-                        <option value="${field.id}" ${selectedApprovalFieldIds.has(String(field.id)) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
+                        <option value="${this.escapeHtmlAttribute(field.id)}" ${selectedApprovalFieldIds.has(String(field.id)) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                     `).join('')}
+                    ${unavailableApprovalFieldOptions}
                 </select>
                 <small class="text-muted d-block mt-1">Selected fields become editable approval-step fields for this stage only.</small>
             </div>
@@ -2306,7 +2316,10 @@ export class WorkflowBuilder {
             nodeId,
             node.data.approval_groups || []
         );
-        node.data.approval_fields = this.readStageApprovalFieldsFromPanel(container, nodeId);
+        node.data.approval_fields = this.readStageApprovalFieldsFromPanel(
+            container,
+            node.data.approval_fields || []
+        );
         node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
 
         this.selectNode(nodeId);
@@ -2543,23 +2556,25 @@ export class WorkflowBuilder {
         }));
     }
 
-    readStageApprovalFieldsFromPanel(container, nodeId) {
+    readStageApprovalFieldsFromPanel(container, existingFields) {
         const fieldSelect = container.querySelector('[name="approval_fields"]');
         if (!fieldSelect) {
             return [];
         }
 
         return Array.from(fieldSelect.selectedOptions).map(option => {
-            const fieldId = parseInt(option.value);
-            const field = this.fields.find(entry => entry.id === fieldId);
+            const field = this.fields.find(entry => String(entry.id) === option.value);
+            if (!field) {
+                return existingFields.find(entry => entry && String(entry.id) === option.value);
+            }
             return {
-                id: fieldId,
-                field_name: field?.field_name || option.text,
-                field_label: field?.field_label || option.text,
-                field_type: field?.field_type || '',
-                order: field?.order ?? 0,
+                id: field.id,
+                field_name: field.field_name || option.text,
+                field_label: field.field_label || option.text,
+                field_type: field.field_type || '',
+                order: field.order ?? 0,
             };
-        });
+        }).filter(Boolean);
     }
 
     moveStageApprovalGroup(nodeId, groupId, direction, groupRole = null) {
@@ -2567,9 +2582,11 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const groups = this.getNormalizedStageApprovalGroups(node.data.approval_groups || []);
+        const normalizedGroupId = groupId == null ? '' : String(groupId);
         const currentIndex = groups.findIndex(group => {
             const normalizedRole = group.role || 'approval';
-            return group.id === groupId && (groupRole === null || normalizedRole === groupRole);
+            return String(group.id) === normalizedGroupId
+                && (groupRole === null || normalizedRole === groupRole);
         });
         const targetIndex = currentIndex + direction;
         if (currentIndex < 0 || targetIndex < 0 || targetIndex >= groups.length) {

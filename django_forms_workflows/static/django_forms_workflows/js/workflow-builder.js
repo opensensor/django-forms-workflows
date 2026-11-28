@@ -2595,8 +2595,25 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const container = document.getElementById('propertiesContent');
+        if (!container) return;
+
+        const activeElement = document.activeElement;
+        const shouldRestoreFocus =
+            activeElement &&
+            typeof container.contains === 'function' &&
+            container.contains(activeElement) &&
+            activeElement.id;
+        const activeElementId = shouldRestoreFocus ? activeElement.id : null;
+
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
         this.selectNode(nodeId);
+
+        if (activeElementId) {
+            const replacement = document.getElementById(activeElementId);
+            if (replacement && typeof replacement.focus === 'function') {
+                replacement.focus();
+            }
+        }
     }
 
     addTriggerCondition(nodeId) {

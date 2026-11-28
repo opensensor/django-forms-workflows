@@ -2724,7 +2724,7 @@ class TestWorkflowBuilderViews:
         )
         assert allowed_save.status_code == 200
         allowed_save_data = allowed_save.json()
-        assert allowed_save_data.get("ok", True) is True
+        assert allowed_save_data["success"] is True
         final_count = WorkflowDefinition.objects.filter(
             form_definition=form_definition
         ).count()

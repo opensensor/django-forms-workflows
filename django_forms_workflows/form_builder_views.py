@@ -1219,9 +1219,9 @@ def form_builder_preview(request):
                         field_kwargs["max_length"] = validation.get("max_length")
 
                     # Conditional rules
-                    cond_rules = conditional.get(
-                        "conditional_rules", field_data.get("conditional_rules")
-                    )
+                    cond_rules = conditional.get("conditional_rules")
+                    if cond_rules is None:
+                        cond_rules = field_data.get("conditional_rules")
                     if cond_rules:
                         field_kwargs["conditional_rules"] = cond_rules
 

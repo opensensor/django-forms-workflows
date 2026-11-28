@@ -2527,10 +2527,12 @@ export class WorkflowBuilder {
                 const fieldId = field?.id;
                 const fieldName = field?.field_name;
                 const label = field?.field_label || fieldName || fieldId;
-                const resolvedField = (this.fields || []).find(candidate =>
-                    (fieldId && candidate.id === fieldId) ||
-                    (fieldName && (candidate.name === fieldName || candidate.field_name === fieldName))
-                );
+                const fieldCandidates = this.fields || [];
+                const resolvedField = fieldId
+                    ? fieldCandidates.find(candidate => candidate.id === fieldId)
+                    : fieldCandidates.find(candidate =>
+                        fieldName && (candidate.name === fieldName || candidate.field_name === fieldName)
+                    );
                 const resolvedFieldId = resolvedField?.id;
 
                 if (!resolvedFieldId) {

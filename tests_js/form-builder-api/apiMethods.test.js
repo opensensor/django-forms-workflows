@@ -420,7 +420,7 @@ describe('apiMethods.loadTemplate', () => {
     const first = ctx.loadTemplate('old');
     await ctx.loadTemplate('new');
     rejectFirst(new Error('stale request failed'));
-    await first.catch(() => {});
+    await expect(first).resolves.toBeUndefined();
 
     expect(ctx.fields).toEqual([{ field_name: 'new' }]);
     expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('Failed to load template'));

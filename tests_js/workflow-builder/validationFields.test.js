@@ -14,7 +14,7 @@ describe('approval field validation', () => {
       {
         id: 'stage-1', type: 'stage', data: {
           name: 'First', requires_manager_approval: true,
-          approval_fields: [{ id: 7, field_name: 'notes' }],
+          approval_fields: [{ id: 7 }],
         },
       },
       {

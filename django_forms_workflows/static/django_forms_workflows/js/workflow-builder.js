@@ -2121,19 +2121,37 @@ export class WorkflowBuilder {
 
         const operatorElement = editorElement.querySelector('select[name="condition_group_operator"]');
         const rows = Array.from(editorElement.querySelectorAll('.trigger-condition-row'));
-        const conditions = rows.map(row => {
-            const operator = row.querySelector('select[name="condition_operator"]').value;
-            const condition = {
-                field: row.querySelector('select[name="condition_field"]').value,
-                operator,
-            };
-            if (!['is_empty', 'not_empty'].includes(operator)) {
-                condition.value = row.querySelector('input[name="condition_value"]').value;
-            }
-            return condition;
-        });
+        const conditions = rows
+            .map(row => {
+                const fieldElement = row.querySelector('select[name="condition_field"]');
+                const operatorSelect = row.querySelector('select[name="condition_operator"]');
+                const valueInput = row.querySelector('input[name="condition_value"]');
 
-        if (!rows.length) {
+                const field = fieldElement ? fieldElement.value : '';
+                const operator = operatorSelect ? operatorSelect.value : '';
+
+                if (!field || !operator) {
+                    return null;
+                }
+
+                const condition = {
+                    field,
+                    operator,
+                };
+
+                if (!['is_empty', 'not_empty'].includes(operator)) {
+                    const value = valueInput ? valueInput.value : '';
+                    if (!value) {
+                        return null;
+                    }
+                    condition.value = value;
+                }
+
+                return condition;
+            })
+            .filter(condition => condition !== null);
+
+        if (!rows.length || !conditions.length) {
             return null;
         }
 

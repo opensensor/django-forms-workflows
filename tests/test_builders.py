@@ -5541,9 +5541,12 @@ class TestSharedOptionListAPI:
     def test_staff_list_requires_view_permission(self, client, django_user_model):
         from django.contrib.auth.models import Permission
         from django.contrib.contenttypes.models import ContentType
+
         from django_forms_workflows.models import SharedOptionList
 
-        SharedOptionList.objects.create(name="Departments", slug="departments", items=["HR"])
+        SharedOptionList.objects.create(
+            name="Departments", slug="departments", items=["HR"]
+        )
         staff_user = django_user_model.objects.create_user(
             username="staff_no_view_perm",
             password="x",
@@ -5555,7 +5558,9 @@ class TestSharedOptionListAPI:
         assert resp.status_code in (302, 403)
 
         ct = ContentType.objects.get_for_model(SharedOptionList)
-        view_perm = Permission.objects.get(codename="view_sharedoptionlist", content_type=ct)
+        view_perm = Permission.objects.get(
+            codename="view_sharedoptionlist", content_type=ct
+        )
         staff_user.user_permissions.add(view_perm)
 
         resp = client.get(url)
@@ -5568,6 +5573,7 @@ class TestSharedOptionListAPI:
     ):
         from django.contrib.auth.models import Permission
         from django.contrib.contenttypes.models import ContentType
+
         from django_forms_workflows.models import SharedOptionList
 
         staff_user = django_user_model.objects.create_user(
@@ -5587,7 +5593,9 @@ class TestSharedOptionListAPI:
         assert not SharedOptionList.objects.filter(name="Guarded Staff Create").exists()
 
         ct = ContentType.objects.get_for_model(SharedOptionList)
-        add_perm = Permission.objects.get(codename="add_sharedoptionlist", content_type=ct)
+        add_perm = Permission.objects.get(
+            codename="add_sharedoptionlist", content_type=ct
+        )
         staff_user.user_permissions.add(add_perm)
 
         resp = client.post(
@@ -5603,6 +5611,7 @@ class TestSharedOptionListAPI:
     ):
         from django.contrib.auth.models import Permission
         from django.contrib.contenttypes.models import ContentType
+
         from django_forms_workflows.models import SharedOptionList
 
         ol = SharedOptionList.objects.create(
@@ -5618,7 +5627,9 @@ class TestSharedOptionListAPI:
 
         resp = client.post(
             url,
-            data=json.dumps({"id": ol.id, "name": "Renamed Departments", "items": ["HR", "IT"]}),
+            data=json.dumps(
+                {"id": ol.id, "name": "Renamed Departments", "items": ["HR", "IT"]}
+            ),
             content_type="application/json",
         )
         assert resp.status_code in (302, 403)
@@ -5627,12 +5638,16 @@ class TestSharedOptionListAPI:
         assert ol.items == ["HR"]
 
         ct = ContentType.objects.get_for_model(SharedOptionList)
-        change_perm = Permission.objects.get(codename="change_sharedoptionlist", content_type=ct)
+        change_perm = Permission.objects.get(
+            codename="change_sharedoptionlist", content_type=ct
+        )
         staff_user.user_permissions.add(change_perm)
 
         resp = client.post(
             url,
-            data=json.dumps({"id": ol.id, "name": "Renamed Departments", "items": ["HR", "IT"]}),
+            data=json.dumps(
+                {"id": ol.id, "name": "Renamed Departments", "items": ["HR", "IT"]}
+            ),
             content_type="application/json",
         )
         assert resp.status_code == 200
@@ -5645,6 +5660,7 @@ class TestSharedOptionListAPI:
     ):
         from django.contrib.auth.models import Permission
         from django.contrib.contenttypes.models import ContentType
+
         from django_forms_workflows.models import SharedOptionList
 
         ol = SharedOptionList.objects.create(
@@ -5656,25 +5672,19 @@ class TestSharedOptionListAPI:
             is_staff=True,
         )
         client.force_login(staff_user)
-        url = _fb_url("builder/api/shared-lists/delete/")
+        url = _fb_url(f"builder/api/shared-lists/delete/{ol.id}/")
 
-        resp = client.post(
-            url,
-            data=json.dumps({"id": ol.id}),
-            content_type="application/json",
-        )
+        resp = client.post(url)
         assert resp.status_code in (302, 403)
         assert SharedOptionList.objects.filter(id=ol.id).exists()
 
         ct = ContentType.objects.get_for_model(SharedOptionList)
-        delete_perm = Permission.objects.get(codename="delete_sharedoptionlist", content_type=ct)
+        delete_perm = Permission.objects.get(
+            codename="delete_sharedoptionlist", content_type=ct
+        )
         staff_user.user_permissions.add(delete_perm)
 
-        resp = client.post(
-            url,
-            data=json.dumps({"id": ol.id}),
-            content_type="application/json",
-        )
+        resp = client.post(url)
         assert resp.status_code == 200
         assert not SharedOptionList.objects.filter(id=ol.id).exists()
 

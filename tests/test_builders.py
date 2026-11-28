@@ -4748,6 +4748,14 @@ class TestDocumentTemplateAPI:
         assert data["success"] is True
         assert data["id"] is not None
 
+        template = DocumentTemplate.objects.get(id=data["id"])
+        assert template.form_definition_id == form_definition.id
+        assert template.name == "Test Cert"
+        assert template.html_content == "<h1>{form_name}</h1>"
+        assert template.page_size == "a4"
+        assert template.is_default is True
+        assert template.is_active is True
+
     def test_save_requires_staff(self, client, user, form_definition):
         from django_forms_workflows.models import DocumentTemplate
 

@@ -2452,6 +2452,9 @@ class TestConvertVisualToWorkflow:
 
         action.refresh_from_db()
         assert action.description == "Custom explanation"
+        assert list(form_definition.post_actions.values_list("id", flat=True)) == [
+            action.id
+        ]
 
     @pytest.mark.parametrize("node_name", ["Notice", " Notice "])
     def test_legacy_email_node_preserves_description_by_name(

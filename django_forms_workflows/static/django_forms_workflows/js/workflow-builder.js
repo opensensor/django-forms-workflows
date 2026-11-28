@@ -824,12 +824,11 @@ export class WorkflowBuilder {
         this.selectedNode = nodeId;
         this.selectedConnection = null;
         const node = this.nodes.find(n => n.id === nodeId);
-        if (node) {
-            this.refreshValidationState();
-            this.showNodeProperties(node);
-        }
         this.updateConnectionSelectionUI();
         this.render();
+        if (node) {
+            this.showNodeProperties(node);
+        }
     }
 
     clearSelectionState() {
@@ -2427,7 +2426,13 @@ export class WorkflowBuilder {
         });
 
         if (!rows.length) {
-            return null;
+            if (!operatorElement || ['AND', 'OR'].includes(operatorElement.value)) {
+                return null;
+            }
+            return {
+                operator: operatorElement.value,
+                conditions: [],
+            };
         }
 
         return {
@@ -2745,7 +2750,7 @@ export class WorkflowBuilder {
     }
 
     addNodeIssue(result, nodeId, severity, message) {
-        if (!nodeId) return;
+        if (nodeId == null) return;
         if (!result.nodeIssues[nodeId]) {
             result.nodeIssues[nodeId] = { errors: [], warnings: [] };
         }

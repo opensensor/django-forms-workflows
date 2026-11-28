@@ -70,7 +70,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.runOnlyPendingTimers();
   vi.clearAllTimers();
   vi.useRealTimers();
   document.body.innerHTML = '';

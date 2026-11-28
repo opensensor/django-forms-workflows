@@ -4538,12 +4538,14 @@ class TestFormBuilderViews:
         assert loaded_field["step_number"] == field.step_number
 
     def test_clone_copies_all_permission_groups(
-        self, client, superuser, form_with_fields, approval_group
+        self, client, superuser, form_with_fields
     ):
-        submit_group = StageApprovalGroup.objects.create(name="Submit Group")
-        view_group = StageApprovalGroup.objects.create(name="View Group")
-        reviewer_group = StageApprovalGroup.objects.create(name="Reviewer Group")
-        admin_group = StageApprovalGroup.objects.create(name="Admin Group")
+        from django.contrib.auth.models import Group
+
+        submit_group = Group.objects.create(name="Submit Group")
+        view_group = Group.objects.create(name="View Group")
+        reviewer_group = Group.objects.create(name="Reviewer Group")
+        admin_group = Group.objects.create(name="Admin Group")
 
         form_with_fields.submit_groups.set([submit_group])
         form_with_fields.view_groups.set([view_group])

@@ -2627,6 +2627,12 @@ class TestConvertVisualToWorkflow:
 
     @pytest.mark.parametrize("target_id", ["not-an-id", "²", "9" * 5000, 1.0, True])
     def test_sub_workflow_rejects_malformed_target_id(self, form_definition, target_id):
+        if target_id is True and not WorkflowDefinition.objects.filter(pk=1).exists():
+            target_form = FormDefinition.objects.create(
+                name="Lookup Target", slug="lookup-target"
+            )
+            WorkflowDefinition.objects.create(pk=1, form_definition=target_form)
+
         visual = self._make_visual()
         visual["nodes"].insert(
             1,
@@ -4360,13 +4366,22 @@ class TestFormBuilderViews:
         resp = client.get(url)
         assert resp.status_code == 200
 
-    def test_builder_view_embeds_data_as_json(self, client, form_definition, superuser):
+    def test_builder_view_embeds_data_as_json(
+        self, client, form_definition, superuser, monkeypatch
+    ):
         client.force_login(superuser)
+        dangerous_label = "label with </script> inside"
+        monkeypatch.setattr(
+            FormField,
+            "FIELD_TYPES",
+            [*FormField.FIELD_TYPES, ("test_type", dangerous_label)],
+        )
 
         response = client.get(_fb_url(f"builder/{form_definition.id}/"))
 
         assert response.status_code == 200
         html = response.content.decode()
+        parsed_payloads = {}
         for script_id in ("field-types-data", "payment-providers-data"):
             match = re.search(
                 rf'<script id="{script_id}" type="application/json">(.*?)</script>',
@@ -4374,7 +4389,14 @@ class TestFormBuilderViews:
                 re.DOTALL,
             )
             assert match is not None
-            assert isinstance(json.loads(match.group(1)), list)
+            parsed_payloads[script_id] = json.loads(match.group(1))
+            assert isinstance(parsed_payloads[script_id], list)
+
+        assert {"value": "test_type", "label": dangerous_label} in parsed_payloads[
+            "field-types-data"
+        ]
+        assert dangerous_label not in html
+        assert "\\u003C/script\\u003E" in html
 
     def test_builder_new_view_requires_staff(self, client, user):
         client.force_login(user)

@@ -1123,6 +1123,12 @@ export class WorkflowBuilder {
             </div>
         `;
 
+        const availableAssigneeFieldNames = new Set(this.fields.map(field => String(field.field_name)));
+        const savedAssigneeField = data.assignee_form_field != null ? String(data.assignee_form_field) : '';
+        const unavailableAssigneeFieldOption = savedAssigneeField && !availableAssigneeFieldNames.has(savedAssigneeField)
+            ? `<option value="${this.escapeHtmlAttribute(savedAssigneeField)}" selected data-unavailable="true">Unavailable field (${this.escapeHtml(savedAssigneeField)})</option>`
+            : '';
+
         const assigneeSection = `
             <div class="mb-3">
                 <label class="form-label" for="assignee_field_${this.escapeHtmlAttribute(node.id)}"><strong>Assignee Field</strong></label>
@@ -1132,6 +1138,7 @@ export class WorkflowBuilder {
                     ${this.fields.map(f => `
                         <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.assignee_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
                     `).join('')}
+                    ${unavailableAssigneeFieldOption}
                 </select>
                 <small class="text-muted">When selected, the stage resolves the approver from a submitted form field before falling back to approval groups.</small>
             </div>

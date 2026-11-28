@@ -44,10 +44,12 @@ function createContext({ nodes = [], connections = [], config = {}, validation }
 
 beforeEach(() => {
   setupBuilderDOM();
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
   document.body.innerHTML = '';
+  vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();

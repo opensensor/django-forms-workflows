@@ -804,7 +804,7 @@ export class WorkflowBuilder {
     }
 
     selectNode(nodeId) {
-        this.deselectAll();
+        this.clearSelectionState();
         this.selectedNode = nodeId;
         this.selectedConnection = null;
         const node = this.nodes.find(n => n.id === nodeId);
@@ -816,11 +816,15 @@ export class WorkflowBuilder {
         this.render();
     }
 
-    deselectAll() {
+    clearSelectionState() {
         this.selectedNode = null;
         this.selectedConnection = null;
         this.showEmptyProperties();
         this.updateConnectionSelectionUI();
+    }
+
+    deselectAll() {
+        this.clearSelectionState();
         this.render();
     }
 

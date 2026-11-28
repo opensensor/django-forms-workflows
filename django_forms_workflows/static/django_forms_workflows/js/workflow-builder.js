@@ -1095,14 +1095,24 @@ export class WorkflowBuilder {
             </div>
         `;
 
+        const availableFieldIds = new Set(this.fields.map(field => String(field.id)));
+        let unavailableApprovalFieldOptions = '';
+        selectedApprovalFieldIds.forEach(fieldId => {
+            if (!availableFieldIds.has(fieldId)) {
+                const safeFieldId = this.escapeHtmlAttribute(fieldId);
+                unavailableApprovalFieldOptions += `<option value="${safeFieldId}" selected data-unavailable="true">Unavailable field (ID: ${this.escapeHtml(String(fieldId))})</option>`;
+            }
+        });
+
         const approvalFieldsSection = `
             <div class="mb-3">
                 <label class="form-label" for="stage_fields_${this.escapeHtmlAttribute(node.id)}"><strong>Fields shown during this stage</strong></label>
                 <select class="form-select builder-multiselect-lg" id="stage_fields_${this.escapeHtmlAttribute(node.id)}" name="approval_fields" multiple size="6"
                         >
                     ${this.fields.map(field => `
-                        <option value="${field.id}" ${selectedApprovalFieldIds.has(String(field.id)) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
+                        <option value="${this.escapeHtmlAttribute(field.id)}" ${selectedApprovalFieldIds.has(String(field.id)) ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
                     `).join('')}
+                    ${unavailableApprovalFieldOptions}
                 </select>
                 <small class="text-muted d-block mt-1">Selected fields become editable approval-step fields for this stage only.</small>
             </div>

@@ -2248,7 +2248,7 @@ export class WorkflowBuilder {
             const isPlaceholder = card.dataset.placeholder === 'true';
             return {
                 rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
-                stage_node_id: stageNodeId || '',
+                stage_node_id: stageNodeId ?? '',
                 event: eventValue,
                 subject_template: card.querySelector('input[name="notification_rule_subject_template"]').value,
                 notify_submitter: card.querySelector('input[name="notification_rule_notify_submitter"]').checked,
@@ -2265,6 +2265,7 @@ export class WorkflowBuilder {
         }).filter(rule => {
             const hasMeaningfulData = (
                 rule.rule_id
+                || rule.stage_node_id === 0
                 || rule.stage_node_id
                 || rule.event !== 'approval_request'
                 || rule.notify_submitter
@@ -3060,16 +3061,11 @@ export class WorkflowBuilder {
 
         const onMouseUp = (e) => {
             this.finishConnection(e);
-            this.isConnecting = false;
-            this.connectionStart = null;
-            if (this.tempLine) {
-                this.tempLine.remove();
-                this.tempLine = null;
-            }
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+            this.cancelKeyboardConnection();
         };
 
+        this.connectionMouseMoveHandler = onMouseMove;
+        this.connectionMouseUpHandler = onMouseUp;
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
     }
@@ -3164,7 +3160,7 @@ export class WorkflowBuilder {
             hitbox.setAttribute('d', path);
             hitbox.setAttribute('tabindex', '0');
             hitbox.setAttribute('role', 'button');
-            hitbox.setAttribute('aria-label', `Select connection ${index + 1}`);
+            hitbox.setAttribute('aria-label', `Select connection from ${conn.from} to ${conn.to}`);
 
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             line.setAttribute('class', 'connection-line');
@@ -3176,9 +3172,9 @@ export class WorkflowBuilder {
                 backdrop.classList.toggle('hovered', isHovered);
             };
 
-            const selectConnection = (e) => {
+            const selectConnection = (e, restoreFocus = false) => {
                 e.stopPropagation();
-                this.pendingConnectionFocusIndex = index;
+                if (restoreFocus) this.pendingConnectionFocusIndex = index;
                 this.selectConnection(index);
             };
 
@@ -3192,7 +3188,7 @@ export class WorkflowBuilder {
             hitbox.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    selectConnection(e);
+                    selectConnection(e, true);
                 }
             });
             line.addEventListener('mouseenter', () => setHover(true));
@@ -3270,13 +3266,13 @@ export class WorkflowBuilder {
     }
 
     cancelKeyboardConnection() {
-        const moveHandler = this.boundUpdateTempConnection || this.handleConnectionMouseMove;
-        const upHandler = this.boundFinishConnection || this.handleConnectionMouseUp;
-        if (moveHandler) {
-            document.removeEventListener('mousemove', moveHandler);
+        if (this.connectionMouseMoveHandler) {
+            document.removeEventListener('mousemove', this.connectionMouseMoveHandler);
+            this.connectionMouseMoveHandler = null;
         }
-        if (upHandler) {
-            document.removeEventListener('mouseup', upHandler);
+        if (this.connectionMouseUpHandler) {
+            document.removeEventListener('mouseup', this.connectionMouseUpHandler);
+            this.connectionMouseUpHandler = null;
         }
 
         if (!this.isConnecting) {

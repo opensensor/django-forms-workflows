@@ -1366,9 +1366,14 @@ export class WorkflowBuilder {
                                 <select id="${ruleInputId('stage')}" class="form-select form-select-sm" name="notification_rule_stage"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">Workflow-level</option>
-                                    ${stageOptions.map(option => `
-                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
-                                    `).join('')}
+                                    ${stageOptions.map(option => {
+                                        const numericOrder = Number(option.order);
+                                        const safeOrder = option.order !== null && option.order !== '' &&
+                                            Number.isSafeInteger(numericOrder) && numericOrder >= 1 ? numericOrder : '?';
+                                        return `
+                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
+                                    `;
+                                    }).join('')}
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -1476,10 +1481,19 @@ export class WorkflowBuilder {
         }
 
         if (Array.isArray(rawConditions.conditions)) {
-            const normalizedGroupOperator =
-                typeof rawConditions.operator === 'string' && rawConditions.operator.toUpperCase() === 'OR'
-                    ? 'OR'
-                    : 'AND';
+            const rawGroupOperator =
+                typeof rawConditions.operator === 'string' ? rawConditions.operator.trim() : '';
+            let normalizedGroupOperator = 'AND';
+
+            if (rawGroupOperator) {
+                const upperGroupOperator = rawGroupOperator.toUpperCase();
+                if (upperGroupOperator === 'AND' || upperGroupOperator === 'OR') {
+                    normalizedGroupOperator = upperGroupOperator;
+                } else {
+                    // Preserve unsupported values so validation/UI can surface them explicitly.
+                    normalizedGroupOperator = rawGroupOperator;
+                }
+            }
 
             return {
                 operator: normalizedGroupOperator,
@@ -1517,6 +1531,7 @@ export class WorkflowBuilder {
 
     buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, editorId = editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
         const state = this.getNormalizedTriggerConditions(conditions);
+        const hasSupportedGroupOperator = ['AND', 'OR'].includes(state.operator);
         const operatorOptions = [
             ['equals', 'Equals'],
             ['not_equals', 'Not equals'],
@@ -1603,6 +1618,11 @@ export class WorkflowBuilder {
                 <label class="form-label form-label-sm" for="${editorIdBase}-group-operator">Match mode</label>
                 <select class="form-select form-select-sm" id="${editorIdBase}-group-operator" name="condition_group_operator"
                         onchange="${onChangeHandler}">
+                    ${!hasSupportedGroupOperator ? `
+                        <option value="${this.escapeHtmlAttribute(state.operator)}" selected data-invalid="true">
+                            Unsupported match mode: ${this.escapeHtml(state.operator)}
+                        </option>
+                    ` : ''}
                     <option value="AND" ${state.operator === 'AND' ? 'selected' : ''}>All conditions must match (AND)</option>
                     <option value="OR" ${state.operator === 'OR' ? 'selected' : ''}>Any condition may match (OR)</option>
                 </select>
@@ -2227,12 +2247,23 @@ export class WorkflowBuilder {
             'equals', 'not_equals', 'contains', 'in',
             'gt', 'gte', 'lt', 'lte', 'is_empty', 'not_empty'
         ]);
+        const availableFieldNames = new Set(
+            (Array.isArray(this.fields) ? this.fields : [])
+                .map((field) => (field && field.field_name !== undefined && field.field_name !== null ? String(field.field_name).trim() : ''))
+                .filter((name) => Boolean(name))
+        );
 
         const conditions = hasConditionList ? group.conditions : [group];
         conditions.forEach((condition, index) => {
             const rowNumber = index + 1;
-            if (!condition || !condition.field || !String(condition.field).trim()) {
+            const fieldName = condition && condition.field !== undefined && condition.field !== null
+                ? String(condition.field).trim()
+                : '';
+
+            if (!fieldName) {
                 errors.push(`${ownerLabel}: condition row ${rowNumber} has no field selected.`);
+            } else if (!availableFieldNames.has(fieldName)) {
+                errors.push(`${ownerLabel}: condition row ${rowNumber} references unknown field "${fieldName}".`);
             }
 
             const operator = condition && (condition.operator === undefined ? 'equals' : condition.operator);
@@ -2609,9 +2640,22 @@ export class WorkflowBuilder {
             const data = node.data || {};
             const groups = (data.approval_groups || []).filter(group => group && group.id);
             const stageLabel = data.name || `Stage ${index + 1}`;
+            const rawOrder = data.order;
+            const normalizedOrder = (typeof rawOrder === 'string') ? rawOrder.trim() : rawOrder;
+            const parsedOrder = Number(normalizedOrder);
 
             if (!String(data.name || '').trim()) {
                 this.addNodeIssue(result, node.id, 'errors', `Stage ${index + 1} is missing a name.`);
+            }
+            if (
+                normalizedOrder === undefined ||
+                normalizedOrder === null ||
+                normalizedOrder === '' ||
+                !['number', 'string'].includes(typeof normalizedOrder) ||
+                !Number.isSafeInteger(parsedOrder) ||
+                parsedOrder < 1
+            ) {
+                this.addNodeIssue(result, node.id, 'errors', `${stageLabel} has an invalid order. Stage order must be an integer greater than or equal to 1.`);
             }
             if (!(groups.length || data.requires_manager_approval || data.assignee_form_field)) {
                 this.addNodeIssue(result, node.id, 'errors', `${stageLabel} needs approval groups, manager approval, or a dynamic assignee field.`);

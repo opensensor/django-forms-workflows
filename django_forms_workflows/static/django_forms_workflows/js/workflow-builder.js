@@ -1123,7 +1123,9 @@ export class WorkflowBuilder {
             </div>
         `;
 
-        const availableAssigneeFieldNames = new Set(this.fields.map(field => String(field.field_name)));
+        const availableAssigneeFieldNames = new Set(
+            this.fields.filter(field => field.field_name != null).map(field => String(field.field_name))
+        );
         const savedAssigneeField = data.assignee_form_field != null ? String(data.assignee_form_field) : '';
         const unavailableAssigneeFieldOption = savedAssigneeField && !availableAssigneeFieldNames.has(savedAssigneeField)
             ? `<option value="${this.escapeHtmlAttribute(savedAssigneeField)}" selected data-unavailable="true">Unavailable field (${this.escapeHtml(savedAssigneeField)})</option>`
@@ -1136,7 +1138,7 @@ export class WorkflowBuilder {
                         >
                     <option value="">-- Use approval groups --</option>
                     ${this.fields.map(f => `
-                        <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.assignee_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
+                        <option value="${this.escapeHtmlAttribute(f.field_name)}" ${savedAssigneeField === String(f.field_name) ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
                     `).join('')}
                     ${unavailableAssigneeFieldOption}
                 </select>
@@ -1243,6 +1245,11 @@ export class WorkflowBuilder {
 
     buildWorkflowSettingsProperties(node) {
         const data = node.data || {};
+        const savedCadenceField = data.notification_cadence_form_field != null
+            ? String(data.notification_cadence_form_field) : '';
+        const availableCadenceFieldNames = new Set(
+            this.fields.filter(field => field.field_name != null).map(field => String(field.field_name))
+        );
 
         const basicsSection = `
             <div class="mb-3">
@@ -1305,13 +1312,13 @@ export class WorkflowBuilder {
                 <select class="form-select" name="notification_cadence_form_field"
                         onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})">
                     <option value="">-- Select a date field --</option>
-                    ${data.notification_cadence_form_field && !this.fields.some(f => f.field_name === data.notification_cadence_form_field) ? `
-                        <option value="${this.escapeHtmlAttribute(data.notification_cadence_form_field)}" selected>
-                            ${this.escapeHtml(data.notification_cadence_form_field)} (unavailable)
+                    ${savedCadenceField && !availableCadenceFieldNames.has(savedCadenceField) ? `
+                        <option value="${this.escapeHtmlAttribute(savedCadenceField)}" selected data-unavailable="true">
+                            ${this.escapeHtml(savedCadenceField)} (unavailable)
                         </option>
                     ` : ''}
                     ${this.fields.map(f => `
-                        <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.notification_cadence_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
+                        <option value="${this.escapeHtmlAttribute(f.field_name)}" ${savedCadenceField === String(f.field_name) ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
                     `).join('')}
                 </select>
                 <small class="text-muted">Used only when cadence is “On Date From Form Field”.</small>

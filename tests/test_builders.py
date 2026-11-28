@@ -236,6 +236,33 @@ class TestConvertWorkflowToVisual:
         assert stage_nodes[1]["y"] - stage_nodes[0]["y"] == 220
         assert join_node["y"] == 220
 
+        stage_ids = {node["id"] for node in stage_nodes}
+        join_id = join_node["id"]
+        edges = result["edges"]
+
+        # Parallel branches should both flow into the same join node.
+        for stage_id in stage_ids:
+            assert any(
+                edge["source"] == stage_id and edge["target"] == join_id
+                for edge in edges
+            )
+
+        # Parallel stages must not be connected sequentially to each other.
+        assert not any(
+            edge["source"] in stage_ids and edge["target"] in stage_ids
+            for edge in edges
+        )
+
+        # Both stages should branch from at least one common predecessor.
+        predecessors_by_stage = {
+            stage_id: {
+                edge["source"] for edge in edges if edge["target"] == stage_id
+            }
+            for stage_id in stage_ids
+        }
+        shared_predecessors = set.intersection(*predecessors_by_stage.values())
+        assert shared_predecessors
+
     def test_backfills_send_back_flag_from_saved_visual_data(
         self, staged_workflow, form_definition
     ):

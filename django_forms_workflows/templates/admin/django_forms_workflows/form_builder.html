@@ -1297,7 +1297,9 @@
                 new bootstrap.Modal(document.getElementById('docTemplateModal')).show();
             });
 
-            document.getElementById('btnSaveDocTemplate').addEventListener('click', async () => {
+            document.getElementById('btnSaveDocTemplate').addEventListener('click', async (event) => {
+                const saveBtn = event.currentTarget;
+                if (saveBtn.dataset.submitting === 'true') return;
                 if (!formBuilderData.formId || !docUrls.docTemplateSave) {
                     alert('Please save the form before saving document templates.');
                     return;
@@ -1313,6 +1315,8 @@
                     is_active: document.getElementById('docTemplateIsActive').checked,
                 };
                 if (payload.id) payload.id = parseInt(payload.id);
+                saveBtn.dataset.submitting = 'true';
+                saveBtn.disabled = true;
                 try {
                     const resp = await fetch(docUrls.docTemplateSave, {
                         method: 'POST',
@@ -1325,6 +1329,10 @@
                         loadDocTemplates();
                     } else { alert(data.error || 'Error saving template'); }
                 } catch (e) { alert('Error: ' + e.message); }
+                finally {
+                    delete saveBtn.dataset.submitting;
+                    saveBtn.disabled = false;
+                }
             });
 
             // Load templates on page load (only for existing forms)

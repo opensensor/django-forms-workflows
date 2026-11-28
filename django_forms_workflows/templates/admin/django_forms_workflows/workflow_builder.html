@@ -870,17 +870,20 @@
     }
     
     .toolbar-btn {
-        background: rgba(255,255,255,0.18);
-        border: 1px solid rgba(255,255,255,0.3);
-        color: white;
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px solid rgba(15, 23, 42, 0.95);
+        color: #ffffff;
         padding: 0.5rem 1rem;
         border-radius: 6px;
         cursor: pointer;
         transition: var(--wb-transition);
     }
     
-    .toolbar-btn:hover {
-        background: rgba(255,255,255,0.3);
+    .toolbar-btn:hover,
+    .toolbar-btn:focus-visible {
+        background: rgba(15, 23, 42, 0.96);
+        border-color: rgba(15, 23, 42, 1);
+        color: #ffffff;
     }
 
     .toolbar-btn-sm {

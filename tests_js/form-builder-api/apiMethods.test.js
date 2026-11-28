@@ -87,10 +87,15 @@ describe('apiMethods.updatePreview', () => {
       ctx.generatePreview = vi.fn();
 
       ctx.updatePreview();
+      vi.advanceTimersByTime(300);
       ctx.updatePreview();
-      ctx.updatePreview();
-      vi.advanceTimersByTime(500);
 
+      // At 500ms from the first call (only 200ms from the last), it should not run yet.
+      vi.advanceTimersByTime(200);
+      expect(ctx.generatePreview).toHaveBeenCalledTimes(0);
+
+      // It should run 500ms after the most recent call.
+      vi.advanceTimersByTime(300);
       expect(ctx.generatePreview).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();

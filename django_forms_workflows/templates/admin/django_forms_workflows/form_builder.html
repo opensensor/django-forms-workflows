@@ -952,12 +952,12 @@
     </div>
     
     <!-- Field Property Modal -->
-    <div class="modal fade" id="fieldPropertyModal" tabindex="-1">
+    <div class="modal fade" id="fieldPropertyModal" tabindex="-1" aria-labelledby="fieldPropertyModalTitle">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Field Properties</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title" id="fieldPropertyModalTitle">Field Properties</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <!-- Field properties form will be populated by JavaScript -->
@@ -972,12 +972,12 @@
     </div>
 
     <!-- Template Selection Modal -->
-    <div class="modal fade" id="templateSelectionModal" tabindex="-1">
+    <div class="modal fade" id="templateSelectionModal" tabindex="-1" aria-labelledby="templateSelectionModalTitle">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-file-earmark-text"></i> Choose a Template</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title" id="templateSelectionModalTitle"><i class="bi bi-file-earmark-text"></i> Choose a Template</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="text-muted">Start with a pre-built template or create a blank form</p>

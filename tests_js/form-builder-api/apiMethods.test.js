@@ -24,6 +24,7 @@ function setupFormDOM() {
     <input id="formPaymentFixedAmount" value="">
     <input id="formPaymentAmountField" value="">
     <input id="formPaymentCurrency" value="usd">
+    <span id="formPaymentCurrencyPrefix">USD</span>
     <input id="formPaymentDescription" value="">
     <input id="formCloseDate" value="">
     <input id="formMaxSubmissions" value="">
@@ -138,6 +139,19 @@ describe('apiMethods.loadForm', () => {
       }),
     }));
   }
+
+  it('updates the amount prefix from a saved currency', async () => {
+    stubLoadResponse({ payment_currency: 'cad' });
+    const ctx = createContext();
+    ctx.updatePreview = vi.fn();
+
+    await ctx.loadForm();
+
+    expect(document.getElementById('formPaymentCurrencyPrefix').textContent).toBe('CAD');
+    document.getElementById('formPaymentCurrency').value = 'eur';
+    ctx.updatePaymentCurrencyPrefix();
+    expect(document.getElementById('formPaymentCurrencyPrefix').textContent).toBe('EUR');
+  });
 
   it('populates fields and formSteps from the response, preserving `title` (not `label`)', async () => {
     stubLoadResponse();

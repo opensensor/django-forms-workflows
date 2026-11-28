@@ -160,6 +160,26 @@ describe('apiMethods.loadForm', () => {
     }));
   }
 
+  it('clears payment fields left by a previously loaded form', async () => {
+    document.getElementById('formPaymentFixedAmount').value = '75';
+    document.getElementById('formPaymentAmountField').value = 'old_amount';
+    document.getElementById('formPaymentDescription').value = 'Old payment';
+    document.getElementById('formCloseDate').value = '2026-12-01T12:00';
+    document.getElementById('formMaxSubmissions').value = '10';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ name: 'New Form', slug: 'new-form', fields: [] }),
+    }));
+    const ctx = createContext();
+    ctx.updatePreview = vi.fn();
+
+    await ctx.loadForm();
+
+    for (const id of ['formPaymentFixedAmount', 'formPaymentAmountField',
+      'formPaymentDescription', 'formCloseDate', 'formMaxSubmissions']) {
+      expect(document.getElementById(id).value).toBe('');
+    }
+  });
+
   it('shows the saved payment amount input type', async () => {
     stubLoadResponse({ payment_amount_type: 'field' });
     const ctx = createContext();
@@ -333,6 +353,26 @@ describe('apiMethods.saveForm', () => {
 });
 
 describe('apiMethods.loadTemplate', () => {
+  it('ignores an older template response after a newer selection loads', async () => {
+    let finishFirst;
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(() => new Promise(resolve => { finishFirst = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        success: true, template_data: { name: 'New', fields: [{ field_name: 'new' }] },
+      }) }));
+    const ctx = createContext({ config: { apiUrls: { loadTemplate: '/templates/{id}/' } } });
+    ctx.updatePreview = vi.fn();
+
+    const first = ctx.loadTemplate('old');
+    await ctx.loadTemplate('new');
+    finishFirst({ ok: true, json: async () => ({
+      success: true, template_data: { name: 'Old', fields: [{ field_name: 'old' }] },
+    }) });
+    await first;
+
+    expect(ctx.fields).toEqual([{ field_name: 'new' }]);
+  });
+
   it('populates fields from the template and refreshes the canvas/preview', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,

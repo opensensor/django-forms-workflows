@@ -92,7 +92,6 @@ export const apiMethods = {
     async saveWorkflow() {
         const validation = this.refreshValidationState();
         if (validation.errors.length) {
-            this.setSaveStatus('Fix validation errors', 'danger');
             this.setBuilderMessage(
                 'danger',
                 'Fix validation errors before saving.',
@@ -101,6 +100,7 @@ export const apiMethods = {
             if (validation.firstErrorNodeId) {
                 this.selectNode(validation.firstErrorNodeId);
             }
+            this.setSaveStatus('Fix validation errors', 'danger');
             return;
         }
 

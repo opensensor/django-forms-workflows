@@ -5585,7 +5585,12 @@ class TestFormBuilderViews:
         )
 
         assert response.status_code == 200
-        assert "red" in response.content.decode()
+        html = response.json()["html"]
+        assert re.search(
+            r'<option[^>]*value=["\']red["\'][^>]*>\s*red\s*</option>',
+            html,
+            re.IGNORECASE,
+        )
 
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

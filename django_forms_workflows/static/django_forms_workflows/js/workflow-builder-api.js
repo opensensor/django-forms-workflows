@@ -137,6 +137,9 @@ export const apiMethods = {
         console.log('Connections:', this.connections);
 
         try {
+            const requestSnapshot = this.getWorkflowSnapshot();
+            const workflowData = requestSnapshot;
+
             const response = await fetch(this.config.apiUrls.save, {
                 method: 'POST',
                 headers: {
@@ -163,7 +166,8 @@ export const apiMethods = {
             }
 
             this.deletedActionIds = [];
-            this.syncSavedWorkflowSnapshot();
+            this.store.setSavedSnapshot(requestSnapshot);
+            this.updateDirtyState();
             this.setSaveStatus('Saved successfully', 'success');
             this.setBuilderMessage(
                 'success',

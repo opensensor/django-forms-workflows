@@ -15,6 +15,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
@@ -367,6 +368,9 @@ def form_builder_clone(request, form_id):
                 {
                     "success": True,
                     "form_id": cloned_form.id,
+                    "builder_url": reverse(
+                        "admin:form_builder_edit", args=[cloned_form.id]
+                    ),
                     "message": f'Form cloned successfully as "{cloned_form.name}"',
                 }
             )

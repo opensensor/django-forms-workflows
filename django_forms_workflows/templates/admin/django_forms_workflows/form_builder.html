@@ -1153,10 +1153,7 @@
 
                         if (data.success) {
                             alert(data.message);
-                            // Redirect to edit the cloned form (URL should be reversed server-side)
-                            const redirectUrl = data.redirect_url || data.builder_url ||
-                                `/admin/django_forms_workflows/formdefinition/${data.form_id}/builder/`;
-                            window.location.href = redirectUrl;
+                            window.location.href = data.builder_url;
                         } else {
                             alert('Error cloning form: ' + (data.error || 'Unknown error'));
                         }

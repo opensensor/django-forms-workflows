@@ -1216,26 +1216,17 @@ def form_builder_preview(request):
                         "step_number": field_data.get("step_number", 1),
                     }
 
-                    # Use the same ID syntax as the save endpoint.
-                    reference_fields = (
+                    # Validate optional foreign keys before model construction.
+                    for payload_key, model_key in (
                         ("prefill_source_id", "prefill_source_config_id"),
                         ("shared_option_list_id", "shared_option_list_id"),
                         ("workflow_stage_id", "workflow_stage_id"),
-                    )
-                    for source_key, target_key in reference_fields:
-                        raw_reference = field_data.get(source_key)
-                        if raw_reference in (None, ""):
-                            continue
-                        parsed_reference = _positive_integer_id(raw_reference)
-                        if parsed_reference is None:
-                            return JsonResponse(
-                                {
-                                    "success": False,
-                                    "error": f"Invalid {source_key}: expected a positive integer",
-                                },
-                                status=400,
-                            )
-                        field_kwargs[target_key] = parsed_reference
+                    ):
+                        reference_id = _optional_field_reference_id(
+                            field_data, payload_key
+                        )
+                        if reference_id is not None:
+                            field_kwargs[model_key] = reference_id
 
                     if validation.get("min_value") is not None:
                         field_kwargs["min_value"] = validation.get("min_value")
@@ -1256,7 +1247,7 @@ def form_builder_preview(request):
                     preview_field = FormField(**field_kwargs)
                     preview_field.full_clean()
                     preview_field.save()
-            except ValidationError:
+            except (ValidationError, FormBuilderPayloadError):
                 transaction.set_rollback(True)
                 return JsonResponse(
                     {"success": False, "error": "Invalid preview field data"},

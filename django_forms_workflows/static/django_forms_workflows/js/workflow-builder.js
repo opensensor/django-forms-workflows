@@ -2237,6 +2237,9 @@ export class WorkflowBuilder {
             node.data.field_count = 0;
             node.data.fields = [];
             node.data.has_more_fields = false;
+            node.data.enable_multi_step = false;
+            node.data.step_count = 0;
+            node.data.form_steps = [];
         } else {
             // Update node with selected form data
             node.data.form_id = selectedForm.id;
@@ -2247,6 +2250,9 @@ export class WorkflowBuilder {
             // The backend will load them when needed
             node.data.fields = [];
             node.data.has_more_fields = selectedForm.field_count > 0;
+            node.data.enable_multi_step = Boolean(selectedForm.enable_multi_step);
+            node.data.step_count = Number(selectedForm.step_count) || 0;
+            node.data.form_steps = Array.isArray(selectedForm.form_steps) ? selectedForm.form_steps : [];
         }
 
         // Re-render to update the node display and properties panel

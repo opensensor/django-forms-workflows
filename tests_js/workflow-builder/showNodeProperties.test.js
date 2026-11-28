@@ -65,6 +65,23 @@ describe('WorkflowBuilder#showNodeProperties generic change listener', () => {
     expect(node.data.allow_send_back).toBe(false);
   });
 
+  it('stores stage checkbox values as booleans via the stage config path', () => {
+    const instance = createInstance();
+    const node = { id: 'node_1', type: 'stage', data: { allow_send_back: false } };
+    instance.nodes = [node];
+
+    instance.showNodeProperties(node);
+    const checkbox = document.querySelector('input[type="checkbox"][name="allow_send_back"]');
+
+    checkbox.checked = true;
+    dispatchChange(checkbox);
+    expect(node.data.allow_send_back).toBe(true);
+
+    checkbox.checked = false;
+    dispatchChange(checkbox);
+    expect(node.data.allow_send_back).toBe(false);
+  });
+
   it('still forwards the typed value for non-checkbox inputs', () => {
     const instance = createInstance();
     const node = { id: 'node_1', type: 'condition', data: { approve_label: '' } };

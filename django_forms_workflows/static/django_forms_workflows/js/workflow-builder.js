@@ -1316,7 +1316,7 @@ export class WorkflowBuilder {
         return {
             rule_id: rule?.rule_id || null,
             stage_id: rule?.stage_id || null,
-            stage_node_id: rule?.stage_node_id || '',
+            stage_node_id: rule?.stage_node_id ?? '',
             event: rule?.event || 'approval_request',
             subject_template: rule?.subject_template || '',
             notify_submitter: !!rule?.notify_submitter,
@@ -1328,7 +1328,7 @@ export class WorkflowBuilder {
                 id: typeof group === 'object' ? group.id : group,
                 name: typeof group === 'object' ? group.name : String(group),
             })).filter(group => group.id),
-            conditions: rule?.conditions || null,
+            conditions: rule?.conditions ?? null,
         };
     }
 
@@ -1365,15 +1365,29 @@ export class WorkflowBuilder {
                                 <label class="form-label form-label-sm" for="${ruleInputId('stage')}">Scope</label>
                                 <select id="${ruleInputId('stage')}" class="form-select form-select-sm" name="notification_rule_stage"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
-                                    <option value="">Workflow-level</option>
-                                    ${stageOptions.map(option => {
-                                        const numericOrder = Number(option.order);
-                                        const safeOrder = option.order !== null && option.order !== '' &&
-                                            Number.isSafeInteger(numericOrder) && numericOrder >= 1 ? numericOrder : '?';
-                                        return `
-                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
+                                    ${(() => {
+                                        const hasSavedStageReference = state.stage_node_id !== null &&
+                                            state.stage_node_id !== undefined &&
+                                            state.stage_node_id !== '';
+                                        const stageExists = hasSavedStageReference &&
+                                            stageOptions.some(option => String(option.nodeId) === String(state.stage_node_id));
+                                        const missingStageOption = hasSavedStageReference && !stageExists
+                                            ? `<option value="${this.escapeHtmlAttribute(state.stage_node_id)}" selected>Missing stage (id: ${this.escapeHtml(state.stage_node_id)})</option>`
+                                            : '';
+                                        const availableStageOptions = stageOptions.map(option => {
+                                            const numericOrder = Number(option.order);
+                                            const safeOrder = option.order !== null && option.order !== '' &&
+                                                Number.isSafeInteger(numericOrder) && numericOrder >= 1 ? numericOrder : '?';
+                                            return `
+                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${String(state.stage_node_id) === String(option.nodeId) ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
                                     `;
-                                    }).join('')}
+                                        }).join('');
+                                        return `
+                                    <option value="">Workflow-level</option>
+                                    ${missingStageOption}
+                                    ${availableStageOptions}
+                                `;
+                                    })()}
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -1529,9 +1543,11 @@ export class WorkflowBuilder {
                         };
                     }
 
+                    const hasOperator = Object.prototype.hasOwnProperty.call(condition, 'operator');
+
                     return {
                         field: typeof condition.field === 'string' ? condition.field : '',
-                        operator: typeof condition.operator === 'string' ? condition.operator : 'equals',
+                        operator: hasOperator ? condition.operator : 'equals',
                         value: condition.value ?? ''
                     };
                 })
@@ -1539,11 +1555,13 @@ export class WorkflowBuilder {
         }
 
         if (Object.prototype.hasOwnProperty.call(rawConditions, 'field')) {
+            const hasLegacyOperator = Object.prototype.hasOwnProperty.call(rawConditions, 'operator');
+
             return {
                 operator: 'AND',
                 conditions: [{
                     field: typeof rawConditions.field === 'string' ? rawConditions.field : '',
-                    operator: typeof rawConditions.operator === 'string' ? rawConditions.operator : 'equals',
+                    operator: hasLegacyOperator ? rawConditions.operator : 'equals',
                     value: rawConditions.value ?? ''
                 }]
             };
@@ -1586,7 +1604,7 @@ export class WorkflowBuilder {
 
         let rowsHtml = '';
         state.conditions.forEach((condition, index) => {
-            const operator = condition.operator || 'equals';
+            const operator = condition.operator === undefined ? 'equals' : String(condition.operator);
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
             const hasSupportedOperator = operatorOptions.some(([value]) => value === operator);
             const conditionField = condition.field || '';
@@ -2021,7 +2039,11 @@ export class WorkflowBuilder {
         let workflowOptions = '<option value="">-- Select a workflow --</option>';
         this.workflowTargets.forEach(target => {
             const selected = (data.sub_workflow_id == target.workflow_id) ? 'selected' : '';
-            workflowOptions += `<option value="${target.workflow_id}" data-form-id="${target.form_id}" ${selected}>${this.escapeHtml(target.workflow_label)} (${target.field_count} fields)</option>`;
+            const escapedWorkflowIdAttr = this.escapeHtmlAttribute(target.workflow_id == null ? '' : String(target.workflow_id));
+            const escapedFormIdAttr = this.escapeHtmlAttribute(target.form_id == null ? '' : String(target.form_id));
+            const parsedFieldCount = Number(target.field_count);
+            const safeFieldCount = (Number.isSafeInteger(parsedFieldCount) && parsedFieldCount >= 0) ? parsedFieldCount : 0;
+            workflowOptions += `<option value="${escapedWorkflowIdAttr}" data-form-id="${escapedFormIdAttr}" ${selected}>${this.escapeHtml(target.workflow_label)} (${safeFieldCount} fields)</option>`;
         });
 
         // Build count field options from this.fields
@@ -2822,7 +2844,8 @@ export class WorkflowBuilder {
                 if (rule.email_field && !fieldNames.has(rule.email_field)) {
                     this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references an unknown email field: ${rule.email_field}.`);
                 }
-                if (rule.stage_node_id && !stageNodeIds.has(rule.stage_node_id)) {
+                if (rule.stage_node_id !== null && rule.stage_node_id !== undefined &&
+                    rule.stage_node_id !== '' && !stageNodeIds.has(rule.stage_node_id)) {
                     this.addNodeIssue(result, settingsNode.id, 'errors', `${ruleLabel} references a stage that is not present in the builder graph.`);
                 }
                 if ((rule.notify_stage_assignees || rule.notify_stage_groups) && !stageNodes.length) {

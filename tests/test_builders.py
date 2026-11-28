@@ -4697,6 +4697,43 @@ class TestFormBuilderViews:
         assert resp.status_code in (302, 403)
         assert FormDefinition.objects.count() == before_count
 
+    def test_clone_staff_requires_model_permission(
+        self, client, django_user_model, form_with_fields
+    ):
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+
+        staff_user = django_user_model.objects.create_user(
+            username="staff_no_clone_perm",
+            password="testpass123",
+            is_staff=True,
+            is_superuser=False,
+        )
+
+        url = _fb_url(f"builder/api/clone/{form_with_fields.id}/")
+        before_count = FormDefinition.objects.count()
+
+        client.force_login(staff_user)
+        denied_resp = client.post(url)
+        assert denied_resp.status_code in (302, 403)
+        assert FormDefinition.objects.count() == before_count
+
+        content_type = ContentType.objects.get_for_model(FormDefinition)
+        add_form_perm = Permission.objects.get(
+            content_type=content_type, codename="add_formdefinition"
+        )
+        view_form_perm = Permission.objects.get(
+            content_type=content_type, codename="view_formdefinition"
+        )
+        staff_user.user_permissions.add(add_form_perm)
+        assert client.post(url).status_code == 403
+        assert FormDefinition.objects.count() == before_count
+        staff_user.user_permissions.add(view_form_perm)
+
+        allowed_resp = client.post(url)
+        assert allowed_resp.status_code == 200
+        assert FormDefinition.objects.count() == before_count + 1
+
     def test_preview_form(self, client, superuser, form_with_fields):
         client.login(username="admin", password="testpass123")
         url = _fb_url("builder/api/preview/")

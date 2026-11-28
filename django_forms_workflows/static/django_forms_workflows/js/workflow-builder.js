@@ -1501,11 +1501,11 @@ export class WorkflowBuilder {
             };
         }
 
-        if (typeof rawConditions.field === 'string' && rawConditions.field) {
+        if (Object.prototype.hasOwnProperty.call(rawConditions, 'field')) {
             return {
                 operator: 'AND',
                 conditions: [{
-                    field: rawConditions.field || '',
+                    field: typeof rawConditions.field === 'string' ? rawConditions.field : '',
                     operator: typeof rawConditions.operator === 'string' ? rawConditions.operator : 'equals',
                     value: rawConditions.value ?? ''
                 }]

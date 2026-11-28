@@ -2747,6 +2747,55 @@ class TestWorkflowBuilderViews:
         resp = client.get(url)
         assert resp.status_code in (302, 403)
 
+    def test_workflow_builder_view_denies_staff_without_permission(
+        self, client, form_definition, staff_user
+    ):
+        client.force_login(staff_user)
+        url = _wf_url(f"{form_definition.id}/workflow/")
+        resp = client.get(url)
+        assert resp.status_code in (302, 403)
+
+    def test_workflow_builder_view_requires_both_view_permissions(
+        self, client, form_definition, staff_user
+    ):
+        form_view_perm = Permission.objects.get(
+            content_type__app_label="django_forms_workflows",
+            codename="view_formdefinition",
+        )
+        workflow_view_perm = Permission.objects.get(
+            content_type__app_label="django_forms_workflows",
+            codename="view_workflowdefinition",
+        )
+        staff_user.user_permissions.add(form_view_perm)
+        client.force_login(staff_user)
+        url = _wf_url(f"{form_definition.id}/workflow/")
+        assert client.get(url).status_code in (302, 403)
+
+        staff_user.user_permissions.add(workflow_view_perm)
+        resp = client.get(url)
+        assert resp.status_code == 200
+
+    def test_form_builder_view_denies_staff_without_permission(
+        self, client, form_definition, staff_user
+    ):
+        client.force_login(staff_user)
+        url = _fb_url(f"builder/{form_definition.id}/")
+        resp = client.get(url)
+        assert resp.status_code in (302, 403)
+
+    def test_form_builder_view_allows_staff_with_view_permission(
+        self, client, form_definition, staff_user
+    ):
+        perm = Permission.objects.get(
+            content_type__app_label="django_forms_workflows",
+            codename="view_formdefinition",
+        )
+        staff_user.user_permissions.add(perm)
+        client.force_login(staff_user)
+        url = _fb_url(f"builder/{form_definition.id}/")
+        resp = client.get(url)
+        assert resp.status_code == 200
+
     def test_builder_view_accessible_to_superuser(
         self, client, form_definition, superuser
     ):

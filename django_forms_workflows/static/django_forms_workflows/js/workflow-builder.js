@@ -1368,7 +1368,8 @@ export class WorkflowBuilder {
                                     <option value="">Workflow-level</option>
                                     ${stageOptions.map(option => {
                                         const numericOrder = Number(option.order);
-                                        const safeOrder = Number.isFinite(numericOrder) ? numericOrder : '';
+                                        const safeOrder = option.order !== null && option.order !== '' &&
+                                            Number.isSafeInteger(numericOrder) && numericOrder >= 1 ? numericOrder : '?';
                                         return `
                                         <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${safeOrder}: ${this.escapeHtml(option.name)}</option>
                                     `;
@@ -1530,6 +1531,7 @@ export class WorkflowBuilder {
 
     buildConditionsEditor({ title, conditions, onChangeHandler, editorKind, editorId = editorKind, extraAttributes = '', removeConditionHandler = null, showHeader = true }) {
         const state = this.getNormalizedTriggerConditions(conditions);
+        const hasSupportedGroupOperator = ['AND', 'OR'].includes(state.operator);
         const operatorOptions = [
             ['equals', 'Equals'],
             ['not_equals', 'Not equals'],
@@ -1616,6 +1618,11 @@ export class WorkflowBuilder {
                 <label class="form-label form-label-sm" for="${editorIdBase}-group-operator">Match mode</label>
                 <select class="form-select form-select-sm" id="${editorIdBase}-group-operator" name="condition_group_operator"
                         onchange="${onChangeHandler}">
+                    ${!hasSupportedGroupOperator ? `
+                        <option value="${this.escapeHtmlAttribute(state.operator)}" selected data-invalid="true">
+                            Unsupported match mode: ${this.escapeHtml(state.operator)}
+                        </option>
+                    ` : ''}
                     <option value="AND" ${state.operator === 'AND' ? 'selected' : ''}>All conditions must match (AND)</option>
                     <option value="OR" ${state.operator === 'OR' ? 'selected' : ''}>Any condition may match (OR)</option>
                 </select>
@@ -2242,7 +2249,7 @@ export class WorkflowBuilder {
         ]);
         const availableFieldNames = new Set(
             (Array.isArray(this.fields) ? this.fields : [])
-                .map((field) => (field && field.name !== undefined && field.name !== null ? String(field.name).trim() : ''))
+                .map((field) => (field && field.field_name !== undefined && field.field_name !== null ? String(field.field_name).trim() : ''))
                 .filter((name) => Boolean(name))
         );
 
@@ -2644,8 +2651,8 @@ export class WorkflowBuilder {
                 normalizedOrder === undefined ||
                 normalizedOrder === null ||
                 normalizedOrder === '' ||
-                Number.isNaN(parsedOrder) ||
-                !Number.isInteger(parsedOrder) ||
+                !['number', 'string'].includes(typeof normalizedOrder) ||
+                !Number.isSafeInteger(parsedOrder) ||
                 parsedOrder < 1
             ) {
                 this.addNodeIssue(result, node.id, 'errors', `${stageLabel} has an invalid order. Stage order must be an integer greater than or equal to 1.`);

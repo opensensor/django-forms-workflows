@@ -57,6 +57,7 @@ describe('condition validation', () => {
 
   it('accepts saved single conditions, including the server default operator', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
+    builder.fields = [{ field_name: 'notes' }];
 
     expect(builder.validateConditionGroup({ field: 'notes', value: 'ready' }, 'Trigger conditions')).toEqual([]);
     expect(builder.validateConditionGroup({ field: 'notes', operator: 'contains', value: 'ready' }, 'Trigger conditions')).toEqual([]);
@@ -77,9 +78,26 @@ describe('condition validation', () => {
     { operator: 'not_empty', condition: { field: 'notes', operator: 'not_empty' } },
   ])('accepts supported operator $operator', ({ condition }) => {
     const builder = Object.create(WorkflowBuilder.prototype);
+    builder.fields = [{ field_name: 'notes' }];
     const group = { operator: 'AND', conditions: [condition] };
 
     expect(builder.validateConditionGroup(group, 'Trigger conditions')).toEqual([]);
+  });
+
+  it('reports an unknown field and preserves an invalid match mode for correction', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.fields = [{ field_name: 'notes', field_label: 'Notes' }];
+    const group = { operator: 'XOR', conditions: [{ field: 'removed', operator: 'equals', value: 'ready' }] };
+
+    expect(builder.validateConditionGroup(group, 'Trigger conditions')).toEqual(expect.arrayContaining([
+      expect.stringContaining('match mode must be AND or OR'),
+      expect.stringContaining('references unknown field "removed"'),
+    ]));
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = builder.buildConditionsEditor({
+      title: 'Trigger conditions', conditions: group, onChangeHandler: '', editorKind: 'trigger',
+    });
+    expect(wrapper.querySelector('select[name="condition_group_operator"]').value).toBe('XOR');
   });
 
   it('puts malformed conditions into the builder validation state', () => {

@@ -2291,8 +2291,11 @@ export class WorkflowBuilder {
             return [`${ownerLabel}: conditions must be a list.`];
         }
 
-        if (hasConditionList && group.operator && !['AND', 'OR'].includes(String(group.operator).toUpperCase())) {
-            errors.push(`${ownerLabel}: match mode must be AND or OR.`);
+        if (hasConditionList && group.operator) {
+            const normalizedGroupOperator = String(group.operator).trim().toUpperCase();
+            if (!['AND', 'OR'].includes(normalizedGroupOperator)) {
+                errors.push(`${ownerLabel}: match mode must be AND or OR.`);
+            }
         }
 
         const allowedOperators = new Set([

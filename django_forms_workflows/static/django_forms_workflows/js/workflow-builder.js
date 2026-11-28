@@ -28,6 +28,7 @@ export class WorkflowBuilder {
         this.isDirty = false;
         this.isSaving = false;
         this.lastSavedWorkflowSnapshot = null;
+        this.deletedActionIds = [];
         this.nodeStackOrder = new Map();
         this.nextNodeStackOrder = 1;
         this.draggingNodeId = null;
@@ -796,6 +797,13 @@ export class WorkflowBuilder {
 
     deleteNode(nodeId) {
         if (confirm('Delete this node?')) {
+            const nodeToDelete = this.nodes.find(n => n.id === nodeId);
+            const actionId = nodeToDelete?.data?.action_id;
+            if ((nodeToDelete?.type === 'action' || nodeToDelete?.type === 'email') && actionId) {
+                if (!this.deletedActionIds.includes(actionId)) {
+                    this.deletedActionIds.push(actionId);
+                }
+            }
             this.nodes = this.nodes.filter(n => n.id !== nodeId);
             this.connections = this.connections.filter(c => c.from !== nodeId && c.to !== nodeId);
             this.deselectAll();
@@ -1333,7 +1341,7 @@ export class WorkflowBuilder {
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">Workflow-level</option>
                                     ${stageOptions.map(option => `
-                                        <option value="${option.nodeId}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
+                                        <option value="${this.escapeHtmlAttribute(option.nodeId)}" ${state.stage_node_id === option.nodeId ? 'selected' : ''}>Stage ${option.order}: ${this.escapeHtml(option.name)}</option>
                                     `).join('')}
                                 </select>
                             </div>
@@ -2428,7 +2436,7 @@ export class WorkflowBuilder {
     }
 
     inlineNodeId(nodeId) {
-        return this.escapeHtmlAttribute(JSON.stringify(String(nodeId)));
+        return this.escapeHtmlAttribute(JSON.stringify(nodeId));
     }
 
     addNodeIssue(result, nodeId, severity, message) {
@@ -3084,7 +3092,14 @@ export class WorkflowBuilder {
             return;
         }
 
-        const toNodeId = target.dataset.nodeId;
+        const targetNodeDomId = target.dataset.nodeId;
+        const targetNode = this.nodes.find(node => String(node.id) === targetNodeDomId);
+        if (!targetNode) {
+            console.log('Target node not found for DOM id:', targetNodeDomId);
+            return;
+        }
+
+        const toNodeId = targetNode.id;
         console.log('Connecting to node:', toNodeId);
 
         if (toNodeId === this.connectionStart.nodeId) {
@@ -3168,7 +3183,10 @@ export class WorkflowBuilder {
     }
 
     getConnectionPointPosition(nodeId, pointType) {
-        const nodeElement = this.transformWrapper.querySelector(`.workflow-node[data-node-id="${nodeId}"]`);
+        const escapedNodeId = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
+            ? CSS.escape(String(nodeId))
+            : String(nodeId).replace(/["\\]/g, '\\$&');
+        const nodeElement = this.transformWrapper.querySelector(`.workflow-node[data-node-id="${escapedNodeId}"]`);
         if (!nodeElement) return null;
 
         const pointElement = nodeElement.querySelector(`.connection-point.${pointType}`);

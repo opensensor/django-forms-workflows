@@ -7,6 +7,7 @@ import { createWorkflowBuilderStore } from '../../django_forms_workflows/static/
 function createInstance() {
   const instance = Object.create(WorkflowBuilder.prototype);
   instance.store = createWorkflowBuilderStore();
+  instance.nodes = [{ id: 'node_1' }, { id: 'node_2' }];
   instance.connectionStart = { nodeId: 'node_1' };
   instance.selectedConnection = null;
   instance.render = vi.fn();
@@ -75,5 +76,15 @@ describe('WorkflowBuilder#finishConnection', () => {
     instance.finishConnection(inputPointEvent('node_1'));
 
     expect(instance.connections).toEqual([]);
+  });
+
+  it('preserves numeric node IDs from the graph when connecting through DOM points', () => {
+    const instance = createInstance();
+    instance.nodes = [{ id: 1 }, { id: 2 }];
+    instance.connectionStart = { nodeId: 1 };
+
+    instance.finishConnection(inputPointEvent(2));
+
+    expect(instance.connections).toEqual([{ from: 1, to: 2 }]);
   });
 });

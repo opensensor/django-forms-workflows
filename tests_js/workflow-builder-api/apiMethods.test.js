@@ -23,6 +23,7 @@ function createContext({ nodes = [], connections = [], config = {}, validation }
     isSaving: false,
     isDirty: false,
     lastSavedWorkflowSnapshot: null,
+    deletedActionIds: [],
     setBuilderMessage: vi.fn(),
     selectNode: vi.fn(),
     initializeNodeStackOrder: vi.fn(),
@@ -152,8 +153,11 @@ describe('apiMethods.loadWorkflow', () => {
       workflow_targets: [{ id: 3 }],
     });
     const ctx = createContext();
+    ctx.deletedActionIds = [17];
 
     await ctx.loadWorkflow();
+
+    expect(ctx.deletedActionIds).toEqual([]);
 
     expect(ctx.nodes).toEqual([{ id: 'node_1' }]);
     expect(ctx.connections).toEqual([{ from: 'node_1', to: 'node_2' }]);
@@ -260,7 +264,7 @@ describe('apiMethods.saveWorkflow', () => {
     expect(body).toEqual({
       form_id: 5,
       workflow_id: 9,
-      workflow: { nodes: [{ id: 'node_1' }], connections: [{ from: 'node_1', to: 'node_2' }] },
+      workflow: { nodes: [{ id: 'node_1' }], connections: [{ from: 'node_1', to: 'node_2' }], deleted_action_ids: [] },
     });
     expect(document.getElementById('saveStatus').textContent).toBe('Saved successfully');
     expect(document.getElementById('btnSave').disabled).toBe(false);
@@ -275,6 +279,23 @@ describe('apiMethods.saveWorkflow', () => {
     await ctx.saveWorkflow();
 
     expect(ctx.config.currentWorkflowId).toBe(42);
+  });
+
+  it('sends deleted action IDs and clears them only after a successful save', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: false, json: async () => ({ success: false, error: 'Try again' }),
+    }).mockResolvedValueOnce({
+      ok: true, json: async () => ({ success: true }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const ctx = createContext();
+    ctx.deletedActionIds = [17];
+
+    await ctx.saveWorkflow();
+    expect(ctx.deletedActionIds).toEqual([17]);
+    await ctx.saveWorkflow();
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).workflow.deleted_action_ids).toEqual([17]);
+    expect(ctx.deletedActionIds).toEqual([]);
   });
 
   it('reports an error status and does not throw when the save request fails', async () => {

@@ -88,6 +88,24 @@ describe('notification rule controls', () => {
 });
 
 describe('approval properties', () => {
+  it('renders once when approval type rebuilds the properties panel', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
+    const node = { id: 'approval-1', type: 'approval', data: { approval_type: 'manager' } };
+    builder.nodes = [node];
+    builder.showEmptyProperties = vi.fn();
+    builder.refreshValidationState = vi.fn();
+    builder.showNodeProperties = vi.fn();
+    builder.updateConnectionSelectionUI = vi.fn();
+    builder.render = vi.fn();
+
+    builder.updateNodeProperty(node.id, 'approval_type', 'group');
+
+    expect(node.data.approval_type).toBe('group');
+    expect(builder.showNodeProperties).toHaveBeenCalledWith(node);
+    expect(builder.render).toHaveBeenCalledTimes(1);
+  });
+
   it('refreshes the panel when the approval type changes', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     builder.store = createWorkflowBuilderStore();

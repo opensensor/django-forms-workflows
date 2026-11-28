@@ -8,6 +8,7 @@ import re
 from urllib.parse import quote
 
 import pytest
+from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -4575,11 +4576,26 @@ class TestFormBuilderViews:
         assert form_definition.fields.count() == before_count
         assert not form_definition.fields.filter(field_name="staff_perm_field").exists()
 
-        from django.contrib.auth.models import Permission
+        create_payload = copy.deepcopy(payload)
+        create_payload.pop("id", None)
+        create_payload["slug"] = "staff-perm-created"
+
+        before_form_count = FormDefinition.objects.count()
+        denied_create = client.post(
+            url,
+            data=json.dumps(create_payload),
+            content_type="application/json",
+        )
+        assert denied_create.status_code in (302, 403)
+        assert FormDefinition.objects.count() == before_form_count
 
         change_perm = Permission.objects.get(
             content_type__app_label=FormDefinition._meta.app_label,
             codename=f"change_{FormDefinition._meta.model_name}",
+        )
+        add_perm = Permission.objects.get(
+            content_type__app_label=FormDefinition._meta.app_label,
+            codename=f"add_{FormDefinition._meta.model_name}",
         )
         staff_user.user_permissions.add(change_perm)
 
@@ -4591,6 +4607,25 @@ class TestFormBuilderViews:
         assert allowed.status_code == 200
         assert allowed.json()["success"] is True
         assert form_definition.fields.filter(field_name="staff_perm_field").exists()
+
+        before_form_count = FormDefinition.objects.count()
+        denied_create_with_change = client.post(
+            url,
+            data=json.dumps(create_payload),
+            content_type="application/json",
+        )
+        assert denied_create_with_change.status_code in (302, 403)
+        assert FormDefinition.objects.count() == before_form_count
+
+        staff_user.user_permissions.add(add_perm)
+        allowed_create = client.post(
+            url,
+            data=json.dumps(create_payload),
+            content_type="application/json",
+        )
+        assert allowed_create.status_code == 200
+        assert allowed_create.json()["success"] is True
+        assert FormDefinition.objects.count() == before_form_count + 1
 
     def test_clone_long_slug_fits_model_limit(self, client, superuser):
         source = FormDefinition.objects.create(name="Long slug", slug="a" * 50)
@@ -4732,6 +4767,12 @@ class TestFormBuilderViews:
         assert response.status_code == 200
         cloned = FormDefinition.objects.get(pk=response.json()["form_id"])
         assert cloned.workflows.count() == 2
+        expected_triggers = {"on_submission", "on_all_complete"}
+        cloned_tracks = {
+            (workflow.start_trigger, workflow.name_label)
+            for workflow in cloned.workflows.all()
+        }
+        assert cloned_tracks == {(trigger, trigger) for trigger in expected_triggers}
         for workflow in cloned.workflows.all():
             rule = workflow.notification_rules.get()
             assert rule.stage.workflow_id == workflow.pk

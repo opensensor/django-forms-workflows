@@ -3496,10 +3496,24 @@ export class WorkflowBuilder {
         // Remove existing connections
         this.svg.querySelectorAll('.connection-line:not([stroke-dasharray]), .connection-backdrop, .connection-hitbox').forEach(l => l.remove());
 
+        // Read phase: collect and cache connection endpoint positions before any SVG writes
+        const connectionPointCache = new Map();
+        this.connections.forEach((conn) => {
+            const fromKey = `${conn.from}::output`;
+            const toKey = `${conn.to}::input`;
+
+            if (!connectionPointCache.has(fromKey)) {
+                connectionPointCache.set(fromKey, this.getConnectionPointPosition(conn.from, 'output'));
+            }
+            if (!connectionPointCache.has(toKey)) {
+                connectionPointCache.set(toKey, this.getConnectionPointPosition(conn.to, 'input'));
+            }
+        });
+
         // Render each connection
         this.connections.forEach((conn, index) => {
-            const fromPoint = this.getConnectionPointPosition(conn.from, 'output');
-            const toPoint = this.getConnectionPointPosition(conn.to, 'input');
+            const fromPoint = connectionPointCache.get(`${conn.from}::output`);
+            const toPoint = connectionPointCache.get(`${conn.to}::input`);
             if (!fromPoint || !toPoint) return;
 
             const path = this.createConnectionPath(

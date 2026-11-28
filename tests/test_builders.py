@@ -828,7 +828,9 @@ class TestConvertWorkflowToVisual:
 
         start_nodes = [node for node in visual["nodes"] if node["type"] == "start"]
         email_nodes = [node for node in visual["nodes"] if node["type"] == "email"]
+        ids = [str(node["id"]).strip() for node in visual["nodes"]]
 
+        assert len(ids) == len(set(ids))
         assert len(start_nodes) == 1
         assert len(email_nodes) == 1
         assert email_nodes[0]["data"]["action_id"] == action.id

@@ -533,6 +533,7 @@ class TestConvertWorkflowToVisual:
             },
         )
         workflow.stages.create(name="Review", order=1)
+        workflow.stages.create(name="Approval", order=2)
 
         with CaptureQueriesContext(connection) as queries:
             visual = convert_workflow_to_visual(workflow, form_definition)
@@ -544,7 +545,10 @@ class TestConvertWorkflowToVisual:
             if f"FROM {quoted_stage_table}" in query["sql"]
         ]
         assert len(stage_reads) == 1
-        assert any(node["type"] == "stage" for node in visual["nodes"])
+        stage_names = {
+            node["data"]["name"] for node in visual["nodes"] if node["type"] == "stage"
+        }
+        assert stage_names == {"Review", "Approval"}
 
     def test_saved_email_action_uses_current_database_values(self, form_definition):
         action = PostSubmissionAction.objects.create(

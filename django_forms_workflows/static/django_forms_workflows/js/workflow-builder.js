@@ -275,6 +275,14 @@ export class WorkflowBuilder {
                 e.dataTransfer.setData('nodeType', nodeType);
                 e.dataTransfer.effectAllowed = 'copy';
             });
+            node.addEventListener('click', () => {
+                const rect = this.canvas.getBoundingClientRect();
+                const [x, y] = this.clientToCanvas(
+                    rect.left + rect.width / 2,
+                    rect.top + rect.height / 2
+                );
+                this.createNode(node.dataset.nodeType, x, y);
+            });
         });
     }
 

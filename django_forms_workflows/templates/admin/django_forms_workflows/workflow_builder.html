@@ -86,6 +86,10 @@
         cursor: grab;
         transition: var(--wb-transition);
         display: flex;
+        width: 100%;
+        border: 0;
+        text-align: left;
+        font: inherit;
         align-items: center;
         gap: 0.5rem;
     }
@@ -93,6 +97,11 @@
     .palette-node:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 18px var(--node-shadow-color);
+    }
+
+    .palette-node:focus-visible {
+        outline: 2px solid var(--wb-primary);
+        outline-offset: 3px;
     }
     
     .palette-node:active {
@@ -1144,40 +1153,6 @@
         console.log('WORKFLOW_CONFIG:', WORKFLOW_CONFIG);
         window.workflowBuilder = new WorkflowBuilder(WORKFLOW_CONFIG);
 
-        const getDefaultNodePosition = () => {
-            const canvasHost = document.querySelector('.workflow-canvas, .canvas-container, .builder-panel') || document.body;
-            const rect = canvasHost.getBoundingClientRect();
-            return {
-                x: Math.round(rect.left + rect.width / 2),
-                y: Math.round(rect.top + rect.height / 2)
-            };
-        };
-
-        const dispatchCreateNode = (nodeType) => {
-            const { x, y } = getDefaultNodePosition();
-            document.dispatchEvent(new CustomEvent('workflowbuilder:create-node', {
-                detail: { nodeType, x, y }
-            }));
-        };
-
-        document.querySelectorAll('.palette-node[data-node-type]').forEach((entry) => {
-            entry.addEventListener('click', function() {
-                dispatchCreateNode(this.dataset.nodeType);
-            });
-            entry.addEventListener('keydown', function(event) {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    dispatchCreateNode(this.dataset.nodeType);
-                }
-            });
-        });
-
-        document.addEventListener('workflowbuilder:create-node', function(event) {
-            const detail = event.detail || {};
-            if (window.workflowBuilder && typeof window.workflowBuilder.createNode === 'function') {
-                window.workflowBuilder.createNode(detail.nodeType, detail.x, detail.y);
-            }
-        });
     });
 </script>
 {% endblock %}

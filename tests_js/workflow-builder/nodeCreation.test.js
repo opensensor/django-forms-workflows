@@ -58,6 +58,23 @@ describe('WorkflowBuilder#createStartNode', () => {
   });
 });
 
+describe('WorkflowBuilder#setupPalette', () => {
+  it('creates a node at the visible canvas center using canvas coordinates', () => {
+    document.body.innerHTML = '<button class="palette-node" data-node-type="stage"></button>';
+    const instance = createInstance();
+    instance.canvas = document.createElement('div');
+    instance.canvas.getBoundingClientRect = () => ({ left: 100, top: 50, width: 200, height: 100 });
+    instance.clientToCanvas = vi.fn().mockReturnValue([40, 60]);
+    instance.createNode = vi.fn();
+    instance.setupPalette();
+
+    document.querySelector('.palette-node').click();
+
+    expect(instance.clientToCanvas).toHaveBeenCalledWith(200, 100);
+    expect(instance.createNode).toHaveBeenCalledWith('stage', 40, 60);
+  });
+});
+
 describe('WorkflowBuilder#deleteNode', () => {
   it('records the persisted action ID from node data when deleting an action', () => {
     const instance = createInstance();

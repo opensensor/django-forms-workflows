@@ -577,13 +577,15 @@ export class WorkflowBuilder {
 
     normalizeParallelStageGroups() {
         const verticalGap = 220;
+        const topMargin = 16;
 
         this.getParallelStageGroups().forEach((group) => {
             const anchorX = Math.min(...group.map((node) => node.x));
             const centerY = Math.round(
                 group.reduce((total, node) => total + node.y, 0) / group.length,
             );
-            const startY = centerY - ((group.length - 1) * verticalGap) / 2;
+            const centeredStartY = centerY - ((group.length - 1) * verticalGap) / 2;
+            const startY = Math.max(topMargin, centeredStartY);
 
             group.forEach((node, index) => {
                 node.x = anchorX;
@@ -968,7 +970,7 @@ export class WorkflowBuilder {
     buildStageProperties(node) {
         const data = node.data || {};
         const orderedApprovalGroups = this.getNormalizedStageApprovalGroups(data.approval_groups || []);
-        const selectedGroupIds = orderedApprovalGroups.map(g => g.id);
+        const selectedGroupIds = orderedApprovalGroups.map(g => String(g.id));
         const approvalFieldIdByName = new Map(
             this.fields
                 .filter(field => field && field.id != null && field.field_name)
@@ -1062,9 +1064,16 @@ export class WorkflowBuilder {
                         >
         `;
 
+        const availableGroupIds = new Set(this.groups.map(group => String(group.id)));
         this.groups.forEach(group => {
-            const selected = selectedGroupIds.includes(group.id) ? 'selected' : '';
-            routingSection += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
+            const selected = selectedGroupIds.includes(String(group.id)) ? 'selected' : '';
+            routingSection += `<option value="${this.escapeHtmlAttribute(group.id)}" ${selected}>${this.escapeHtml(group.name)}</option>`;
+        });
+        selectedGroupIds.forEach(groupId => {
+            if (!availableGroupIds.has(groupId)) {
+                const safeGroupId = this.escapeHtmlAttribute(groupId);
+                routingSection += `<option value="${safeGroupId}" selected data-unavailable="true">Unavailable group (ID: ${this.escapeHtml(String(groupId))})</option>`;
+            }
         });
 
         const approvalLogic = data.approval_logic || 'all';
@@ -1193,12 +1202,12 @@ export class WorkflowBuilder {
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-outline-secondary" ${index === 0 ? 'disabled' : ''}
                                         aria-label="${this.escapeHtmlAttribute(`Move ${group.name || 'group'} (${group.role || 'approval'}) up`)}"
-                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="-1">
+                                        data-stage-group-id="${this.escapeHtmlAttribute(group.id)}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="-1">
                                     <i class="bi bi-arrow-up"></i>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" ${index === orderedGroups.length - 1 ? 'disabled' : ''}
                                         aria-label="${this.escapeHtmlAttribute(`Move ${group.name || 'group'} (${group.role || 'approval'}) down`)}"
-                                        data-stage-group-id="${group.id}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="1">
+                                        data-stage-group-id="${this.escapeHtmlAttribute(group.id)}" data-stage-group-role="${this.escapeHtmlAttribute(group.role || 'approval')}" data-stage-group-direction="1">
                                     <i class="bi bi-arrow-down"></i>
                                 </button>
                             </div>
@@ -2266,6 +2275,12 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const container = document.getElementById('propertiesContent');
+        const activeElement = document.activeElement;
+        const focusState = (activeElement && container.contains(activeElement)) ? {
+            id: activeElement.id || null,
+            name: activeElement.getAttribute('name') || null,
+            tagName: activeElement.tagName.toLowerCase()
+        } : null;
         const orderInput = container.querySelector('input[name="order"]');
         const parsedOrder = Number(orderInput.value);
         if (!Number.isInteger(parsedOrder) || parsedOrder < 1) {
@@ -2295,6 +2310,23 @@ export class WorkflowBuilder {
         node.data.approval_logic = container.querySelector('select[name="approval_logic"]').value;
 
         this.selectNode(nodeId);
+
+        if (focusState) {
+            const refreshedContainer = document.getElementById('propertiesContent');
+            let focusTarget = null;
+            if (focusState.id) {
+                focusTarget = Array.from(refreshedContainer.querySelectorAll('[id]'))
+                    .find(element => element.id === focusState.id);
+            }
+            if (!focusTarget && focusState.name) {
+                focusTarget = Array.from(refreshedContainer.querySelectorAll('[name]'))
+                    .find(element => element.tagName.toLowerCase() === focusState.tagName
+                        && element.getAttribute('name') === focusState.name);
+            }
+            if (focusTarget) {
+                focusTarget.focus();
+            }
+        }
     }
 
     updateWorkflowSettings(nodeId) {
@@ -2494,17 +2526,13 @@ export class WorkflowBuilder {
     readStageApprovalGroupsFromPanel(container, nodeId, existingGroups) {
         const groupSelect = container.querySelector('[name="approval_groups"]');
         if (!groupSelect) return [];
-        const selected = Array.from(groupSelect.selectedOptions).map(opt => ({
-            id: parseInt(opt.value, 10),
-            name: opt.text,
-        })).filter(group => !Number.isNaN(group.id));
-        const selectedIds = new Set(selected.map(group => group.id));
+        const selectedIds = new Set(Array.from(groupSelect.selectedOptions, opt => opt.value));
         const existingOrdered = this.getNormalizedStageApprovalGroups(existingGroups || []);
-        const existingMap = new Map(existingOrdered.map(group => [group.id, group]));
+        const existingIds = new Set(existingOrdered.map(group => String(group.id)));
 
-        const kept = existingOrdered.filter(group => selectedIds.has(group.id));
-        const appended = selected
-            .filter(group => !existingMap.has(group.id))
+        const kept = existingOrdered.filter(group => selectedIds.has(String(group.id)));
+        const appended = (this.groups || [])
+            .filter(group => selectedIds.has(String(group.id)) && !existingIds.has(String(group.id)))
             .map(group => ({ id: group.id, name: group.name, role: 'approval' }));
 
         return [...kept, ...appended].map((group, index) => ({
@@ -2719,7 +2747,6 @@ export class WorkflowBuilder {
 
         const container = document.getElementById('propertiesContent');
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2733,7 +2760,6 @@ export class WorkflowBuilder {
         node.data.trigger = container.querySelector('select[name="trigger"]').value;
         node.data.config = container.querySelector('textarea[name="config"]').value;
 
-        this.render();
         this.selectNode(nodeId);
     }
 
@@ -2752,7 +2778,6 @@ export class WorkflowBuilder {
         node.data.email_template_name = container.querySelector('input[name="email_template_name"]').value;
         node.data.trigger = container.querySelector('select[name="trigger"]').value;
 
-        this.render();
         this.selectNode(nodeId);
     }
 

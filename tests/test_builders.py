@@ -3594,6 +3594,34 @@ class TestSaveFormDefinitionFromBuilderData:
         assert new_field.required is True
         assert field_id_mapping == {"temp-1": new_field.id}
 
+    def test_saves_nested_field_rules(self, user, form_definition):
+        data = {
+            "name": form_definition.name,
+            "slug": form_definition.slug,
+            "fields": [
+                {
+                    "id": "temp-1",
+                    "field_name": "dependent_field",
+                    "field_label": "Dependent field",
+                    "field_type": "text",
+                    "validation": {"validation_rules": [{"type": "required"}]},
+                    "conditional": {
+                        "conditional_rules": {"operator": "AND", "conditions": []},
+                        "field_dependencies": [{"sourceField": "source"}],
+                    },
+                }
+            ],
+        }
+
+        result, _ = save_form_definition_from_builder_data(
+            data, user, form_definition=form_definition
+        )
+
+        field = result.fields.get(field_name="dependent_field")
+        assert field.validation_rules == [{"type": "required"}]
+        assert field.field_dependencies == [{"sourceField": "source"}]
+        assert field.conditional_rules == {"operator": "AND", "conditions": []}
+
     def test_creates_field_with_builder_temporary_id(self, user, form_definition):
         data = {
             "name": form_definition.name,

@@ -1535,6 +1535,7 @@ export class WorkflowBuilder {
         state.conditions.forEach((condition, index) => {
             const operator = condition.operator || 'equals';
             const needsValue = !['is_empty', 'not_empty'].includes(operator);
+            const hasSupportedOperator = operatorOptions.some(([value]) => value === operator);
             const fieldId = `${editorIdBase}-row-${index}-field`;
             const operatorId = `${editorIdBase}-row-${index}-operator`;
             const valueId = `${editorIdBase}-row-${index}-value`;
@@ -1554,6 +1555,11 @@ export class WorkflowBuilder {
                         <label class="form-label form-label-sm mb-1" for="${operatorId}">Operator</label>
                         <select class="form-select form-select-sm" id="${operatorId}" name="condition_operator"
                                 onchange="${onChangeHandler}">
+                            ${!hasSupportedOperator ? `
+                                <option value="${this.escapeHtmlAttribute(operator)}" selected data-invalid="true">
+                                    Unsupported operator: ${this.escapeHtml(operator)}
+                                </option>
+                            ` : ''}
                             ${operatorOptions.map(([value, label]) => `
                                 <option value="${value}" ${operator === value ? 'selected' : ''}>${label}</option>
                             `).join('')}
@@ -1950,7 +1956,9 @@ export class WorkflowBuilder {
         let fieldOptions = '<option value="">-- Select a field --</option>';
         this.fields.forEach(f => {
             const selected = (data.count_field === f.field_name) ? 'selected' : '';
-            fieldOptions += `<option value="${f.field_name}" ${selected}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>`;
+            const escapedFieldNameAttr = this.escapeHtmlAttribute(f.field_name);
+            const escapedFieldNameText = this.escapeHtml(f.field_name);
+            fieldOptions += `<option value="${escapedFieldNameAttr}" ${selected}>${this.escapeHtml(f.field_label)} (${escapedFieldNameText})</option>`;
         });
 
         const targetSection = `
@@ -2087,13 +2095,15 @@ export class WorkflowBuilder {
         const node = this.nodes.find(n => n.id === nodeId);
         if (node) {
             node.data[property] = value;
-            this.render();
 
             // Some property editors are conditionally rendered (for example,
             // approval_type controls whether the group selector is shown).
-            // Re-select the node to rebuild the properties panel when needed.
+            // Re-selecting the node rebuilds the properties panel and handles
+            // rendering/validation, so avoid an extra standalone render.
             if (property === 'approval_type') {
                 this.selectNode(nodeId);
+            } else {
+                this.render();
             }
         }
     }

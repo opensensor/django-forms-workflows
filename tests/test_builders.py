@@ -2183,13 +2183,18 @@ class TestConvertVisualToWorkflow:
         convert_visual_to_workflow(visual, form_definition)
         actions = list(form_definition.post_actions.all())
         assert len(actions) == 1
-        assert actions[0].name == "Update DB"
-        assert actions[0].action_type == "database"
+        action = actions[0]
+        action.refresh_from_db()
+        assert action.name == "Update DB"
+        assert action.action_type == "database"
+        assert action.trigger == "on_approve"
+        assert action.config["db_alias"] == "default"
+        assert action.config["db_table"] == "users"
         assert (
             form_definition.workflows.get().visual_workflow_data["nodes"][1]["data"][
                 "action_id"
             ]
-            == actions[0].id
+            == action.id
         )
 
     @pytest.mark.parametrize("action_type", ["unknown", "email", []])

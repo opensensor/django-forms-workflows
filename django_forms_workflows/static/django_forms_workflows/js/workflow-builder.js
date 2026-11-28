@@ -1410,6 +1410,9 @@ export class WorkflowBuilder {
                                 <label class="form-label form-label-sm" for="${ruleInputId('email_field')}">Email Field</label>
                                 <select id="${ruleInputId('email_field')}" class="form-select form-select-sm" name="notification_rule_email_field"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
+                                    ${state.email_field && !this.fields.some(field => field.field_name === state.email_field) ? `
+                                        <option value="${this.escapeHtmlAttribute(state.email_field)}" selected>(missing field) ${this.escapeHtml(state.email_field)}</option>
+                                    ` : ''}
                                     <option value="">-- None --</option>
                                     ${this.fields.map(field => `
                                         <option value="${this.escapeHtmlAttribute(field.field_name)}" ${state.email_field === field.field_name ? 'selected' : ''}>${this.escapeHtml(field.field_label)} (${this.escapeHtml(field.field_name)})</option>
@@ -1518,16 +1521,22 @@ export class WorkflowBuilder {
         }
 
         if (Array.isArray(rawConditions.conditions)) {
-            const rawGroupOperator =
-                typeof rawConditions.operator === 'string' ? rawConditions.operator.trim() : '';
+            const hasGroupOperator = Object.prototype.hasOwnProperty.call(rawConditions, 'operator');
+            const rawGroupOperator = rawConditions.operator;
             let normalizedGroupOperator = 'AND';
 
-            if (rawGroupOperator) {
-                const upperGroupOperator = rawGroupOperator.toUpperCase();
-                if (upperGroupOperator === 'AND' || upperGroupOperator === 'OR') {
-                    normalizedGroupOperator = upperGroupOperator;
+            if (hasGroupOperator) {
+                if (typeof rawGroupOperator === 'string') {
+                    const trimmedGroupOperator = rawGroupOperator.trim();
+                    const upperGroupOperator = trimmedGroupOperator.toUpperCase();
+                    if (upperGroupOperator === 'AND' || upperGroupOperator === 'OR') {
+                        normalizedGroupOperator = upperGroupOperator;
+                    } else {
+                        // Preserve explicitly supplied unsupported values so validation/UI can surface them.
+                        normalizedGroupOperator = trimmedGroupOperator;
+                    }
                 } else {
-                    // Preserve unsupported values so validation/UI can surface them explicitly.
+                    // Preserve explicitly supplied unsupported non-string values (for example: 7).
                     normalizedGroupOperator = rawGroupOperator;
                 }
             }
@@ -2320,7 +2329,7 @@ export class WorkflowBuilder {
             return [`${ownerLabel}: conditions must be a list.`];
         }
 
-        if (hasConditionList && group.operator) {
+        if (hasConditionList && Object.prototype.hasOwnProperty.call(group, 'operator')) {
             const normalizedGroupOperator = String(group.operator).trim().toUpperCase();
             if (!['AND', 'OR'].includes(normalizedGroupOperator)) {
                 errors.push(`${ownerLabel}: match mode must be AND or OR.`);
@@ -2595,8 +2604,25 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const container = document.getElementById('propertiesContent');
+        if (!container) return;
+
+        const activeElement = document.activeElement;
+        const shouldRestoreFocus =
+            activeElement &&
+            typeof container.contains === 'function' &&
+            container.contains(activeElement) &&
+            activeElement.id;
+        const activeElementId = shouldRestoreFocus ? activeElement.id : null;
+
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
         this.selectNode(nodeId);
+
+        if (activeElementId) {
+            const replacement = document.getElementById(activeElementId);
+            if (replacement && typeof replacement.focus === 'function') {
+                replacement.focus();
+            }
+        }
     }
 
     addTriggerCondition(nodeId) {

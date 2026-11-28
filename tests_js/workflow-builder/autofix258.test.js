@@ -165,18 +165,22 @@ describe('condition editor', () => {
 
   it('keeps malformed saved condition rows editable without throwing', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
+    builder.fields = [{ field_name: 'notes' }];
     const state = builder.getNormalizedTriggerConditions({
       operator: 7,
       conditions: [null, { field: 123, operator: false, value: 'ready' }],
     });
 
     expect(state).toEqual({
-      operator: 'AND',
+      operator: 7,
       conditions: [
         { field: '', operator: 'equals', value: '' },
         { field: '', operator: false, value: 'ready' },
       ],
     });
+    expect(builder.validateConditionGroup(state, 'Trigger conditions'))
+      .toContain('Trigger conditions: match mode must be AND or OR.');
   });
 
   it('retains a partially filled row for validation', () => {

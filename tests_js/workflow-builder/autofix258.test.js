@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { WorkflowBuilder } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder.js';
 import { createWorkflowBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder-store.js';
 
-function renderRules(rules, renderConditions = false, fields = []) {
+function renderRules(rules, renderConditions = false, fields = [], nodes = []) {
   const builder = Object.create(WorkflowBuilder.prototype);
   builder.store = createWorkflowBuilderStore();
-  builder.nodes = [];
+  builder.nodes = nodes;
   builder.fields = fields;
   builder.groups = [];
   if (!renderConditions) builder.buildConditionsEditor = vi.fn(() => '');
@@ -29,8 +29,18 @@ describe('notification rule controls', () => {
   });
 
   it('preserves numeric zero as a stage reference in the editor', () => {
-    const { builder } = renderRules([{ stage_node_id: 0 }]);
+    const { builder, wrapper } = renderRules(
+      [{ stage_node_id: 0 }], false, [],
+      [{ id: 0, type: 'stage', data: { name: 'Review', order: 1 } }],
+    );
+    const stageSelect = wrapper.querySelector('select[name="notification_rule_stage"]');
+
     expect(builder.getNotificationRuleState({ stage_node_id: 0 }).stage_node_id).toBe(0);
+    expect(stageSelect).not.toBeNull();
+    expect(stageSelect.value).toBe('0');
+
+    const [rule] = builder.readNotificationRulesFromPanel(wrapper);
+    expect(rule.stage_node_id).toBe(0);
   });
 
   it('renders email field names as text and attribute values', () => {

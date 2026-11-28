@@ -1324,8 +1324,8 @@ export class WorkflowBuilder {
                                 ` : ''}
                             </div>
                             <div class="mb-3">
-                                <label class="form-label form-label-sm">Scope</label>
-                                <select class="form-select form-select-sm" name="notification_rule_stage"
+                                <label class="form-label form-label-sm" for="${ruleInputId('stage')}">Scope</label>
+                                <select id="${ruleInputId('stage')}" class="form-select form-select-sm" name="notification_rule_stage"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     <option value="">Workflow-level</option>
                                     ${stageOptions.map(option => `
@@ -1334,8 +1334,8 @@ export class WorkflowBuilder {
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label form-label-sm">Event</label>
-                                <select class="form-select form-select-sm" name="notification_rule_event"
+                                <label class="form-label form-label-sm" for="${ruleInputId('event')}">Event</label>
+                                <select id="${ruleInputId('event')}" class="form-select form-select-sm" name="notification_rule_event"
                                         onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})">
                                     ${eventOptions.map(([value, label]) => `
                                         <option value="${value}" ${state.event === value ? 'selected' : ''}>${label}</option>
@@ -1343,8 +1343,8 @@ export class WorkflowBuilder {
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label form-label-sm">Subject Template</label>
-                                <input type="text" class="form-control form-control-sm" name="notification_rule_subject_template"
+                                <label class="form-label form-label-sm" for="${ruleInputId('subject_template')}">Subject Template</label>
+                                <input id="${ruleInputId('subject_template')}" type="text" class="form-control form-control-sm" name="notification_rule_subject_template"
                                        value="${this.escapeHtmlAttribute(state.subject_template)}"
                                        placeholder="Submission Approved: {form_name} (ID {submission_id})"
                                        onchange="workflowBuilder.updateNotificationRules(${this.inlineNodeId(node.id)})" />
@@ -1718,8 +1718,9 @@ export class WorkflowBuilder {
             const parsed = new URL(url, window.location.origin);
             const isHttp = parsed.protocol === 'http:' || parsed.protocol === 'https:';
             const isSameOrigin = parsed.origin === window.location.origin;
+            const hasProtocolRelativePath = parsed.pathname.startsWith('//');
 
-            if (!isHttp || !isSameOrigin) {
+            if (!isHttp || !isSameOrigin || hasProtocolRelativePath) {
                 return '#';
             }
 
@@ -2123,9 +2124,9 @@ export class WorkflowBuilder {
                 condition.value = row.querySelector('input[name="condition_value"]').value;
             }
             return condition;
-        }).filter(condition => condition.field);
+        });
 
-        if (!conditions.length) {
+        if (!rows.length) {
             return null;
         }
 

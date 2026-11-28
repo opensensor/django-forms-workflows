@@ -1090,9 +1090,7 @@ class TestConvertWorkflowToVisual:
         assert loaded_rule["static_emails"] == rule.static_emails
         assert loaded_rule["cc_static_emails"] == "copy@example.com"
         assert loaded_rule["notify_submitter"] == rule.notify_submitter
-        assert (
-            loaded_rule["notify_stage_assignees"] == rule.notify_stage_assignees
-        )
+        assert loaded_rule["notify_stage_assignees"] == rule.notify_stage_assignees
         assert loaded_rule["notify_stage_groups"] is True
         assert loaded_rule["conditions"] == rule.conditions
         assert {group["id"] for group in loaded_rule["notify_groups"]} == {
@@ -2888,7 +2886,13 @@ class TestWorkflowBuilderViews:
             form_definition=form_definition
         ).count()
         changed_payload = copy.deepcopy(payload)
-        changed_payload["name_label"] = "Updated by change-only permission"
+        changed_payload["workflow"]["nodes"] = [
+            {
+                "id": "settings",
+                "type": "workflow_settings",
+                "data": {"name_label": "Updated by change-only permission"},
+            }
+        ]
         change_only_save = client.post(
             save_url, data=json.dumps(changed_payload), content_type="application/json"
         )
@@ -2898,11 +2902,10 @@ class TestWorkflowBuilderViews:
         ).count()
 
         assert change_only_after_count == change_only_before_count
-        updated_workflow = WorkflowDefinition.objects.get(form_definition=form_definition)
-        assert (
-            updated_workflow.name_label
-            == "Updated by change-only permission"
+        updated_workflow = WorkflowDefinition.objects.get(
+            form_definition=form_definition
         )
+        assert updated_workflow.name_label == "Updated by change-only permission"
 
         other_form = FormDefinition.objects.create(
             name="No workflow yet", slug="no-workflow-yet", description=""

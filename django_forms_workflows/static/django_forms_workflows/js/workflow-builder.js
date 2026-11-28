@@ -2936,8 +2936,15 @@ export class WorkflowBuilder {
                 this.addNodeIssue(result, node.id, 'warnings', `${stageLabel} uses sequence logic with fewer than two approval groups.`);
             }
 
+            const normalizedGroupIds = new Set(
+                Array.from(groupIds || [])
+                    .filter(groupId => groupId !== null && groupId !== undefined)
+                    .map(groupId => String(groupId))
+            );
+
             groups.forEach(group => {
-                if (!groupIds.has(group.id)) {
+                const normalizedGroupId = group?.id !== null && group?.id !== undefined ? String(group.id) : null;
+                if (!normalizedGroupId || !normalizedGroupIds.has(normalizedGroupId)) {
                     this.addNodeIssue(result, node.id, 'errors', `${stageLabel} references an unknown approval group: ${group.id}.`);
                 }
             });

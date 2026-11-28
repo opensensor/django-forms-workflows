@@ -1529,9 +1529,13 @@ export class WorkflowBuilder {
                         };
                     }
 
+                    const hasOperator = Object.prototype.hasOwnProperty.call(condition, 'operator');
+
                     return {
                         field: typeof condition.field === 'string' ? condition.field : '',
-                        operator: typeof condition.operator === 'string' ? condition.operator : 'equals',
+                        operator: hasOperator
+                            ? (typeof condition.operator === 'string' ? condition.operator : condition.operator)
+                            : 'equals',
                         value: condition.value ?? ''
                     };
                 })
@@ -1539,11 +1543,17 @@ export class WorkflowBuilder {
         }
 
         if (Object.prototype.hasOwnProperty.call(rawConditions, 'field')) {
+            const hasLegacyOperator = Object.prototype.hasOwnProperty.call(rawConditions, 'operator');
+
             return {
                 operator: 'AND',
                 conditions: [{
                     field: typeof rawConditions.field === 'string' ? rawConditions.field : '',
-                    operator: typeof rawConditions.operator === 'string' ? rawConditions.operator : 'equals',
+                    operator: hasLegacyOperator
+                        ? (typeof rawConditions.operator === 'string'
+                            ? rawConditions.operator
+                            : rawConditions.operator)
+                        : 'equals',
                     value: rawConditions.value ?? ''
                 }]
             };

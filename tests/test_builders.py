@@ -1085,9 +1085,16 @@ class TestConvertWorkflowToVisual:
         assert loaded_rule["stage_id"] == stage.id
         assert loaded_rule["stage_node_id"] == stage_id_to_node_id[stage.id]
         assert loaded_rule["email_field"] == "manager_email"
+        assert loaded_rule["subject_template"] == rule.subject_template
         assert loaded_rule["body_template"] == "<p>Custom body</p>"
+        assert loaded_rule["static_emails"] == rule.static_emails
         assert loaded_rule["cc_static_emails"] == "copy@example.com"
+        assert loaded_rule["notify_submitter"] == rule.notify_submitter
+        assert (
+            loaded_rule["notify_stage_assignees"] == rule.notify_stage_assignees
+        )
         assert loaded_rule["notify_stage_groups"] is True
+        assert loaded_rule["conditions"] == rule.conditions
         assert {group["id"] for group in loaded_rule["notify_groups"]} == {
             approval_group.id,
             second_approval_group.id,

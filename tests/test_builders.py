@@ -2756,8 +2756,11 @@ class TestWorkflowBuilderViews:
         assert resp.status_code in (302, 403)
 
     def test_workflow_builder_view_requires_both_view_permissions(
-        self, client, form_definition, staff_user
+        self, client, form_definition, staff_user, django_user_model
     ):
+        workflow_only_staff = django_user_model.objects.create_user(
+            username="workflow_only_staff", is_staff=True
+        )
         form_view_perm = Permission.objects.get(
             content_type__app_label="django_forms_workflows",
             codename="view_formdefinition",
@@ -2766,12 +2769,21 @@ class TestWorkflowBuilderViews:
             content_type__app_label="django_forms_workflows",
             codename="view_workflowdefinition",
         )
+        url = _wf_url(f"{form_definition.id}/workflow/")
+
+        # Only form permission: deny
         staff_user.user_permissions.add(form_view_perm)
         client.force_login(staff_user)
-        url = _wf_url(f"{form_definition.id}/workflow/")
         assert client.get(url).status_code in (302, 403)
 
+        # Only workflow permission: deny
+        workflow_only_staff.user_permissions.add(workflow_view_perm)
+        client.force_login(workflow_only_staff)
+        assert client.get(url).status_code in (302, 403)
+
+        # Both permissions: allow
         staff_user.user_permissions.add(workflow_view_perm)
+        client.force_login(staff_user)
         resp = client.get(url)
         assert resp.status_code == 200
 

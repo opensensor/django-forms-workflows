@@ -1261,7 +1261,7 @@ export class WorkflowBuilder {
                         onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})">
                     <option value="">-- Select a date field --</option>
                     ${this.fields.map(f => `
-                        <option value="${f.field_name}" ${data.notification_cadence_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+                        <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.notification_cadence_form_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
                     `).join('')}
                 </select>
                 <small class="text-muted">Used only when cadence is “On Date From Form Field”.</small>

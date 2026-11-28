@@ -1068,6 +1068,7 @@ export class WorkflowBuilder {
             routingSection += `<option value="${group.id}" ${selected}>${this.escapeHtml(group.name)}</option>`;
         });
 
+        const approvalLogic = data.approval_logic || 'all';
         routingSection += `
                 </select>
                 <small class="text-muted d-block mt-1">Hold Ctrl/Cmd to select multiple groups.</small>
@@ -1079,9 +1080,9 @@ export class WorkflowBuilder {
                 <label class="form-label" for="stage_logic_${this.escapeHtmlAttribute(node.id)}">Approval Logic</label>
                 <select class="form-select" id="stage_logic_${this.escapeHtmlAttribute(node.id)}" name="approval_logic"
                         >
-                    <option value="any" ${data.approval_logic === 'any' ? 'selected' : ''}>Any (OR)</option>
-                    <option value="all" ${data.approval_logic === 'all' ? 'selected' : ''}>All (AND)</option>
-                    <option value="sequence" ${data.approval_logic === 'sequence' ? 'selected' : ''}>Sequential</option>
+                    <option value="any" ${approvalLogic === 'any' ? 'selected' : ''}>Any (OR)</option>
+                    <option value="all" ${approvalLogic === 'all' ? 'selected' : ''}>All (AND)</option>
+                    <option value="sequence" ${approvalLogic === 'sequence' ? 'selected' : ''}>Sequential</option>
                 </select>
             </div>
         `;

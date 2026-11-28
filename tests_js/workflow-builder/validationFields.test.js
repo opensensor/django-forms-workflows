@@ -30,3 +30,33 @@ describe('approval field validation', () => {
     expect(errors.filter(error => error.includes('already assigned to First'))).toHaveLength(1);
   });
 });
+
+describe('condition validation', () => {
+  it('accepts supported operators and empty string comparison values', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    const group = { operator: 'AND', conditions: [{ field: 'notes', operator: 'in', value: '' }] };
+
+    expect(builder.validateConditionGroup(group, 'Trigger conditions')).toEqual([]);
+  });
+
+  it('puts malformed conditions into the builder validation state', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
+    builder.fields = [];
+    builder.groups = [];
+    builder.forms = [];
+    builder.workflowTargets = [];
+    builder.nodes = [{
+      id: 'settings', type: 'workflow_settings', data: {
+        trigger_conditions: { operator: 'AND', conditions: [{ field: '', operator: 'greater_than', value: 2 }] },
+      },
+    }];
+
+    const result = builder.validateWorkflow();
+
+    expect(result.nodeIssues.settings.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining('has no field selected'),
+      expect.stringContaining('has an unknown operator'),
+    ]));
+  });
+});

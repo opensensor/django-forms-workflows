@@ -161,6 +161,30 @@ describe('WorkflowBuilder stage editor', () => {
 
     expect(document.querySelector('select[name="approval_fields"] option[value="2"]').selected).toBe(true);
   });
+
+  it('rejects invalid stage order without changing node data', () => {
+    const instance = createInstance();
+    const node = { id: 'stage_1', type: 'stage', data: { name: 'Review', order: 1 } };
+    instance.nodes = [node];
+    instance.fields = [];
+    instance.groups = [];
+    instance.selectNode = vi.fn();
+    instance.showNodeProperties(node);
+    document.querySelector('input[name="name"]').value = 'Changed';
+    const order = document.querySelector('input[name="order"]');
+    order.value = '0';
+
+    instance.updateStageConfig(node.id);
+
+    expect(node.data.name).toBe('Review');
+    expect(node.data.order).toBe(1);
+    expect(order.validationMessage).toContain('Stage order must be an integer');
+
+    order.value = '2';
+    instance.updateStageConfig(node.id);
+    expect(node.data.order).toBe(2);
+    expect(order.validationMessage).toBe('');
+  });
 });
 
 describe('WorkflowBuilder workflow settings editor', () => {

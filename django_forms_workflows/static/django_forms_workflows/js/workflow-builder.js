@@ -2119,15 +2119,16 @@ export class WorkflowBuilder {
         if (!node) return;
 
         const container = document.getElementById('propertiesContent');
-        node.data.name = container.querySelector('input[name="name"]').value;
         const orderInput = container.querySelector('input[name="order"]');
-        const parsedOrder = Number.parseInt(orderInput.value, 10);
+        const parsedOrder = Number(orderInput.value);
         if (!Number.isInteger(parsedOrder) || parsedOrder < 1) {
-            window.alert('Stage order must be an integer greater than or equal to 1.');
+            orderInput.setCustomValidity('Stage order must be an integer greater than or equal to 1.');
+            orderInput.reportValidity();
             orderInput.focus();
-            orderInput.select();
             return;
         }
+        orderInput.setCustomValidity('');
+        node.data.name = container.querySelector('input[name="name"]').value;
         node.data.order = parsedOrder;
         node.data.approve_label = container.querySelector('input[name="approve_label"]').value;
         node.data.requires_manager_approval = container.querySelector('[name="requires_manager_approval"]').checked;
@@ -2169,22 +2170,25 @@ export class WorkflowBuilder {
         node.data.notification_cadence_form_field = container.querySelector('select[name="notification_cadence_form_field"]').value;
         node.data.notification_rules = this.readNotificationRulesFromPanel(container);
         node.data.trigger_conditions = this.readNodeTriggerConditions(container);
-        node.data.validation_errors = this.validateNodeConditions(node);
-
         this.selectNode(nodeId);
     }
 
     validateConditionGroup(group, ownerLabel) {
         const errors = [];
-        if (!group || !Array.isArray(group.conditions)) {
+        if (!group) {
             return errors;
+        }
+        if (!Array.isArray(group.conditions)) {
+            return [`${ownerLabel}: conditions must be a list.`];
+        }
+        if (group.operator && !['AND', 'OR'].includes(String(group.operator).toUpperCase())) {
+            errors.push(`${ownerLabel}: match mode must be AND or OR.`);
         }
 
         const allowedOperators = new Set([
-            'equals', 'not_equals', 'contains', 'not_contains',
-            'greater_than', 'less_than', 'is_empty', 'not_empty'
+            'equals', 'not_equals', 'contains', 'in',
+            'gt', 'gte', 'lt', 'lte', 'is_empty', 'not_empty'
         ]);
-        const noValueOperators = new Set(['is_empty', 'not_empty']);
 
         group.conditions.forEach((condition, index) => {
             const rowNumber = index + 1;
@@ -2198,12 +2202,6 @@ export class WorkflowBuilder {
                 return;
             }
 
-            if (!noValueOperators.has(operator)) {
-                const value = condition.value;
-                if (value === undefined || value === null || String(value).trim() === '') {
-                    errors.push(`${ownerLabel}: condition row ${rowNumber} requires a value.`);
-                }
-            }
         });
 
         return errors;
@@ -2717,6 +2715,12 @@ export class WorkflowBuilder {
             if (data.detached && data.reject_parent) {
                 this.addNodeIssue(result, node.id, 'warnings', `${label} is detached, so “Reject Parent on Failure” may not have any effect.`);
             }
+        });
+
+        this.nodes.forEach(node => {
+            this.validateNodeConditions(node).forEach(message => {
+                this.addNodeIssue(result, node.id, 'errors', message);
+            });
         });
 
         return result;

@@ -981,7 +981,12 @@ export class WorkflowBuilder {
                 .map(field => {
                     if (!field) return null;
                     if (field.id != null) return String(field.id);
-                    if (field.field_name) return approvalFieldIdByName.get(field.field_name) ?? null;
+                    if (field.field_name) {
+                        const resolvedId = approvalFieldIdByName.get(field.field_name);
+                        if (resolvedId != null) return resolvedId;
+                        const unresolvedKey = `name:${field.field_name}`;
+                        return unresolvedKey;
+                    }
                     return null;
                 })
                 .filter(id => id != null)
@@ -2562,18 +2567,48 @@ export class WorkflowBuilder {
             return [];
         }
 
+        const existingById = new Map(
+            (existingFields || [])
+                .filter(entry => entry && entry.id != null)
+                .map(entry => [String(entry.id), entry])
+        );
+        const existingByName = new Map(
+            (existingFields || [])
+                .filter(entry => entry && entry.id == null && entry.field_name)
+                .map(entry => [`name:${entry.field_name}`, entry])
+        );
+
         return Array.from(fieldSelect.selectedOptions).map(option => {
-            const field = this.fields.find(entry => String(entry.id) === option.value);
-            if (!field) {
-                return existingFields.find(entry => entry && String(entry.id) === option.value);
+            const selectedId = option.value;
+            const existing = existingById.get(selectedId) || existingByName.get(selectedId);
+            const field = this.fields.find(entry => String(entry.id) === selectedId);
+
+            if (existing && field) {
+                return {
+                    ...existing,
+                    id: existing.id ?? field.id,
+                    field_name: existing.field_name ?? field.field_name ?? option.text,
+                    field_label: existing.field_label ?? field.field_label ?? option.text,
+                    field_type: existing.field_type ?? field.field_type ?? '',
+                    order: existing.order ?? field.order ?? 0,
+                };
             }
-            return {
-                id: field.id,
-                field_name: field.field_name || option.text,
-                field_label: field.field_label || option.text,
-                field_type: field.field_type || '',
-                order: field.order ?? 0,
-            };
+
+            if (existing) {
+                return existing;
+            }
+
+            if (field) {
+                return {
+                    id: field.id,
+                    field_name: field.field_name || option.text,
+                    field_label: field.field_label || option.text,
+                    field_type: field.field_type || '',
+                    order: field.order ?? 0,
+                };
+            }
+
+            return null;
         }).filter(Boolean);
     }
 

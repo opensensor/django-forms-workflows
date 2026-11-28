@@ -26,6 +26,7 @@ describe('notification rule controls', () => {
 
     expect(wrapper.querySelector('select[name="notification_rule_event"]').value).toBe('retired_event');
     expect(wrapper.textContent).toContain('no longer supported');
+
     expect(wrapper.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions[0].value)
       .toBe('missing-group');
     expect(builder.readNotificationRulesFromPanel(wrapper)[0].notify_groups[0].id)
@@ -34,12 +35,20 @@ describe('notification rule controls', () => {
 
   it('keeps missing stage references visible until explicitly changed', () => {
     const stageId = '"><img src=x>';
-    const { wrapper } = renderRules([{ stage_node_id: stageId }]);
+    const availableStageId = 7;
+    const { builder, wrapper } = renderRules(
+      [{ stage_node_id: stageId }], false, [],
+      [{ id: availableStageId, type: 'stage', data: { name: 'Review', order: 1 } }],
+    );
     const stageSelect = wrapper.querySelector('select[name="notification_rule_stage"]');
 
     expect(wrapper.querySelector('img')).toBeNull();
     expect(stageSelect.value).toBe(stageId);
     expect(stageSelect.selectedOptions[0].textContent).toContain('Missing stage');
+    expect(builder.readNotificationRulesFromPanel(wrapper)[0].stage_node_id).toBe(stageId);
+
+    stageSelect.value = String(availableStageId);
+    expect(builder.readNotificationRulesFromPanel(wrapper)[0].stage_node_id).toBe(availableStageId);
   });
 
   it('preserves numeric zero as a stage reference in the editor', () => {

@@ -1228,19 +1228,19 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label">Approval Deadline (days)</label>
                 <input type="number" class="form-control" name="approval_deadline_days" min="1"
-                       value="${data.approval_deadline_days || ''}" placeholder="No deadline"
+                       value="${this.escapeHtmlAttribute(data.approval_deadline_days || '')}" placeholder="No deadline"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Send Reminder After (days)</label>
                 <input type="number" class="form-control" name="send_reminder_after_days" min="1"
-                       value="${data.send_reminder_after_days || ''}" placeholder="No reminder"
+                       value="${this.escapeHtmlAttribute(data.send_reminder_after_days || '')}" placeholder="No reminder"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
                 <label class="form-label">Auto-Approve After (days)</label>
                 <input type="number" class="form-control" name="auto_approve_after_days" min="1"
-                       value="${data.auto_approve_after_days || ''}" placeholder="Never"
+                       value="${this.escapeHtmlAttribute(data.auto_approve_after_days || '')}" placeholder="Never"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
             </div>
             <div class="mb-3">
@@ -1257,7 +1257,7 @@ export class WorkflowBuilder {
             <div class="mb-3">
                 <label class="form-label">Digest Day</label>
                 <input type="number" class="form-control" name="notification_cadence_day" min="0" max="31"
-                       value="${data.notification_cadence_day ?? ''}" placeholder="Weekly: 0-6, Monthly: 1-31"
+                       value="${this.escapeHtmlAttribute(data.notification_cadence_day ?? '')}" placeholder="Weekly: 0-6, Monthly: 1-31"
                        onchange="workflowBuilder.updateWorkflowSettings(${this.inlineNodeId(node.id)})" />
                 <small class="text-muted">Used for weekly and monthly cadences only.</small>
             </div>

@@ -279,6 +279,8 @@ class TestConvertWorkflowToVisual:
             reachable.add(node_id)
             pending.extend(adjacency.get(node_id, ()))
         assert end_id in reachable
+        assert join_id in reachable
+        assert stage_ids.issubset(reachable)
 
     def test_backfills_send_back_flag_from_saved_visual_data(
         self, staged_workflow, form_definition

@@ -90,6 +90,42 @@ describe('WorkflowBuilder#finishConnection', () => {
 });
 
 describe('keyboard connection handles', () => {
+  it('selects a connection from its SVG hitbox and restores keyboard focus', () => {
+    const instance = createInstance();
+    instance.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    document.body.appendChild(instance.svg);
+    instance.connections = [{ from: 'node_1', to: 'node_2' }];
+    instance.getConnectionPointPosition = vi.fn((id) =>
+      id === 'node_1' ? { x: 10, y: 20 } : { x: 100, y: 20 });
+    instance.render = vi.fn(() => instance.renderConnections());
+    instance.renderConnections();
+
+    instance.svg.querySelector('.connection-hitbox').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+    );
+
+    expect(instance.selectedConnection).toBe(0);
+    expect(document.activeElement).toBe(instance.svg.querySelector('.connection-hitbox'));
+    expect(instance.svg.querySelector('.connection-hitbox').getAttribute('aria-label'))
+      .toBe('Select connection from node_1 to node_2');
+  });
+
+  it('removes mouse listeners when a connection is canceled', () => {
+    const instance = createInstance();
+    instance.updateTempConnection = vi.fn();
+    instance.finishConnection = vi.fn();
+    instance.startConnection({ stopPropagation: vi.fn(), preventDefault: vi.fn() }, 'node_1', 'output');
+
+    instance.cancelKeyboardConnection();
+    document.dispatchEvent(new MouseEvent('mousemove'));
+    document.dispatchEvent(new MouseEvent('mouseup'));
+
+    expect(instance.updateTempConnection).not.toHaveBeenCalled();
+    expect(instance.finishConnection).not.toHaveBeenCalled();
+    expect(instance.connectionMouseMoveHandler).toBe(null);
+    expect(instance.connectionMouseUpHandler).toBe(null);
+  });
+
   it('connects two nodes and restores focus to the input after rendering', () => {
     const instance = createInstance();
     instance.nodes = [

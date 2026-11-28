@@ -1841,10 +1841,10 @@ export class WorkflowBuilder {
     buildEmailProperties(node) {
         const data = node.data || {};
         const fieldOptions = this.fields.map(f => `
-            <option value="${f.field_name}" ${data.email_to_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+            <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.email_to_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
         `).join('');
         const ccFieldOptions = this.fields.map(f => `
-            <option value="${f.field_name}" ${data.email_cc_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${f.field_name})</option>
+            <option value="${this.escapeHtmlAttribute(f.field_name)}" ${data.email_cc_field === f.field_name ? 'selected' : ''}>${this.escapeHtml(f.field_label)} (${this.escapeHtml(f.field_name)})</option>
         `).join('');
         return `
             <div class="mb-3">
@@ -2245,7 +2245,9 @@ export class WorkflowBuilder {
 
     readNotificationRulesFromPanel(container) {
         return Array.from(container.querySelectorAll('.notification-rule-card')).map(card => {
-            const stageNodeId = card.querySelector('select[name="notification_rule_stage"]').value;
+            const stageNodeValue = card.querySelector('select[name="notification_rule_stage"]').value;
+            const stageNode = this.nodes.find(node => String(node.id) === stageNodeValue);
+            const stageNodeId = stageNode ? stageNode.id : stageNodeValue;
             const eventValue = card.querySelector('select[name="notification_rule_event"]').value;
             const notifyGroups = Array.from(card.querySelector('select[name="notification_rule_notify_groups"]').selectedOptions).map(opt => ({
                 id: parseInt(opt.value),
@@ -2254,7 +2256,7 @@ export class WorkflowBuilder {
             const isPlaceholder = card.dataset.placeholder === 'true';
             return {
                 rule_id: card.dataset.ruleId ? parseInt(card.dataset.ruleId) : null,
-                stage_node_id: stageNodeId || '',
+                stage_node_id: stageNodeId ?? '',
                 event: eventValue,
                 subject_template: card.querySelector('input[name="notification_rule_subject_template"]').value,
                 notify_submitter: card.querySelector('input[name="notification_rule_notify_submitter"]').checked,
@@ -2271,6 +2273,7 @@ export class WorkflowBuilder {
         }).filter(rule => {
             const hasMeaningfulData = (
                 rule.rule_id
+                || rule.stage_node_id === 0
                 || rule.stage_node_id
                 || rule.event !== 'approval_request'
                 || rule.notify_submitter
@@ -3066,16 +3069,11 @@ export class WorkflowBuilder {
 
         const onMouseUp = (e) => {
             this.finishConnection(e);
-            this.isConnecting = false;
-            this.connectionStart = null;
-            if (this.tempLine) {
-                this.tempLine.remove();
-                this.tempLine = null;
-            }
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+            this.cancelKeyboardConnection();
         };
 
+        this.connectionMouseMoveHandler = onMouseMove;
+        this.connectionMouseUpHandler = onMouseUp;
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
     }
@@ -3168,6 +3166,9 @@ export class WorkflowBuilder {
             hitbox.setAttribute('class', 'connection-hitbox');
             hitbox.setAttribute('data-connection-index', index);
             hitbox.setAttribute('d', path);
+            hitbox.setAttribute('tabindex', '0');
+            hitbox.setAttribute('role', 'button');
+            hitbox.setAttribute('aria-label', `Select connection from ${conn.from} to ${conn.to}`);
 
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             line.setAttribute('class', 'connection-line');
@@ -3179,8 +3180,9 @@ export class WorkflowBuilder {
                 backdrop.classList.toggle('hovered', isHovered);
             };
 
-            const selectConnection = (e) => {
+            const selectConnection = (e, restoreFocus = false) => {
                 e.stopPropagation();
+                if (restoreFocus) this.pendingConnectionFocusIndex = index;
                 this.selectConnection(index);
             };
 
@@ -3191,6 +3193,12 @@ export class WorkflowBuilder {
 
             line.addEventListener('click', selectConnection);
             hitbox.addEventListener('click', selectConnection);
+            hitbox.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectConnection(e, true);
+                }
+            });
             line.addEventListener('mouseenter', () => setHover(true));
             hitbox.addEventListener('mouseenter', () => setHover(true));
             line.addEventListener('mouseleave', () => setHover(false));
@@ -3199,6 +3207,14 @@ export class WorkflowBuilder {
             this.svg.appendChild(line);
             this.svg.appendChild(hitbox);
         });
+
+        if (typeof this.pendingConnectionFocusIndex === 'number') {
+            const focusTarget = this.svg.querySelector(`.connection-hitbox[data-connection-index="${this.pendingConnectionFocusIndex}"]`);
+            if (focusTarget) {
+                focusTarget.focus();
+            }
+            this.pendingConnectionFocusIndex = null;
+        }
     }
 
     getConnectionPointPosition(nodeId, pointType) {
@@ -3258,6 +3274,15 @@ export class WorkflowBuilder {
     }
 
     cancelKeyboardConnection() {
+        if (this.connectionMouseMoveHandler) {
+            document.removeEventListener('mousemove', this.connectionMouseMoveHandler);
+            this.connectionMouseMoveHandler = null;
+        }
+        if (this.connectionMouseUpHandler) {
+            document.removeEventListener('mouseup', this.connectionMouseUpHandler);
+            this.connectionMouseUpHandler = null;
+        }
+
         if (!this.isConnecting) {
             return;
         }

@@ -10,6 +10,7 @@ afterEach(() => {
 describe('workflow builder autofix review', () => {
   it('retains a newly added notification rule when the panel is read', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
     const container = document.createElement('div');
     container.innerHTML = `
       <div class="notification-rule-card">
@@ -28,6 +29,27 @@ describe('workflow builder autofix review', () => {
 
     expect(rules).toHaveLength(1);
     expect(rules[0].event).toBe('approval_request');
+  });
+
+  it('preserves a numeric zero stage node ID in a notification rule', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
+    builder.nodes = [{ id: 0, type: 'stage' }];
+    const container = document.createElement('div');
+    container.innerHTML = `
+      <div class="notification-rule-card" data-placeholder="true">
+        <select name="notification_rule_stage"><option value="0" selected>Stage 0</option></select>
+        <select name="notification_rule_event"><option value="approval_request" selected>Approval</option></select>
+        <input name="notification_rule_subject_template" value="">
+        <input name="notification_rule_notify_submitter" type="checkbox">
+        <select name="notification_rule_email_field"><option value="" selected>None</option></select>
+        <input name="notification_rule_static_emails" value="">
+        <input name="notification_rule_notify_stage_assignees" type="checkbox">
+        <input name="notification_rule_notify_stage_groups" type="checkbox">
+        <select name="notification_rule_notify_groups" multiple></select>
+      </div>`;
+
+    expect(builder.readNotificationRulesFromPanel(container)[0].stage_node_id).toBe(0);
   });
 
   it('applies the final drag position when mouseup precedes the animation frame', () => {

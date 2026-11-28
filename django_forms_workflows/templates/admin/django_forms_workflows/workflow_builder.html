@@ -866,7 +866,17 @@
     /* Toolbar */
     .workflow-toolbar {
         display: flex;
+        flex-wrap: wrap;
         gap: 0.5rem;
+        align-items: center;
+    }
+
+    /* Allow grouped toolbar controls (e.g., zoom controls) to shrink/wrap */
+    .workflow-toolbar .zoom-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        min-width: 0;
     }
     
     .toolbar-btn {

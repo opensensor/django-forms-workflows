@@ -2583,7 +2583,7 @@ export class WorkflowBuilder {
             const field = this.fields.find(entry => String(entry.id) === selectedId);
             const existingByIdMatch = existingById.get(selectedId);
             const existingByFieldName = field?.field_name ? existingByName.get(`name:${field.field_name}`) : null;
-            const existingBySelectedName = existingByName.get(`name:${option.text}`);
+            const existingBySelectedName = existingByName.get(selectedId);
             const existing = existingByIdMatch || existingByFieldName || existingBySelectedName;
 
             if (existing && field) {
@@ -2899,7 +2899,11 @@ export class WorkflowBuilder {
             firstErrorNodeId: null,
         };
         const fieldNames = new Set(this.fields.map(field => field.field_name));
-        const groupIds = new Set(this.groups.map(group => group.id));
+        const normalizedGroupIds = new Set(
+            this.groups
+                .filter(group => group.id !== null && group.id !== undefined)
+                .map(group => String(group.id))
+        );
         const stageNodes = this.nodes.filter(node => node.type === 'stage');
         const settingsNode = this.nodes.find(node => node.type === 'workflow_settings');
         const stageNodeIds = new Set(stageNodes.map(node => node.id));
@@ -2938,12 +2942,6 @@ export class WorkflowBuilder {
             if (data.approval_logic === 'sequence' && groups.length < 2) {
                 this.addNodeIssue(result, node.id, 'warnings', `${stageLabel} uses sequence logic with fewer than two approval groups.`);
             }
-
-            const normalizedGroupIds = new Set(
-                Array.from(groupIds || [])
-                    .filter(groupId => groupId !== null && groupId !== undefined)
-                    .map(groupId => String(groupId))
-            );
 
             groups.forEach(group => {
                 const normalizedGroupId = group?.id !== null && group?.id !== undefined ? String(group.id) : null;

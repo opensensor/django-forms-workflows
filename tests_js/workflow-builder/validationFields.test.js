@@ -3,6 +3,27 @@ import { WorkflowBuilder } from '../../django_forms_workflows/static/django_form
 import { createWorkflowBuilderStore } from '../../django_forms_workflows/static/django_forms_workflows/js/workflow-builder-store.js';
 
 describe('approval field validation', () => {
+  it('accepts numeric group and field IDs saved as strings', () => {
+    const builder = Object.create(WorkflowBuilder.prototype);
+    builder.store = createWorkflowBuilderStore();
+    builder.fields = [{ id: 7, field_name: 'notes', field_label: 'Notes' }];
+    builder.groups = [{ id: 5, name: 'Reviewers' }];
+    builder.forms = [];
+    builder.workflowTargets = [];
+    builder.nodes = [{
+      id: 'stage-1', type: 'stage', data: {
+        name: 'First', order: 1,
+        approval_groups: [{ id: '5', name: 'Reviewers' }],
+        approval_fields: [{ id: '7', field_name: 'notes' }],
+      },
+    }];
+
+    const errors = builder.validateWorkflow().errors;
+
+    expect(errors.filter(error => error.includes('unknown approval group'))).toEqual([]);
+    expect(errors.filter(error => error.includes('unknown approval-only field'))).toEqual([]);
+  });
+
   it('detects one field assigned by ID and name to different stages', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     builder.store = createWorkflowBuilderStore();

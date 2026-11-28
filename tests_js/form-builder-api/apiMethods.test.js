@@ -392,8 +392,26 @@ describe('apiMethods.loadTemplate', () => {
     await ctx.loadTemplate('1');
 
     expect(ctx.fields).toEqual([{ field_name: 'text_1' }]);
-    expect(ctx.renderCanvas).toHaveBeenCalledTimes(1);
+    expect(ctx.toggleMultiStepMode).toHaveBeenCalledWith(false);
     expect(window.alert).toHaveBeenCalledWith('Template loaded successfully! You can now customize the form.');
+  });
+
+  it('loads template step configuration into multi-step mode', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, template_data: {
+        name: 'Steps', fields: [{ field_name: 'name' }],
+        form_steps: [{ title: 'Details', fields: ['name'] }],
+      } }),
+    }));
+    const ctx = createContext({ config: { apiUrls: { loadTemplate: '/templates/{id}/' } } });
+    ctx.updatePreview = vi.fn();
+
+    await ctx.loadTemplate('1');
+
+    expect(ctx.formSteps).toEqual([{ title: 'Details', fields: ['name'] }]);
+    expect(document.getElementById('formEnableMultiStep').checked).toBe(true);
+    expect(ctx.toggleMultiStepMode).toHaveBeenCalledWith(true);
   });
 
   it('seeds the field id counter past the highest field name in the template', async () => {

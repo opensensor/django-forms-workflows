@@ -449,11 +449,15 @@ export const apiMethods = {
                 document.getElementById('formAllowDraft').checked = templateData.allow_save_draft !== false;
                 document.getElementById('formAllowWithdrawal').checked = templateData.allow_withdrawal !== false;
 
-                // Load fields
+                // Load fields and step configuration
                 this.fields = templateData.fields || [];
+                this.formSteps = Array.isArray(templateData.form_steps) ? templateData.form_steps : [];
+
+                const isMultiStep = templateData.enable_multi_step === true || this.formSteps.length > 0;
+                document.getElementById('formEnableMultiStep').checked = isMultiStep;
+
                 this.store.seedFieldIdCounterFromFields(this.fields);
-                this.renderCanvas();
-                this.updatePreview();
+                this.toggleMultiStepMode(isMultiStep);
 
                 // Show success message
                 alert('Template loaded successfully! You can now customize the form.');

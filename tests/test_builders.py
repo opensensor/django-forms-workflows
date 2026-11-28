@@ -2880,8 +2880,10 @@ class TestWorkflowBuilderViews:
         change_only_before_count = WorkflowDefinition.objects.filter(
             form_definition=form_definition
         ).count()
+        changed_payload = copy.deepcopy(payload)
+        changed_payload["name_label"] = "Updated by change-only permission"
         change_only_save = client.post(
-            save_url, data=json.dumps(payload), content_type="application/json"
+            save_url, data=json.dumps(changed_payload), content_type="application/json"
         )
         assert change_only_save.status_code == 200
         change_only_after_count = WorkflowDefinition.objects.filter(
@@ -2889,6 +2891,11 @@ class TestWorkflowBuilderViews:
         ).count()
 
         assert change_only_after_count == change_only_before_count
+        updated_workflow = WorkflowDefinition.objects.get(form_definition=form_definition)
+        assert (
+            updated_workflow.name_label
+            == "Updated by change-only permission"
+        )
 
         other_form = FormDefinition.objects.create(
             name="No workflow yet", slug="no-workflow-yet", description=""

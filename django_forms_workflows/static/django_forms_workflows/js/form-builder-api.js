@@ -423,10 +423,16 @@ export const apiMethods = {
     },
 
     async loadTemplate(templateId) {
+        const requestSeq = (this._templateLoadRequestSeq || 0) + 1;
+        this._templateLoadRequestSeq = requestSeq;
+
         try {
             const url = this.config.apiUrls.loadTemplate.replace('{id}', templateId);
             const response = await fetch(url);
             const data = await response.json();
+
+            // Ignore stale responses from earlier template selections.
+            if (requestSeq !== this._templateLoadRequestSeq) return;
 
             if (data.success && data.template_data) {
                 const templateData = data.template_data;
@@ -453,6 +459,8 @@ export const apiMethods = {
                 throw new Error('Invalid template data');
             }
         } catch (error) {
+            // Ignore stale failures from earlier template selections.
+            if (requestSeq !== this._templateLoadRequestSeq) return;
             console.error('Error loading template:', error);
             alert('Failed to load template: ' + error.message);
         }

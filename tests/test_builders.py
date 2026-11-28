@@ -1028,6 +1028,7 @@ class TestConvertWorkflowToVisual:
         self, staged_workflow, approval_group, second_approval_group, form_definition
     ):
         stage = staged_workflow.stages.order_by("order").first()
+        second_stage = staged_workflow.stages.order_by("order")[1]
         rule = NotificationRule.objects.create(
             workflow=staged_workflow,
             stage=stage,
@@ -1052,16 +1053,35 @@ class TestConvertWorkflowToVisual:
             },
         )
         rule.notify_groups.set([approval_group, second_approval_group])
+        NotificationRule.objects.create(
+            workflow=staged_workflow,
+            stage=second_stage,
+            event="approval_request",
+            subject_template="Second Stage Approval Needed",
+            body_template="<p>Second stage body</p>",
+        )
 
         result = convert_workflow_to_visual(staged_workflow, form_definition)
 
         settings_node = next(
             n for n in result["nodes"] if n["type"] == "workflow_settings"
         )
-        assert len(settings_node["data"]["notification_rules"]) == 1
-        loaded_rule = settings_node["data"]["notification_rules"][0]
+        assert len(settings_node["data"]["notification_rules"]) == 2
+
+        stage_id_to_node_id = {
+            int(node["data"]["stage_id"]): node["id"]
+            for node in result["nodes"]
+            if node["type"] == "stage" and node.get("data", {}).get("stage_id") is not None
+        }
+
+        rules_by_stage_id = {
+            loaded["stage_id"]: loaded
+            for loaded in settings_node["data"]["notification_rules"]
+        }
+
+        loaded_rule = rules_by_stage_id[stage.id]
         assert loaded_rule["stage_id"] == stage.id
-        assert loaded_rule["stage_node_id"]
+        assert loaded_rule["stage_node_id"] == stage_id_to_node_id[stage.id]
         assert loaded_rule["email_field"] == "manager_email"
         assert loaded_rule["body_template"] == "<p>Custom body</p>"
         assert loaded_rule["cc_static_emails"] == "copy@example.com"
@@ -1070,6 +1090,9 @@ class TestConvertWorkflowToVisual:
             approval_group.id,
             second_approval_group.id,
         }
+
+        second_loaded_rule = rules_by_stage_id[second_stage.id]
+        assert second_loaded_rule["stage_node_id"] == stage_id_to_node_id[second_stage.id]
 
     def test_saved_numeric_string_stage_id_keeps_notification_rule_node(
         self, form_definition

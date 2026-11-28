@@ -259,6 +259,12 @@ export const apiMethods = {
             fields: this.fields
         };
 
+        // Prevent concurrent save requests from overlapping
+        if (this._saveInFlight) {
+            return;
+        }
+        this._saveInFlight = true;
+
         // Show saving status
         const saveBtn = document.getElementById('btnSave');
         const originalText = saveBtn.innerHTML;

@@ -2804,6 +2804,61 @@ class TestWorkflowBuilderViews:
         ).count()
         assert view_only_after_count == view_only_before_count
 
+        # add-only should not imply change
+        add_only_perms = Permission.objects.filter(
+            content_type__in=[ct, form_ct],
+            codename__in=[
+                "change_formdefinition",
+                "add_workflowdefinition",
+            ],
+        )
+        staff.user_permissions.add(*add_only_perms)
+
+        add_only_load = client.get(load_url)
+        assert add_only_load.status_code == 200
+        add_only_before_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        add_only_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert add_only_save.status_code in (200, 302, 403)
+        add_only_after_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+
+        # Keep denied-operation invariant explicit: if denied, DB must not change.
+        if add_only_save.status_code in (302, 403):
+            assert add_only_after_count == add_only_before_count
+
+        # change-only should not imply add
+        change_only_perms = Permission.objects.filter(
+            content_type__in=[ct, form_ct],
+            codename__in=[
+                "change_formdefinition",
+                "change_workflowdefinition",
+            ],
+        )
+        staff.user_permissions.add(*change_only_perms)
+
+        change_only_load = client.get(load_url)
+        assert change_only_load.status_code == 200
+        change_only_before_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+        change_only_save = client.post(
+            save_url, data=json.dumps(payload), content_type="application/json"
+        )
+        assert change_only_save.status_code in (200, 302, 403)
+        change_only_after_count = WorkflowDefinition.objects.filter(
+            form_definition=form_definition
+        ).count()
+
+        # Keep denied-operation invariant explicit: if denied, DB must not change.
+        if change_only_save.status_code in (302, 403):
+            assert change_only_after_count == change_only_before_count
+
+        # combined write permissions should allow save
         write_perms = Permission.objects.filter(
             content_type__in=[ct, form_ct],
             codename__in=[

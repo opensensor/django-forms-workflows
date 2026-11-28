@@ -707,10 +707,37 @@
         color: #6c757d !important;
     }
 
-    .properties-panel .btn-outline-secondary,
-    .properties-panel .btn-outline-primary,
-    .properties-panel .btn-outline-danger {
+    .properties-panel .btn-outline-secondary:not(:hover):not(:focus):not(:active):not(.active),
+    .properties-panel .btn-outline-primary:not(:hover):not(:focus):not(:active):not(.active),
+    .properties-panel .btn-outline-danger:not(:hover):not(:focus):not(:active):not(.active) {
         background-color: var(--wb-surface);
+    }
+
+    .properties-panel .btn-outline-secondary:hover,
+    .properties-panel .btn-outline-secondary:focus,
+    .properties-panel .btn-outline-secondary:active,
+    .properties-panel .btn-outline-secondary.active {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        color: #fff;
+    }
+
+    .properties-panel .btn-outline-primary:hover,
+    .properties-panel .btn-outline-primary:focus,
+    .properties-panel .btn-outline-primary:active,
+    .properties-panel .btn-outline-primary.active {
+        background-color: var(--wb-primary);
+        border-color: var(--wb-primary);
+        color: #fff;
+    }
+
+    .properties-panel .btn-outline-danger:hover,
+    .properties-panel .btn-outline-danger:focus,
+    .properties-panel .btn-outline-danger:active,
+    .properties-panel .btn-outline-danger.active {
+        background-color: var(--wb-danger);
+        border-color: var(--wb-danger);
+        color: #fff;
     }
 
     .properties-panel .alert {

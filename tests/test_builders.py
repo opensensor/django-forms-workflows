@@ -5281,7 +5281,7 @@ class TestFormBuilderViews:
                     "fields": [
                         {
                             "field_name": "answer",
-                            "field_label": "Answer",
+                            "field_label": "<img src=x onerror=alert(2)>",
                             "field_type": "text",
                         }
                     ],
@@ -5293,8 +5293,10 @@ class TestFormBuilderViews:
         html = response.json()["html"]
         assert "<script>" not in html
         assert "<img src=x" not in html
+        assert "<img src=x onerror=alert(2)>" not in html
         assert "&lt;script&gt;" in html
         assert "&lt;img src=x" in html
+        assert "&lt;img src=x onerror=alert(2)&gt;" in html
 
     def test_preview_requires_staff(self, client, user, form_with_fields):
         client.force_login(user)

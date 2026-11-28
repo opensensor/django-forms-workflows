@@ -57,6 +57,7 @@ describe('condition validation', () => {
     const builder = Object.create(WorkflowBuilder.prototype);
     builder.store = createWorkflowBuilderStore();
     const raw = { operator: 'AND', conditions: 'broken' };
+    const rawSnapshot = structuredClone(raw);
     builder.nodes = [{ id: 'stage-1', type: 'stage', data: {
       trigger_conditions: raw,
       notification_rules: [{ conditions: raw }],
@@ -69,6 +70,8 @@ describe('condition validation', () => {
 
     expect(builder.nodes[0].data.trigger_conditions).toBe(raw);
     expect(builder.nodes[0].data.notification_rules[0].conditions).toBe(raw);
+    expect(builder.nodes[0].data.trigger_conditions).toEqual(rawSnapshot);
+    expect(builder.nodes[0].data.notification_rules[0].conditions).toEqual(rawSnapshot);
   });
 
   it('keeps malformed saved conditions until explicitly removed', () => {

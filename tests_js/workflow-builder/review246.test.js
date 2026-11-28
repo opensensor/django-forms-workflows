@@ -19,6 +19,19 @@ beforeEach(() => {
 });
 
 describe('workflow builder review fixes', () => {
+  it('labels the delete action with the escaped node name', () => {
+    const instance = createInstance();
+    const element = instance.createNodeElement({
+      id: 'stage-1', type: 'stage', x: 0, y: 0,
+      data: { name: 'Review "urgent"' },
+    });
+    const button = element.querySelector('.node-actions button');
+
+    expect(button.getAttribute('aria-label')).toBe('Delete node: Review "urgent"');
+    expect(button.getAttribute('type')).toBe('button');
+    expect(button.querySelector('i').getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('keeps a scrolled canvas cursor fixed while zooming', () => {
     document.body.innerHTML = '<div id="workflowCanvas"><svg id="connectionsSvg"></svg></div>';
     const instance = createInstance();

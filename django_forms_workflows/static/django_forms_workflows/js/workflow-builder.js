@@ -2121,37 +2121,19 @@ export class WorkflowBuilder {
 
         const operatorElement = editorElement.querySelector('select[name="condition_group_operator"]');
         const rows = Array.from(editorElement.querySelectorAll('.trigger-condition-row'));
-        const conditions = rows
-            .map(row => {
-                const fieldElement = row.querySelector('select[name="condition_field"]');
-                const operatorSelect = row.querySelector('select[name="condition_operator"]');
-                const valueInput = row.querySelector('input[name="condition_value"]');
+        const conditions = rows.map(row => {
+            const operator = row.querySelector('select[name="condition_operator"]').value;
+            const condition = {
+                field: row.querySelector('select[name="condition_field"]').value,
+                operator,
+            };
+            if (!['is_empty', 'not_empty'].includes(operator)) {
+                condition.value = row.querySelector('input[name="condition_value"]').value;
+            }
+            return condition;
+        });
 
-                const field = fieldElement ? fieldElement.value : '';
-                const operator = operatorSelect ? operatorSelect.value : '';
-
-                if (!field || !operator) {
-                    return null;
-                }
-
-                const condition = {
-                    field,
-                    operator,
-                };
-
-                if (!['is_empty', 'not_empty'].includes(operator)) {
-                    const value = valueInput ? valueInput.value : '';
-                    if (!value) {
-                        return null;
-                    }
-                    condition.value = value;
-                }
-
-                return condition;
-            })
-            .filter(condition => condition !== null);
-
-        if (!rows.length || !conditions.length) {
+        if (!rows.length) {
             return null;
         }
 
@@ -2936,20 +2918,11 @@ export class WorkflowBuilder {
         let pendingCanvasX = startCanvasX;
         let pendingCanvasY = startCanvasY;
 
-        const updateDraggedNodeAndConnections = () => {
-            this.updateNodePosition(node);
-            this.connections.forEach((connection) => {
-                if (connection.fromNodeId === node.id || connection.toNodeId === node.id) {
-                    this.updateConnectionPath(connection);
-                }
-            });
-        };
-
         const flushDragRender = () => {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            updateDraggedNodeAndConnections();
+            this.render();
         };
 
         const onMouseMove = (e) => {
@@ -2965,7 +2938,6 @@ export class WorkflowBuilder {
                 rafId = null;
                 node.x = pendingCanvasX - dragOffsetX;
                 node.y = pendingCanvasY - dragOffsetY;
-                updateDraggedNodeAndConnections();
             }
             this.isDraggingNode = false;
             this.draggingNodeId = null;

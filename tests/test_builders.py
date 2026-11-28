@@ -5020,6 +5020,53 @@ class TestFormBuilderViews:
         assert cloned_sub_workflow.detached == sub_workflow.detached
         assert cloned_sub_workflow.reject_parent == sub_workflow.reject_parent
 
+    def test_clone_with_subworkflow_target_on_same_form_is_remapped(
+        self, client, superuser, form_with_fields
+    ):
+        source_workflow = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields,
+            start_trigger="on_all_complete",
+            name_label="Parent track",
+        )
+        target_workflow = WorkflowDefinition.objects.create(
+            form_definition=form_with_fields,
+            start_trigger="on_all_complete",
+            name_label="Target track",
+        )
+        sub_workflow = SubWorkflowDefinition.objects.create(
+            parent_workflow=source_workflow,
+            sub_workflow=target_workflow,
+            count_field="number_of_items",
+            trigger="on_submission",
+            detached=True,
+            reject_parent=True,
+        )
+
+        client.force_login(superuser)
+        response = client.post(_fb_url(f"builder/api/clone/{form_with_fields.id}/"))
+
+        assert response.status_code == 200
+        cloned_form = FormDefinition.objects.get(pk=response.json()["form_id"])
+        cloned_parent_workflow = WorkflowDefinition.objects.get(
+            form_definition=cloned_form, name_label=source_workflow.name_label
+        )
+        cloned_target_workflow = WorkflowDefinition.objects.get(
+            form_definition=cloned_form, name_label=target_workflow.name_label
+        )
+        cloned_sub_workflow = SubWorkflowDefinition.objects.get(
+            parent_workflow=cloned_parent_workflow
+        )
+
+        assert cloned_sub_workflow.pk != sub_workflow.pk
+        assert cloned_sub_workflow.parent_workflow == cloned_parent_workflow
+        assert cloned_sub_workflow.parent_workflow != source_workflow
+        assert cloned_sub_workflow.sub_workflow == cloned_target_workflow
+        assert cloned_sub_workflow.sub_workflow != target_workflow
+        assert cloned_sub_workflow.count_field == sub_workflow.count_field
+        assert cloned_sub_workflow.trigger == sub_workflow.trigger
+        assert cloned_sub_workflow.detached == sub_workflow.detached
+        assert cloned_sub_workflow.reject_parent == sub_workflow.reject_parent
+
     def test_clone_copies_automation_and_settings(
         self, client, superuser, form_with_fields, approval_group
     ):

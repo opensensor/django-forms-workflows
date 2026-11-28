@@ -4083,9 +4083,9 @@ class TestFormBuilderSavePayloadValidation:
         assert response.status_code == 400
         assert set(form_with_fields.fields.values_list("id", flat=True)) == original_ids
 
-    @pytest.mark.parametrize("field_ids", [[[], []]])
-    def test_rejects_malformed_field_ids(self, client, superuser, field_ids):
+    def test_rejects_malformed_field_ids(self, client, superuser):
         client.force_login(superuser)
+        field_ids = [[]]
         response = client.post(
             _fb_url("builder/api/save/"),
             data=json.dumps(

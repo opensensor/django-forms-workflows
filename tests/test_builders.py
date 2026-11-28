@@ -2672,11 +2672,11 @@ class TestConvertVisualToWorkflow:
 
     @pytest.mark.parametrize("target_id", ["not-an-id", "²", "9" * 5000, 1.0, True])
     def test_sub_workflow_rejects_malformed_target_id(self, form_definition, target_id):
-        if target_id is True and not WorkflowDefinition.objects.filter(pk=1).exists():
+        if target_id is True and not WorkflowDefinition.objects.exists():
             target_form = FormDefinition.objects.create(
                 name="Lookup Target", slug="lookup-target"
             )
-            WorkflowDefinition.objects.create(pk=1, form_definition=target_form)
+            WorkflowDefinition.objects.create(form_definition=target_form)
 
         visual = self._make_visual()
         visual["nodes"].insert(

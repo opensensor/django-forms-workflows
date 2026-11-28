@@ -693,6 +693,13 @@ class TestConvertWorkflowToVisual:
     ):
         workflow = WorkflowDefinition.objects.create(form_definition=form_definition)
         stage = workflow.stages.create(name="Review", order=1)
+        if saved_stage_id is True and not WorkflowStage.objects.filter(id=1).exists():
+            WorkflowStage.objects.create(
+                id=1,
+                workflow_definition=workflow,
+                name="Boolean sentinel stage",
+                order=9999,
+            )
         workflow.visual_workflow_data = {
             "nodes": [
                 {

@@ -2896,6 +2896,21 @@ export class WorkflowBuilder {
         }
     }
 
+    renderDragFrame(nodeId) {
+        if (typeof this.updateNodePositionInDom === 'function') {
+            this.updateNodePositionInDom(nodeId);
+        }
+        if (typeof this.updateIncidentConnectionsInDom === 'function') {
+            this.updateIncidentConnectionsInDom(nodeId);
+        } else if (typeof this.updateConnectionPathsForNode === 'function') {
+            this.updateConnectionPathsForNode(nodeId);
+        } else if (typeof this.updateConnectionPaths === 'function') {
+            this.updateConnectionPaths();
+        } else {
+            this.render();
+        }
+    }
+
     startDragNode(e, node) {
         if (e.button !== 0) return;
 
@@ -2915,7 +2930,7 @@ export class WorkflowBuilder {
             rafId = null;
             node.x = pendingCanvasX - dragOffsetX;
             node.y = pendingCanvasY - dragOffsetY;
-            this.render();
+            this.renderDragFrame(node.id);
         };
 
         const onMouseMove = (e) => {

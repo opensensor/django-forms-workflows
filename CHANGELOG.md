@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-11-28
+
+### Changed
+- Improve workflow builder layout, connection editing, validation feedback, and
+  keyboard focus during node and stage edits.
+- Keep missing approval groups, fields, and notification date fields visible
+  for correction without discarding saved configuration during unrelated edits.
+
+### Fixed
+- Validate form builder preview and saved references consistently, including
+  malformed IDs and unauthorized shared option list changes.
+- Escape saved builder content in rendered HTML and preserve malformed
+  conditions until explicitly corrected or removed.
+- Strengthen notification dispatch, webhook handling, and builder regression
+  coverage.
+
 ## [0.78.3] - 2026-11-06
 
 ### Changed
@@ -2029,7 +2045,8 @@ here rather than lost.
 - psycopg2-binary >= 2.9 (for PostgreSQL)
 - mysqlclient >= 2.2 (for MySQL)
 
-[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.3...HEAD
+[Unreleased]: https://github.com/opensensor/django-forms-workflows/compare/v0.79.0...HEAD
+[0.79.0]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.3...v0.79.0
 [0.78.3]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.2...v0.78.3
 [0.78.2]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.1...v0.78.2
 [0.78.1]: https://github.com/opensensor/django-forms-workflows/compare/v0.78.0...v0.78.1

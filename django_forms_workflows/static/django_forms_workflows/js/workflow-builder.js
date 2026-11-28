@@ -3160,6 +3160,9 @@ export class WorkflowBuilder {
             hitbox.setAttribute('class', 'connection-hitbox');
             hitbox.setAttribute('data-connection-index', index);
             hitbox.setAttribute('d', path);
+            hitbox.setAttribute('tabindex', '0');
+            hitbox.setAttribute('role', 'button');
+            hitbox.setAttribute('aria-label', `Select connection ${index + 1}`);
 
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             line.setAttribute('class', 'connection-line');
@@ -3173,6 +3176,7 @@ export class WorkflowBuilder {
 
             const selectConnection = (e) => {
                 e.stopPropagation();
+                this.pendingConnectionFocusIndex = index;
                 this.selectConnection(index);
             };
 
@@ -3183,6 +3187,12 @@ export class WorkflowBuilder {
 
             line.addEventListener('click', selectConnection);
             hitbox.addEventListener('click', selectConnection);
+            hitbox.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectConnection(e);
+                }
+            });
             line.addEventListener('mouseenter', () => setHover(true));
             hitbox.addEventListener('mouseenter', () => setHover(true));
             line.addEventListener('mouseleave', () => setHover(false));
@@ -3191,6 +3201,14 @@ export class WorkflowBuilder {
             this.svg.appendChild(line);
             this.svg.appendChild(hitbox);
         });
+
+        if (typeof this.pendingConnectionFocusIndex === 'number') {
+            const focusTarget = this.svg.querySelector(`.connection-hitbox[data-connection-index="${this.pendingConnectionFocusIndex}"]`);
+            if (focusTarget) {
+                focusTarget.focus();
+            }
+            this.pendingConnectionFocusIndex = null;
+        }
     }
 
     getConnectionPointPosition(nodeId, pointType) {

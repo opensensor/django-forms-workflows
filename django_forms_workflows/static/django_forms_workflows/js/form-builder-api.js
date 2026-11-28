@@ -28,6 +28,8 @@ export const apiMethods = {
 
     async generatePreview() {
         const preview = document.getElementById('formPreview');
+        const requestSeq = (this.previewRequestSeq || 0) + 1;
+        this.previewRequestSeq = requestSeq;
 
         // Show loading state
         preview.innerHTML = `
@@ -71,6 +73,9 @@ export const apiMethods = {
 
             const data = await response.json();
 
+            // Ignore stale responses from older requests
+            if (requestSeq !== this.previewRequestSeq) return;
+
             if (data.success) {
                 preview.innerHTML = data.html;
             } else {
@@ -80,6 +85,9 @@ export const apiMethods = {
 
         } catch (error) {
             console.error('Preview error:', error);
+
+            // Ignore stale errors from older requests
+            if (requestSeq !== this.previewRequestSeq) return;
 
             // If there are no fields, show a helpful message
             if (this.fields.length === 0) {
@@ -96,7 +104,7 @@ export const apiMethods = {
                         <i class="bi bi-exclamation-triangle"></i>
                         <strong>Preview unavailable</strong><br>
                         ${this.fields.length} field(s) configured<br>
-                        <small class="text-muted">${error.message}</small>
+                        <small class="text-muted">${this.escapeHtml(error.message)}</small>
                     </div>
                 `;
             }
@@ -207,6 +215,17 @@ export const apiMethods = {
             this.updateFieldOrderFromSteps();
         }
 
+        const successRedirectRulesRaw = document.getElementById('formSuccessRedirectRules').value.trim();
+        let successRedirectRules = null;
+        if (successRedirectRulesRaw) {
+            try {
+                successRedirectRules = JSON.parse(successRedirectRulesRaw);
+            } catch (e) {
+                alert('Success redirect rules must be valid JSON.');
+                return;
+            }
+        }
+
         // Build form data
         const formData = {
             id: this.config.formId,
@@ -220,7 +239,7 @@ export const apiMethods = {
             allow_withdrawal: document.getElementById('formAllowWithdrawal').checked,
             success_message: document.getElementById('formSuccessMessage').value.trim(),
             success_redirect_url: document.getElementById('formSuccessRedirectUrl').value.trim(),
-            success_redirect_rules: (() => { try { const v = document.getElementById('formSuccessRedirectRules').value.trim(); return v ? JSON.parse(v) : null; } catch(e) { return null; } })(),
+            success_redirect_rules: successRedirectRules,
             payment_enabled: document.getElementById('formPaymentEnabled').checked,
             payment_provider: document.getElementById('formPaymentProvider').value,
             payment_amount_type: document.getElementById('formPaymentAmountType').value,
@@ -286,7 +305,11 @@ export const apiMethods = {
             // If this was a new form, redirect to edit mode
             if (this.config.isNew && result.form_id) {
                 setTimeout(() => {
-                    window.location.href = `/admin/django_forms_workflows/formdefinition/${result.form_id}/builder/`;
+                    const redirectUrl = result.builder_url ||
+                        (this.config.builderUrlTemplate
+                            ? this.config.builderUrlTemplate.replace('{form_id}', result.form_id)
+                            : `/admin/django_forms_workflows/formdefinition/${result.form_id}/builder/`);
+                    window.location.href = redirectUrl;
                 }, 1000);
             } else {
                 // Show success message

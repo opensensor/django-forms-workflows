@@ -1132,6 +1132,7 @@
                 {% endfor %}
             ],
             paymentProviders: paymentProvidersData,
+            builderUrlTemplate: "{% url 'admin:form_builder_edit' 0 %}".replace('/0/', '/{form_id}/'),
             apiUrls: {
                 sharedLists: "{% url 'admin:form_builder_api_shared_lists' %}",
                 sharedListSave: "{% url 'admin:form_builder_api_shared_list_save' %}",

@@ -97,6 +97,21 @@ describe('apiMethods.updatePreview', () => {
 });
 
 describe('apiMethods.generatePreview', () => {
+  it('ignores a response from an older preview request', async () => {
+    let finishFirst;
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(() => new Promise(resolve => { finishFirst = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, html: '<p>new</p>' }) }));
+    const ctx = createContext();
+
+    const first = ctx.generatePreview();
+    await ctx.generatePreview();
+    finishFirst({ ok: true, json: async () => ({ success: true, html: '<p>old</p>' }) });
+    await first;
+
+    expect(document.getElementById('formPreview').innerHTML).toBe('<p>new</p>');
+  });
+
   it('renders the returned HTML on success', async () => {
     const ctx = createContext({ fields: [{ field_name: 'a' }] });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -211,6 +226,19 @@ describe('apiMethods.loadForm', () => {
 });
 
 describe('apiMethods.saveForm', () => {
+  it('does not save malformed success redirect rules', async () => {
+    document.getElementById('formName').value = 'My Form';
+    document.getElementById('formSlug').value = 'my-form';
+    document.getElementById('formSuccessRedirectRules').value = '{bad json';
+    vi.stubGlobal('fetch', vi.fn());
+    const ctx = createContext();
+
+    await ctx.saveForm();
+
+    expect(window.alert).toHaveBeenCalledWith('Success redirect rules must be valid JSON.');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('blocks the save and alerts when the form name is blank', async () => {
     const ctx = createContext();
     vi.stubGlobal('fetch', vi.fn());

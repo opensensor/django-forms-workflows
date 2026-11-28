@@ -28,6 +28,8 @@ export const apiMethods = {
 
     async generatePreview() {
         const preview = document.getElementById('formPreview');
+        const requestSeq = (this.previewRequestSeq || 0) + 1;
+        this.previewRequestSeq = requestSeq;
 
         // Show loading state
         preview.innerHTML = `
@@ -71,6 +73,9 @@ export const apiMethods = {
 
             const data = await response.json();
 
+            // Ignore stale responses from older requests
+            if (requestSeq !== this.previewRequestSeq) return;
+
             if (data.success) {
                 preview.innerHTML = data.html;
             } else {
@@ -80,6 +85,9 @@ export const apiMethods = {
 
         } catch (error) {
             console.error('Preview error:', error);
+
+            // Ignore stale errors from older requests
+            if (requestSeq !== this.previewRequestSeq) return;
 
             // If there are no fields, show a helpful message
             if (this.fields.length === 0) {

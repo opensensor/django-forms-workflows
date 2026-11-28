@@ -1370,6 +1370,10 @@
                 const requestEditorSession = docTemplateModalEl.dataset.editorSession || String(docTemplateEditorSession);
                 saveBtn.dataset.submitting = 'true';
                 saveBtn.disabled = true;
+                const controlsToDisable = Array.from(
+                    docTemplateModalEl.querySelectorAll('input, textarea, select, button')
+                ).filter((el) => el !== saveBtn);
+                controlsToDisable.forEach((el) => { el.disabled = true; });
                 const modalInstance = bootstrap.Modal.getOrCreateInstance(docTemplateModalEl);
                 try {
                     const resp = await fetch(docUrls.docTemplateSave, {
@@ -1386,6 +1390,7 @@
                     } else { alert(data.error || 'Error saving template'); }
                 } catch (e) { alert('Error: ' + e.message); }
                 finally {
+                    controlsToDisable.forEach((el) => { el.disabled = false; });
                     delete saveBtn.dataset.submitting;
                     saveBtn.disabled = false;
                 }

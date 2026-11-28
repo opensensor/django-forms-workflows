@@ -976,12 +976,19 @@ export class WorkflowBuilder {
                 .filter(field => field && field.id != null && field.field_name)
                 .map(field => [field.field_name, String(field.id)])
         );
+        const unresolvedApprovalFieldNames = new Set();
         const selectedApprovalFieldIds = new Set(
             (data.approval_fields || [])
                 .map(field => {
                     if (!field) return null;
                     if (field.id != null) return String(field.id);
-                    if (field.field_name) return approvalFieldIdByName.get(field.field_name) ?? null;
+                    if (field.field_name) {
+                        const resolvedId = approvalFieldIdByName.get(field.field_name);
+                        if (resolvedId != null) return resolvedId;
+                        const unresolvedKey = `name:${field.field_name}`;
+                        unresolvedApprovalFieldNames.add(field.field_name);
+                        return unresolvedKey;
+                    }
                     return null;
                 })
                 .filter(id => id != null)

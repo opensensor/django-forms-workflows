@@ -284,6 +284,31 @@ describe('apiMethods.saveForm', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('allows retry after an in-flight save rejects and re-enables Save', async () => {
+    document.getElementById('formName').value = 'My Form';
+    document.getElementById('formSlug').value = 'my-form';
+    let rejectFirst;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const ctx = createContext();
+
+    const first = ctx.saveForm();
+    await ctx.saveForm();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    rejectFirst(new Error('network error'));
+    await expect(first).resolves.toBeUndefined();
+    expect(window.alert).toHaveBeenCalledWith('Failed to save form: network error');
+    expect(document.getElementById('saveStatus').textContent).toBe('Error saving');
+    expect(document.getElementById('btnSave').disabled).toBe(false);
+
+    await ctx.saveForm();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('does not save malformed success redirect rules', async () => {
     document.getElementById('formName').value = 'My Form';
     document.getElementById('formSlug').value = 'my-form';
@@ -378,6 +403,25 @@ describe('apiMethods.loadTemplate', () => {
     expect(ctx.fields).toEqual([{ field_name: 'new' }]);
   });
 
+  it('ignores an older template failure after a newer selection loads', async () => {
+    let rejectFirst;
+    vi.stubGlobal('fetch', vi.fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        success: true, template_data: { name: 'New', fields: [{ field_name: 'new' }] },
+      }) }));
+    const ctx = createContext({ config: { apiUrls: { loadTemplate: '/templates/{id}/' } } });
+    ctx.updatePreview = vi.fn();
+
+    const first = ctx.loadTemplate('old');
+    await ctx.loadTemplate('new');
+    rejectFirst(new Error('stale request failed'));
+    await first.catch(() => {});
+
+    expect(ctx.fields).toEqual([{ field_name: 'new' }]);
+    expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('Failed to load template'));
+  });
+
   it('populates fields from the template and refreshes the canvas/preview', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -451,6 +495,8 @@ describe('apiMethods.showTemplateSelection', () => {
         success: true,
         templates: [
           { id: 1, name: 'Contact', description: 'A contact form', category_display: 'General', usage_count: 3 },
+          { id: 2, name: 'Feedback', description: 'A feedback form', category_display: 'General', usage_count: 2 },
+          { id: 3, name: 'Support Ticket', description: 'A support form', category_display: 'Support', usage_count: 5 },
         ],
       }),
     }));
@@ -458,8 +504,15 @@ describe('apiMethods.showTemplateSelection', () => {
 
     await ctx.showTemplateSelection();
 
-    expect(document.getElementById('templateList').innerHTML).toContain('Contact');
-    expect(document.getElementById('templateList').innerHTML).toContain('General');
+    const templateList = document.getElementById('templateList');
+    const renderedItems = Array.from(templateList.children).map(element =>
+      element.matches('.col-12')
+        ? `group:${element.textContent.trim()}`
+        : `card:${element.querySelector('.card-title').textContent}`);
+    expect(renderedItems).toEqual([
+      'group:General', 'card:Contact', 'card:Feedback',
+      'group:Support', 'card:Support Ticket',
+    ]);
   });
 
   it('shows an empty-state message when there are no templates', async () => {
